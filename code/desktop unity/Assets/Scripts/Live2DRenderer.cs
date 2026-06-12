@@ -25,8 +25,8 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     // ===================================================================
     // ===== 🎛️ 调参区 — 改这里 =====
     // ===================================================================
-    const float LIVE2D_SCALE       = 1f;    // 模型缩放（越大→模型越大）
-    const float LIVE2D_OFFSET_Y    = 250f;    // 垂直偏移（正数=下移，负数=上移）
+    const float LIVE2D_SCALE       = 200f;    // 模型缩放（越大→模型越大）
+    const float LIVE2D_OFFSET_Y    = 0f;    // 垂直偏移（正数=下移，负数=上移）
     // ===================================================================
 
     // ================ 动画参数 ================
@@ -123,7 +123,9 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     private void Start()
     {
+        Debug.Log("[Live2DRenderer] Start() 被调用了");
         _pet = GetComponent<DesktopPet>();
+        Debug.Log($"[Live2DRenderer] DesktopPet={( _pet != null)}");
 
         // ★ 强制从宏读取（忽略场景中序列化的旧值，改宏立即生效）
         modelScale = LIVE2D_SCALE;
@@ -134,38 +136,49 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     private void TryLoadModel()
     {
-        // 如果没有拖拽 modelPrefab，自动按路径加载
+        Debug.Log($"[Live2DRenderer] TryLoadModel() modelPrefab当前值={modelPrefab}");
+        // ★ 无条件优先用 AssetDatabase 按路径加载（场景序列化引用可能损毁）
+        #if UNITY_EDITOR
+        string prefabPath = "Assets/Live2D/Models/Fuxuan/符玄.prefab";
+        Debug.Log($"[Live2DRenderer] 尝试 AssetDatabase 加载: {prefabPath}");
+        GameObject resolvedPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        Debug.Log($"[Live2DRenderer] AssetDatabase 结果={(resolvedPrefab != null ? resolvedPrefab.name : "null")}");
+        if (resolvedPrefab != null)
+        {
+            modelPrefab = resolvedPrefab;
+        }
+        #endif
+        // 降级：Resources.Load（需要把 prefab 放 Resources 文件夹下）
         if (modelPrefab == null)
         {
             modelPrefab = Resources.Load<GameObject>("Live2D/Models/Fuxuan/符玄");
-        }
-        // 如果 Resources.Load 也没找到，尝试 Assets 路径
-        if (modelPrefab == null)
-        {
-            #if UNITY_EDITOR
-            modelPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Live2D/Models/Fuxuan/符玄.prefab");
-            #endif
         }
 
         if (modelPrefab != null)
         {
             _modelRoot = Instantiate(modelPrefab, transform);
+            
+            // 设置 Layer（确保 Camera 能看到）
+            SetLayerRecursively(_modelRoot, 0); // 0 = Default
+            
+            Debug.Log($"[Live2DRenderer] _modelRoot={_modelRoot.name}, activeSelf={_modelRoot.activeSelf}, activeInHierarchy={_modelRoot.activeInHierarchy}");
+            Debug.Log($"[Live2DRenderer] _modelRoot.transform.childCount={_modelRoot.transform.childCount}");
+
             _cubismModel = _modelRoot.GetComponentInChildren<CubismModel>();
             _physicsController = _modelRoot.GetComponentInChildren<CubismPhysicsController>();
-            
-            // 自动启用所有 Renderer（符玄模型需要）
-            var renderers = _modelRoot.GetComponentsInChildren<Renderer>();
-            int enabledCount = 0;
-            foreach (var renderer in renderers) {
-                if (!renderer.enabled) {
-                    renderer.enabled = true;
-                    enabledCount++;
-                }
+
+            // 列出所有子物体和组件
+            Debug.Log($"[Live2DRenderer] 模型实例化后结构:");
+            ListAllChildren(_modelRoot, 0);
+
+            // 检查 CubismRenderController
+            var renderController = _modelRoot.GetComponentInChildren<Live2D.Cubism.Rendering.CubismRenderController>();
+            Debug.Log($"[Live2DRenderer] CubismRenderController={renderController != null}");
+            if (renderController != null)
+            {
+                Debug.Log($"[Live2DRenderer] CubismRenderController.enabled={renderController.enabled}");
             }
-            if (enabledCount > 0) {
-                Debug.Log($"[Live2DRenderer] 自动启用了 {enabledCount} 个 Renderer");
-            }
-            
+
             _loaded = true;
             Debug.Log($"[Live2DRenderer] 模型 Prefab 实例化完成, CubismModel={_cubismModel != null}, Physics={_physicsController != null}");
             if (_cubismModel != null)
@@ -176,6 +189,40 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         {
             Debug.LogError("[Live2DRenderer] 没有设置 modelPrefab，请在 Inspector 中拖拽 Cubism 导入的模型 Prefab");
             enabled = false;
+        }
+    }
+    
+    private System.Collections.IEnumerator CheckRendererStatus()
+    {
+        yield return new WaitForSeconds(0.1f); // 延迟检查
+        if (_modelRoot != null)
+        {
+            var renderers = _modelRoot.GetComponentsInChildren<Renderer>();
+            int enabledCount = 0;
+            int disabledCount = 0;
+            foreach (var renderer in renderers)
+            {
+                if (renderer.enabled)
+                    enabledCount++;
+                else
+                    disabledCount++;
+            }
+            Debug.Log($"[Live2DRenderer] 延迟检查 - 总共: {renderers.Length}, 启用: {enabledCount}, 禁用: {disabledCount}");
+            
+            // 强制启用所有 Renderer
+            if (disabledCount > 0)
+            {
+                int forceEnabled = 0;
+                foreach (var renderer in renderers)
+                {
+                    if (!renderer.enabled)
+                    {
+                        renderer.enabled = true;
+                        forceEnabled++;
+                    }
+                }
+                Debug.Log($"[Live2DRenderer] 强制启用了 {forceEnabled} 个 Renderer");
+            }
         }
     }
 
@@ -319,6 +366,12 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         Vector3 screenPos = new Vector3(worldX, Screen.height - worldY, 10f);
         Vector3 worldPos = cam.ScreenToWorldPoint(screenPos);
+
+        // 调试日志
+        if (Time.frameCount % 60 == 0) // 每秒打印一次
+        {
+            Debug.Log($"[Live2DRenderer] pet({_pet.petX},{_pet.petY}) size({_pet.petWidth},{_pet.petHeight}) → screenPos({screenPos.x},{screenPos.y}) → worldPos({worldPos.x},{worldPos.y}), scale={modelScale}");
+        }
 
         _modelRoot.transform.position = worldPos;
 
@@ -492,6 +545,34 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     }
 
     #endregion
+
+    private void ListAllChildren(GameObject go, int depth)
+    {
+        string indent = new string(' ', depth * 2);
+        Debug.Log($"{indent}{go.name} (active={go.activeInHierarchy})");
+
+        foreach (var component in go.GetComponents<Component>())
+        {
+            if (component == null) continue;
+            if (component is Transform) continue;
+            Debug.Log($"{indent}  [{component.GetType().Name}]");
+        }
+
+        foreach (Transform child in go.transform)
+        {
+            ListAllChildren(child.gameObject, depth + 1);
+        }
+    }
+
+    private void SetLayerRecursively(GameObject go, int layer)
+    {
+        if (go == null) return;
+        go.layer = layer;
+        foreach (Transform child in go.transform)
+        {
+            SetLayerRecursively(child.gameObject, layer);
+        }
+    }
 
     /// <summary>
     /// 设置模型透明度（HybridRenderer 交叉淡入淡出用）
