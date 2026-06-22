@@ -574,6 +574,7 @@ public class ContextMenu : MonoBehaviour
     private string _reminderStatusMsg = "";
     private Color _reminderStatusColor = Color.gray;
     private bool _showAddReminder = false;
+    private bool _showDoneReminders = false;  // true=已完成视图 false=待办视图
 
     private void DrawRemindersTab()
     {
@@ -585,8 +586,8 @@ public class ContextMenu : MonoBehaviour
 
         // ——— 状态栏 ———
         int pendingCount = _reminders.PendingCount;
-        int totalCount = _reminders.GetAllReminders().Count;
-        GUILayout.Label($"📋 卜算记事簿 — {pendingCount} 待办 / {totalCount} 总计", _sectionStyle);
+        int doneCount = _reminders.GetDoneReminders().Count;
+        GUILayout.Label($"📋 卜算记事簿 — {pendingCount} 待办 / {doneCount} 已完成", _sectionStyle);
         GUILayout.Space(2);
 
         // ——— 操作按钮行 ———
@@ -601,10 +602,17 @@ public class ContextMenu : MonoBehaviour
             _reminderStatusMsg = $"已刷新，{pendingCount} 项待办";
             _reminderStatusColor = Color.green;
         }
+        // ——— 待办/已完成 切换按钮 ———
+        string toggleLabel = _showDoneReminders ? "⏳ 看待办" : "✅ 已完成";
+        if (GUILayout.Button(toggleLabel, _buttonStyle, GUILayout.Height(24)))
+        {
+            _showDoneReminders = !_showDoneReminders;
+            _reminderScrollPos = Vector2.zero;
+        }
         GUILayout.EndHorizontal();
 
-        // ——— 新建提醒输入区 ———
-        if (_showAddReminder)
+        // ——— 新建提醒输入区（仅待办视图显示） ———
+        if (_showAddReminder && !_showDoneReminders)
         {
             GUILayout.Box("", new GUIStyle { normal = { background = _sectionBg } });
             GUILayout.Space(2);
@@ -667,20 +675,35 @@ public class ContextMenu : MonoBehaviour
         }
 
         // ——— 提醒列表 ———
-        var allReminders = _reminders.GetAllReminders();
-        if (allReminders.Count == 0)
+        List<ReminderManager.Reminder> list;
+        string emptyMsg;
+        if (_showDoneReminders)
+        {
+            list = _reminders.GetDoneReminders();
+            emptyMsg = "📭 暂无已完成事项";
+        }
+        else
+        {
+            list = _reminders.GetPendingReminders();
+            emptyMsg = "📭 暂无待办事项\n可以让我记下待办，或在上面新建~";
+        }
+
+        if (list.Count == 0)
         {
             GUILayout.Space(10);
-            GUILayout.Label("📭 暂无提醒事项", new GUIStyle(_labelStyle) { alignment = TextAnchor.MiddleCenter });
+            GUILayout.Label(emptyMsg, new GUIStyle(_labelStyle) { alignment = TextAnchor.MiddleCenter });
             GUILayout.Space(4);
-            GUILayout.Label("可以让我记下待办，或在上面新建~", new GUIStyle(_labelStyle) { fontSize = 10, normal = { textColor = Color.gray } });
+            if (_showDoneReminders)
+            {
+                GUILayout.Label("勾选待办前的 ☐ 即可标记完成", new GUIStyle(_labelStyle) { fontSize = 10, normal = { textColor = Color.gray } });
+            }
         }
         else
         {
             _reminderScrollPos = GUILayout.BeginScrollView(_reminderScrollPos, false, true,
                 GUILayout.Height(_menuHeight - 280));
 
-            foreach (var r in allReminders)
+            foreach (var r in list)
             {
                 string timeStr = "未知时间";
                 if (DateTime.TryParse(r.remindAt, out var dt))
@@ -707,20 +730,24 @@ public class ContextMenu : MonoBehaviour
                 // 条目背景
                 GUILayout.BeginHorizontal(new GUIStyle { normal = { background = MakeTex(1, 1, itemBg) } });
 
-                // 勾选框（Toggle）
-                bool newDone = GUILayout.Toggle(r.done,
-                    new GUIContent("", r.done ? "已完成" : "标记完成"),
-                    new GUIStyle { fixedWidth = 20, fixedHeight = 20 });
-                if (newDone != r.done)
+                // 勾选框（待办才可勾选，已完成只显示✅）
+                if (!_showDoneReminders)
                 {
-                    if (newDone) _reminders.MarkDone(r.id);
-                    else { /* 不允许取消完成，保持简单 */ }
-                    _reminderStatusMsg = newDone ? $"✅ 已勾销「{r.text}」" : "";
-                    _reminderStatusColor = Color.green;
+                    bool newDone = GUILayout.Toggle(r.done,
+                        new GUIContent("", "标记完成"),
+                        new GUIStyle { fixedWidth = 20, fixedHeight = 20 });
+                    if (newDone != r.done)
+                    {
+                        if (newDone) _reminders.MarkDone(r.id);
+                        _reminderStatusMsg = newDone ? $"✅ 已勾销「{r.text}」" : "";
+                        _reminderStatusColor = Color.green;
+                    }
                 }
 
                 // 内容
-                string displayText = $"{status} [{timeStr}]{priorityTag}{recurringTag} {r.text}";
+                string displayText = _showDoneReminders
+                    ? $"✅ [{timeStr}] {r.text}"
+                    : $"{status} [{timeStr}]{priorityTag}{recurringTag} {r.text}";
                 var itemStyle = new GUIStyle(_labelStyle)
                 {
                     normal = { textColor = r.done ? new Color(0.5f, 0.5f, 0.5f) : Color.white },

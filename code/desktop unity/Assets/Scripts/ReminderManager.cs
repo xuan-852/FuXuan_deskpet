@@ -213,6 +213,14 @@ public class ReminderManager : MonoBehaviour
     /// <summary>获取未完成提醒数量</summary>
     public int PendingCount => _data.reminders.FindAll(r => !r.done).Count;
 
+    /// <summary>获取已完成的提醒（按完成时间降序）</summary>
+    public List<Reminder> GetDoneReminders()
+    {
+        var list = _data.reminders.FindAll(r => r.done);
+        list.Sort((a, b) => string.Compare(b.createdAt, a.createdAt, StringComparison.Ordinal));
+        return list;
+    }
+
     // ================================================================
     //  去重
     // ================================================================

@@ -279,6 +279,17 @@ public class PerformanceMonitor : MonoBehaviour
         OnTierChanged?.Invoke(currentTier);
     }
 
+    /// <summary>
+    /// 外部调用的强制降档（系统内存不足时由 DesktopPet 调用）。
+    /// 忽略 MIN_CHANGE_INTERVAL 冷却，直接降到 Low。
+    /// </summary>
+    public void ForceDowngrade()
+    {
+        if (currentTier <= PerformanceTier.Low) return;
+        SetTier(PerformanceTier.Low);
+        Debug.Log($"[PerformanceMonitor] ⬇⬇⬇ 外部强制降档至 Low");
+    }
+
     private static float GetTargetFPS(PerformanceTier t) => t switch
     {
         PerformanceTier.High => 60f, PerformanceTier.Normal => 40f, PerformanceTier.Low => 20f, _ => 60f

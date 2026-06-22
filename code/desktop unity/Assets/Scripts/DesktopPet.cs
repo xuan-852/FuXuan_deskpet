@@ -28,6 +28,23 @@ public class DesktopPet : MonoBehaviour
     private static extern short GetAsyncKeyState(int vKey);
     private const int VK_ESCAPE = 0x1B;
 
+    // ——— 系统总内存查询 ———
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MEMORYSTATUSEX
+    {
+        public uint dwLength;
+        public uint dwMemoryLoad;
+        public ulong ullTotalPhys;
+        public ulong ullAvailPhys;
+        public ulong ullTotalPageFile;
+        public ulong ullAvailPageFile;
+        public ulong ullTotalVirtual;
+        public ulong ullAvailVirtual;
+        public ulong ullAvailExtendedVirtual;
+    }
+    [DllImport("kernel32.dll")]
+    private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
+
     // ================ 可调参数（改这里）================
     const int GROUND_Y_MARGIN     = 0;       // 地面距屏幕底部距离（像素），负数=往下调，正数=往上调
     const float WALK_SPEED_FACTOR = 24f;     // 移动速度（像素/秒，帧率无关）
@@ -148,6 +165,11 @@ public class DesktopPet : MonoBehaviour
     private float _memoryCheckTimer = 0f;
     private const long MEMORY_WARNING_MB = 800L;  // 超过800MB触发GC
     private const long MEMORY_CRITICAL_MB = 1200L; // 超过1.2GB记录警告
+
+    // ===== 系统总内存监控（防止 VS Code + 桌面宠物抢内存导致被系统杀进程） =====
+    private const float SYS_MEM_WARN_PCT = 85f;   // 系统总内存 > 85% → 预警 + 主动GC
+    private const float SYS_MEM_DANGER_PCT = 93f; // 系统总内存 > 93% → 紧急降质
+    private float _sysMemWarnCooldown = 0f;       // 防刷屏冷却
     private float _cleanupTimer = 0f;
     private const float CLEANUP_INTERVAL = 600f;  // 每10分钟清理一次旧日志
 
@@ -185,6 +207,64 @@ public class DesktopPet : MonoBehaviour
             Resources.UnloadUnusedAssets();
             System.GC.Collect();
         }
+    }
+
+    /// <summary>
+    /// 检查系统总内存占用，防止 VS Code + Unity 抢内存导致被杀进程。
+    /// 通过 GlobalMemoryStatusEx 获取真实物理内存占用率。
+    /// </summary>
+    private void CheckSystemMemory()
+    {
+        try
+        {
+            var memStatus = new MEMORYSTATUSEX();
+            memStatus.dwLength = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MEMORYSTATUSEX));
+            if (!GlobalMemoryStatusEx(ref memStatus)) return;
+
+            float usedPct = memStatus.dwMemoryLoad;
+            ulong totalMB = memStatus.ullTotalPhys / (1024UL * 1024UL);
+            ulong availMB = memStatus.ullAvailPhys / (1024UL * 1024UL);
+
+            // 冷却计时（防刷屏）
+            _sysMemWarnCooldown -= _memoryCheckInterval;
+            if (_sysMemWarnCooldown < 0f) _sysMemWarnCooldown = 0f;
+
+            if (usedPct >= SYS_MEM_DANGER_PCT)
+            {
+                // 93%+ → 紧急：强制 GC + 降性能档
+                if (_sysMemWarnCooldown <= 0f)
+                {
+                    Debug.LogWarning($"[DesktopPet] 🚨 系统内存 {usedPct:F0}%（剩余 {availMB}MB/{totalMB}MB），紧急降质保命");
+                    try
+                    {
+                        string msg = $"[{DateTime.Now:HH:mm:ss}] SYS_MEM_DANGER: {usedPct:F0}% ({availMB}MB left)\n";
+                        System.IO.File.AppendAllText(CrashLogPath, msg);
+                    }
+                    catch { }
+                    Resources.UnloadUnusedAssets();
+                    System.GC.Collect();
+                    _sysMemWarnCooldown = 120f; // 每2分钟才报一次
+
+                    // 通知 PerformanceMonitor 降档
+                    if (_perfMonitor != null && _perfMonitor.currentTier > PerformanceTier.Low)
+                    {
+                        _perfMonitor.ForceDowngrade();
+                    }
+                }
+            }
+            else if (usedPct >= SYS_MEM_WARN_PCT)
+            {
+                // 85%+ → 预警 GC
+                if (_sysMemWarnCooldown <= 0f)
+                {
+                    Debug.Log($"[DesktopPet] ⚠ 系统内存 {usedPct:F0}%（剩余 {availMB}MB/{totalMB}MB），主动 GC");
+                    Resources.UnloadUnusedAssets();
+                    System.GC.Collect();
+                    _sysMemWarnCooldown = 60f; // 每1分钟报一次
+                }
+            }
+        }
+        catch { }
     }
 
     /// <summary>清理过期日志文件：crash_log.txt 超1MB截断 + 删除7天前的 build_log*.txt</summary>
@@ -499,6 +579,7 @@ public class DesktopPet : MonoBehaviour
         {
             _memoryCheckTimer = 0f;
             CheckMemoryPressure();
+            CheckSystemMemory();
         }
         if (_cleanupTimer >= CLEANUP_INTERVAL)
         {
