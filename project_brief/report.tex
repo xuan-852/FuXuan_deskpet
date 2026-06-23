@@ -611,6 +611,24 @@ Cubism SDK 通过 \texttt{CubismUpdateController} 统一调度所有 \texttt{ICu
 同时空闲参数已经开始播放，实现平滑过渡。
 空闲 $\to$ 走路时，腿臂立刻摆动（走路感瞬间有），体态经 0.3s 渐入（不走硬边）。
 
+\subsection{平滑转身机制}
+
+方向切换（$petVx$ 变号）时，模型 \texttt{scale.x} 不再瞬间取反，改为插值渐变：
+
+\begin{itemize}
+    \item 新增字段 \texttt{\_smoothScaleX} 存储当前朝向（$+1$ = 右，$-1$ = 左）
+    \item 每帧计算目标符号 $targetSign$：
+    \begin{itemize}
+        \item 拖拽中：保持当前 \texttt{\_smoothScaleX} 符号
+        \item $petVx > 0$：$targetSign = +1$
+        \item $petVx < 0$：$targetSign = -1$
+        \item $petVx = 0$：保持最后朝向（不恢复默认右）
+    \end{itemize}
+    \item \texttt{\_smoothScaleX = Mathf.Lerp(\_smoothScaleX, targetSign, Time.deltaTime $\times$ TURN\_SPEED)}
+    \item \texttt{TURN\_SPEED = 10}，约 0.15s 完成完整转身
+    \item 差值 $< 0.005$ 时直接赋精确值，消除残差抖动
+\end{itemize}
+
 \subsection{强制动作锁定机制}
 
 右键菜单触发强制动作时的保护机制：
@@ -1274,6 +1292,11 @@ Desktop_per_pro/
            &       & 右键菜单「保存配置」按钮调用 PetConfig.CollectAll + Save\\
            &       & 右键菜单「清空忆境」按钮调用 PetMemory.ClearMemories\\
            &       & 更新 README + LaTeX 技术文档\\
+2026-06-23 & N21  & \textbf{气泡尾巴对齐 + 平滑转身}\\
+           &       & ChatBubble 气泡被屏幕边缘卡住时，尾巴独立跟随角色头部（\texttt{tailOffsetX} 限幅插值）\\
+           &       & Live2DRenderer 方向切换改为 \texttt{Mathf.Lerp} 平滑渐变（\texttt{TURN\_SPEED=10}），消除 180° 瞬间翻转\\
+           &       & petVx=0 时保持最后朝向，不自动恢复默认\\
+           &       & 目录树格式修复，更新 README + LaTeX 技术文档\\
 \bottomrule
 \end{tabular}
 \end{table}

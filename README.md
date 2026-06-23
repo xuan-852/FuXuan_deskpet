@@ -29,6 +29,7 @@
 - **自然待机** — Perlin 噪声驱动的呼吸、身体微晃、眼球微动
 - **11 种空闲动作** — 歪头卖萌、微笑眯眼、挑眉、星辉环绕、伸懒腰、爱心眨眼、数钱、委屈、法阵展开、害羞黑脸、困惑歪头
 - **走路动画** — 横版走路 + 身体颠簸 + 无缝空闲过渡
+- **平滑转身** — 方向切换时 scale.x 用 Lerp 渐变，避免 180° 瞬间翻转（TURN_SPEED=10, ≈0.15s）
 - **走路犯困表情** — 走路时随机触发眼皮渐沉 + 低头，夜晚/深夜更频繁
 - **眨眼** — 自动随机眨眼
 - **鼠标跟随** — 眼球平滑追踪鼠标位置
@@ -109,8 +110,10 @@ Desktop_per_pro/
 │   │   │   ├── IPetRenderer.cs       # 渲染接口
 │   │   │   ├── HybridRenderer.cs     # 混合渲染器
 │   │   │   ├── Model3DRenderer.cs    # 3D 渲染器
-│   │   │   └── ToolCallInvoker.cs    # AI 工具调用分发（28+ 工具，含协程异步执行）│   │   │   ├── PetConfig.cs          # 天机簿 — 配置持久化（JSON保存/加载）
-│   │   │   ├── PetMemory.cs          # 忆境 — 长期记忆系统（记忆摘要+JSON持久）│   │   ├── Animations/               # 3D 模型动画
+│   │   │   ├── ToolCallInvoker.cs    # AI 工具调用分发（28+ 工具，含协程异步执行）
+│   │   │   ├── PetConfig.cs          # 天机簿 — 配置持久化（JSON保存/加载）
+│   │   │   ├── PetMemory.cs          # 忆境 — 长期记忆系统（记忆摘要+JSON持久）
+│   │   ├── Animations/               # 3D 模型动画
 │   │   ├── Editor/                   # 构建脚本
 │   │   ├── Live2D/Models/Fuxuan/     ← 符玄 Live2D 模型
 │   │   ├── Models/Fuxuan/            # 3D FBX 模型

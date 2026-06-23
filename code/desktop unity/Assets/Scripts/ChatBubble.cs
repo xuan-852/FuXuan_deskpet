@@ -239,9 +239,14 @@ public class ChatBubble : MonoBehaviour
         bx = Mathf.Clamp(bx, 5f, Screen.width - _bubbleWidth - 5f);
         by = Mathf.Clamp(by, 5f, Screen.height - _bubbleHeight - tailHeight - 5f);
 
-        // 气泡中心（用于缩放）
-        float cx = bx + _bubbleWidth / 2f;
+        // 气泡中心 — 用于缩放
+        float bubbleCenterX = bx + _bubbleWidth / 2f;
+        float cx = bubbleCenterX;
         float cy = by + _bubbleHeight / 2f;
+
+        // 尾巴水平偏移量：当气泡被屏幕边缘卡住时，尾巴独立指向角色头部
+        // （角色 centerX 与气泡实际中心 bubbleCenterX 的差值，限制在气泡宽度内）
+        float tailOffsetX = Mathf.Clamp(centerX - bubbleCenterX, -_bubbleWidth / 2f + tailWidth + 4f, _bubbleWidth / 2f - tailWidth - 4f);
 
         float sw = _bubbleWidth * scale;
         float sh = _bubbleHeight * scale;
@@ -299,8 +304,8 @@ public class ChatBubble : MonoBehaviour
             }
         }
 
-        // ——— 小尾巴（气泡底部中央朝下） ———
-        float tailX = (bx + _bubbleWidth / 2f) - tailWidth / 2f;
+        // ——— 小尾巴（气泡底部，水平跟随角色头部指向） ———
+        float tailX = (bx + _bubbleWidth / 2f) + tailOffsetX - tailWidth / 2f;
         float tailY = bgRect.y + bgRect.height;
         GUI.color = new Color(bgColor.r, bgColor.g, bgColor.b, bgColor.a * alpha);
         GUI.DrawTexture(new Rect(tailX, tailY, tailWidth, tailHeight), _tailTex);
