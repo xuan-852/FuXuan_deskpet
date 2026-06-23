@@ -491,9 +491,19 @@ public class ChatManager : MonoBehaviour
                 sb.Append(e.toolCallsJson);
             }
 
-            sb.Append(",\"content\":\"");
-            sb.Append(EscapeJson(e.content ?? ""));
-            sb.Append("\"}");
+            sb.Append(",\"content\":");
+            // ★ DeepSeek API 要求：assistant 带 tool_calls 且无文字时 content 必须为 null
+            if (e.role == "assistant" && !string.IsNullOrEmpty(e.toolCallsJson) && string.IsNullOrEmpty(e.content))
+            {
+                sb.Append("null");
+            }
+            else
+            {
+                sb.Append("\"");
+                sb.Append(EscapeJson(e.content ?? ""));
+                sb.Append("\"");
+            }
+            sb.Append("}");
         }
 
         sb.Append("]");
