@@ -25,6 +25,8 @@ public class ChatManager : MonoBehaviour
     //  角色设定 — 符玄 + 法阵能力（从 Resources/SystemPrompt.txt 加载）
     // ==================================================================
     private string _systemPromptTemplate;
+    /// <summary>法眼 — 行为追踪器</summary>
+    public ActivityTracker activityTracker;
 
     void Awake()
     {
@@ -34,6 +36,15 @@ public class ChatManager : MonoBehaviour
             _systemPromptTemplate = asset.text;
         else
             _systemPromptTemplate = "你是符玄，仙舟「罗浮」太卜司之首。";
+
+        // ——— 确保 ActivityTracker 单例存在 ———
+        if (ActivityTracker.Instance == null)
+        {
+            var actGo = new GameObject("ActivityTracker");
+            actGo.AddComponent<ActivityTracker>();
+            actGo.transform.SetParent(transform);
+        }
+        activityTracker = ActivityTracker.Instance;
 
         // ——— 确保 PetConfig 和 PetMemory 单例存在（若场景中未手动挂载）———
         if (PetConfig.Instance == null)
@@ -57,7 +68,7 @@ public class ChatManager : MonoBehaviour
         };
     }
 
-    /// <summary>构建最终 SystemPrompt（注入时间 + 长期记忆）</summary>
+    /// <summary>构建最终 SystemPrompt（注入时间 + 长期记忆 + 行为观测）</summary>
     private string BuildSystemPrompt()
     {
         string prompt = _systemPromptTemplate;
@@ -69,6 +80,14 @@ public class ChatManager : MonoBehaviour
             string memories = PetMemory.Instance.GetFormattedMemories();
             if (!string.IsNullOrEmpty(memories))
                 prompt += "\n" + memories;
+        }
+
+        // 注入法眼观测（今日行为摘要）
+        if (activityTracker != null)
+        {
+            string activity = activityTracker.GetSummary();
+            if (!string.IsNullOrEmpty(activity))
+                prompt += "\n" + activity;
         }
 
         return prompt;

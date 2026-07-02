@@ -154,6 +154,9 @@ public class DesktopPet : MonoBehaviour
     private PerformanceMonitor _perfMonitor;
     private bool _pendingEscToTray = false;  // ESC 按下时托盘未就绪，等就绪后自动隐藏
 
+    // 时间间隙检测：睡眠唤醒后 Time.realtimeSinceStartup 跳变 >10s 则触发重建
+    private float _lastUpdateRealtime = 0f;
+
     #endregion
 
     #region Unity 生命周期
@@ -319,13 +322,45 @@ public class DesktopPet : MonoBehaviour
         }
     }
 
+    // ===== 崩溃看门狗 =====
+    private const string PREF_CRASH_COUNT = "_crash_count";
+    private const string PREF_CLEAN_EXIT = "_clean_exit";
+    private const int MAX_CRASHES_BEFORE_SAFE_MODE = 2;
+
     private void Awake()
     {
-        // ---- 崩溃日志捕获 ----
+        // ---- 崩溃看门狗 ----
 #if !UNITY_EDITOR
         Application.logMessageReceivedThreaded += CaptureCrashLog;
-        // 记录上次崩溃标记：如果互斥锁被遗弃，说明上次异常退出
 #endif
+        // ★ 看门狗逻辑：检查上次是否正常退出（方式1: clean_exit 标记）
+        bool previousCleanExit = PlayerPrefs.GetInt(PREF_CLEAN_EXIT, 0) == 1;
+        PlayerPrefs.DeleteKey(PREF_CLEAN_EXIT); // 清除标记，等正常退出时重新设置
+        PlayerPrefs.Save();
+
+        if (!previousCleanExit)
+        {
+            // 上次异常退出 → 崩溃计数+1
+            int crashCount = PlayerPrefs.GetInt(PREF_CRASH_COUNT, 0) + 1;
+            PlayerPrefs.SetInt(PREF_CRASH_COUNT, crashCount);
+            PlayerPrefs.Save();
+            Debug.LogWarning($"[DesktopPet] ⚠ 上次异常退出（崩溃计数={crashCount}/{MAX_CRASHES_BEFORE_SAFE_MODE}）");
+
+            if (crashCount >= MAX_CRASHES_BEFORE_SAFE_MODE)
+            {
+                // 连续多次崩溃 → 下一次唤醒跳过 DWM 重建（黑色背景不透明，但程序稳定运行）
+                PlayerPrefs.SetString("_skip_dwm_rebuild", "1");
+                PlayerPrefs.Save();
+                Debug.LogWarning("[DesktopPet] 🛡 连续崩溃超过阈值，下次睡眠唤醒跳过 DWM 玻璃层重建（安全模式）");
+            }
+        }
+        else
+        {
+            // 上次正常退出 → 重置崩溃计数 + 清除安全模式
+            PlayerPrefs.SetInt(PREF_CRASH_COUNT, 0);
+            PlayerPrefs.DeleteKey("_skip_dwm_rebuild");
+            PlayerPrefs.Save();
+        }
 
         // ---- 单例互斥锁：防止 Build and Run 产生多个实例 ----
         try
@@ -353,6 +388,15 @@ public class DesktopPet : MonoBehaviour
         {
             // 上一个实例崩溃了，Mutex 被系统遗弃 — 我们获得了所有权，正常启动
             Debug.LogWarning("[DesktopPet] 检测到上一个实例异常崩溃，已接管互斥锁，正常启动");
+            // 方式2: 互斥锁遗弃也视为崩溃
+            int crashCount = PlayerPrefs.GetInt(PREF_CRASH_COUNT, 0) + 1;
+            PlayerPrefs.SetInt(PREF_CRASH_COUNT, crashCount);
+            if (crashCount >= MAX_CRASHES_BEFORE_SAFE_MODE)
+            {
+                PlayerPrefs.SetString("_skip_dwm_rebuild", "1");
+                Debug.LogWarning("[DesktopPet] 🛡 连续崩溃超过阈值，下次睡眠唤醒跳过 DWM 玻璃层重建（安全模式）");
+            }
+            PlayerPrefs.Save();
         }
         catch (System.Exception ex)
         {
@@ -566,6 +610,24 @@ public class DesktopPet : MonoBehaviour
 
     private void Update()
     {
+        // ★★★ 时间间隙检测：Windows 睡眠后 Update() 停止，唤醒后 Time.realtimeSinceStartup 有巨大跳变。
+        //     这是最可靠的睡眠检测方式。必须在最顶部执行，因为 Win32 操作（在 DragHandler.Update 等中）
+        //     可能在稍后触发处于 DWM 恢复期的窗口操作，导致 DWM 崩溃。
+        float now = Time.realtimeSinceStartup;
+        if (_lastUpdateRealtime > 0f && (now - _lastUpdateRealtime) > 10f)
+        {
+            Debug.Log($"[DesktopPet] ⚠ 检测到时间间隙 {(now - _lastUpdateRealtime):F0}s，系统可能刚从睡眠恢复");
+            // 通知 WindowOverlay 暂停 Win32 操作
+            var overlay = GetComponent<WindowOverlay>();
+            if (overlay != null)
+            {
+                overlay.OnResumeFromSleep();
+            }
+            // 暂停物理和渲染，等待重建完成
+            isPaused = true;
+        }
+        _lastUpdateRealtime = now;
+
         // ★ ESC → 隐藏到系统托盘（非编辑器模式）
 #if !UNITY_EDITOR
         bool escDown = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
@@ -917,7 +979,56 @@ public class DesktopPet : MonoBehaviour
 
     private void OnApplicationQuit()
     {
+        // 标记正常退出（看门狗用）
+        PlayerPrefs.SetInt(PREF_CLEAN_EXIT, 1);
+        PlayerPrefs.Save();
         ReleaseMutex();
+    }
+
+    /// <summary>
+    /// 系统挂起（睡眠/休眠）时释放 D3D 资源和 Win32 句柄关联。
+    /// 唤醒后一切由 WindowOverlay.OnApplicationPause(false) 自动重建。
+    /// </summary>
+    private void OnApplicationPause(bool pause)
+    {
+        if (pause)
+        {
+            Debug.Log("[DesktopPet] ⏸ 系统挂起（睡眠），暂停活动");
+            isPaused = true;
+            // 记下暂停时间戳，唤醒后根据耗时判断是否真的睡了
+            PlayerPrefs.SetString("_suspend_time", DateTime.Now.ToString("O"));
+            PlayerPrefs.Save();
+        }
+        else
+        {
+            // 检查是否真的经历了睡眠（还是只是焦点切换）
+            string saved = PlayerPrefs.GetString("_suspend_time", "");
+            bool wasSleep = true;
+            if (!string.IsNullOrEmpty(saved))
+            {
+                try
+                {
+                    var suspendTime = DateTime.Parse(saved);
+                    if ((DateTime.Now - suspendTime).TotalSeconds < 30)
+                        wasSleep = false; // <30s 可能是临时焦点切换，不是睡眠唤醒
+                }
+                catch { }
+            }
+            if (wasSleep)
+            {
+                Debug.Log("[DesktopPet] ▶ 系统唤醒（睡眠后恢复）");
+                // 唤醒后 Unity 会重创 D3D 设备和渲染上下文，所有老资源已释放
+                // WindowOverlay.OnApplicationPause(false) 已自动重建窗口样式/DWM 玻璃
+                // 这里只需要恢复物理状态
+                isPaused = false;
+                onGround = false; // 强制重新找地面
+            }
+            else
+            {
+                Debug.Log("[DesktopPet] ▶ 焦点恢复（短时切换，非睡眠）");
+                isPaused = false;
+            }
+        }
     }
 
     private void OnDestroy()

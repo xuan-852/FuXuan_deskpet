@@ -299,6 +299,28 @@ ChatManager (SystemPrompt 注入流程)
 
 **涉及动作：** 歪头、微笑、挑眉、星辉、伸懒腰、爱心眼、数钱、委屈、法阵、害羞、困惑共 11 种。
 
+### 3. AI 活动感知与性格优化（待改进）
+
+**现象：** AI 对用户活动的感知粗粒度（仅 8 类：coding/gaming/studying/browsing/entertainment/communication/idle/other），
+窗口标题被丢弃未传给 AI；AI 回复存在说教感和攻击性，"傲娇"特质被过度放大。
+
+**根因与改进方向：**
+
+| 维度 | 现状 | 改进目标 |
+|------|------|---------|
+| **活动感知粒度** | 8 个笼统分类，用 ActivityTracker.PollForeground() 做 GetForegroundWindow 快照 | 将窗口标题实时注入 SystemPrompt，让 DeepSeek 自行理解用户当前活动（如"VS Code 写 Python"、"Edge 看 B 站"） |
+| **多窗口感知** | 仅追踪最顶层窗口，`EnumWindows` 未使用 | 枚举所有可见窗口，分析多任务上下文 |
+| **浏览器深度** | 仅识别进程名（如 msedge.exe） | 集成浏览器插件或 Accessibility API 读取标签页 URL |
+| **性格温婉约束** | SystemPrompt.txt 缺少"不要评判/说教"约束 | 加入温婉指令抑制 AI 的说教倾向 |
+| **傲娇权重** | IdleChatGenerator 的 system prompt 中"傲娇"权重过高 | 平衡"傲"与"娇"的比例，语气更温柔 |
+| **窗口标题利用** | Classify() 后丢弃标题 | 传标题给 AI 用于回复上下文 |
+
+**参考开源方案：** [ActivityWatch](https://github.com/ActivityWatch/aw-watcher-window)（⭐ 14k+）是最大的开源时间追踪项目，但其 Windows 实现同样使用
+`GetForegroundWindow` 单窗口追踪。改进方向可借鉴其生态中的浏览器扩展（aw-watcher-web）获取标签页 URL，
+以及 aw-watcher-afk 组件检测空闲状态。
+
+**状态：** ⏳ 待后续优化
+
 **状态：** 🔧 持续调整中
 
 ### 3. 视觉特效已移除

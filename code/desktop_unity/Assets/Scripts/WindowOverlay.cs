@@ -112,6 +112,10 @@ public class WindowOverlay : MonoBehaviour
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SystemParametersInfoW(uint uiAction, uint uiParam, ref RECT pvParam, uint fWinIni);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(IntPtr hWnd);
+
     private const int SM_CXSCREEN = 0;
     private const int SM_CYSCREEN = 1;
     private const uint SPI_GETWORKAREA = 0x0030;
@@ -146,6 +150,7 @@ public class WindowOverlay : MonoBehaviour
     private IntPtr _hwnd = IntPtr.Zero;
     public System.IntPtr WindowHandle => _hwnd;
     private bool _applied = false;
+    private bool _suspended = false;  // 睡眠挂起标记，阻止危险 Win32 调用
     private int _origW;
     private int _origH;
 
@@ -228,6 +233,18 @@ public class WindowOverlay : MonoBehaviour
             return false;
         }
 
+        // 验证句柄有效性 — 避免操作 DWM 重启后的失效句柄导致系统崩溃
+        if (!IsWindow(_hwnd))
+        {
+            LogError("ApplyNow: 句柄已失效，跳过");
+            _applied = false;
+            return false;
+        }
+
+        // ★ 整个操作包裹 try-catch：任何 Win32/DWM 操作失败不崩系统
+        try
+        {
+
         int screenW, screenH, screenX, screenY;
         GetFullScreenSize(out screenW, out screenH, out screenX, out screenY);
 
@@ -251,8 +268,6 @@ public class WindowOverlay : MonoBehaviour
         exStyle |= WS_EX_LAYERED | WS_EX_TOPMOST;
         exStyle &= ~WS_EX_APPWINDOW;
         exStyle |= WS_EX_TOOLWINDOW;
-        // ★ 不在第一步加穿透，最后统一由 SetClickThrough(false) 配合 DragHandler 管理
-        //    （否则中间时序可能导致 DWM 命中测试状态不一致）
 
         int setResult = SetWindowLong(_hwnd, GWL_EXSTYLE, exStyle);
         if (setResult == 0)
@@ -322,26 +337,29 @@ public class WindowOverlay : MonoBehaviour
         _applied = true;
 
         // ★ 启动时开启穿透，让桌面点击正常通过。
-        //    DragHandler.UpdateClickThrough() 每帧接管，鼠标移到宠物身上时自动关穿透。
-        //    如果启动时关穿透，窗口会拦截桌面鼠标事件，必须拖一次才能恢复。
         SetClickThrough(true);
 
-        // ★ 通知 DragHandler 强制重设穿透缓存，下一帧根据实际鼠标位置正确评估
+        // ★ 通知 DragHandler 强制重设穿透缓存
         DragHandler dragHandler = GetComponent<DragHandler>();
         if (dragHandler != null)
             dragHandler.ResetClickState();
 
         // ★★★ 确保窗口能接收输入事件
-        //     WS_EX_TOOLWINDOW + SW_SHOWNA 导致窗口从未成为活动窗口，
-        //     Unity Input.GetMouseButtonDown() 在窗口非活动时不返回 true。
-        //     需要激活窗口一次让 Unity 输入系统初始化。
-        ShowWindow(_hwnd, 5); // SW_SHOW=5，激活窗口
+        ShowWindow(_hwnd, 5);
         SetForegroundWindow(_hwnd);
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, w, h,
             SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
 
         Log($"✅ 透明窗口已就绪: {w}x{h}, 句柄={_hwnd.ToInt64():X8}, 标题='{title}'");
         return true;
+
+        }
+        catch (Exception ex)
+        {
+            LogError($"ApplyNow 异常（已安全捕获，跳过窗口重建）: {ex.GetType().Name}: {ex.Message}");
+            _applied = false;
+            return false;
+        }
     }
 
     /// <summary>
@@ -446,7 +464,17 @@ public class WindowOverlay : MonoBehaviour
 
     public void SetClickThrough(bool enabled)
     {
-        if (_hwnd == IntPtr.Zero || !_applied) return;
+        if (_hwnd == IntPtr.Zero || !_applied || _suspended) return;
+        // ★★★ 运行时句柄有效性验证：睡眠唤醒后句柄可能已失效（DWM 重启），
+        //     操作失效句柄可致 DWM 崩溃进而系统重启。
+        if (!IsWindow(_hwnd))
+        {
+            UnityEngine.Debug.LogWarning("[WindowOverlay] SetClickThrough: 句柄已失效，跳过");
+            _applied = false;
+            _hwnd = IntPtr.Zero;
+            return;
+        }
+        // ★ 睡眠后不再调 SetWindowLong/SetWindowPos — DWM 可能未就绪，操作失效句柄可致系统崩溃
         uint ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
         if (enabled) ex |= WS_EX_TRANSPARENT;
         else ex &= ~WS_EX_TRANSPARENT;
@@ -458,6 +486,120 @@ public class WindowOverlay : MonoBehaviour
         //     第一次刷帧，第二次确保生效（有用户反馈单次 SWP_FRAMECHANGED 在某些 Win11 版本不够）。
         SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+
+    /// <summary>
+    /// 系统挂起（睡眠/Sleep）时标记，阻止危险 Win32 调用。
+    /// 唤醒后重新应用窗口透明设置（DWM 已在睡眠期间重启）。
+    /// </summary>
+    private void OnApplicationPause(bool pause)
+    {
+        if (pause)
+        {
+            _suspended = true;
+            UnityEngine.Debug.Log("[WindowOverlay] ⏸ 系统挂起（睡眠），暂停 Win32 操作");
+        }
+        else
+        {
+            UnityEngine.Debug.Log("[WindowOverlay] ▶ 系统唤醒，重新应用窗口设置");
+            _suspended = false;
+
+            // ★ 安全模式检查：连续崩溃后跳过 DWM 重建
+            if (UnityEngine.PlayerPrefs.GetString("_skip_dwm_rebuild", "") == "1")
+            {
+                UnityEngine.Debug.Log("[WindowOverlay] 🛡 安全模式：跳过 DWM 玻璃层重建（唤醒）");
+                return;
+            }
+
+            // 唤醒后 DWM 已重启，必须重新设窗口样式和 DWM 玻璃层
+            if (_hwnd != IntPtr.Zero)
+            {
+                // 验证句柄是否仍有效
+                if (!IsWindow(_hwnd))
+                {
+                    // 句柄已彻底失效（极罕见），用 productName 重新查找窗口
+                    _hwnd = FindUnityWindow();
+                    if (_hwnd == IntPtr.Zero)
+                    {
+                        UnityEngine.Debug.LogError("[WindowOverlay] 唤醒后无法找到窗口，跳过重新应用");
+                        _applied = false;
+                        return;
+                    }
+                }
+                ApplyNow();
+            }
+            else
+            {
+                _applied = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 外部调用的唤醒恢复入口（由时间间隙检测触发，弥补 OnApplicationPause 不可靠问题）。
+    /// 注意：唤醒后 DWM 和 GPU 驱动尚未完全就绪，不可立即操作窗口句柄。
+    /// 先设标记让 SetClickThrough 等调用跳过，延迟重建窗口设置。
+    /// </summary>
+    public void OnResumeFromSleep()
+    {
+        if (!_suspended) return; // 可能已被 OnApplicationPause 处理过
+
+        // ★ 安全模式：连续崩溃后跳过 DWM 玻璃层重建（窗口黑底但不崩系统）
+        bool skipDwm = UnityEngine.PlayerPrefs.GetString("_skip_dwm_rebuild", "") == "1";
+
+        if (skipDwm)
+        {
+            UnityEngine.Debug.Log("[WindowOverlay] 🛡 安全模式：跳过 DWM 玻璃层重建");
+            _suspended = false;
+            return;
+        }
+
+        UnityEngine.Debug.Log("[WindowOverlay] ▶ 时间间隙触发唤醒恢复，延迟2s重建窗口（期间保持_suspended=true阻止Win32调用）");
+
+        // ★ 保持 _suspended=true，禁止所有 SetWindowLong/SetWindowPos 调用！
+        //   延迟重建：等待 DWM/GPU 驱动完全恢复后再操作窗口句柄。
+        //   协程在恢复帧后正常运行，利用此延迟避免在恢复初期触发 DWM 崩溃。
+        if (_hwnd != IntPtr.Zero)
+        {
+            RunAfterDelay(2f, () =>
+            {
+                if (_hwnd == IntPtr.Zero) return;
+                UnityEngine.Debug.Log("[WindowOverlay] 延迟重建：验证窗口句柄");
+                if (!IsWindow(_hwnd))
+                {
+                    _hwnd = FindUnityWindow();
+                    if (_hwnd == IntPtr.Zero)
+                    {
+                        UnityEngine.Debug.LogError("[WindowOverlay] 重建时无法找到窗口");
+                        _applied = false;
+                        _suspended = false; // 恢复标记，避免永久阻塞
+                        return;
+                    }
+                }
+                ApplyNow(); // 重建 DWM 玻璃层
+                _suspended = false; // ★ 重建完成后才恢复 Win32 调用
+                UnityEngine.Debug.Log("[WindowOverlay] ✅ 唤醒恢复完成，Win32 调用已恢复");
+            });
+        }
+        else
+        {
+            _applied = false;
+            _suspended = false;
+        }
+    }
+
+    /// <summary>
+    /// 协程延迟执行（Unity 主线程安全）
+    /// </summary>
+    private void RunAfterDelay(float seconds, Action action)
+    {
+        StartCoroutine(_DelayedAction(seconds, action));
+    }
+
+    private System.Collections.IEnumerator _DelayedAction(float seconds, Action action)
+    {
+        yield return new UnityEngine.WaitForSecondsRealtime(seconds);
+        action?.Invoke();
     }
 
     private void Log(string msg)

@@ -592,6 +592,344 @@ public class ToolCallInvoker : MonoBehaviour
             string source = tc.weatherSource == TimeWeatherController.WeatherSource.QWeather ? "和风天机" : "wttr.in天眼";
             return $"🌤️ 本座以{source}观天之象：\n• 天气：{wtName}\n• 气温：{tc.temperatureC:F0}°C";
         };
+
+        // ——— 29. 搜天彻地：全盘搜索任意文件（支持中文/特殊字符） ———
+        _executors["search_file"] = args =>
+        {
+            string query = JsonRead(args, "query");
+            string rootDir = JsonRead(args, "root");
+            if (string.IsNullOrEmpty(query)) return "❌ 未说要搜什么";
+
+            // 用 Python 桥（find_file.py）搜索，原生支持中文和特殊字符
+            return SearchFileByPython(query, rootDir);
+        };
+
+        // ——— 30. 洞开天门：打开任意文件/文件夹/应用（自动识别路径） ———
+        _executors["file_open"] = args =>
+        {
+            string path = JsonRead(args, "path");
+            if (string.IsNullOrEmpty(path)) return "❌ 未指定要打开什么";
+            try
+            {
+                // 路径可能是 file:// URI 格式（来自 search_file 的结果）
+                string actualPath = path;
+                if (path.StartsWith("file:///") || path.StartsWith("file://"))
+                {
+                    var uri = new Uri(path);
+                    actualPath = Uri.UnescapeDataString(uri.AbsolutePath);
+                    // Windows: file:///D:/path → D:/path
+                    if (actualPath.StartsWith("/") && actualPath.Length >= 3 && actualPath[2] == ':')
+                        actualPath = actualPath.TrimStart('/');
+                }
+
+                if (!File.Exists(actualPath) && !Directory.Exists(actualPath))
+                    return $"❌ 本座寻不到此物：「{actualPath}」";
+
+                Process.Start(new ProcessStartInfo(actualPath) { UseShellExecute = true });
+                return $"✅ 已开启「{Path.GetFileName(actualPath)}」";
+            }
+            catch (Exception e)
+            {
+                return $"❌ 开启失败：{e.Message}";
+            }
+        };
+
+        // ——— 31. 移星换斗：移动/重命名文件或文件夹 ———
+        _executors["file_move"] = args =>
+        {
+            string source = JsonRead(args, "source");
+            string dest = JsonRead(args, "destination");
+            if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(dest))
+                return "❌ 需指明源与目标";
+
+            // 解码 URI
+            source = DecodeFileUri(source);
+            dest = DecodeFileUri(dest);
+
+            try
+            {
+                if (File.Exists(source))
+                {
+                    // 确保目标目录存在
+                    string destDir = Path.GetDirectoryName(dest);
+                    if (!string.IsNullOrEmpty(destDir) && !Directory.Exists(destDir))
+                        Directory.CreateDirectory(destDir);
+                    // 如果目标已存在，先删除（替代 overwrite 参数）
+                    if (File.Exists(dest))
+                        File.Delete(dest);
+                    File.Move(source, dest);
+                    return $"✅ 已将「{Path.GetFileName(source)}」移至「{dest}」";
+                }
+                else if (Directory.Exists(source))
+                {
+                    string destDir = Path.GetDirectoryName(dest.TrimEnd('\\'));
+                    if (!string.IsNullOrEmpty(destDir) && !Directory.Exists(destDir))
+                        Directory.CreateDirectory(destDir);
+                    Directory.Move(source, dest);
+                    return $"✅ 已将目录「{source}」移至「{dest}」";
+                }
+                else
+                {
+                    return $"❌ 源路径不存在：「{source}」";
+                }
+            }
+            catch (Exception e)
+            {
+                return $"❌ 移星失败：{e.Message}";
+            }
+        };
+
+        // ——— 32. 复制如印：复制文件或文件夹 ———
+        _executors["file_copy"] = args =>
+        {
+            string source = JsonRead(args, "source");
+            string dest = JsonRead(args, "destination");
+            if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(dest))
+                return "❌ 需指明源与目标";
+
+            source = DecodeFileUri(source);
+            dest = DecodeFileUri(dest);
+
+            try
+            {
+                if (File.Exists(source))
+                {
+                    string destDir = Path.GetDirectoryName(dest);
+                    if (!string.IsNullOrEmpty(destDir) && !Directory.Exists(destDir))
+                        Directory.CreateDirectory(destDir);
+                    File.Copy(source, dest, overwrite: true);
+                    return $"✅ 已复制「{Path.GetFileName(source)}」至「{dest}」";
+                }
+                else if (Directory.Exists(source))
+                {
+                    // 递归复制目录
+                    CopyDirectoryRecursive(source, dest);
+                    return $"✅ 已复制目录「{source}」至「{dest}」";
+                }
+                else
+                {
+                    return $"❌ 源路径不存在：「{source}」";
+                }
+            }
+            catch (Exception e)
+            {
+                return $"❌ 复制失败：{e.Message}";
+            }
+        };
+
+        // ——— 33. 删除归无：删除文件或文件夹（到回收站） ———
+        _executors["file_delete"] = args =>
+        {
+            string path = JsonRead(args, "path");
+            bool permanent = JsonRead(args, "permanent") == "true";
+            if (string.IsNullOrEmpty(path)) return "❌ 未指定要删除什么";
+
+            path = DecodeFileUri(path);
+
+            try
+            {
+                if (File.Exists(path))
+                {
+                    if (permanent)
+                    {
+                        File.Delete(path);
+                    }
+                    else
+                    {
+                        // 用 Shell API 移到回收站
+                        SendToRecycleBin(path, isDir: false);
+                    }
+                    return $"✅ 已删除「{Path.GetFileName(path)}」{(permanent ? "（永久）" : "（移至回收站）")}";
+                }
+                else if (Directory.Exists(path))
+                {
+                    if (permanent)
+                    {
+                        Directory.Delete(path, recursive: true);
+                    }
+                    else
+                    {
+                        SendToRecycleBin(path, isDir: true);
+                    }
+                    return $"✅ 已删除目录「{path}」{(permanent ? "（永久）" : "（移至回收站）")}";
+                }
+                else
+                {
+                    return $"❌ 路径不存在：「{path}」";
+                }
+            }
+            catch (Exception e)
+            {
+                return $"❌ 删除失败：{e.Message}";
+            }
+        };
+
+        // ——— 34. 重命名器：重命名文件/文件夹 ———
+        _executors["file_rename"] = args =>
+        {
+            string path = JsonRead(args, "path");
+            string newName = JsonRead(args, "new_name");
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(newName))
+                return "❌ 需指明文件与新名称";
+
+            path = DecodeFileUri(path);
+
+            try
+            {
+                if (File.Exists(path))
+                {
+                    string dir = Path.GetDirectoryName(path);
+                    string newPath = Path.Combine(dir, newName);
+                    File.Move(path, newPath);
+                    return $"✅ 已将「{Path.GetFileName(path)}」重命名为「{newName}」";
+                }
+                else if (Directory.Exists(path))
+                {
+                    string parent = Path.GetDirectoryName(path.TrimEnd('\\'));
+                    string newPath = Path.Combine(parent, newName);
+                    Directory.Move(path, newPath);
+                    return $"✅ 已将目录「{Path.GetFileName(path)}」重命名为「{newName}」";
+                }
+                else
+                {
+                    return $"❌ 路径不存在：「{path}」";
+                }
+            }
+            catch (Exception e)
+            {
+                return $"❌ 重命名失败：{e.Message}";
+            }
+        };
+
+        // ——— 35. 查看详情：获取文件/文件夹详细信息 ———
+        _executors["file_info"] = args =>
+        {
+            string path = JsonRead(args, "path");
+            if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
+
+            path = DecodeFileUri(path);
+
+            try
+            {
+                var sb = new StringBuilder();
+                if (File.Exists(path))
+                {
+                    var fi = new FileInfo(path);
+                    sb.AppendLine($"📄 文件：{fi.Name}");
+                    sb.AppendLine($"📁 位置：{fi.DirectoryName}");
+                    sb.AppendLine($"📏 大小：{FormatFileSize(fi.Length)}");
+                    sb.AppendLine($"🕐 创建：{fi.CreationTime:yyyy-MM-dd HH:mm}");
+                    sb.AppendLine($"🕐 修改：{fi.LastWriteTime:yyyy-MM-dd HH:mm}");
+                    sb.AppendLine($"🕐 访问：{fi.LastAccessTime:yyyy-MM-dd HH:mm}");
+                    if ((fi.Attributes & FileAttributes.ReadOnly) != 0) sb.AppendLine("🔒 只读");
+                    if ((fi.Attributes & FileAttributes.Hidden) != 0) sb.AppendLine("👁️ 隐藏");
+                }
+                else if (Directory.Exists(path))
+                {
+                    var di = new DirectoryInfo(path);
+                    sb.AppendLine($"📂 目录：{di.Name}");
+                    sb.AppendLine($"📁 位置：{di.Parent?.FullName ?? path}");
+                    sb.AppendLine($"🕐 创建：{di.CreationTime:yyyy-MM-dd HH:mm}");
+                    sb.AppendLine($"🕐 修改：{di.LastWriteTime:yyyy-MM-dd HH:mm}");
+                    int fileCount = 0, dirCount = 0;
+                    try { fileCount = di.GetFiles().Length; dirCount = di.GetDirectories().Length; } catch { }
+                    sb.AppendLine($"📊 包含：{dirCount} 目录 / {fileCount} 文件");
+                    if ((di.Attributes & FileAttributes.Hidden) != 0) sb.AppendLine("👁️ 隐藏");
+                }
+                else
+                {
+                    return $"❌ 路径不存在：「{path}」";
+                }
+                return sb.ToString();
+            }
+            catch (Exception e)
+            {
+                return $"❌ 查询失败：{e.Message}";
+            }
+        };
+
+        // ——— 36. 新建文件：创建空白文件 ———
+        _executors["file_create"] = args =>
+        {
+            string path = JsonRead(args, "path");
+            string content = JsonRead(args, "content");
+            if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
+
+            path = DecodeFileUri(path);
+
+            try
+            {
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                if (content != null)
+                {
+                    File.WriteAllText(path, content, Encoding.UTF8);
+                }
+                else
+                {
+                    File.Create(path).Dispose();
+                }
+                return $"✅ 已新建「{Path.GetFileName(path)}」";
+            }
+            catch (Exception e)
+            {
+                return $"❌ 新建失败：{e.Message}";
+            }
+        };
+
+        // ——— 37. 新建目录：创建文件夹 ———
+        _executors["dir_create"] = args =>
+        {
+            string path = JsonRead(args, "path");
+            if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
+            path = DecodeFileUri(path);
+            try
+            {
+                Directory.CreateDirectory(path);
+                return $"✅ 已创建目录「{path}」";
+            }
+            catch (Exception e)
+            {
+                return $"❌ 创建失败：{e.Message}";
+            }
+        };
+
+        // ——— 38. 读文件：读取文本文件内容 ———
+        _executors["file_read"] = args =>
+        {
+            string path = JsonRead(args, "path");
+            int maxLen = 2000;
+            int.TryParse(JsonRead(args, "max_length"), out maxLen);
+            if (string.IsNullOrEmpty(path)) return "❌ 未指定文件";
+            path = DecodeFileUri(path);
+
+            if (!File.Exists(path)) return $"❌ 文件不存在：「{path}」";
+
+            try
+            {
+                // 检测是否为二进制文件
+                byte[] header = new byte[4];
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read))
+                {
+                    if (fs.Length == 0) return "📄 文件为空";
+                    fs.Read(header, 0, Math.Min(4, (int)fs.Length));
+                }
+
+                // 检查常见二进制头
+                if (header[0] > 0x7F && header[0] != 0xEF && header[0] != 0xFF && header[0] != 0xFE)
+                    return $"📄 此文件非文本，大小为 {FormatFileSize(new FileInfo(path).Length)}，可用 file_open 打开";
+
+                string text = File.ReadAllText(path, Encoding.UTF8);
+                if (string.IsNullOrEmpty(text)) return "📄 文件为空";
+                return $"📄 {Path.GetFileName(path)} 的内容：\n\n{text.Truncate(maxLen)}";
+            }
+            catch (Exception e)
+            {
+                return $"❌ 读取失败：{e.Message}";
+            }
+        };
     }
 
     // ================================================================
@@ -966,6 +1304,153 @@ public class ToolCallInvoker : MonoBehaviour
         ""properties"": {}
       }
     }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""search_file"",
+      ""description"": ""【文件管理】在全盘或指定目录中搜索文件/文件夹，支持任意中文/英文/特殊字符文件名，返回匹配的文件列表（含完整路径）。用户说「帮我找一下xxx」「搜索文件」「找图片」「电脑里有xxx吗」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""query"": { ""type"": ""string"", ""description"": ""要搜索的文件名关键词（支持中英文和特殊字符，不区分大小写）"" },
+          ""root"": { ""type"": ""string"", ""description"": ""搜索根目录，为空则全盘搜索"" }
+        },
+        ""required"": [""query""]
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""file_open"",
+      ""description"": ""【文件管理】打开任意文件、文件夹或应用程序（自动识别路径）。用户说「打开这个」「打开文件」「帮我打开xxx」时调用。支持 file:// URI 格式（search_file 返回的结果可直接传入）。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""path"": { ""type"": ""string"", ""description"": ""文件/文件夹/应用路径，或 file:// URI"" }
+        },
+        ""required"": [""path""]
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""file_move"",
+      ""description"": ""【文件管理】移动文件/文件夹到新位置，或重命名。用户说「把这个文件移到」「移动到」「挪到」时调用。支持中文名称。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""source"": { ""type"": ""string"", ""description"": ""源文件/文件夹路径或 file:// URI"" },
+          ""destination"": { ""type"": ""string"", ""description"": ""目标路径"" }
+        },
+        ""required"": [""source"", ""destination""]
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""file_copy"",
+      ""description"": ""【文件管理】复制文件或文件夹到新位置。用户说「复制这个到」「拷贝到」「备份一下」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""source"": { ""type"": ""string"", ""description"": ""源文件/文件夹路径或 file:// URI"" },
+          ""destination"": { ""type"": ""string"", ""description"": ""目标路径"" }
+        },
+        ""required"": [""source"", ""destination""]
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""file_delete"",
+      ""description"": ""【文件管理】删除文件或文件夹（默认移到回收站，加 permanent=true 则永久删除）。用户说「删掉这个」「删除文件」「把这个扔掉」时调用。操作前会自动向用户确认。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""path"": { ""type"": ""string"", ""description"": ""要删除的文件/文件夹路径或 file:// URI"" },
+          ""permanent"": { ""type"": ""boolean"", ""description"": ""是否永久删除（不经过回收站），默认 false"" }
+        },
+        ""required"": [""path""]
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""file_rename"",
+      ""description"": ""【文件管理】重命名文件或文件夹。用户说「重命名」「改名为」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""path"": { ""type"": ""string"", ""description"": ""文件/文件夹路径或 file:// URI"" },
+          ""new_name"": { ""type"": ""string"", ""description"": ""新文件名（含扩展名）"" }
+        },
+        ""required"": [""path"", ""new_name""]
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""file_info"",
+      ""description"": ""【文件管理】查看文件或文件夹的详细信息（大小、创建时间、修改时间、属性等）。用户说「看看这个文件」「文件详情」「属性」「多大」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""path"": { ""type"": ""string"", ""description"": ""文件/文件夹路径或 file:// URI"" }
+        },
+        ""required"": [""path""]
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""file_create"",
+      ""description"": ""【文件管理】创建一个新的文本文件，可指定内容。用户说「新建文件」「创建文件」「写个文件」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""path"": { ""type"": ""string"", ""description"": ""文件完整路径"" },
+          ""content"": { ""type"": ""string"", ""description"": ""文件内容（可选，不提供则创建空文件）"" }
+        },
+        ""required"": [""path""]
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""dir_create"",
+      ""description"": ""【文件管理】创建新文件夹。用户说「新建文件夹」「创建目录」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""path"": { ""type"": ""string"", ""description"": ""要创建的文件夹路径"" }
+        },
+        ""required"": [""path""]
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""file_read"",
+      ""description"": ""【文件管理】读取文本文件的内容（自动检测是否为二进制文件）。用户说「看看这个文件里写了什么」「打开记事本看看」「读一下这个文件」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""path"": { ""type"": ""string"", ""description"": ""文件路径或 file:// URI"" },
+          ""max_length"": { ""type"": ""integer"", ""description"": ""最大返回字符数，默认2000"" }
+        },
+        ""required"": [""path""]
+      }
+    }
   }
 ]";
     }
@@ -995,6 +1480,7 @@ public class ToolCallInvoker : MonoBehaviour
             }),
             ["query_user_status"] = args => RunAsyncTool(() => FindObjectOfType<ServerPollService>()?.QueryUserStatusAsync() ?? Task.FromResult("❌ 课表传讯服务未就绪")),
             ["search_files"]      = args => RunAsyncTool(() => SearchFilesTask(args)),
+            ["search_file"]       = args => RunAsyncTool(() => Task.Run(() => SearchFileByPython(JsonRead(args, "query"), JsonRead(args, "root")))),
         };
     }
 
@@ -1728,6 +2214,317 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
         }
         catch { }
         return null;
+    }
+
+    // ================================================================
+    //  文件管理辅助方法
+    // ================================================================
+
+    /// <summary>用 Python 桥搜索文件（原生支持中文/特殊字符），直接从 Unity 包目录找</summary>
+    private static string SearchFileByPython(string query, string rootDir)
+    {
+        try
+        {
+            // 先找到 find_file.py 的位置
+            string scriptPath = FindPythonScript();
+            if (scriptPath == null)
+            {
+                // Python 桥不可用，回退到 C# 全盘递归搜索
+                return SearchFileFallback(query, rootDir);
+            }
+
+            string pythonExe = FindPythonExe();
+
+            // 保存原始 rootDir，回退时用
+            string originalRootDir = rootDir;
+
+            string args = $"\"{scriptPath}\" \"{query.Replace("\"", "\\\"")}\"";
+            if (!string.IsNullOrEmpty(rootDir))
+                args += $" \"{rootDir.Replace("\"", "\\\"")}\"";
+            else
+                args += $" \"ALL_DRIVES\"";  // 标记搜全盘
+
+            var psi = new ProcessStartInfo(pythonExe, args)
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
+            };
+
+            var p = Process.Start(psi);
+            if (p == null) return SearchFileFallback(query, originalRootDir);
+
+            string jsonOutput = p.StandardOutput.ReadToEnd();
+            string errOutput = p.StandardError.ReadToEnd();
+            p.WaitForExit(15000);
+
+            if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(jsonOutput))
+            {
+                UnityEngine.Debug.LogWarning($"[ToolCallInvoker] Python 搜索失败: {errOutput.Truncate(200)}");
+                return SearchFileFallback(query, originalRootDir);
+            }
+
+            // 解析 JSON 结果
+            var results = new List<string>();
+            try
+            {
+                // 简单 JSON 手动解析（避免依赖）
+                string filesKey = "\"files\":";
+                int filesIdx = jsonOutput.IndexOf(filesKey);
+                if (filesIdx < 0) return "⚠️ Python 返回格式异常";
+
+                int arrayStart = jsonOutput.IndexOf('[', filesIdx);
+                int arrayEnd = jsonOutput.LastIndexOf(']');
+                if (arrayStart < 0 || arrayEnd < 0) return "⚠️ Python 返回格式异常";
+
+                string arrayContent = jsonOutput.Substring(arrayStart + 1, arrayEnd - arrayStart - 1);
+                int pos = 0;
+                while (true)
+                {
+                    int uriKey = arrayContent.IndexOf("\"uri\":", pos);
+                    if (uriKey < 0) break;
+                    int valStart = arrayContent.IndexOf('"', uriKey + 6);
+                    if (valStart < 0) break;
+                    int valEnd = arrayContent.IndexOf('"', valStart + 1);
+                    if (valEnd < 0) break;
+                    string uri = arrayContent.Substring(valStart + 1, valEnd - valStart - 1);
+                    // 从 URI 解码为路径
+                    string decodedPath = Uri.UnescapeDataString(uri);
+                    if (decodedPath.StartsWith("file:///"))
+                        decodedPath = decodedPath.Substring(8);
+                    if (decodedPath.Length >= 3 && decodedPath[0] == '/' && decodedPath[2] == ':')
+                        decodedPath = decodedPath.TrimStart('/');
+                    results.Add(decodedPath);
+                    pos = valEnd + 1;
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogWarning($"[ToolCallInvoker] JSON 解析失败: {ex.Message}");
+                return SearchFileFallback(query, originalRootDir);
+            }
+
+            if (results.Count == 0)
+                return $"🔍 未找到与「{query}」匹配的文件";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"⚡本座以 Python 天机术搜索，得 {results.Count} 件：");
+            int displayCount = Math.Min(results.Count, 50);
+            for (int i = 0; i < displayCount; i++)
+                sb.AppendLine($"  📄 {results[i]}");
+            if (results.Count > displayCount)
+                sb.AppendLine($"  …及另 {results.Count - displayCount} 件");
+            sb.AppendLine($"💡 可对我说「打开第n个」或把路径传给我");
+            return sb.ToString().Truncate(3000);
+        }
+        catch (Exception e)
+        {
+            UnityEngine.Debug.LogWarning($"[ToolCallInvoker] Python 搜索异常: {e.Message}");
+            return SearchFileFallback(query, rootDir);
+        }
+    }
+
+    /// <summary>回退方案：C# 全盘递归搜索（扫所有固定磁盘）</summary>
+    private static string SearchFileFallback(string query, string rootDir)
+    {
+        try
+        {
+            var results = new List<string>();
+            int maxResults = 100;
+
+            if (!string.IsNullOrEmpty(rootDir))
+            {
+                if (Directory.Exists(rootDir))
+                    SearchRecursive(rootDir, query, results, maxResults);
+                else
+                    return $"❌ 目录不存在：「{rootDir}」";
+            }
+            else
+            {
+                // 全盘搜：所有固定驱动器
+                foreach (var drive in DriveInfo.GetDrives())
+                {
+                    if (results.Count >= maxResults) break;
+                    if (drive.DriveType == DriveType.Fixed && drive.IsReady)
+                    {
+                        SearchRecursive(drive.RootDirectory.FullName, query, results, maxResults);
+                    }
+                }
+            }
+
+            if (results.Count == 0)
+                return $"🔍 遍寻不得与「{query}」匹配之物";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"🔍 本座以遍历之法搜索，得 {results.Count} 件：");
+            int displayCount = Math.Min(results.Count, 50);
+            for (int i = 0; i < displayCount; i++)
+                sb.AppendLine($"  📄 {results[i]}");
+            if (results.Count > displayCount)
+                sb.AppendLine($"  …及另 {results.Count - displayCount} 件");
+            return sb.ToString().Truncate(3000);
+        }
+        catch (Exception e)
+        {
+            return $"❌ 搜索出了岔子：{e.Message}";
+        }
+    }
+
+    /// <summary>查找 find_file.py 脚本位置</summary>
+    private static string FindPythonScript()
+    {
+        string projectRoot = AppDomain.CurrentDomain.BaseDirectory;
+        // 从构建目录回溯到项目根
+        string[] searchPaths =
+        {
+            Path.Combine(projectRoot, "..\\..\\..\\..\\tools\\find_file.py"),
+            Path.Combine(projectRoot, "..\\..\\tools\\find_file.py"),
+            Path.Combine(projectRoot, "..\\tools\\find_file.py"),
+            Path.Combine(Environment.CurrentDirectory, "tools\\find_file.py"),
+            @"D:\Unity\projects\Desktop_per_pro\tools\find_file.py",
+        };
+        foreach (var p in searchPaths)
+        {
+            string full = Path.GetFullPath(p);
+            if (File.Exists(full)) return full;
+        }
+        return null;
+    }
+
+    /// <summary>查找可用的 Python 解释器</summary>
+    private static string FindPythonExe()
+    {
+        // 尝试 venv 优先
+        string[] candidates =
+        {
+            Path.Combine(Environment.CurrentDirectory, ".venv\\Scripts\\python.exe"),
+            Path.Combine(Environment.CurrentDirectory, "venv\\Scripts\\python.exe"),
+            "python",
+            "python3",
+        };
+        foreach (var c in candidates)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo(c, "--version")
+                {
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+                var p = Process.Start(psi);
+                if (p != null)
+                {
+                    p.WaitForExit(1000);
+                    if (p.ExitCode == 0) return c;
+                }
+            }
+            catch { }
+        }
+        return "python";
+    }
+
+    /// <summary>解码 file:// URI 为 Windows 路径</summary>
+    private static string DecodeFileUri(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return path;
+        if (path.StartsWith("file://"))
+        {
+            try
+            {
+                var uri = new Uri(path);
+                string decoded = Uri.UnescapeDataString(uri.AbsolutePath);
+                // Windows: file:///D:/path → D:/path
+                if (decoded.Length >= 3 && decoded[0] == '/' && decoded[2] == ':')
+                    decoded = decoded.TrimStart('/');
+                return decoded;
+            }
+            catch
+            {
+                return path;
+            }
+        }
+        return path;
+    }
+
+    /// <summary>格式化文件大小</summary>
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024 * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F2} GB";
+    }
+
+    /// <summary>递归复制目录</summary>
+    private static void CopyDirectoryRecursive(string sourceDir, string destDir)
+    {
+        Directory.CreateDirectory(destDir);
+        foreach (var file in Directory.GetFiles(sourceDir))
+        {
+            string destFile = Path.Combine(destDir, Path.GetFileName(file));
+            File.Copy(file, destFile, overwrite: true);
+        }
+        foreach (var subDir in Directory.GetDirectories(sourceDir))
+        {
+            string destSubDir = Path.Combine(destDir, Path.GetFileName(subDir));
+            CopyDirectoryRecursive(subDir, destSubDir);
+        }
+    }
+
+    // ---- 回收站 Shell API ----
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHFileOperationW(ref SHFILEOPSTRUCT lpFileOp);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct SHFILEOPSTRUCT
+    {
+        public IntPtr hwnd;
+        public uint wFunc;
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string pFrom;
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string pTo;
+        public ushort fFlags;
+        public int fAnyOperationsAborted;
+        public IntPtr hNameMappings;
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string lpszProgressTitle;
+    }
+
+    private const uint FO_DELETE = 3;
+    private const ushort FOF_ALLOWUNDO = 0x0040;
+    private const ushort FOF_NOCONFIRMATION = 0x0010;
+    private const ushort FOF_SILENT = 0x0004;
+    private const ushort FOF_NOERRORUI = 0x0400;
+
+    /// <summary>将文件或目录发送到回收站</summary>
+    private static void SendToRecycleBin(string path, bool isDir)
+    {
+        var op = new SHFILEOPSTRUCT
+        {
+            hwnd = IntPtr.Zero,
+            wFunc = FO_DELETE,
+            pFrom = path + "\0\0",  // 双 null 结尾
+            pTo = null,
+            fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI,
+            fAnyOperationsAborted = 0,
+            hNameMappings = IntPtr.Zero,
+            lpszProgressTitle = null
+        };
+        int ret = SHFileOperationW(ref op);
+        if (ret != 0)
+        {
+            // 如果 Shell API 失败（如回收站被禁用），回退到永久删除
+            if (isDir)
+                Directory.Delete(path, recursive: true);
+            else
+                File.Delete(path);
+        }
     }
 }
 

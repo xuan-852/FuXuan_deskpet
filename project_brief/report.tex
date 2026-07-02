@@ -1211,6 +1211,37 @@ Desktop_per_pro/
 \end{itemize}
 
 % ═══════════════════════════════════════════
+\section{待改进项}
+% ═══════════════════════════════════════════
+
+\subsection{AI 活动感知与性格优化}
+
+当前 AI 活动感知和性格表达存在以下改进空间：
+
+\begin{table}[H]
+\centering
+\caption{AI 活动感知改进方向}
+\label{tab:ai-improvements}
+\begin{tabular}{p{0.2\textwidth}p{0.35\textwidth}p{0.35\textwidth}}
+\toprule
+\textbf{维度} & \textbf{现状} & \textbf{改进目标} \\
+\midrule
+活动感知粒度 & 8 个笼统分类（coding/gaming/studying/browsing 等），\texttt{GetForegroundWindow} 快照模式 & 将窗口标题实时注入 SystemPrompt，让 DeepSeek 自行理解用户活动 \\
+多窗口感知 & 仅追踪最顶层窗口，\texttt{EnumWindows} 未使用 & 枚举所有可见窗口，分析多任务上下文 \\
+浏览器深度 & 仅识别进程名 & 集成浏览器插件或 Accessibility API 读取标签页 URL \\
+性格温婉约束 & SystemPrompt.txt 缺少"不要评判/说教"约束 & 加入温婉指令抑制 AI 说教倾向 \\
+傲娇权重 & IdleChatGenerator 的 system prompt 中"傲娇"权重过高 & 平衡"傲"与"娇"的比例，语气更温柔 \\
+窗口标题利用 & \texttt{Classify()} 后丢弃标题 & 传标题给 AI 用于回复上下文 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{参考开源方案：} \href{https://github.com/ActivityWatch/aw-watcher-window}{ActivityWatch}（GitHub 14k+ stars）是最大的开源时间追踪项目，
+但其 Windows 实现同样使用 \texttt{GetForegroundWindow} 单窗口追踪。
+改进方向可借鉴其生态中的浏览器扩展 aw-watcher-web 获取标签页 URL，
+以及 aw-watcher-afk 组件检测空闲状态。
+
+% ═══════════════════════════════════════════
 \section{版本历史}
 % ═══════════════════════════════════════════
 
@@ -1297,6 +1328,11 @@ Desktop_per_pro/
            &       & Live2DRenderer 方向切换改为 \texttt{Mathf.Lerp} 平滑渐变（\texttt{TURN\_SPEED=10}），消除 180° 瞬间翻转\\
            &       & petVx=0 时保持最后朝向，不自动恢复默认\\
            &       & 目录树格式修复，更新 README + LaTeX 技术文档\\
+2026-07-02 & N22  & \textbf{文档整理：记录 AI 活动感知与性格优化待改进事项}\\
+           &       & README 新增已知问题第 3 条「AI 活动感知与性格优化」\\
+           &       & LaTeX 技术文档新增「待改进项」章节\\
+           &       & 收录 tools/find_file.py（Python 文件搜索桥）\\
+           &       & 更新 .gitignore 排除临时构建文件\\
 \bottomrule
 \end{tabular}
 \end{table}

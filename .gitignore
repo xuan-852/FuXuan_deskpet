@@ -39,11 +39,14 @@ code/desktop_unity/.vscode/
 # 构建辅助
 # ================
 build_temp.cmd
+build_now.cmd
+build_log*.old
 
 # ================
 # VS Code 配置
 # ================
 .vscode/
+.instructions.md
 
 # ================
 # LaTeX 构建产物

@@ -112,7 +112,7 @@ public class IdleChatGenerator : MonoBehaviour
 
         string userPrompt = string.Format(
             "请生成{0}句简短的闲话（自言自语），每句不超过25字。" +
-            "用 ||| 分隔，不要序号。例如：嗯…今日星象不错~ ||| 你又在偷懒了罢？",
+            "用 ||| 分隔，不要序号。例如：嗯…今日星象不错~ ||| 你气色尚佳，想来是有好事~",
             batchSize);
 
         yield return StartCoroutine(
