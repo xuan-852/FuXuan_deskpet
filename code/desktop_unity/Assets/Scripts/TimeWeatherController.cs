@@ -23,9 +23,8 @@ public class TimeWeatherController : MonoBehaviour
     [Tooltip("城市代码（用于 wttr.in），空=自动IP定位")]
     public string cityCode = "";
 
-    [Header("和风天气 (QWeather)")]
-    [Tooltip("在和风天气 https://dev.qweather.com 注册后创建应用获取 Key")]
-    public string qWeatherKey = "3bf5e712994a4671a939581fc85b2f75";
+    // 和风天气 Key — 从 ChatConfig 读取环境变量
+    public string qWeatherKey => ChatConfig.QWeatherApiKey;
 
     public enum WeatherSource { WttrIn, QWeather }
 
@@ -59,7 +58,7 @@ public class TimeWeatherController : MonoBehaviour
     [Header("AI 天气语录")]
     [Tooltip("用 DeepSeek 生成符玄风格的天气语录（空=已禁用）")]
     public string aiApiUrl = "https://api.deepseek.com";
-    public string aiApiKey = ChatConfig.ApiKey;
+    [System.NonSerialized] public string aiApiKey = ChatConfig.ApiKey;
     public string aiModel = "deepseek-chat";
     [Tooltip("每次天气变化时生成多少句语录")]
     public int aiLineCount = 6;
@@ -134,7 +133,10 @@ public class TimeWeatherController : MonoBehaviour
         _isFetching = true;
 
         if (weatherSource == WeatherSource.QWeather && !string.IsNullOrEmpty(qWeatherKey))
+        {
+            Debug.Log($"[TimeWeather] 和风天气 Key 长度: {qWeatherKey?.Length ?? 0}");
             yield return StartCoroutine(FetchQWeather());
+        }
         else
             yield return StartCoroutine(FetchWttrIn());
 

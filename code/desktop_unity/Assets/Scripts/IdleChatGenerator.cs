@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.Networking;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
@@ -52,14 +51,17 @@ public class IdleChatGenerator : MonoBehaviour
         "要不要一起说说话？",
         "唔…该做点什么好呢~",
         "闲来无事，看星星去~",
+        "主人辛苦啦，歇会儿吧~",
+        "本座替你看着呢，安心~",
     };
 
     private static readonly string[] FALLBACK_GREETINGS = new string[]
     {
         "今日运势不错哦~",
         "你好呀~",
-        "找本座何事呀~",
         "嗯？你来了~",
+        "等你许久了呢~",
+        "精神可好？本座替你算了一卦…",
     };
 
     private string ApiKey => ChatConfig.ApiKey;
@@ -104,10 +106,11 @@ public class IdleChatGenerator : MonoBehaviour
             "你是符玄，仙舟「罗浮」太卜司之首。你会在独处时偶尔自言自语。\n" +
             "要求：\n" +
             "1. 每句话不超过25字\n" +
-            "2. 语气自信、傲娇、带点关心\n" +
+            "2. 语气温柔中带着自信，七分关心三分傲，不可傲慢或说教\n" +
             "3. 符合符玄的身份（太卜司、法眼、穷观阵、星象卜算等）\n" +
             "4. 不要重复已有的常用句式\n" +
             "5. 其中1-2句可以自然提及忆境中的往事（如果有的话），不要全部围绕记忆\n" +
+            "6. 「傲」与「娇」的比例大约 3:7 —— 多展示关心和温柔，少一些傲气\n" +
             "当前场景：{0}\n{1}", context, memories);
 
         string userPrompt = string.Format(
@@ -115,16 +118,18 @@ public class IdleChatGenerator : MonoBehaviour
             "用 ||| 分隔，不要序号。例如：嗯…今日星象不错~ ||| 你气色尚佳，想来是有好事~",
             batchSize);
 
+        string jsonBody = BuildSimpleRequestBody(sysPrompt, userPrompt);
         yield return StartCoroutine(
-            PostRequest(BuildRequestBody(sysPrompt, userPrompt),
-                json => HandleIdleBatchResponse(json)));
+            ApiClient.PostRequest(apiUrl, ApiKey, jsonBody, 15,
+                json => HandleIdleBatchResponse(json),
+                err => { Debug.LogWarning($"[IdleChatGenerator] ⚠️ {err}"); _isIdleGenerating = false; }));
     }
 
     private void HandleIdleBatchResponse(string responseJson)
     {
         if (responseJson != null)
         {
-            string content = ExtractContent(responseJson);
+            string content = ApiClient.ExtractContent(responseJson);
             if (!string.IsNullOrEmpty(content))
             {
                 // 用 ||| 分割
@@ -180,11 +185,12 @@ public class IdleChatGenerator : MonoBehaviour
             "你是符玄，仙舟「罗浮」太卜司之首。现在你要主动问候你的主人（电脑前的用户）。\n" +
             "要求：\n" +
             "1. 每句话不超过30字\n" +
-            "2. 语气自信、傲娇、带点关心\n" +
+            "2. 语气温柔关切，七分温暖三分俏皮，不可傲慢或说教\n" +
             "3. 结合当前的{0}来问候\n" +
             "4. 如果有忆境记录，可以其中1句自然地提及最近的记忆（不要全围绕记忆）\n" +
             "5. 不要重复，要有新意\n" +
-            "6. 直接输出问候语本身，不要加任何前缀后缀\n{1}",
+            "6. 直接输出问候语本身，不要加任何前缀后缀\n" +
+            "7. 「傲」与「娇」的比例大约 3:7 —— 多一分温柔，少一分傲气\n{1}",
             context, memories);
 
         string userPrompt = string.Format(
@@ -192,16 +198,18 @@ public class IdleChatGenerator : MonoBehaviour
             "用 ||| 分隔。例如：晨光正好，今日宜出门走走~ ||| 看你精神不错，很好。",
             context);
 
+        string jsonBody = BuildSimpleRequestBody(sysPrompt, userPrompt);
         yield return StartCoroutine(
-            PostRequest(BuildRequestBody(sysPrompt, userPrompt),
-                json => HandleGreetingResponse(json)));
+            ApiClient.PostRequest(apiUrl, ApiKey, jsonBody, 15,
+                json => HandleGreetingResponse(json),
+                err => { Debug.LogWarning($"[IdleChatGenerator] ⚠️ {err}"); _isGreetingGenerating = false; }));
     }
 
     private void HandleGreetingResponse(string responseJson)
     {
         if (responseJson != null)
         {
-            string content = ExtractContent(responseJson);
+            string content = ApiClient.ExtractContent(responseJson);
             if (!string.IsNullOrEmpty(content))
             {
                 string[] lines = content.Split(new string[] { "|||" },
@@ -258,126 +266,13 @@ public class IdleChatGenerator : MonoBehaviour
     //  API 请求（轻量版 — 无历史、无工具调用）
     // ==================================================================
 
-    private string BuildRequestBody(string systemPrompt, string userMessage)
+    /// <summary>构造简单的 user/system 双消息请求体</summary>
+    private string BuildSimpleRequestBody(string systemPrompt, string userMessage)
     {
-        StringBuilder sb = new StringBuilder();
-        sb.Append("{\"model\":\"");
-        sb.Append(EscapeJson(model));
-        sb.Append("\",\"messages\":[");
-        sb.Append("{\"role\":\"system\",\"content\":\"");
-        sb.Append(EscapeJson(systemPrompt));
-        sb.Append("\"},{\"role\":\"user\",\"content\":\"");
-        sb.Append(EscapeJson(userMessage));
-        sb.Append("\"}],\"max_tokens\":512}");
-        return sb.ToString();
-    }
-
-    private IEnumerator PostRequest(string jsonBody, System.Action<string> onResult)
-    {
-        string fullUrl = apiUrl.TrimEnd('/') + "/v1/chat/completions";
-
-        using (UnityWebRequest req = new UnityWebRequest(fullUrl, "POST"))
-        {
-            byte[] bodyBytes = Encoding.UTF8.GetBytes(jsonBody);
-            req.uploadHandler = new UploadHandlerRaw(bodyBytes);
-            req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.timeout = 15; // 闲话生成超时更短
-
-            if (!string.IsNullOrEmpty(ApiKey))
-                req.SetRequestHeader("Authorization", "Bearer " + ApiKey);
-
-            yield return req.SendWebRequest();
-
-            if (req.result == UnityWebRequest.Result.Success)
-            {
-                onResult(req.downloadHandler.text);
-            }
-            else
-            {
-                string errBody = req.downloadHandler?.text ?? "";
-                string errMsg = !string.IsNullOrEmpty(errBody) && errBody.Contains("\"message\"")
-                    ? ExtractErrorMessage(errBody)
-                    : req.error;
-                Debug.LogWarning($"[IdleChatGenerator] ⚠️ API 请求失败: {errMsg}");
-                onResult(null);
-            }
-        }
-    }
-
-    // ==================================================================
-    //  JSON 解析
-    // ==================================================================
-
-    private string ExtractContent(string json)
-    {
-        try
-        {
-            // 简单解析 — 找 "content":"..." 
-            string searchKey = "\"content\":\"";
-            int idx = json.IndexOf(searchKey);
-            if (idx < 0)
-            {
-                // 可能 content 为 null
-                return "";
-            }
-            idx += searchKey.Length;
-            StringBuilder sb = new StringBuilder();
-            for (int i = idx; i < json.Length; i++)
-            {
-                char c = json[i];
-                if (c == '\\' && i + 1 < json.Length)
-                {
-                    char next = json[i + 1];
-                    if (next == 'n') sb.Append('\n');
-                    else if (next == 't') sb.Append('\t');
-                    else if (next == '\\') sb.Append('\\');
-                    else if (next == '"') sb.Append('"');
-                    else sb.Append(next);
-                    i++;
-                }
-                else if (c == '"')
-                {
-                    break;
-                }
-                else
-                {
-                    sb.Append(c);
-                }
-            }
-            return sb.ToString();
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"[IdleChatGenerator] ⚠️ 解析失败: {e.Message}");
-            return "";
-        }
-    }
-
-    private string ExtractErrorMessage(string json)
-    {
-        try
-        {
-            string key = "\"message\":\"";
-            int idx = json.IndexOf(key);
-            if (idx < 0) return "未知错误";
-            idx += key.Length;
-            int end = json.IndexOf("\"", idx);
-            return end > idx ? json.Substring(idx, end - idx) : "未知错误";
-        }
-        catch
-        {
-            return "解析错误";
-        }
-    }
-
-    private string EscapeJson(string s)
-    {
-        if (string.IsNullOrEmpty(s)) return "";
-        return s.Replace("\\", "\\\\")
-                .Replace("\"", "\\\"")
-                .Replace("\n", "\\n")
-                .Replace("\r", "\\r")
-                .Replace("\t", "\\t");
+        return "{\"model\":\"" + ApiClient.EscapeJson(model)
+            + "\",\"messages\":["
+            + "{\"role\":\"system\",\"content\":\"" + ApiClient.EscapeJson(systemPrompt) + "\"}"
+            + ",{\"role\":\"user\",\"content\":\"" + ApiClient.EscapeJson(userMessage) + "\"}"
+            + "],\"max_tokens\":512}";
     }
 }

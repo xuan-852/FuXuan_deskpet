@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using UnityEngine;
@@ -49,6 +50,17 @@ public class ActivityTracker : MonoBehaviour
 
     [DllImport("psapi.dll", CharSet = CharSet.Unicode)]
     private static extern uint GetModuleBaseName(IntPtr hProcess, IntPtr hModule, StringBuilder lpBaseName, uint nSize);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     private const uint PROCESS_QUERY_INFORMATION = 0x0400;
     private const uint PROCESS_VM_READ = 0x0010;
@@ -116,6 +128,23 @@ public class ActivityTracker : MonoBehaviour
     private string _lastProcName = "";
     private string _lastCategory = "";
 
+    /// <summary>当前前台窗口标题（最新轮询结果，供 AI 注入）</summary>
+    public string CurrentWindowTitle { get; private set; } = "";
+    /// <summary>当前前台进程名（最新轮询结果，供 AI 注入）</summary>
+    public string CurrentProcessName { get; private set; } = "";
+    /// <summary>当前活动分类</summary>
+    public string CurrentCategory => _lastCategory;
+
+    // ——— 多窗口环境感知 ———
+    private string _lastMultiWindowSummary = "";
+    private float _multiWindowTimer = 0f;
+    private const float MULTI_WINDOW_INTERVAL = 10f; // 每 10 秒刷新一次多窗口快照
+
+    // ——— 浏览器标签页深度感知 ———
+    private string _lastBrowserTabsSummary = "";
+    private float _browserTabsTimer = 0f;
+    private const float BROWSER_TABS_INTERVAL = 5f; // 每 5 秒刷新一次浏览器标签
+
     // ============================================================
     //  路径
     // ============================================================
@@ -152,6 +181,25 @@ public class ActivityTracker : MonoBehaviour
         _pollTimer = 0f;
 
         PollForeground();
+
+        // ——— 多窗口环境快照（较低频率） ———
+        _multiWindowTimer += pollInterval;
+        if (_multiWindowTimer >= MULTI_WINDOW_INTERVAL)
+        {
+            _multiWindowTimer = 0f;
+            RefreshVisibleWindows();
+        }
+
+        // ——— 浏览器标签页深度感知（更高频率，仅在浏览器在前台时有效） ———
+        _browserTabsTimer += pollInterval;
+        if (_browserTabsTimer >= BROWSER_TABS_INTERVAL)
+        {
+            _browserTabsTimer = 0f;
+            if (BrowserTabReader.IsBrowser(_lastProcName))
+                RefreshBrowserTabs();
+            else
+                _lastBrowserTabsSummary = "";
+        }
     }
 
     private bool _suspended = false;
@@ -214,6 +262,9 @@ public class ActivityTracker : MonoBehaviour
             StringBuilder sb = new StringBuilder(512);
             GetWindowText(hwnd, sb, sb.Capacity);
             string title = sb.ToString().Trim();
+            // ★ 保留窗口标题和进程名供 AI 注入
+            CurrentWindowTitle = title;
+            CurrentProcessName = procName;
             _lastCategory = Classify(procName, title);
             if (_pollCount <= 5 || _pollCount % 30 == 0)
                 Debug.Log($"[ActivityTracker] 轮询#{_pollCount}: 窗口={procName} title=\"{title}\" → {_lastCategory}");
@@ -247,6 +298,142 @@ public class ActivityTracker : MonoBehaviour
             Debug.Log($"[ActivityTracker] 触发保存: {_today.dict.Count} categories, total={SumDict(_today.dict):F0}s");
             Save();
         }
+    }
+
+    // ============================================================
+    //  多窗口环境感知
+    // ============================================================
+
+    /// <summary>刷新可见窗口快照（EnumWindows 枚举所有可见非最小化窗口）</summary>
+    private void RefreshVisibleWindows()
+    {
+        var windowInfos = new List<(string title, string proc)>();
+        var collectedPids = new HashSet<uint>();
+        object lockObj = new object();
+
+        EnumWindows((hWnd, lParam) =>
+        {
+            if (!IsWindowVisible(hWnd) || IsIconic(hWnd))
+                return true; // 继续枚举
+
+            // 跳过桌面和任务栏
+            GetWindowThreadProcessId(hWnd, out uint pid);
+            if (pid == 0) return true;
+
+            StringBuilder sb = new StringBuilder(512);
+            GetWindowText(hWnd, sb, sb.Capacity);
+            string title = sb.ToString().Trim();
+            if (string.IsNullOrEmpty(title))
+                return true; // 无标题窗口跳过
+
+            // 获取进程名
+            string procName = GetProcessNameByPid(pid) ?? "unknown";
+            if (procName == "unknown" || procName == "explorer")
+                return true; // 跳过未知和资源管理器
+
+            lock (lockObj)
+            {
+                if (!collectedPids.Contains(pid))
+                {
+                    collectedPids.Add(pid);
+                    windowInfos.Add((title, procName));
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        // 去重：同一进程只保留最长的标题（通常信息量最大）
+        var procBestTitle = new Dictionary<string, string>();
+        foreach (var (title, proc) in windowInfos)
+        {
+            if (!procBestTitle.ContainsKey(proc) || title.Length > procBestTitle[proc].Length)
+                procBestTitle[proc] = title;
+        }
+
+        // 按类别排序：coding > studying > browsing > entertainment > communication > other
+        var ordered = procBestTitle
+            .OrderByDescending(kv => Classify(kv.Key, kv.Value) switch
+            {
+                "coding" => 6, "studying" => 5, "browsing" => 4,
+                "entertainment" => 3, "communication" => 2, _ => 1
+            })
+            .ThenBy(kv => kv.Key)
+            .ToList();
+
+        var sb2 = new StringBuilder();
+        sb2.Append("【法眼多窗 | 当前环境】");
+        int count = 0;
+        foreach (var kv in ordered)
+        {
+            string cat = Classify(kv.Key, kv.Value);
+            string catIcon = cat switch
+            {
+                "coding" => "🖥️", "gaming" => "🎮", "studying" => "📖",
+                "browsing" => "🌐", "entertainment" => "🎬", "communication" => "💬",
+                "idle" => "💤", _ => "📋"
+            };
+            // 截断超长标题
+            string shortTitle = kv.Value.Length > 40 ? kv.Value.Substring(0, 40) + "…" : kv.Value;
+            sb2.Append($" {catIcon}{shortTitle}");
+            count++;
+            if (count >= 6) break; // 最多列 6 个窗口
+        }
+        if (count == 0)
+        {
+            _lastMultiWindowSummary = "";
+            return;
+        }
+        _lastMultiWindowSummary = sb2.ToString();
+    }
+
+    /// <summary>
+    /// 获取多窗口环境摘要（供 SystemPrompt 注入）
+    /// 返回格式: 【法眼多窗 | 当前环境】🖥️ VS Code 🌐 Edge - B站 💬 WeChat
+    /// </summary>
+    public string GetVisibleWindowsSummary()
+    {
+        return _lastMultiWindowSummary;
+    }
+
+    // ——————————————————————————————————————————————
+    //  浏览器标签页深度感知
+    // ——————————————————————————————————————————————
+
+    /// <summary>刷新当前前台浏览器的标签页信息（UIA）</summary>
+    private void RefreshBrowserTabs()
+    {
+        if (!BrowserTabReader.IsAvailable)
+        {
+            _lastBrowserTabsSummary = "📡 浏览器标签感知不可用（UIA 初始化失败）";
+            return;
+        }
+
+        var tabs = BrowserTabReader.ReadTabs(_lastHwnd);
+        if (tabs.Count == 0)
+        {
+            _lastBrowserTabsSummary = "";
+            return;
+        }
+
+        var sb = new StringBuilder();
+        sb.Append("【法眼浏览器 | 当前标签】");
+        int count = 0;
+        foreach (string tab in tabs)
+        {
+            sb.Append($" {tab}");
+            count++;
+            if (count >= 10) break; // 最多列 10 个标签
+        }
+        _lastBrowserTabsSummary = sb.ToString();
+    }
+
+    /// <summary>
+    /// 获取浏览器标签页摘要（供 SystemPrompt 注入）
+    /// 返回格式: 【法眼浏览器 | 当前标签】📄 百度 📄 GitHub ⏳ 后台标签
+    /// </summary>
+    public string GetBrowserTabsSummary()
+    {
+        return _lastBrowserTabsSummary;
     }
 
     // ============================================================

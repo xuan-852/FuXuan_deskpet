@@ -1,9 +1,8 @@
 using System;
 using UnityEngine;
-using UnityEngine.Networking;
 using System.Collections;
-using System.Text;
 using System.Collections.Generic;
+using System.Text;
 using System.Linq;
 
 /// <summary>
@@ -14,7 +13,7 @@ public class ChatManager : MonoBehaviour
 {
     [Header("API 设置")]
     public string apiUrl = "https://api.deepseek.com";
-    public string apiKey = ChatConfig.ApiKey;
+    [System.NonSerialized] public string apiKey = ChatConfig.ApiKey;
     public string model = "deepseek-chat";
 
     [Header("工具调用（符玄法阵）")]
@@ -82,12 +81,34 @@ public class ChatManager : MonoBehaviour
                 prompt += "\n" + memories;
         }
 
-        // 注入法眼观测（今日行为摘要）
+        // 注入法眼观测（今日行为摘要 + 当前窗口 + 多窗口环境）
         if (activityTracker != null)
         {
             string activity = activityTracker.GetSummary();
             if (!string.IsNullOrEmpty(activity))
                 prompt += "\n" + activity;
+
+            // ★ 注入当前前台窗口信息（让 AI 知道用户此刻在干什么）
+            string title = activityTracker.CurrentWindowTitle;
+            string proc = activityTracker.CurrentProcessName;
+            if (!string.IsNullOrEmpty(title) || !string.IsNullOrEmpty(proc))
+            {
+                prompt += $"\n【法眼实时观测】主人当前在操作：「{title}」（{proc}）";
+            }
+
+            // ★ 注入多窗口环境摘要（让 AI 了解整体桌面环境）
+            string multiWindow = activityTracker.GetVisibleWindowsSummary();
+            if (!string.IsNullOrEmpty(multiWindow))
+            {
+                prompt += "\n" + multiWindow;
+            }
+
+            // ★ 注入浏览器标签页深度感知（让 AI 了解当前浏览器打开了什么）
+            string browserTabs = activityTracker.GetBrowserTabsSummary();
+            if (!string.IsNullOrEmpty(browserTabs))
+            {
+                prompt += "\n" + browserTabs;
+            }
         }
 
         return prompt;
@@ -456,35 +477,13 @@ public class ChatManager : MonoBehaviour
 
     private IEnumerator PostRequest(string jsonBody, System.Action<string> onResult)
     {
-        string fullUrl = apiUrl.TrimEnd('/') + "/v1/chat/completions";
-
-        using (UnityWebRequest req = new UnityWebRequest(fullUrl, "POST"))
-        {
-            byte[] bodyBytes = Encoding.UTF8.GetBytes(jsonBody);
-            req.uploadHandler = new UploadHandlerRaw(bodyBytes);
-            req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.timeout = 30;
-
-            if (!string.IsNullOrEmpty(apiKey))
-                req.SetRequestHeader("Authorization", "Bearer " + apiKey);
-
-            yield return req.SendWebRequest();
-
-            if (req.result == UnityWebRequest.Result.Success)
-            {
-                onResult(req.downloadHandler.text);
-            }
-            else
-            {
-                string errBody = req.downloadHandler?.text ?? "";
-                if (!string.IsNullOrEmpty(errBody) && errBody.Contains("\"message\""))
-                    _lastError = ExtractErrorMessage(errBody);
-                else
-                    _lastError = req.error;
-                onResult(null);
-            }
-        }
+        yield return StartCoroutine(
+            ApiClient.PostRequest(apiUrl, apiKey, jsonBody, 30,
+                json => onResult(json),
+                err => {
+                    _lastError = err;
+                    onResult(null);
+                }));
     }
 
     // ==================================================================
@@ -562,54 +561,8 @@ public class ChatManager : MonoBehaviour
     //  响应解析
     // ==================================================================
 
-    /// <summary>提取 content 字段（普通回复）</summary>
-    private string ExtractContent(string json)
-    {
-        // 先看 message 里有没有 content
-        // DeepSeek 格式: "choices":[{"message":{"content":"..."}}]
-        int msgIdx = json.IndexOf("\"message\"");
-        if (msgIdx < 0) return "";
-
-        // 从 message 末尾找 content
-        string key = "\"content\":\"";
-        int idx = json.IndexOf(key, msgIdx);
-        if (idx < 0)
-        {
-            // 可能 content 为 null（纯 tool_call 回复）
-            // 格式: "content":null
-            int nullIdx = json.IndexOf("\"content\":null", msgIdx);
-            if (nullIdx >= 0) return "";
-            return "";
-        }
-
-        idx += key.Length;
-        StringBuilder content = new StringBuilder();
-        for (int i = idx; i < json.Length; i++)
-        {
-            if (json[i] == '\\' && i + 1 < json.Length)
-            {
-                char next = json[i + 1];
-                switch (next)
-                {
-                    case 'n': content.Append('\n'); i++; break;
-                    case 't': content.Append('\t'); i++; break;
-                    case '"': content.Append('"'); i++; break;
-                    case '\\': content.Append('\\'); i++; break;
-                    case 'r': i++; break;
-                    default: content.Append(json[i]); break;
-                }
-            }
-            else if (json[i] == '"')
-            {
-                break;
-            }
-            else
-            {
-                content.Append(json[i]);
-            }
-        }
-        return content.ToString();
-    }
+    /// <summary>提取 content 字段（普通回复） — 委托给 ApiClient</summary>
+    private string ExtractContent(string json) => ApiClient.ExtractContent(json);
 
     /// <summary>提取 tool_calls JSON 块</summary>
     private string ExtractToolCalls(string json)
@@ -692,49 +645,10 @@ public class ChatManager : MonoBehaviour
 
     /// <summary>从 JSON 中提取 "key":"value" 中 value 部分的纯字符串</summary>
     private static string ExtractSimpleString(string json, int start)
-    {
-        if (start >= json.Length) return "";
-        var sb = new StringBuilder();
-        for (int i = start; i < json.Length; i++)
-        {
-            if (json[i] == '\\' && i + 1 < json.Length)
-            {
-                char n = json[i + 1];
-                if (n == '"') { sb.Append('"'); i++; }
-                else if (n == '\\') { sb.Append('\\'); i++; }
-                else if (n == 'n') { sb.Append('\n'); i++; }
-                else if (n == 't') { sb.Append('\t'); i++; }
-                else if (n == 'r') { i++; }
-                else sb.Append(json[i]);
-            }
-            else if (json[i] == '"')
-            {
-                break;
-            }
-            else
-            {
-                sb.Append(json[i]);
-            }
-        }
-        return sb.ToString();
-    }
+        => ApiClient.ExtractSimpleString(json, start);
 
-    /// <summary>从错误 JSON 中提取 message 字段</summary>
-    private string ExtractErrorMessage(string json)
-    {
-        string key = "\"message\":\"";
-        int idx = json.IndexOf(key);
-        if (idx < 0) return json;
-
-        idx += key.Length;
-        StringBuilder msg = new StringBuilder();
-        for (int i = idx; i < json.Length; i++)
-        {
-            if (json[i] == '"') break;
-            msg.Append(json[i]);
-        }
-        return msg.ToString();
-    }
+    /// <summary>从错误 JSON 中提取 message 字段 — 委托给 ApiClient</summary>
+    private string ExtractErrorMessage(string json) => ApiClient.ExtractErrorMessage(json);
 
     // ==================================================================
     //  长期记忆记录
@@ -927,33 +841,19 @@ public class ChatManager : MonoBehaviour
         string reply = null;
 
         // 使用 DeepSeek API（不占对话历史，纯粹后台调用）
-        string reflectionUrl = apiUrl.TrimEnd('/') + "/v1/chat/completions";
-        string jsonBody = "{\"model\":\"" + EscapeJson(model)
+        string jsonBody = "{\"model\":\"" + ApiClient.EscapeJson(model)
             + "\",\"messages\":[{\"role\":\"user\",\"content\":\""
-            + EscapeJson(prompt) + "\"}],\"stream\":false}";
+            + ApiClient.EscapeJson(prompt) + "\"}],\"stream\":false}";
 
-        using (UnityWebRequest req = new UnityWebRequest(reflectionUrl, "POST"))
-        {
-            byte[] bodyBytes = Encoding.UTF8.GetBytes(jsonBody);
-            req.uploadHandler = new UploadHandlerRaw(bodyBytes);
-            req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.timeout = 15;
-            if (!string.IsNullOrEmpty(apiKey))
-                req.SetRequestHeader("Authorization", "Bearer " + apiKey);
-
-            yield return req.SendWebRequest();
-
-            if (req.result == UnityWebRequest.Result.Success)
-            {
-                reply = req.downloadHandler.text;
-            }
-        }
+        yield return StartCoroutine(
+            ApiClient.PostRequest(apiUrl, apiKey, jsonBody, 15,
+                json => reply = json,
+                err => { }));
 
         if (string.IsNullOrEmpty(reply)) yield break;
 
         // 从响应 JSON 中提取 content
-        string reflectionContent = ExtractContent(reply);
+        string reflectionContent = ApiClient.ExtractContent(reply);
         if (string.IsNullOrEmpty(reflectionContent)) yield break;
 
         // 逐行写入 reflection 记忆
@@ -975,24 +875,8 @@ public class ChatManager : MonoBehaviour
     //  工具
     // ==================================================================
 
-    private string EscapeJson(string s)
-    {
-        if (string.IsNullOrEmpty(s)) return "";
-        StringBuilder sb = new StringBuilder(s.Length);
-        foreach (char c in s)
-        {
-            switch (c)
-            {
-                case '"': sb.Append("\\\""); break;
-                case '\\': sb.Append("\\\\"); break;
-                case '\n': sb.Append("\\n"); break;
-                case '\r': sb.Append("\\r"); break;
-                case '\t': sb.Append("\\t"); break;
-                default: sb.Append(c); break;
-            }
-        }
-        return sb.ToString();
-    }
+    /// <summary>JSON 转义 — 委托给 ApiClient</summary>
+    private string EscapeJson(string s) => ApiClient.EscapeJson(s);
 
     /// <summary>清空对话历史</summary>
     public void ClearHistory()

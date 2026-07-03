@@ -98,7 +98,11 @@ Desktop_per_pro/
 │   │   │   ├── TimeWeatherController.cs  # 昼夜/天气
 │   │   │   ├── ChatBubble.cs         # 头顶气泡（含优先级系统）
 │   │   │   ├── ChatManager.cs        # AI 对话 + Function Calling + 协程工具调度
-│   │   │   ├── AutoChat.cs           # 自动闲聊
+│   │   │   ├── ChatConfig.cs         # API Key + 端点集中配置（环境变量读取）
+│   │   │   ├── ApiClient.cs          # 共享 HTTP/JSON 客户端（PostRequest + 解析工具）
+│   │   │   ├── IdleChatGenerator.cs  # 自动闲聊（重构后使用 ApiClient）
+│   │   │   ├── ActivityTracker.cs    # 法眼 — 窗口/多窗口/浏览器深度感知
+│   │   │   ├── BrowserTabReader.cs   # 浏览器标签页读取（UIA 反射，零安装）
 │   │   │   ├── BottomInputBar.cs     # 底部输入栏
 │   │   │   ├── ContextMenu.cs        # 右键菜单（设置/动作/聊天/便签）
 │   │   │   ├── ReminderManager.cs    # 便签提醒 + Server酱³ 推送
@@ -136,21 +140,31 @@ DesktopPet (主控制器, Update order=0)
 ├── DragHandler          ← 鼠标交互 / 点击穿透
 ├── ChatBubble           ← 头顶气泡（含优先级系统）
 ├── ChatManager          ← AI 对话 + Function Calling + 逐句队列 + 协程调度
-│   └── 加载 Resources/SystemPrompt.txt + 注入 PetMemory 记忆
-├── AutoChat             ← 自动闲聊 + 问候库
+│   ├── 加载 Resources/SystemPrompt.txt + 注入 PetMemory 记忆
+│   └── 调用 ApiClient (共享 HTTP/JSON 客户端)
+├── IdleChatGenerator    ← 自动闲聊（使用 ApiClient）
+├── ActivityTracker      ← 法眼 — 窗口/多窗口/浏览器深度感知
+│   └── BrowserTabReader  ← UIA 反射读取标签页
 ├── BottomInputBar       ← 底部输入栏
 ├── ContextMenu          ← 右键菜单
-├── TimeWeatherController ← 时间/天气
+├── TimeWeatherController ← 时间/天气（Key 从 ChatConfig 环境变量读取）
 ├── ReminderManager      ← 便签提醒 + Server酱³ 推送
 ├── ServerPollService    ← 服务端轮询 + 小程序数据查询
 ├── PerformanceMonitor   ← FPS/CPU/内存监控
 ├── SystemTrayManager    ← 系统托盘图标
 ├── DebugWindow          ← 调试面板
 ├── PetConfig            ← 天机簿 — 配置持久化（JSON保存/加载，重启时 ApplyAll）
+│   └── 注：仅持久化运行时偏好，API Key 专用 ChatConfig 环境变量
 ├── PetMemory            ← 忆境 — 长期记忆系统（自动记录关键交互，注入 system prompt）
 ├── WindowOverlay        ← 透明窗口（DWM 玻璃层）
 └── Live2DRenderer (IPetRenderer, Update order=801)
     └── CubismPhysicsController (order=800) ← 物理
+
+**配置中心：**
+ChatConfig (静态类) ← 环境变量（DEEPSEEK_API_KEY / GLM_API_KEY / QWEATHER_API_KEY）
+├── ChatManager          ← 读取 DeepSeek BaseUrl + Key
+├── TimeWeatherController ← 读取 QWeatherApiKey
+└── ApiClient            ← 共享 PostRequest / 解析工具（被 ChatManager + IdleChatGenerator 使用）
 ```
 
 **执行顺序：**
@@ -251,7 +265,14 @@ ChatManager (SystemPrompt 注入流程)
 4. **在 Unity 中打开场景** `Assets/Scenes/SampleScene.scene`
    - 检查 `DesktopPet` 对象的 Inspector 中 `Live2DRenderer.modelPrefab` 是否已引用
 
-5. **运行** → 点击 Play
+5. **设置环境变量（API Key 安全存储，v0.12+）**
+   - 打开「编辑系统环境变量」→「用户变量」→「新建」
+   - `DEEPSEEK_API_KEY` = 你的 DeepSeek API Key
+   - `GLM_API_KEY` = 你的智谱 GLM API Key（用于截图分析）
+   - 设置后重启电脑或重新登录使变量生效
+   - 参见 `Assets/Scripts/ChatConfig.cs.example`
+
+6. **运行** → 点击 Play
 
 ## 📦 依赖
 
@@ -308,20 +329,26 @@ ChatManager (SystemPrompt 注入流程)
 
 | 维度 | 现状 | 改进目标 |
 |------|------|---------|
-| **活动感知粒度** | 8 个笼统分类，用 ActivityTracker.PollForeground() 做 GetForegroundWindow 快照 | 将窗口标题实时注入 SystemPrompt，让 DeepSeek 自行理解用户当前活动（如"VS Code 写 Python"、"Edge 看 B 站"） |
-| **多窗口感知** | 仅追踪最顶层窗口，`EnumWindows` 未使用 | 枚举所有可见窗口，分析多任务上下文 |
-| **浏览器深度** | 仅识别进程名（如 msedge.exe） | 集成浏览器插件或 Accessibility API 读取标签页 URL |
-| **性格温婉约束** | SystemPrompt.txt 缺少"不要评判/说教"约束 | 加入温婉指令抑制 AI 的说教倾向 |
-| **傲娇权重** | IdleChatGenerator 的 system prompt 中"傲娇"权重过高 | 平衡"傲"与"娇"的比例，语气更温柔 |
-| **窗口标题利用** | Classify() 后丢弃标题 | 传标题给 AI 用于回复上下文 |
+| **活动感知粒度** | 8 个笼统分类，用 ActivityTracker.PollForeground() 做 GetForegroundWindow 快照 | ✅ 窗口标题已实时注入 SystemPrompt，DeepSeek 可自行理解用户当前活动（如"VS Code 写 Python"、"Edge 看 B 站"） |
+| **多窗口感知** | 仅追踪最顶层窗口，`EnumWindows` 未使用 | ✅ 已实现 EnumWindows 枚举所有可见窗口，每 10s 刷新多窗口摘要注入 SystemPrompt |
+| **浏览器深度** | 仅识别进程名（如 msedge.exe） | ✅ 已集成 Windows UI Automation 读取浏览器标签页标题，无需安装任何插件 |
+| **性格温婉约束** | SystemPrompt.txt 缺少"不要评判/说教"约束 | ✅ 已加入温婉守则章节 |
+| **傲娇权重** | IdleChatGenerator 的 system prompt 中"傲娇"权重过高 | ✅ 已平衡为 3:7（傲:娇），语气更温柔 |
+| **窗口标题利用** | Classify() 后丢弃标题 | ✅ 已实时注入 SystemPrompt，AI 可感知当前窗口 |
 
 **参考开源方案：** [ActivityWatch](https://github.com/ActivityWatch/aw-watcher-window)（⭐ 14k+）是最大的开源时间追踪项目，但其 Windows 实现同样使用
 `GetForegroundWindow` 单窗口追踪。改进方向可借鉴其生态中的浏览器扩展（aw-watcher-web）获取标签页 URL，
 以及 aw-watcher-afk 组件检测空闲状态。
 
-**状态：** ⏳ 待后续优化
+**状态：** 🔧 持续调整中 — API Key 安全化 ✅、活动感知 ✅、性格温婉约束 ✅、傲娇平衡 ✅、配置链路加固 ✅、多窗口感知 ✅、浏览器深度 ✅、API 客户端提取+配置中心化 ✅
 
-**状态：** 🔧 持续调整中
+### 4. 构建脚本编码问题
+
+**现象：** `build.ps1` 在 Windows PowerShell 5.1 上因 UTF-8 without BOM 编码导致语法解析错误，`&` 操作符未被正确识别。
+
+**原因：** PowerShell 5.1 默认无法正确解析不含 BOM 的 UTF-8 脚本文件。VS Code 默认以 UTF-8 without BOM 保存。
+
+**临时方案：** 直接调用 Unity 可执行文件绕过脚本。
 
 ### 3. 视觉特效已移除
 

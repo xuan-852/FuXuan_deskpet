@@ -1226,12 +1226,14 @@ Desktop_per_pro/
 \toprule
 \textbf{维度} & \textbf{现状} & \textbf{改进目标} \\
 \midrule
-活动感知粒度 & 8 个笼统分类（coding/gaming/studying/browsing 等），\texttt{GetForegroundWindow} 快照模式 & 将窗口标题实时注入 SystemPrompt，让 DeepSeek 自行理解用户活动 \\
-多窗口感知 & 仅追踪最顶层窗口，\texttt{EnumWindows} 未使用 & 枚举所有可见窗口，分析多任务上下文 \\
-浏览器深度 & 仅识别进程名 & 集成浏览器插件或 Accessibility API 读取标签页 URL \\
-性格温婉约束 & SystemPrompt.txt 缺少"不要评判/说教"约束 & 加入温婉指令抑制 AI 说教倾向 \\
-傲娇权重 & IdleChatGenerator 的 system prompt 中"傲娇"权重过高 & 平衡"傲"与"娇"的比例，语气更温柔 \\
-窗口标题利用 & \texttt{Classify()} 后丢弃标题 & 传标题给 AI 用于回复上下文 \\
+活动感知粒度 & 8 个笼统分类（coding/gaming/studying/browsing 等），\texttt{GetForegroundWindow} 快照模式 & ✅ 窗口标题已实时注入 SystemPrompt，DeepSeek 可自行理解用户活动 \\
+多窗口感知 & 仅追踪最顶层窗口，\texttt{EnumWindows} 未使用 & ✅ \texttt{EnumWindows} 枚举所有可见窗口，每 10s 刷新多窗口摘要注入 SystemPrompt \\
+浏览器深度 & 仅识别进程名 & ✅ Windows UI Automation 读取浏览器标签页标题，零依赖零安装 \\
+性格温婉约束 & SystemPrompt.txt 缺少"不要评判/说教"约束 & 加入温婉指令抑制 AI 说教倾向（✅ 已修复：SystemPrompt.txt 新增「温婉守则」） \\
+傲娇权重 & IdleChatGenerator 的 system prompt 中"傲娇"权重过高 & 平衡"傲"与"娇"的比例（✅ 已修复：3:7 傲:娇） \\
+窗口标题利用 & \texttt{Classify()} 后丢弃标题 & 传标题给 AI 用于回复上下文（✅ 已修复：ActivityTracker + ChatManager 实时注入） \\
+API Key 配置 & ChatManager / TimeWeatherController 各维护自己的 Key 字符串 & 统一到 ChatConfig 环境变量（✅ 已修复：配置中心化 + PetConfig 去 Key 持久化） \\
+代码重复 & ChatManager / IdleChatGenerator 各维护一套 HTTP/JSON 工具 & 提取到 ApiClient 共享静态类（✅ 已修复：两个调用者均重构使用 ApiClient） \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1333,6 +1335,33 @@ Desktop_per_pro/
            &       & LaTeX 技术文档新增「待改进项」章节\\
            &       & 收录 tools/find_file.py（Python 文件搜索桥）\\
            &       & 更新 .gitignore 排除临时构建文件\\
+2026-07-03 & N23  & \textbf{API Key 安全化 + AI 感知精细化 + 性格温婉约束 + 多窗口感知}\\
+           &       & \texttt{ChatConfig.cs} 中 API Key 改从环境变量读取（\texttt{DEEPSEEK\_API\_KEY} / \texttt{GLM\_API\_KEY}），防反编译泄露\\
+           &       & \texttt{ChatManager/TimeWeatherController} 加 \texttt{[NonSerialized]}，防 Unity 序列化覆盖环境变量\\
+           &       & \texttt{PetConfig} 中去掉 API Key 持久化，环境变量为唯一来源\\
+           &       & \texttt{ActivityTracker} 新增 \texttt{CurrentWindowTitle} / \texttt{CurrentProcessName} 公开接口\\
+           &       & \texttt{BuildSystemPrompt()} 实时注入当前前台窗口标题到 SystemPrompt\\
+           &       & \texttt{ActivityTracker} 新增 \texttt{EnumWindows} 多窗口感知，每 10s 刷新环境摘要\\
+           &       & \texttt{BuildSystemPrompt()} 注入多窗口摘要，AI 了解整体桌面环境\\
+           &       & \texttt{SystemPrompt.txt} 新增「温婉守则」章节，抑制说教倾向\\
+           &       & \texttt{IdleChatGenerator} 平衡傲娇比例为 3:7（傲:娇），语气更温柔\\
+           &       & 更新 README + LaTeX 技术文档\\
+2026-07-03 & N24  & \textbf{浏览器深度感知 — Windows UI Automation 集成}\\
+           &       & \texttt{BrowserTabReader} 新建静态类，通过反射调用 UIAutomationClient.dll 读取 Edge/Chrome/Firefox 标签\\
+           &       & \texttt{ActivityTracker} 新增浏览器标签轮询（每 5s），仅在浏览器前台时刷新\\
+           &       & \texttt{BuildSystemPrompt()} 注入浏览器标签摘要，AI 感知用户在看什么网页\\
+           &       & 更新 README + LaTeX 技术文档\\
+2026-07-03 & N25  & \textbf{API 客户端提取 + 配置中心化 + 构建脚本标准化}\\
+           &       & \texttt{ChatConfig.cs} 新增 \texttt{QWeatherApiKey} / \texttt{QWeatherApiBaseUrl}\\
+           &       & \texttt{TimeWeatherController.qWeatherKey} 改为 $\Rightarrow$ \texttt{ChatConfig.QWeatherApiKey}，去硬编码\\
+           &       & \texttt{PetConfig} 移除 \texttt{qWeatherKey} 持久化（环境变量为唯一来源）\\
+           &       & \texttt{ApiClient.cs} 新建共享静态类：\texttt{PostRequest} / \texttt{EscapeJson} / \texttt{ExtractContent} / \texttt{ExtractErrorMessage} / \texttt{ExtractSimpleString}\\
+           &       & \texttt{IdleChatGenerator} 重构使用 \texttt{ApiClient}，删除 5 个冗余方法\\
+           &       & \texttt{ChatManager} 重构使用 \texttt{ApiClient}，删除 5 个冗余方法 + 记忆反思改用 \texttt{ApiClient.PostRequest}\\
+           &       & 删除 \texttt{UnityEngine.Networking} 冗余导入\\
+           &       & \texttt{build.ps1} 创建 + \texttt{BuildScript.VerifyCompile()} + \texttt{.vscode/tasks.json} 更新\\
+           &       & \texttt{BrowserTabReader} 增加 \texttt{IsAvailable} 降级标记，UIA 不可用时返回"感知不可用"\\
+           &       & 更新 README + LaTeX 技术文档\\
 \bottomrule
 \end{tabular}
 \end{table}

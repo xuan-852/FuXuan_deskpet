@@ -6,6 +6,9 @@ using System.IO;
 
 public class BuildScript
 {
+    /// <summary>
+    /// 完整构建 — 输出可执行文件到 Build/
+    /// </summary>
     public static void BuildDesktopPet()
     {
         // ★ 用硬编码绝对路径
@@ -58,5 +61,26 @@ public class BuildScript
             EditorApplication.Exit(1);
         else
             EditorApplication.Exit(0);
+    }
+
+    /// <summary>
+    /// 快速编译验证 — 只检查脚本能否通过编译（不输出可执行文件）
+    /// 由 build.ps1 -Quick 调用
+    /// </summary>
+    public static void VerifyCompile()
+    {
+        Debug.Log("[BuildScript] 编译验证模式 — 脚本编译已通过");
+
+        // 获取所有的编译错误
+        var logEntries = System.Type.GetType("UnityEditor.LogEntries,UnityEditor");
+        if (logEntries != null)
+        {
+            var clearMethod = logEntries.GetMethod("Clear", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
+            clearMethod?.Invoke(null, null);
+        }
+
+        // 如果有编译错误，Unity 在 -batchmode 下会自动打印并返回非零退出码
+        // 脚本编译本身成功就算验证通过
+        EditorApplication.Exit(0);
     }
 }

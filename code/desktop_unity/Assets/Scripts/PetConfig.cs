@@ -13,14 +13,12 @@ public class PetConfig : MonoBehaviour
     {
         // ===== API =====
         public string apiUrl = "https://api.deepseek.com";
-        public string apiKey = "";
         public string model = "deepseek-chat";
 
         // ===== 天气 =====
         public int weatherSource = 1;          // 0=WttrIn, 1=QWeather
         public float weatherUpdateInterval = 300f;
         public string cityCode = "";
-        public string qWeatherKey = "3bf5e712994a4671a939581fc85b2f75";
         public int debugHourOverride = -1;
 
         // ===== 地面任务权重 =====
@@ -101,7 +99,6 @@ public class PetConfig : MonoBehaviour
         if (chat != null)
         {
             chat.apiUrl = data.apiUrl;
-            if (!string.IsNullOrEmpty(data.apiKey)) chat.apiKey = data.apiKey;
             chat.model = data.model;
         }
 
@@ -112,7 +109,6 @@ public class PetConfig : MonoBehaviour
             twc.weatherSource = (TimeWeatherController.WeatherSource)data.weatherSource;
             twc.weatherUpdateInterval = data.weatherUpdateInterval;
             twc.cityCode = data.cityCode;
-            if (!string.IsNullOrEmpty(data.qWeatherKey)) twc.qWeatherKey = data.qWeatherKey;
             twc.debugHourOverride = data.debugHourOverride;
         }
 
@@ -139,7 +135,6 @@ public class PetConfig : MonoBehaviour
         if (chat != null)
         {
             data.apiUrl = chat.apiUrl;
-            data.apiKey = chat.apiKey;
             data.model = chat.model;
         }
 
@@ -149,7 +144,6 @@ public class PetConfig : MonoBehaviour
             data.weatherSource = (int)twc.weatherSource;
             data.weatherUpdateInterval = twc.weatherUpdateInterval;
             data.cityCode = twc.cityCode;
-            data.qWeatherKey = twc.qWeatherKey;
             data.debugHourOverride = twc.debugHourOverride;
         }
 
