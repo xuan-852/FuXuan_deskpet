@@ -118,6 +118,10 @@ public class WindowOverlay : MonoBehaviour
 
     private const int SM_CXSCREEN = 0;
     private const int SM_CYSCREEN = 1;
+    private const int SM_XVIRTUALSCREEN = 76;
+    private const int SM_YVIRTUALSCREEN = 77;
+    private const int SM_CXVIRTUALSCREEN = 78;
+    private const int SM_CYVIRTUALSCREEN = 79;
     private const uint SPI_GETWORKAREA = 0x0030;
 
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
@@ -211,15 +215,48 @@ public class WindowOverlay : MonoBehaviour
     private int startupDelayFrames => _startupDelayFrames;
 
     /// <summary>
-    /// 获取全屏尺寸（覆盖整个屏幕，包括任务栏区域）
+    /// 是否启用多显示器虚拟桌面模式
+    /// </summary>
+    public bool isMultiMonitor { get; private set; } = false;
+
+    /// <summary>
+    /// 虚拟桌面原点 X（主屏不一定是左起时可能为负）
+    /// </summary>
+    public int virtualScreenX { get; private set; } = 0;
+    public int virtualScreenY { get; private set; } = 0;
+
+    /// <summary>
+    /// 主显示器尺寸（始终以 (0,0) 为原点）
+    /// </summary>
+    public int primaryScreenWidth { get; private set; } = 0;
+    public int primaryScreenHeight { get; private set; } = 0;
+
+    /// <summary>
+    /// 获取全屏尺寸 — 多显示器时覆盖整个虚拟桌面（所有显示器的包围盒）
+    /// 单显示器时行为不变（兼容原有逻辑）
     /// </summary>
     private void GetFullScreenSize(out int w, out int h, out int originX, out int originY)
     {
-        w = GetSystemMetrics(SM_CXSCREEN);
-        h = GetSystemMetrics(SM_CYSCREEN);
-        originX = 0;
-        originY = 0;
-        Log($"全屏尺寸: {w}x{h}");
+        // 使用虚拟桌面尺寸：覆盖所有显示器
+        w = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        originX = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        originY = GetSystemMetrics(SM_YVIRTUALSCREEN);
+
+        // 记录主屏尺寸（DesktopPet 的地面检测等需要）
+        primaryScreenWidth = GetSystemMetrics(SM_CXSCREEN);
+        primaryScreenHeight = GetSystemMetrics(SM_CYSCREEN);
+
+        // 判断是否多显示器：虚拟桌面比主屏大
+        isMultiMonitor = (w != primaryScreenWidth || h != primaryScreenHeight || originX != 0 || originY != 0);
+
+        virtualScreenX = originX;
+        virtualScreenY = originY;
+
+        if (isMultiMonitor)
+            Log($"🖥️ 多显示器模式: 虚拟桌面 ({originX},{originY}) {w}x{h}, 主屏 {primaryScreenWidth}x{primaryScreenHeight}");
+        else
+            Log($"全屏尺寸: {w}x{h}");
     }
 
     /// <summary>
@@ -335,6 +372,27 @@ public class WindowOverlay : MonoBehaviour
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, w, h, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
         _applied = true;
+
+        // ★ 多显示器模式下，将宠物置于主屏区域
+        if (isMultiMonitor)
+        {
+            DesktopPet pet = GetComponent<DesktopPet>();
+            if (pet != null)
+            {
+                // 水平偏移：左侧有外接显示器时 petX 落在左屏，需右移到主屏
+                if (virtualScreenX < 0)
+                {
+                    pet.petX += Mathf.Abs(virtualScreenX);
+                }
+                // 垂直偏移：主屏底部在屏幕坐标 = |-virtualScreenY| + primaryScreenHeight
+                // (主屏始终在物理 (0,0)，屏幕原点=虚拟桌面原点=(-virtualScreenX, -virtualScreenY))
+                int primaryBottom = Mathf.Abs(virtualScreenY) + primaryScreenHeight;
+                pet.petY = primaryBottom - pet.petHeight;
+                pet.onGround = true;
+                pet.petVy = 0;
+                Log($"多显示器偏移: ({pet.petX},{pet.petY}) 主屏 {primaryScreenWidth}x{primaryScreenHeight}");
+            }
+        }
 
         // ★ 启动时开启穿透，让桌面点击正常通过。
         SetClickThrough(true);
@@ -578,6 +636,16 @@ public class WindowOverlay : MonoBehaviour
                 }
                 ApplyNow(); // 重建 DWM 玻璃层
                 _suspended = false; // ★ 重建完成后才恢复 Win32 调用
+
+                // ★ 同步恢复 DesktopPet 物理状态（OnApplicationPause 可能未被调用）
+                DesktopPet pet = GetComponent<DesktopPet>();
+                if (pet != null)
+                {
+                    pet.isPaused = false;
+                    pet.onGround = false; // 强制重新找地面
+                    UnityEngine.Debug.Log("[WindowOverlay] ✅ 已恢复 DesktopPet 物理状态");
+                }
+
                 UnityEngine.Debug.Log("[WindowOverlay] ✅ 唤醒恢复完成，Win32 调用已恢复");
             });
         }

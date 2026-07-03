@@ -710,7 +710,9 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
 
         // 累积走路相位并计算垂直颠簸偏移
-        if (_pet != null && _pet.onGround && _pet.petVx != 0)
+        // ★ 暂停时也清零，防止睡眠唤醒后宠物在原地上下颠簸
+        bool isPhysActive = (_pet != null && !_pet.isPaused);
+        if (isPhysActive && _pet != null && _pet.onGround && _pet.petVx != 0)
         {
             _walkPhase += Time.deltaTime * WALK_SWAY_FREQ;
             // 限制范围防精度损失（≈1个完整周期）
