@@ -1,0 +1,10 @@
+{
+  "name": "happy",
+  "fadeIn": 0.25,
+  "fadeOut": 0.3,
+  "parameters": [
+    { "s": "eye_l_smile", "v": 0.6 },
+    { "s": "eye_r_smile", "v": 0.6 },
+    { "s": "mouth_form", "v": 0.35 }
+  ]
+}

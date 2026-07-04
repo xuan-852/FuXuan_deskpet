@@ -1,9 +1,0 @@
-/// <summary>
-/// API 密钥配置示例
-/// 复制本文件重命名为 ChatConfig.cs，填入你的 Key
-/// </summary>
-public static class ChatConfig
-{
-    /// <summary>你的 API Key（如 DeepSeek / OpenAI / 其他兼容 API）</summary>
-    public const string ApiKey = "";
-}

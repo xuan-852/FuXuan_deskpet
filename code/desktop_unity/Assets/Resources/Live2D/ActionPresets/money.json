@@ -1,0 +1,36 @@
+{
+  "name": "money",
+  "lockMovement": true,
+  "globalFadeIn": 0.2,
+  "globalFadeOut": 0.3,
+  "phases": [
+    {
+      "duration": 0.6,
+      "curve": "easeOutQuad",
+      "targets": [
+        { "s": "special_money", "v": 1 },
+        { "s": "eye_l_smile", "v": 0.7 },
+        { "s": "eye_r_smile", "v": 0.7 },
+        { "s": "mouth_form", "v": 0.4 },
+        { "s": "head_angle_z", "v": 10 },
+        { "s": "body_angle_z", "v": 5 },
+        { "s": "brow_r_y", "v": 4 },
+        { "s": "brow_l_y", "v": 4 }
+      ]
+    },
+    {
+      "duration": 3.0,
+      "curve": "trapezoid",
+      "targets": [
+        { "s": "special_money", "v": 1 },
+        { "s": "eye_l_smile", "v": 0.7 },
+        { "s": "eye_r_smile", "v": 0.7 },
+        { "s": "mouth_form", "v": 0.4 },
+        { "s": "head_angle_z", "v": 10 },
+        { "s": "body_angle_z", "v": 5 },
+        { "s": "brow_r_y", "v": 4 },
+        { "s": "brow_l_y", "v": 4 }
+      ]
+    }
+  ]
+}

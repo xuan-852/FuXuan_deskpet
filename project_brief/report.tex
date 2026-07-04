@@ -117,6 +117,8 @@
     \item 开机自启（系统托盘一键设置）
     \item 调试窗口实时调参
     \item 3D 模型渲染管线预留（HybridRenderer 双渲染器交叉淡入淡出）
+    \item \textbf{睡眠唤醒自动恢复}：时间间隙检测 + 延迟 2s 重建 DWM + 恢复物理状态
+    \item \textbf{DWM 崩溃安全模式}：连续崩溃跳过 DWM 玻璃层重建
 \end{itemize}
 
 % ═══════════════════════════════════════════
@@ -526,12 +528,27 @@ StopTime      & 6   & 停止随机时长 (6-15s) \\
 委屈   & 3 & 9.7\% \\
 法阵   & 1 & 3.2\% \\
 害羞   & 3 & 9.7\% \\
-困惑   & 0 & 0\%（仅 AI 触发） \\
+困惑   & 0 & 0.0\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \textbf{暂停时}：\texttt{isPaused = true} 时不播新动作（菜单打开时冻结动作循环）。
+
+\subsubsection{睡眠唤醒恢复}
+
+Windows 睡眠/唤醒后，Unity 的 \texttt{OnApplicationPause} 在某些系统上不可靠
+（Deepin/统信 UOS 不触发，Windows 特定环境偶发不触发）。
+\texttt{WindowOverlay} 通过帧间时间间隙检测（\texttt{Time.realtimeSinceStartup} 差值）
+来补偿唤醒恢复：
+
+\begin{itemize}
+    \item \texttt{OnResumeFromSleep()} 被 \texttt{DesktopPet.Update()} 在检测到时间间隙后调用
+    \item 保持 \texttt{\_suspended = true} 禁止所有 Win32 调用（SetWindowLong/SetWindowPos）
+    \item 延迟 2 秒重建窗口设置，等待 DWM/GPU 驱动完全恢复
+    \item 连续崩溃安全模式：\texttt{PlayerPrefs.\_skip\_dwm\_rebuild} 跳过 DWM 玻璃层重建
+    \item 重建完成后同步恢复：\texttt{pet.isPaused = false}, \texttt{pet.onGround = false}（强制重新找地面）
+\end{itemize}
 
 \subsection{走路动画}
 
@@ -550,6 +567,8 @@ StopTime      & 6   & 停止随机时长 (6-15s) \\
             \item \textbf{左臂}：Param34/36/37（左臂，范围 [-1,1]），$\text{rightPhase}\times 0.4$
         \end{itemize}
     \item \textbf{颠簸}：$1 - |\sin(\text{phase})|\times 4\,\text{px}$（迈步时最低）
+    \item \textbf{暂停时归零}：\texttt{isPaused = true} 时 \texttt{\_walkPhase} 和 \texttt{\_walkBounceOffset} 立即清零，防止睡眠唤醒后原地上下颠簸
+    \item \textbf{isPhysActive 守卫}：新增 \texttt{isPhysActive = (\_pet != null \&\& !\_pet.isPaused)} 布尔判断，仅在物理活跃且在地面且有水平速度时累积走路相位
     \item \textbf{呼吸加深}：ParamBreath = 3 + 相位波
 \end{itemize}
 
@@ -1211,6 +1230,39 @@ Desktop_per_pro/
 \end{itemize}
 
 % ═══════════════════════════════════════════
+\section{待改进项}
+% ═══════════════════════════════════════════
+
+\subsection{AI 活动感知与性格优化}
+
+当前 AI 活动感知和性格表达存在以下改进空间：
+
+\begin{table}[H]
+\centering
+\caption{AI 活动感知改进方向}
+\label{tab:ai-improvements}
+\begin{tabular}{p{0.2\textwidth}p{0.35\textwidth}p{0.35\textwidth}}
+\toprule
+\textbf{维度} & \textbf{现状} & \textbf{改进目标} \\
+\midrule
+活动感知粒度 & 8 个笼统分类（coding/gaming/studying/browsing 等），\texttt{GetForegroundWindow} 快照模式 & ✅ 窗口标题已实时注入 SystemPrompt，DeepSeek 可自行理解用户活动 \\
+多窗口感知 & 仅追踪最顶层窗口，\texttt{EnumWindows} 未使用 & ✅ \texttt{EnumWindows} 枚举所有可见窗口，每 10s 刷新多窗口摘要注入 SystemPrompt \\
+浏览器深度 & 仅识别进程名 & ✅ Windows UI Automation 读取浏览器标签页标题，零依赖零安装 \\
+性格温婉约束 & SystemPrompt.txt 缺少"不要评判/说教"约束 & 加入温婉指令抑制 AI 说教倾向（✅ 已修复：SystemPrompt.txt 新增「温婉守则」） \\
+傲娇权重 & IdleChatGenerator 的 system prompt 中"傲娇"权重过高 & 平衡"傲"与"娇"的比例（✅ 已修复：3:7 傲:娇） \\
+窗口标题利用 & \texttt{Classify()} 后丢弃标题 & 传标题给 AI 用于回复上下文（✅ 已修复：ActivityTracker + ChatManager 实时注入） \\
+API Key 配置 & ChatManager / TimeWeatherController 各维护自己的 Key 字符串 & 统一到 ChatConfig 环境变量（✅ 已修复：配置中心化 + PetConfig 去 Key 持久化） \\
+代码重复 & ChatManager / IdleChatGenerator 各维护一套 HTTP/JSON 工具 & 提取到 ApiClient 共享静态类（✅ 已修复：两个调用者均重构使用 ApiClient） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{参考开源方案：} \href{https://github.com/ActivityWatch/aw-watcher-window}{ActivityWatch}（GitHub 14k+ stars）是最大的开源时间追踪项目，
+但其 Windows 实现同样使用 \texttt{GetForegroundWindow} 单窗口追踪。
+改进方向可借鉴其生态中的浏览器扩展 aw-watcher-web 获取标签页 URL，
+以及 aw-watcher-afk 组件检测空闲状态。
+
+% ═══════════════════════════════════════════
 \section{版本历史}
 % ═══════════════════════════════════════════
 
@@ -1297,6 +1349,43 @@ Desktop_per_pro/
            &       & Live2DRenderer 方向切换改为 \texttt{Mathf.Lerp} 平滑渐变（\texttt{TURN\_SPEED=10}），消除 180° 瞬间翻转\\
            &       & petVx=0 时保持最后朝向，不自动恢复默认\\
            &       & 目录树格式修复，更新 README + LaTeX 技术文档\\
+2026-07-02 & N22  & \textbf{文档整理：记录 AI 活动感知与性格优化待改进事项}\\
+           &       & README 新增已知问题第 3 条「AI 活动感知与性格优化」\\
+           &       & LaTeX 技术文档新增「待改进项」章节\\
+           &       & 收录 tools/find\_file.py（Python 文件搜索桥）\\
+           &       & 更新 .gitignore 排除临时构建文件\\
+2026-07-03 & N23  & \textbf{API Key 安全化 + AI 感知精细化 + 性格温婉约束 + 多窗口感知}\\
+           &       & \texttt{ChatConfig.cs} 中 API Key 改从环境变量读取（\texttt{DEEPSEEK\_API\_KEY} / \texttt{GLM\_API\_KEY}），防反编译泄露\\
+           &       & \texttt{ChatManager/TimeWeatherController} 加 \texttt{[NonSerialized]}，防 Unity 序列化覆盖环境变量\\
+           &       & \texttt{PetConfig} 中去掉 API Key 持久化，环境变量为唯一来源\\
+           &       & \texttt{ActivityTracker} 新增 \texttt{CurrentWindowTitle} / \texttt{CurrentProcessName} 公开接口\\
+           &       & \texttt{BuildSystemPrompt()} 实时注入当前前台窗口标题到 SystemPrompt\\
+           &       & \texttt{ActivityTracker} 新增 \texttt{EnumWindows} 多窗口感知，每 10s 刷新环境摘要\\
+           &       & \texttt{BuildSystemPrompt()} 注入多窗口摘要，AI 了解整体桌面环境\\
+           &       & \texttt{SystemPrompt.txt} 新增「温婉守则」章节，抑制说教倾向\\
+           &       & \texttt{IdleChatGenerator} 平衡傲娇比例为 3:7（傲:娇），语气更温柔\\
+           &       & 更新 README + LaTeX 技术文档\\
+2026-07-03 & N24  & \textbf{浏览器深度感知 — Windows UI Automation 集成}\\
+           &       & \texttt{BrowserTabReader} 新建静态类，通过反射调用 UIAutomationClient.dll 读取 Edge/Chrome/Firefox 标签\\
+           &       & \texttt{ActivityTracker} 新增浏览器标签轮询（每 5s），仅在浏览器前台时刷新\\
+           &       & \texttt{BuildSystemPrompt()} 注入浏览器标签摘要，AI 感知用户在看什么网页\\
+           &       & 更新 README + LaTeX 技术文档\\
+2026-07-03 & N25  & \textbf{API 客户端提取 + 配置中心化 + 构建脚本标准化}\\
+           &       & \texttt{ChatConfig.cs} 新增 \texttt{QWeatherApiKey} / \texttt{QWeatherApiBaseUrl}\\
+           &       & \texttt{TimeWeatherController.qWeatherKey} 改为 $\Rightarrow$ \texttt{ChatConfig.QWeatherApiKey}，去硬编码\\
+           &       & \texttt{PetConfig} 移除 \texttt{qWeatherKey} 持久化（环境变量为唯一来源）\\
+           &       & \texttt{ApiClient.cs} 新建共享静态类：\texttt{PostRequest} / \texttt{EscapeJson} / \texttt{ExtractContent} / \texttt{ExtractErrorMessage} / \texttt{ExtractSimpleString}\\
+           &       & \texttt{IdleChatGenerator} 重构使用 \texttt{ApiClient}，删除 5 个冗余方法\\
+           &       & \texttt{ChatManager} 重构使用 \texttt{ApiClient}，删除 5 个冗余方法 + 记忆反思改用 \texttt{ApiClient.PostRequest}\\
+           &       & 删除 \texttt{UnityEngine.Networking} 冗余导入\\
+           &       & \texttt{build.ps1} 创建 + \texttt{BuildScript.VerifyCompile()} + \texttt{.vscode/tasks.json} 更新\\
+           &       & \texttt{BrowserTabReader} 增加 \texttt{IsAvailable} 降级标记，UIA 不可用时返回"感知不可用"\\
+           &       & 更新 README + LaTeX 技术文档\\
+2026-07-03 & N26  & \textbf{修复睡眠唤醒后宠物上下颠簸}\\
+           &       & \texttt{WindowOverlay.OnResumeFromSleep()} 延迟 2s 重建 DWM，恢复 \texttt{pet.isPaused = false} 和 \texttt{pet.onGround = false}\\
+           &       & \texttt{Live2DRenderer.Update()} 新增 \texttt{isPhysActive} 守卫，暂停时清零 \texttt{\_walkPhase} 和 \texttt{\_walkBounceOffset}\\
+           &       & 连续崩溃安全模式（\texttt{PlayerPrefs.\_skip\_dwm\_rebuild} 跳过 DWM 重建）\\
+           &       & 更新 LaTeX 技术文档\\
 \bottomrule
 \end{tabular}
 \end{table}

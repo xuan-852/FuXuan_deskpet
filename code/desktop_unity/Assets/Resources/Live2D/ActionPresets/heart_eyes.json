@@ -1,0 +1,36 @@
+{
+  "name": "heart_eyes",
+  "lockMovement": true,
+  "globalFadeIn": 0.2,
+  "globalFadeOut": 0.3,
+  "phases": [
+    {
+      "duration": 0.5,
+      "curve": "easeOutQuad",
+      "targets": [
+        { "s": "eye_heart", "v": 1 },
+        { "s": "eye_l_smile", "v": 0.8 },
+        { "s": "eye_r_smile", "v": 0.8 },
+        { "s": "mouth_form", "v": 0.5 },
+        { "s": "head_angle_z", "v": 8 },
+        { "s": "body_angle_z", "v": 4 },
+        { "s": "brow_r_y", "v": 3 },
+        { "s": "brow_l_y", "v": 3 }
+      ]
+    },
+    {
+      "duration": 2.5,
+      "curve": "trapezoid",
+      "targets": [
+        { "s": "eye_heart", "v": 1 },
+        { "s": "eye_l_smile", "v": 0.8 },
+        { "s": "eye_r_smile", "v": 0.8 },
+        { "s": "mouth_form", "v": 0.5 },
+        { "s": "head_angle_z", "v": 8 },
+        { "s": "body_angle_z", "v": 4 },
+        { "s": "brow_r_y", "v": 3 },
+        { "s": "brow_l_y", "v": 3 }
+      ]
+    }
+  ]
+}

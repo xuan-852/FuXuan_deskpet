@@ -1,11 +1,52 @@
 # ================
 # Unity 项目
 # ================
-code/desktop unity/[Ll]ibrary/
-code/desktop unity/[Tt]emp/
-code/desktop unity/[Oo]bj/
-code/desktop unity/[Bb]uild/
-code/desktop unity/[Bb]uilds/
+code/desktop_unity/[Ll]ibrary/
+[Ll]ibrary/
+code/desktop_unity/[Tt]emp/
+code/desktop_unity/[Oo]bj/
+code/desktop_unity/[Bb]uild/
+[Bb]uild/
+code/desktop_unity/[Bb]uilds/
+
+# ================
+# 运行日志 / 崩溃日志 / 测试日志
+# ================
+crash_log*.txt
+run_log*.txt
+editor_test*.txt
+
+# ================
+# 密钥文件（仅追踪 .example 模板）
+# ================
+code/desktop_unity/Assets/Scripts/ChatConfig.cs
+code/desktop_unity/Assets/Scripts/ChatConfig.cs.meta
+"code/desktop unity/Assets/Scripts/ChatConfig.cs"
+"code/desktop unity/Assets/Scripts/ChatConfig.cs.meta"
+code/desktop_unity/.codely-cli/
+code/desktop_unity/.codely/
+code/desktop_unity/.codelyignore
+code/desktop_unity/.com-unity-codely.json
+code/desktop_unity/.sln
+code/desktop_unity/*.csproj
+code/desktop_unity/*.sln
+code/desktop_unity/screenshots/
+code/desktop_unity/desktop_pet_magic_circle_params_v2.txt
+code/desktop_unity/.codely-cli.bak/
+code/desktop_unity/.vscode/
+
+# ================
+# 构建辅助
+# ================
+build_temp.cmd
+build_now.cmd
+build_log*.old
+
+# ================
+# VS Code 配置
+# ================
+.vscode/
+.instructions.md
 
 # ================
 # LaTeX 构建产物
@@ -21,19 +62,19 @@ project_brief/*.fdb_latexmk
 # ================
 # Unity 构建日志
 # ================
-code/desktop unity/build_log.txt
+code/desktop_unity/build_log.txt
 build_log*.txt
 build_*.txt
 [Bb]uild/
-code/desktop unity/[Ll]ogs/
-code/desktop unity/[Uu]ser[Ss]ettings/
-code/desktop unity/*.csproj
-code/desktop unity/*.sln
-code/desktop unity/*.user
-code/desktop unity/*.userprefs
-code/desktop unity/*.unityproj
-code/desktop unity/*.pidb
-code/desktop unity/*.booproj
+code/desktop_unity/[Ll]ogs/
+code/desktop_unity/[Uu]ser[Ss]ettings/
+code/desktop_unity/*.csproj
+code/desktop_unity/*.sln
+code/desktop_unity/*.user
+code/desktop_unity/*.userprefs
+code/desktop_unity/*.unityproj
+code/desktop_unity/*.pidb
+code/desktop_unity/*.booproj
 code/desktop unity/*.svd
 
 # ================

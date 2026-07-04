@@ -1,0 +1,13 @@
+{
+  "name": "surprise",
+  "fadeIn": 0.15,
+  "fadeOut": 0.3,
+  "parameters": [
+    { "s": "brow_r_y", "v": 6 },
+    { "s": "brow_l_y", "v": 6 },
+    { "s": "eye_l_open", "v": 1.2 },
+    { "s": "eye_r_open", "v": 1.2 },
+    { "s": "mouth_open_y", "v": 0.4 },
+    { "s": "mouth_form", "v": 0.1 }
+  ]
+}

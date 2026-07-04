@@ -1,0 +1,40 @@
+{
+  "name": "cry",
+  "lockMovement": true,
+  "globalFadeIn": 0.3,
+  "globalFadeOut": 0.5,
+  "phases": [
+    {
+      "duration": 0.8,
+      "curve": "easeOutQuad",
+      "targets": [
+        { "s": "special_tear", "v": 1 },
+        { "s": "brow_r_y", "v": 6 },
+        { "s": "brow_l_y", "v": 6 },
+        { "s": "brow_r_angle", "v": -3 },
+        { "s": "brow_l_angle", "v": -3 },
+        { "s": "mouth_form", "v": 0.3 },
+        { "s": "head_angle_y", "v": 5 },
+        { "s": "head_angle_x", "v": -3 },
+        { "s": "eye_l_open", "v": 1.1 },
+        { "s": "eye_r_open", "v": 1.1 }
+      ]
+    },
+    {
+      "duration": 3.0,
+      "curve": "sin",
+      "targets": [
+        { "s": "special_tear", "v": 1 },
+        { "s": "brow_r_y", "v": 6 },
+        { "s": "brow_l_y", "v": 6 },
+        { "s": "brow_r_angle", "v": -3 },
+        { "s": "brow_l_angle", "v": -3 },
+        { "s": "mouth_form", "v": 0.3 },
+        { "s": "head_angle_y", "v": 5 },
+        { "s": "head_angle_x", "v": -3 },
+        { "s": "eye_l_open", "v": 1.1 },
+        { "s": "eye_r_open", "v": 1.1 }
+      ]
+    }
+  ]
+}

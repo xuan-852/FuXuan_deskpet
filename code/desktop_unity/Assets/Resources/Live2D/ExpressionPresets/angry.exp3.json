@@ -1,0 +1,13 @@
+{
+  "name": "angry",
+  "fadeIn": 0.2,
+  "fadeOut": 0.35,
+  "parameters": [
+    { "s": "special_angry", "v": 0.8 },
+    { "s": "brow_r_y", "v": -4 },
+    { "s": "brow_l_y", "v": -4 },
+    { "s": "mouth_form", "v": -0.2 },
+    { "s": "eye_l_open", "v": 1.1 },
+    { "s": "eye_r_open", "v": 1.1 }
+  ]
+}

@@ -1,0 +1,1391 @@
+\documentclass[12pt,a4paper]{ctexart}
+
+% ── 编码与字体 ──
+\usepackage{amsmath,amssymb}
+
+% ── 页面设置 ──
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+
+% ── 插图与表格 ──
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{booktabs}
+\usepackage{array}
+
+% ── 颜色与链接 ──
+\usepackage[colorlinks=true,linkcolor=blue,urlcolor=blue]{hyperref}
+
+% ── 代码高亮 ──
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+    language=C++,
+    basicstyle=\small\ttfamily,
+    backgroundcolor=\color{gray!5},
+    frame=single,
+    breaklines=true,
+    numbers=left,
+    numberstyle=\tiny,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red!50!orange},
+    tabsize=4,
+    captionpos=b
+}
+
+\lstdefinestyle{csharp}{
+    language=[Sharp]C,
+    basicstyle=\small\ttfamily,
+    backgroundcolor=\color{gray!5},
+    frame=single,
+    breaklines=true,
+    numbers=left,
+    numberstyle=\tiny,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red!50!orange},
+    tabsize=4,
+    captionpos=b
+}
+
+\title{\vspace{-2cm}Desktop Pet --- 桌面宠物技术文档}
+\author{符玄桌宠项目}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+本文档为桌面宠物项目的完整技术文档。项目基于 Unity 2022.3 LTS 引擎，
+使用 Live2D Cubism SDK 5-r.4 渲染《崩坏：星穹铁道》角色「符玄」，
+通过 DWM 玻璃层透明窗口 (DwmExtendFrameIntoClientArea) 实现桌面宠物效果。
+文档涵盖系统架构、各模块设计、动画系统、状态机及交互机制。
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ═══════════════════════════════════════════
+\section{项目概述}
+% ═══════════════════════════════════════════
+
+\subsection{项目背景}
+
+原桌面宠物程序基于 Windows GDI+ 分层窗口技术（\texttt{text1.c}），使用静态 PNG 图片硬切换模拟动画。
+本项目将其迁移至 Unity 引擎，利用 Live2D Cubism SDK 实现参数化变形动画，
+获得更流畅的视觉效果和更丰富的交互能力。
+
+\subsection{技术栈}
+
+\begin{itemize}
+    \item \textbf{引擎}：Unity 2022.3.62t7 (LTS)
+    \item \textbf{角色渲染}：Live2D Cubism SDK 5-r.4（参数化变形 + 实时物理模拟）
+    \item \textbf{窗口管理}：Win32 API（user32.dll + Dwmapi.dll）--- DWM 玻璃层透明、置顶、点击穿透
+    \item \textbf{交互方式}：左键拖拽/抛掷、右键上下文菜单、底部 AI 聊天输入栏
+    \item \textbf{语言}：C\# 脚本
+    \item \textbf{平台}：Windows 10/11（Win64）
+\end{itemize}
+
+\subsection{项目状态}
+
+功能已完成：
+\begin{itemize}
+    \item Live2D 模型加载与渲染（自动 AssetDatabase / Resources 双路径）
+    \item 桌面透明窗口（DWM 玻璃层扩展 DwmExtendFrameIntoClientArea，黑色=透明）
+    \item 鼠标穿透动态管理（WS\_EX\_TRANSPARENT）
+    \item 像素物理引擎（重力、边界碰撞、抛掷）
+    \item 地面任务状态机（5 种行为加权随机切换）
+    \item 走路动画（侧身转体 + 腿臂交叉摆动 + 上下颠簸 + 体态淡入淡出）
+    \item 11 种空闲动作循环（歪头、微笑、挑眉、星辉、伸懒腰、爱心、数钱、委屈、法阵、害羞、困惑）
+    \item 右键上下文菜单（权重调整 + 强制动作播放）
+    \item 强制动作锁定机制（播放期间不被走路覆盖，播完自动恢复）
+    \item 分区点击反馈（头部/身体/腿部 3 区不同反应）
+    \item 拖拽挣扎动画（双臂交替划水 + 双腿交替 + 身体扭动 + 表情）
+    \item 头发/裙子/法盘直接物理驱动（拖拽速度实时输入 CubismPhysics）
+    \item 时间/天气响应系统（昼夜犯困眼皮 + 天气表情基调 + 待机气泡）
+    \item AI 对话 + 自动闲聊 + 底部输入栏（DeepSeek Function Calling，28+ 工具，含协程异步）
+    \item 气泡优先级系统（High/Normal/Low，防止 AI 回复被问候覆盖）
+    \item 服务端推送轮询（定时查询 Node.js 推送队列）
+    \item 微信小程序数据打通（成绩/课表/考试/学业概览实时查询）
+    \item 性能监控（FPS/CPU/内存 + 自适应降频）
+    \item 开机自启（系统托盘一键设置）
+    \item 调试窗口实时调参
+    \item 3D 模型渲染管线预留（HybridRenderer 双渲染器交叉淡入淡出）
+\end{itemize}
+
+% ═══════════════════════════════════════════
+\section{系统架构}
+% ═══════════════════════════════════════════
+
+\subsection{整体架构}
+
+\begin{lstlisting}[frame=single,numbers=none,style=csharp]
++-----------------------------------------------------------------+
+|            Unity 窗口 (DWM 玻璃层透明)                           |
+|  +-----------------------------------------------------------+  |
+|  |  Camera (Clear=SolidColor, BG=纯黑 0,0,0,0)                |  |
+|  |                                                              |  |
+|  |  DesktopPet (主控)                                          |  |
+|  |    +-- 像素物理 (重力/碰撞/落地)                             |  |
+|  |    +-- 地面任务状态机 (加权随机选择)                          |  |
+|  |                                                              |  |
+|  |  DragHandler (交互)                                         |  |
+|  |    +-- 左键拖拽/抛掷                                        |  |
+|  |    +-- 右键菜单开关                                          |  |
+|  |    +-- 点击穿透管理 (每帧)                                   |  |
+|  |                                                              |  |
+|  |  Live2DRenderer (渲染, order=801)                           |  |
+|  |    +-- CubismModel 参数驱动                                  |  |
+|  |    +-- 眨眼/呼吸/Perlin 噪声微动                             |  |
+|  |    +-- 空闲动作 1-11 循环                                    |  |
+|  |    +-- 走路动画 (转体/抬腿/颠簸/淡入淡出)                   |  |
+|  |    +-- 强制动作锁定 (actionLocked)                           |  |
+|  |    +-- 拖拽挣扎 (双臂划水+双腿交替+速度驱动物理)             |  |
+|  |    +-- 时间/天气表情联动                                     |  |
+|  |                                                              |  |
+|  |  ContextMenu (UI)                                           |  |
+|  |    +-- 设置/动作/聊天 3 标签                                 |  |
+|  |    +-- 权重调整 + 强制动作按钮                              |  |
+|  |    +-- 聊天标签: 仅输入框+发送按钮                           |  |
+|  |    +-- OnGUI 直接绘制                                       |  |
+|  |                                                              |  |
+|  |  WindowOverlay (Win32)                                      |  |
+|  |    +-- DwmExtendFrameIntoClientArea (玻璃层透明)             |  |
+|  |    +-- SetWindowLong (穿透/置顶)                             |  |
+|  |    +-- SetWindowPos (全屏置顶)                               |  |
+|  |                                                              |  |
+|  |  BottomInputBar (底部输入栏)                                 |  |
+|  |    +-- Windows 搜索风格 (白底+浅灰输入框+蓝按钮)             |  |
+|  |    +-- 固定坐标系统 (BAR_LEFT/RIGHT/TOP/BOTTOM)              |  |
+|  |    +-- 淡入动画 (0.5s)                                      |  |
+|  |    +-- Enter/按钮发送 + 排队中禁用                          |  |
+|  +-----------------------------------------------------------+  |
++-----------------------------------------------------------------+
+\end{lstlisting}
+
+\subsection{组件依赖关系}
+
+关键交互流程：
+
+\begin{description}
+    \item[渲染循环] DesktopPet.Update $\to$ Live2DRenderer.LateUpdate（参数设置）
+    \item[物理更新] Update $\to$ StepPet（重力/速度/位置）$\to$ UpdateGroundTask（状态机）
+    \item[强制动作] ContextMenu.DrawActionButton $\to$ DesktopPet.ForceStop $\to$ \\[2pt]
+        \hspace*{2em}Live2DRenderer.ForceIdleAction $\to$（锁定）$\to$ ResetIdleAction（解锁+回调）
+    \item[菜单交互] DragHandler.Update（Block 0: 菜单穿透管理）$\to$ ContextMenu.IsOpen
+    \item[走路淡入] LateUpdate 检测 isWalking 切换 $\to$ 启动 walkFadeInRemaining（0.3s 体态渐入）
+\end{description}
+
+% ═══════════════════════════════════════════
+\section{窗口管理 (WindowOverlay)}
+% ═══════════════════════════════════════════
+
+\subsection{DWM 玻璃层透明原理}
+
+透明方案从色键（Color Key / LWA\_COLORKEY）改为 DWM 玻璃层扩展，
+彻底解决了半透明像素透绿的问题：
+
+\begin{enumerate}
+    \item Camera 设置 ClearFlags = SolidColor，Background = (0, 0, 0, 0) 纯黑透明
+    \item 通过 Win32 API \texttt{DwmExtendFrameIntoClientArea} 将窗口客户区黑色像素设为透明
+    \item 设置 \texttt{MARGINS} 结构：\texttt{cxLeftWidth = -1} 表示全窗口玻璃层扩展
+    \item 需在 Project Settings 中关闭 DXGI flip model（Graphics API = D3D11）
+    \item 构建版自动重试 5 次查找窗口句柄（延迟帧防竞态）
+\end{enumerate}
+
+\textbf{相比色键方案的优势}：
+\begin{itemize}
+    \item 色键（\#00FF00）只精确移除纯绿色，Live2D 模型半透明/抗锯齿像素与绿色混合后$\neq$\#00FF00 → 残留绿边
+    \item DWM 玻璃层让黑色（0,0,0）透明，Live2D 半透明像素是黑色系的，不会产生绿色伪影
+    \item 无需保持 \texttt{WS\_EX\_LAYERED}，窗口样式更简单
+\end{itemize}
+
+\subsection{点击穿透 (Click-Through)}
+
+\begin{itemize}
+    \item \texttt{WS\_EX\_TRANSPARENT} 样式让鼠标事件透过透明区域传到桌面
+    \item 每帧根据鼠标位置动态切换：鼠标在宠物区域内 $\to$ 移除穿透（接收点击）；
+        鼠标在区域外 $\to$ 添加穿透（点击不受影响）
+    \item 菜单打开时：菜单区域内可交互，区域外穿透（优先于普通穿透逻辑）
+\end{itemize}
+
+\subsection{窗口样式}
+
+\begin{itemize}
+    \item 全屏无边框窗口（WS\_POPUP）
+    \item 置顶（HWND\_TOPMOST）
+    \item 不在任务栏显示（WS\_EX\_TOOLWINDOW）
+    \item 工具窗口风格
+\end{itemize}
+
+% ═══════════════════════════════════════════
+\section{底部输入栏 (BottomInputBar)}
+% ═══════════════════════════════════════════
+
+\subsection{概述}
+
+\texttt{BottomInputBar} 是底部 AI 聊天输入栏，设计为 Windows 搜索风格：
+白色圆角背景、浅灰输入框、蓝色发送按钮。使用固定坐标系统
+（BAR\_LEFT/RIGHT/TOP/BOTTOM）精确定位。
+
+\subsection{坐标系统}
+
+使用四个常量定义位置，可在脚本顶部直接修改：
+
+\begin{lstlisting}[style=csharp,caption={BottomInputBar 坐标常量},label={lst:bar-coords}]
+private const float BAR_LEFT   = 265f;
+private const float BAR_RIGHT  = 635f;
+private const float BAR_TOP    = 1528f;
+private const float BAR_BOTTOM = 1602f;
+\end{lstlisting}
+
+四个属性（BarLeft/Right/Top/Bottom）公开供 \texttt{DragHandler}
+等外部组件使用。
+
+\subsection{UI 设计}
+
+\begin{itemize}
+    \item \textbf{背景}：白色半透明矩形（RGBA: 1,1,1,0.92），顶部浅灰阴影线
+    \item \textbf{输入框}：浅灰背景（0.85,0.85,0.88,0.6），深色文字，14px 字号
+    \item \textbf{发送按钮}：蓝色（0.2,0.5,0.95），悬停加深，12px 字号
+    \item \textbf{输入框与按钮等高}，水平排列，间距 4px
+    \item \textbf{淡入动画}：打开后 0.5s 渐显（$\alpha$ 从 0 到 1）
+\end{itemize}
+
+\subsection{交互逻辑}
+
+\begin{itemize}
+    \item Enter 键发送（需输入框获得焦点且内容非空）
+    \item 按钮点击发送（聊天队列忙碌时按钮变灰并显示 📤 图标）
+    \item 发送后清空输入框、释放焦点
+    \item 鼠标悬停检测（IsMouseOverBar 属性）供 DragHandler 判断点击穿透
+\end{itemize}
+
+% ═══════════════════════════════════════════
+\section{物理引擎 (DesktopPet)}
+% ═══════════════════════════════════════════
+
+\subsection{坐标系}
+
+采用像素坐标系：左上角为原点 (0, 0)，X 轴向右为正，Y 轴向下为正。
+物理状态全部用整数像素值表示，避免浮点精度问题。
+
+\subsection{物理参数}
+
+\begin{table}[H]
+\centering
+\caption{核心物理常量}
+\label{tab:physics}
+\begin{tabular}{lc}
+\toprule
+\textbf{参数} & \textbf{值} \\
+\midrule
+重力加速度 & 1 px/frame² \\
+最大下落速度 & 8 px/frame \\
+最大水平速度 & 12 px/frame \\
+地面 Y 偏移 & -300 px（相对于屏幕底部） \\
+速度系数 & 0.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{地面任务状态机}
+
+宠物共有 5 种地面行为，通过加权随机选择：
+
+\begin{table}[H]
+\centering
+\caption{GroundTask 状态机}
+\label{tab:tasks}
+\begin{tabular}{lcl}
+\toprule
+\textbf{任务} & \textbf{权重(默认)} & \textbf{行为} \\
+\midrule
+MoveLeftEdge  & 1   & 向左走到屏幕左边缘 \\
+MoveRightEdge & 1   & 向右走到屏幕右边缘 \\
+MoveLeftTime  & 1   & 向左走随机时长 (2-4s) \\
+MoveRightTime & 1   & 向右走随机时长 (2-4s) \\
+StopTime      & 6   & 停止随机时长 (6-15s) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+状态机特点：
+\begin{itemize}
+    \item 到达边缘后自动转向：左边缘 $\to$ 右走/停止；右边缘 $\to$ 左走/停止
+    \item 定时任务到期 $\to$ 重新加权随机选择
+    \item 停止任务期间播放空闲动作循环
+\end{itemize}
+
+\subsection{暂停/恢复机制}
+
+\begin{itemize}
+    \item \texttt{isPaused} 布尔值：暂停时物理 Update 直接 return
+    \item \texttt{ForceStop()}：将边缘任务转为定时任务，清零 petVx，启动停止任务
+    \item \texttt{Resume()}：恢复时如果当前无任务或停止中，启动新任务
+    \item \texttt{Pause(float)}：暂停指定秒数后自动恢复
+\end{itemize}
+
+% ═══════════════════════════════════════════
+\section{拖拽挣扎动画 (Live2DRenderer)}
+% ═══════════════════════════════════════════
+
+\subsection{设计目标}
+
+拖拽时角色应表现出\"被提着走\"的挣扎感，同时裙子和头发有惯性拖尾效果。
+物理系统（CubismPhysicsController）在拖拽中继续运作，但参数值会被挣扎动画覆盖。
+
+\subsection{核心机制}
+
+拖拽挣扎动画通过帧间速度驱动：每帧计算 $\Delta x = petX_{t} - petX_{t-1}$，
+经平滑滤波后驱动各参数：
+
+\begin{itemize}
+    \item \textbf{双臂交替划水}：右臂正=向前，左臂负=向前，同相位实现交替
+        \begin{itemize}
+            \item 大幅摆动：Param94（上臂旋转，范围 [-30,60]）
+            \item 小幅：Param31/32/33（右臂），Param34/36/37（左臂）
+            \item 手部透视图层跟随幅度（自动浮到衣服前）
+        \end{itemize}
+    \item \textbf{双腿交替}：Param126/129 腿前后摆动，Param127/131 腿弯曲
+    \item \textbf{身体扭动}：ParamBodyAngleY 跟随鼠标方向平滑转身
+    \item \textbf{表情}：瞪眼 + 张嘴（\"慌张\"表情）
+\end{itemize}
+
+\subsection{直接物理驱动}
+
+帧间速度经平滑后直接写入 Cubism 参数，为 CubismPhysics 提供输入信号：
+
+\begin{itemize}
+    \item \textbf{裙子}：Param82（前摆动）、Param87（后摆动）、Param84（侧摆动）
+    \item \textbf{法盘}：Param49/51/57/60（法盘旋转/摆动）
+    \item \textbf{头发}：20 个输出参数（Param5/7/9/11/14/17/19/21/23/35/41/43/45/55/62/91/74/89/169 等）
+    \item \textbf{头部}：ParamAngleX/Z 跟随速度方向
+\end{itemize}
+
+所有直接驱动参数绕过物理系统的 Delay=0.8s 延迟，实现即时响应。
+
+% ═══════════════════════════════════════════
+\section{时间/天气响应系统 (TimeWeatherController)}
+% ═══════════════════════════════════════════
+
+\subsection{概述}
+
+\texttt{TimeWeatherController} 负责感知系统时间和当地天气，向 \texttt{Live2DRenderer} 提供状态信息，使宠物的表情、动作权重和待机气泡内容随昼夜/天气变化。
+
+\subsection{时间系统}
+
+\begin{itemize}
+    \item 使用 \texttt{System.DateTime.Now} 获取当地小时（0-23）
+    \item \texttt{isNight}：18:00 - 6:00（夜间模式）
+    \item \texttt{isSleepyTime}：22:00 - 5:00（犯困时段）
+    \item \texttt{dayPhase}：6:00 = 0.0，12:00 = 0.5，18:00 = 1.0（用于渐变）
+\end{itemize}
+
+\subsection{天气系统}
+
+\begin{itemize}
+    \item 通过 wttr.in API 获取当地天气（城市可配，留空=自动 IP 定位）
+    \item 轮询间隔默认 300 秒（可配）
+    \item 解析天气类型：Clear / Cloudy / Overcast / Rain / Drizzle / Thunder / Snow / Fog
+    \item 同时解析温度（用于气泡文本）
+    \item 首次启动立即获取，失败时保留 Unknown 状态
+\end{itemize}
+
+\subsection{表情联动}
+
+在 \texttt{UpdateIdleAnimation()} 中叠加昼夜/天气基调表情：
+
+\begin{table}[H]
+\centering
+\caption{昼夜/天气表情联动}
+\label{tab:weather-emotion}
+\begin{tabular}{ll}
+\toprule
+\textbf{条件} & \textbf{表情} \\
+\midrule
+犯困时段（22-5点） & 眼皮微垂（EyeOpen lerp 0.7） \\
+夜晚（18-22点）    & 轻度眼皮下垂 \\
+阴雨/雷雨/阴天    & 眉毛微抬 + 嘴巴微嘟（委屈） \\
+晴/多云          & 自然微笑 \\
+雪              & 微微张嘴（好奇）+ 眼睛睁大 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{动作权重调节}
+
+\texttt{PickWeightedIdleAction()} 动态调整权重：
+
+\begin{itemize}
+    \item 夜间：星辉/爱心眼减少，委屈增加
+    \item 犯困时段：委屈+2，歪头+1
+    \item 雨天：委屈+2，爱心眼/数钱减少
+    \item 晴天：爱心眼+1，星辉+1
+    \item 雪天：挑眉+1，委屈+1
+\end{itemize}
+
+\subsection{待机气泡联动}
+
+\texttt{PickIdleBubbleMessage()} 50\% 概率触发时间/天气特化气泡：
+
+\begin{itemize}
+    \item 犯困时段："好晚了…该睡了~""眼睛快睁不开了…"
+    \item 夜晚："晚上好呀~""月色真美…"
+    \item 早晨（5-8点）："早安~""今天也要加油哦！"
+    \item 雨天："下雨了呢~""听雨声发呆~"
+    \item 雷雨："打雷了好可怕！""轰隆隆…好吓人…"
+    \item 雪："下雪了！好漂亮~""想堆雪人…"
+    \item 晴天："今天天气真好~""太阳暖洋洋的~"
+\end{itemize}
+
+% ═══════════════════════════════════════════
+\section{Live2D 渲染器 (Live2DRenderer)}
+% ═══════════════════════════════════════════
+
+\subsection{概述}
+
+\texttt{Live2DRenderer} 是核心渲染组件，通过 Cubism SDK 驱动模型参数实现所有动画。
+继承自 \texttt{IPetRenderer} 接口，被 \texttt{HybridRenderer} 包装管理。
+
+\subsection{生命周期}
+
+\begin{enumerate}
+    \item Start: 自动加载模型（优先 AssetDatabase，降级 Resources.Load）
+    \item Update: 计算走路相位 + 垂直颠簸偏移 + 模型位置同步
+    \item LateUpdate: 设置所有参数（眨眼、呼吸、噪声、空闲动作/走路）
+\end{enumerate}
+
+\subsection{参数驱动系统}
+
+使用 \texttt{SetParameter(name, value)} 统一设置 Cubism 参数，
+涵盖约 60+ 个参数 ID：
+\begin{itemize}
+    \item \textbf{身体}：ParamBodyAngleX/Y/Z、ParamBreath
+    \item \textbf{头部}：ParamAngleX/Y/Z、ParamEyeBallX/Y
+    \item \textbf{眼睛}：ParamEyeLOpen/ROpen、ParamEyeLSmile/RSmile
+    \item \textbf{嘴部}：ParamMouthForm
+    \item \textbf{眉毛}：ParamBrowRY/LY
+    \item \textbf{特效}：Param121（黑幕切换）、Param132（眼镜发光）、
+        Param431/911/741（星辉环显隐）等
+\end{itemize}
+
+\subsection{空闲动作系统}
+
+共有 11 种空闲动作循环播放（1 $\to$ 2 $\to$ $\cdots$ $\to$ 11 $\to$ 1）：
+
+\begin{table}[H]
+\centering
+\caption{空闲动作列表}
+\label{tab:idle}
+\begin{tabular}{clc}
+\toprule
+\textbf{ID} & \textbf{名称} & \textbf{时长(s)} \\
+\midrule
+1 & 歪头 (Tilt)    & 2.0 \\
+2 & 微笑 (Smile)   & 2.0 \\
+3 & 挑眉 (Brow)    & 2.0 \\
+4 & 星辉 (StarSpin) & 6.0 \\
+5 & 伸懒腰 (Stretch) & 4.5 \\
+6 & 爱心 (HeartEyes) & 3.0 \\
+7 & 数钱 (Money)   & 3.5 \\
+8 & 委屈 (Cry)     & 3.5 \\
+9 & 法阵 (MagicCircle) & 5.5 \\
+10 & 害羞 (Blush)  & 3.5 \\
+11 & 困惑 (Confused) & 3.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+每个动作使用缓入缓出曲线 $f(t)=\sin(t\pi)$，其中 $t\in[0,1]$。
+动作结束时调用 \texttt{ResetIdleAction()} 清理参数。
+
+\textbf{选择策略}：每次播放完，通过加权随机选取下一个。各动作权重可调：
+
+\begin{table}[H]
+\centering
+\caption{空闲动作权重}
+\label{tab:idle-weights}
+\begin{tabular}{lcc}
+\toprule
+\textbf{动作} & \textbf{权重} & \textbf{相对概率} \\
+\midrule
+歪头   & 5 & 16.1\% \\
+微笑   & 5 & 16.1\% \\
+挑眉   & 3 & 9.7\% \\
+星辉   & 2 & 6.5\% \\
+伸懒腰 & 2 & 6.5\% \\
+爱心   & 3 & 9.7\% \\
+数钱   & 2 & 6.5\% \\
+委屈   & 3 & 9.7\% \\
+法阵   & 1 & 3.2\% \\
+害羞   & 3 & 9.7\% \\
+困惑   & 2 & 6.5\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{暂停时}：\texttt{isPaused = true} 时不播新动作（菜单打开时冻结动作循环）。
+
+\subsection{走路动画}
+
+采用横版侧面走路风格，所有参数在 LateUpdate 中设置，利用 Cubism SDK 的 ICubismUpdatable 执行顺序机制确保物理与动画正确协作：
+
+\begin{itemize}
+    \item \textbf{转体}：ParamBodyAngleY = 18°（身体转向侧面，方向自动匹配翻转）
+    \item \textbf{前倾}：ParamBodyAngleX = 5°
+    \item \textbf{低头}：ParamAngleY = 8°
+    \item \textbf{步频}：5 Hz（\texttt{WALK\_SWAY\_FREQ}）
+    \item \textbf{抬腿}：Param165（左）/ Param164（右），幅度 4
+    \item \textbf{摆臂}：交叉对位（左腿前 $\to$ 右手前），分大小范围参数：
+        \begin{itemize}
+            \item \textbf{大范围}：Param94（右手上臂旋转，范围 [-30,60]），$\text{legPhase}\times 2$
+            \item \textbf{小范围}：Param31/32/33（右臂，范围 [-1,1]），$\text{legPhase}\times 0.4$
+            \item \textbf{左臂}：Param34/36/37（左臂，范围 [-1,1]），$\text{rightPhase}\times 0.4$
+        \end{itemize}
+    \item \textbf{颠簸}：$1 - |\sin(\text{phase})|\times 4\,\text{px}$（迈步时最低）
+    \item \textbf{呼吸加深}：ParamBreath = 3 + 相位波
+\end{itemize}
+
+\subsubsection{执行顺序与 Cubism Physics 协作}
+
+Cubism SDK 通过 \texttt{CubismUpdateController} 统一调度所有 \texttt{ICubismUpdatable} 组件，
+各组件按 \texttt{ExecutionOrder} 顺序执行：
+
+\begin{table}[H]
+\centering
+\caption{Cubism 更新执行顺序}
+\label{tab:exec-order}
+\begin{tabular}{p{0.35\textwidth}cc}
+\toprule
+\textbf{组件} & \textbf{ExecutionOrder} & \textbf{功能} \\
+\midrule
+\texttt{Live2DRenderer.Update} & Unity Update & 设体态参数 \\
+\texttt{CubismPhysicsController} & 800 & 物理模拟驱动衣服飘动 \\
+\texttt{Live2DRenderer.LateUpdate} & 801 & 设腿/臂摆动 + ForceUpdateNow \\
+\texttt{CubismRenderController} & 10000 & 面向相机 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{关键设计}：体态参数（身体转体/前倾/低头）\\
+在 \texttt{Update()} 中提前设置，使 \texttt{CubismPhysicsController(800)} \\
+在 LateUpdate 阶段能读取到正确的走路体态来计算衣服飘动。\\
+手臂参数在 \texttt{LateUpdate(801)} 中设置（晚于物理），\\
+再通过 \texttt{ForceUpdateNow()} 强制网格重算，\\
+确保手臂摆动值覆盖物理输出，同时衣服飘动由物理驱动保持自然。
+
+\textbf{常见问题}：
+\begin{enumerate}
+    \item 不加 \texttt{[DefaultExecutionOrder(801)]} 时，\texttt{LateUpdate} 与 Cubism 更新顺序不确定，
+        可能导致物理覆盖手臂参数（手臂值被物理置零）
+    \item 不加 \texttt{ForceUpdateNow()} 时，网格使用 Update 阶段的旧参数计算，
+        手臂参数虽已设但网格不变（视觉上不生效）
+    \item 体态不在 Update 中提前设时，物理使用空闲体态驱动衣服，
+        走路时衣服呈空闲态悬挂（不随身体飘动）
+\end{enumerate}
+
+\subsection{体态过渡}
+
+\begin{table}[H]
+\centering
+\caption{过渡参数}
+\label{tab:blend}
+\begin{tabular}{lcc}
+\toprule
+\textbf{过渡} & \textbf{时长} & \textbf{曲线} \\
+\midrule
+走路 $\to$ 空闲（消退） & 0.4s & 二次缓出 \\
+空闲 $\to$ 走路（淡入） & 0.3s & 二次缓入 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+走路 $\to$ 空闲时，走路的体态参数（转体/前倾/低头）经 0.4s 渐消，
+同时空闲参数已经开始播放，实现平滑过渡。
+空闲 $\to$ 走路时，腿臂立刻摆动（走路感瞬间有），体态经 0.3s 渐入（不走硬边）。
+
+\subsection{平滑转身机制}
+
+方向切换（$petVx$ 变号）时，模型 \texttt{scale.x} 不再瞬间取反，改为插值渐变：
+
+\begin{itemize}
+    \item 新增字段 \texttt{\_smoothScaleX} 存储当前朝向（$+1$ = 右，$-1$ = 左）
+    \item 每帧计算目标符号 $targetSign$：
+    \begin{itemize}
+        \item 拖拽中：保持当前 \texttt{\_smoothScaleX} 符号
+        \item $petVx > 0$：$targetSign = +1$
+        \item $petVx < 0$：$targetSign = -1$
+        \item $petVx = 0$：保持最后朝向（不恢复默认右）
+    \end{itemize}
+    \item \texttt{\_smoothScaleX = Mathf.Lerp(\_smoothScaleX, targetSign, Time.deltaTime $\times$ TURN\_SPEED)}
+    \item \texttt{TURN\_SPEED = 10}，约 0.15s 完成完整转身
+    \item 差值 $< 0.005$ 时直接赋精确值，消除残差抖动
+\end{itemize}
+
+\subsection{强制动作锁定机制}
+
+右键菜单触发强制动作时的保护机制：
+
+\begin{enumerate}
+    \item \texttt{ForceIdleAction(id)} 设置 \texttt{\_actionLocked = true}
+    \item \texttt{isWalking} 检测条件中加入 \texttt{!\ \_actionLocked}，锁定期间不切走路
+    \item 动作播放完毕 $\to$ \texttt{ResetIdleAction()} 解锁 + 触发 \texttt{OnForcedActionFinished} 事件
+    \item 回调恢复宠物运动（取消暂停 + Resume）
+\end{enumerate}
+
+% ═══════════════════════════════════════════
+\section{交互系统 (DragHandler)}
+% ═══════════════════════════════════════════
+
+\subsection{左键拖拽}
+
+\begin{enumerate}
+    \item 鼠标在宠物区域内按下左键 $\to$ 记录拖拽起点
+    \item 移动超过 5px 阈值进入拖拽模式
+    \item 拖拽中：SetWindowPos 跟随鼠标移动，关闭穿透
+    \item 释放时：计算末速度（缓冲滑动平均），施加给宠物（保证 vy > 2）
+    \item 进入自由落体状态
+\end{enumerate}
+
+\subsection{分区点击反馈}
+
+点击时根据点击位置（归一化高度 0-1）分 3 区反馈：
+
+\begin{itemize}
+    \item \textbf{头部区域}（hitNormY $<$ 0.35）：戳脸 — 睁大眼 + 张嘴 + 挑眉，如"呜哇！戳到脸了"
+    \item \textbf{身体区域}（hitNormY $<$ 0.65）：摸身体 — 害羞低头 + 微笑 + 眼神躲闪
+    \item \textbf{腿部区域}（hitNormY $\geq$ 0.65）：踢腿 — 腿向前伸 + 坏笑 + 眯眼
+\end{itemize}
+
+反应持续期间设置 \texttt{\_poseLocked = true}，参数保存在 \texttt{\_clickSavedParams} 字典中，\texttt{LateUpdate} 重新写入以对抗 \texttt{CubismPhysicsController} 的覆盖。
+
+\subsection{右键菜单}
+
+\begin{enumerate}
+    \item 鼠标在宠物区域内按下右键 $\to$ 打开 ContextMenu
+    \item 菜单打开时：区域内可交互，区域外点击穿透
+    \item 右键再次点击可关闭菜单
+    \item 点击动作按钮：ForceStop $\to$ ForceIdleAction $\to$ 菜单关 UI $\to$ 动作播完自动恢复
+\end{enumerate}
+
+\subsection{点击穿透管理}
+
+每帧执行（DragHandler.Update）：
+\begin{enumerate}
+    \item 菜单打开时：优先菜单穿透规则
+    \item 菜单关闭时：鼠标在宠物矩形内 $\to$ 关穿透；鼠标在外 $\to$ 开穿透
+    \item 确保猫爪（WS\_EX\_TRANSPARENT）不吞掉输入事件
+\end{enumerate}
+
+% ═══════════════════════════════════════════
+\section{上下文菜单 (ContextMenu)}
+% ═══════════════════════════════════════════
+
+\subsection{UI 实现}
+
+使用 Unity 的 \texttt{OnGUI} 系统直接绘制（无需 Canvas / UI Prefab），
+适用于透明窗口架构。
+
+样式特点：
+\begin{itemize}
+    \item 深色 VS Code 风格背景（0.15, 0.15, 0.17, 0.95）
+    \item 粉色标题（0.9, 0.6, 0.8）+ 粉色强调色（0.8, 0.4, 0.6）
+    \item 半透明圆角矩形背景
+    \item 可滚动内容区域
+\end{itemize}
+
+\subsection{功能区域}
+
+菜单分为三个标签页（Settings / Actions / Chat），通过 \texttt{GUI.Toolbar} 切换。
+
+\begin{enumerate}
+    \item \textbf{设置 (Settings)}：5 种地面任务的权重滑块（0-10），应用按钮即时生效
+    \item \textbf{动作 (Actions)}：11 个动作按钮，点击后强制播放对应动作
+    \item \textbf{聊天 (Chat)}：简化界面 — 仅底部输入框 + 发送按钮，无消息历史/状态栏/工具栏
+\end{enumerate}
+
+\subsection{聊天标签设计}
+
+聊天标签（DrawChatTab）已大幅简化：
+
+\begin{itemize}
+    \item 使用 \texttt{GUILayout.FlexibleSpace()} + \texttt{GUILayout.BeginVertical(MinHeight)} 
+          将输入区域推至标签底部
+    \item 移除了消息历史区域、错误/状态提示、工具栏
+    \item 输入框 + 发送按钮与 \texttt{BottomInputBar} 同时可用
+    \item 发送逻辑：调用 \texttt{ChatManager.SendChatMessage()}，队列忙时按钮禁用
+\end{itemize}
+
+\subsection{动作执行流程}
+
+点击动作按钮时的完整流程：
+
+\begin{enumerate}
+    \item \texttt{ForceStop()} $\to$ 停止走路，清零 petVx，切到 StopTime
+    \item \texttt{ForceIdleAction(id)} $\to$ 设置 \texttt{\_actionLocked = true} + 播放动作
+    \item \texttt{\_isOpen = false} $\to$ 菜单 UI 关闭（OnGUI 不再绘制）
+    \item 注册 \texttt{OnForcedActionFinished} 回调
+    \item 动作自然播完（easing 曲线结束）$\to$ \texttt{ResetIdleAction()} 触发回调
+    \item 回调：取消暂停 + Resume $\to$ 宠物自动开始走路/停止
+    \item 走路体态经 0.3s 淡入，过渡平滑
+\end{enumerate}
+
+% ═══════════════════════════════════════════
+\section{混合渲染 (HybridRenderer)}
+% ═══════════════════════════════════════════
+
+\subsection{设计目标}
+
+为未来引入 3D 模型渲染预留的混合渲染层。
+当前仅 Live2D 渲染器活跃，3D 渲染器已挂载但 disabled。
+
+\subsection{切换规则}
+
+\begin{itemize}
+    \item 空闲/点击/停止 $\to$ Live2D（精细表情 + 物理飘动）
+    \item 走路/飞行/空中 $\to$ 3D（骨骼动画，future work）
+    \item 过渡方式：Alpha 交叉淡入淡出（0.3s）
+\end{itemize}
+
+\subsection{接口设计}
+
+\texttt{IPetRenderer} 接口定义了通用渲染器契约：
+
+\begin{lstlisting}[style=csharp,caption={IPetRenderer 接口},label={lst:ipet}]
+public interface IPetRenderer
+{
+    void ShowDragPose();
+    void ShowClickPose();
+    void ShowLandPose();
+    void ShowWalkPose();
+    void ShowStopPose(float lockSeconds);
+    void OnPetUpdate(int petX, int petY, int petWidth, int petHeight,
+                     int petVx, int petVy, bool onGround,
+                     bool isDragging, bool isPaused);
+}
+\end{lstlisting}
+
+% ═══════════════════════════════════════════
+\section{服务端轮询与数据查询 (ServerPollService)}
+% ═══════════════════════════════════════════
+
+\subsection{概述}
+
+\texttt{ServerPollService} 负责与微信课表小程序的后端 Node.js 服务通信，实现：
+\begin{itemize}
+    \item \textbf{推送轮询} — 定期查询服务端推送队列，消费提醒/通知
+    \item \textbf{数据查询} — 供 AI 模块调用，实时查询学业数据（成绩、课表、考试）
+    \item \textbf{开机通知} — 宠物启动时向服务端发送开机事件
+\end{itemize}
+
+\subsection{API 端点}
+
+通过 HTTP GET 请求 Node.js 服务（\texttt{localhost:3000}），使用 DESKTOP\_TOKEN 鉴权：
+
+\begin{table}[H]
+\centering
+\caption{ServerPollService API 端点}
+\label{tab:poll-api}
+\begin{tabular}{lll}
+\toprule
+\textbf{端点} & \textbf{方法} & \textbf{功能} \\
+\midrule
+\texttt{/api/pet/poll} & GET & 获取推送队列 \\
+\texttt{/api/pet/heartbeat} & GET & 开机心跳通知 \\
+\texttt{/api/pet/scores} & GET & 查询全部成绩 \\
+\texttt{/api/pet/schedule} & GET (+week=N) & 查询课表 \\
+\texttt{/api/pet/exams} & GET & 查询考试安排 \\
+\texttt{/api/pet/user/status} & GET & 学业概览 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{轮询机制}
+
+\begin{itemize}
+    \item 启动 5 秒后开始首次轮询
+    \item 间隔 10 秒自动查询
+    \item 每批最多消费 10 条推送（防积压）
+    \item 网络错误自动重试，不影响主循环
+\end{itemize}
+
+\subsection{与 AI 集成}
+
+AI 模块通过 \texttt{ToolCallInvoker} 注册了 28+ 个工具术式，涵盖系统操作、文件搜索、学业数据查询和角色控制：
+
+\begin{table}[H]
+\centering
+\caption{AI 工具术式一览（部分）}
+\label{tab:ai-data-tools}
+\begin{tabular}{lll}
+\toprule
+\textbf{术式名称} & \textbf{分类} & \textbf{用途} \\
+\midrule
+\texttt{open\_url} & 系统 & 在浏览器中打开网址 \\
+\texttt{open\_app} & 系统 & 启动应用/打开文件 \\
+\texttt{search} & 系统 & Bing 搜索引擎查询 \\
+\texttt{take\_screenshot} & 系统 & 截取当前屏幕 \\
+\texttt{set\_volume} & 系统 & 调节系统音量 \\
+\texttt{search\_files} & 文件 & \textbf{Everything 毫秒级文件搜索（协程异步，回退递归）} \\
+\texttt{list\_files} & 文件 & 列出目录内容 \\
+\texttt{open\_folder} & 文件 & 在资源管理器中打开文件夹 \\
+\texttt{set\_reminder} & 便签 & 设置定时提醒（支持重复） \\
+\texttt{query\_reminders} & 便签 & 查询待办提醒 \\
+\texttt{query\_scores} & 学业 & \textbf{成绩查询（协程异步）} \\
+\texttt{query\_schedule} & 学业 & \textbf{课表查询（协程异步）} \\
+\texttt{query\_exams} & 学业 & \textbf{考试查询（协程异步）} \\
+\texttt{query\_user\_status} & 学业 & \textbf{学业概览（协程异步）} \\
+\texttt{set\_expression} & 角色 & 切换面部表情 \\
+\texttt{play\_action} & 角色 & 播放复合动作动画 \\
+\texttt{get\_weather} & 环境 & 读取本地天气数据 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Everything 文件搜索集成}
+
+\texttt{search\_files} 术式在 Windows 文件搜索方面实现了重大优化：
+
+\begin{itemize}
+    \item \textbf{优先 Everything}：自动检测并调用 Everything CLI（es.exe），利用其 USN Journal 索引实现全盘毫秒级搜索
+    \item \textbf{自动检测}：启动时在 Program Files、LocalAppData 及 PATH 中搜索 es.exe
+    \item \textbf{路径限定}：支持 \texttt{root} 参数限定搜索范围为特定目录
+    \item \textbf{智能回退}：若未安装 Everything，自动切换到递归目录搜索（10 秒超时）
+    \item \textbf{最多 200 结果}：防止返回过多结果导致消息过长
+\end{itemize}
+
+聊天时 AI 自动判断需要调用的术式，从服务端获取真实数据后以白话回复用户。
+
+\subsubsection{协程异步执行架构}
+
+5 个涉及网络 IO 或后台线程的工具通过 Unity 协程异步执行，避免阻塞主线程：
+
+\begin{lstlisting}[style=csharp,caption={ChatManager.DoToolLoop 协程调度},label={lst:coroutine-dispatch}]
+// ChatManager.DoToolLoop() 核心调度逻辑
+string result;
+if (toolInvoker && toolInvoker.IsCoroutineTool(call.name))
+{
+    yield return StartCoroutine(
+        toolInvoker.ExecuteCoroutine(call.name, call.arguments));
+    result = toolInvoker.GetCoroutineResult();
+}
+else
+{
+    result = toolInvoker
+        ? toolInvoker.Execute(call.name, call.arguments, out _)
+        : "法阵未就绪";
+}
+\end{lstlisting}
+
+\begin{lstlisting}[style=csharp,caption={ToolCallInvoker 协程工具注册与 RunAsyncTool},label={lst:coroutine-tools}]
+private void RegisterCoroutineTools()
+{
+    _coroutineExecutors = new Dictionary<string, Func<string, IEnumerator>>
+    {
+        ["query_exams"]       = args => RunAsyncTool(
+            () => FindObjectOfType<ServerPollService>()
+                  ?.QueryUpcomingExamsAsync() ...),
+        ["query_scores"]      = args => RunAsyncTool(
+            () => FindObjectOfType<ServerPollService>()
+                  ?.QueryScoresAsync() ...),
+        ["query_schedule"]    = args => RunAsyncTool(
+            () => FindObjectOfType<ServerPollService>()
+                  ?.QueryScheduleAsync(week) ...),
+        ["query_user_status"] = args => RunAsyncTool(
+            () => FindObjectOfType<ServerPollService>()
+                  ?.QueryUserStatusAsync() ...),
+        ["search_files"]      = args => RunAsyncTool(
+            () => SearchFilesTask(args)),
+    };
+}
+
+// 将 async Task 包装为每帧检查的非阻塞协程
+private IEnumerator RunAsyncTool(Func<Task<string>> taskFactory)
+{
+    var task = taskFactory();
+    while (!task.IsCompleted) { yield return null; }
+    _coroutineResult = task.IsFaulted
+        ? $"出错: {task.Exception?.InnerException?.Message}"
+        : task.Result;
+}
+\end{lstlisting}
+
+\textbf{协程异步设计要点：}
+\begin{itemize}
+    \item \textbf{同步执行}（23+ 工具）：\texttt{open\_url}、\texttt{take\_screenshot}、\texttt{set\_volume} 等瞬时系统操作
+    \item \textbf{协程异步执行}（5 工具）：4 个学业查询（HTTP 请求）+ \texttt{search\_files}（后台线程文件搜索，\texttt{Task.Run}）
+    \item \texttt{RunAsyncTool} 将 \texttt{async Task<string>} 包装为 \texttt{IEnumerator}，每帧检查 \texttt{task.IsCompleted}，不阻塞 Unity 主线程
+    \item 协程工具通过 \texttt{IsCoroutineTool()} 查询，\texttt{GetCoroutineResult()} 获取结果
+    \item \texttt{search\_files} 在 \texttt{Task.Run} 后台线程中运行 Everything CLI 或递归搜索，完全不阻塞主线程
+    \item DoToolLoop 最多 5 轮工具循环，每轮可包含多个并行 tool\_call
+\end{itemize}
+
+% ═══════════════════════════════════════════
+\section{性能监控 (PerformanceMonitor)}
+% ═══════════════════════════════════════════
+
+\subsection{概述}
+
+\texttt{PerformanceMonitor} 提供对桌面宠物运行性能的实时监控。基于 \texttt{System.Diagnostics.PerformanceCounter} 实现，不依赖第三方库。
+
+\subsection{监控指标}
+
+\begin{table}[H]
+\centering
+\caption{性能监控指标}
+\label{tab:perf-metrics}
+\begin{tabular}{llc}
+\toprule
+\textbf{指标} & \textbf{方式} & \textbf{采样间隔} \\
+\midrule
+FPS & Time.deltaTime 滑动平均 & 每帧 \\
+CPU 使用率 & PerformanceCounter("Processor", "\% Processor Time", "\_Total") & 1 秒 \\
+内存使用量 & PerformanceCounter("Process", "Working Set") & 1 秒 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{自适应降频}
+
+当 FPS 持续低于阈值（默认 30）时，\texttt{PerformanceMonitor} 可通过事件通知 \texttt{Live2DRenderer}：
+\begin{itemize}
+    \item 减少 Perlin 噪声微动频率
+    \item 降低空闲动作切换频次
+    \item 减少待机气泡触发
+\end{itemize}
+
+\subsection{调试面板}
+
+数据通过 \texttt{DebugWindow} 以 OnGUI 形式实时显示，包括：
+\begin{itemize}
+    \item 当前 FPS（带颜色指示：绿色 $\ge$ 55、黄色 30-55、红色 $<$ 30）
+    \item CPU 使用率百分比
+    \item 工作集内存占用量（MB）
+\end{itemize}
+
+% ═══════════════════════════════════════════
+\section{气泡优先级系统 (ChatBubble)}
+% ═══════════════════════════════════════════
+
+\subsection{设计动机}
+
+AI 回复过程中，自动闲聊系统可能因定时器触发而弹出低优先级问候气泡，
+覆盖正在显示的 AI 回复内容。优先级系统确保重要消息不被中断。
+
+\subsection{优先级级别}
+
+\begin{table}[H]
+\centering
+\caption{消息优先级}
+\label{tab:msg-priority}
+\begin{tabular}{lll}
+\toprule
+\textbf{级别} & \textbf{数值} & \textbf{适用场景} \\
+\midrule
+Low    & 0 & 闲话、定时问候、待机气泡 \\
+Normal & 1 & 提醒、交互回应（戳/摸） \\
+High   & 2 & AI 主动回复 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{优先级规则}
+
+\begin{itemize}
+    \item 高优先级消息显示期间，低优先级消息被忽略
+    \item 同优先级消息总是可以覆盖当前消息
+    \item \texttt{ShowMessage()} 默认使用 Normal 优先级
+    \item \texttt{ShowMessage(text, duration, High)} 用于 AI 回复
+    \item 外部可通过 \texttt{IsShowingHighPriority} 属性查询当前是否为高优先级展示
+\end{itemize}
+
+\subsection{气泡古风装饰}
+
+气泡在功能之外增加了符玄主题的视觉装饰，全部代码生成，无需额外贴图资源：
+
+\subsubsection{紫色云纹角饰}
+\begin{itemize}
+    \item 左上角 + 右下角各一朵紫色卷草云纹
+    \item 使用极坐标螺旋算法：$\text{val} = \sin(\theta \times 3 + d \times 10)$
+    \item 从角落沿对角线渐变，加粗线条 + 高对比度
+    \item 角饰大小 28px，透明度 60\%，颜色 $(0.72, 0.48, 0.84)$
+\end{itemize}
+
+\subsubsection{闪烁星点系统}
+\begin{itemize}
+    \item 12 颗独立星星散布在气泡表面，每颗拥有不同的大小、闪烁速度和相位
+    \item 每帧实时呼吸动画：$\text{pulse} = \sin^2(t \cdot \text{speed} + \text{phase})$，谷值接近熄灭，峰值全亮
+    \item 每颗星使用高斯光晕纹理渲染（$e^{-3r^2}$ 衰减）
+    \item 尺寸 5--9px，颜色浅紫 $(0.85, 0.65, 0.95)$，满透明度
+    \item 闪烁速度 1.2--3.5 Hz 随机分布，产生此起彼伏的星空效果
+\end{itemize}
+
+\subsubsection{紫色装饰线}
+\begin{itemize}
+    \item 气泡顶部一条 $3\text{px}$ 高的水平紫色线条（同 accentColor）
+    \item 距顶部 2px，左右留白 5px，透明度 75\%
+\end{itemize}
+
+% ═══════════════════════════════════════════
+\section{动画详述}
+% ═══════════════════════════════════════════
+
+\subsection{空闲动作详解}
+
+\subsubsection{动作 1 --- 歪头}
+\begin{itemize}
+    \item 使用 $\sin(t\pi/2)$ 缓入缓出曲线
+    \item ParamAngleZ = 8°（歪头）、2s 完成
+\end{itemize}
+
+\subsubsection{动作 2 --- 微笑}
+\begin{itemize}
+    \item ParamEyeLSmile / RSmile = 0.6（眯眼笑）
+    \item ParamMouthForm = 0.4（张嘴微笑）
+    \item 2s 完成
+\end{itemize}
+
+\subsubsection{动作 3 --- 挑眉}
+\begin{itemize}
+    \item ParamBrowRY / LY = 6°（眉毛抬起）
+    \item 2s 完成
+\end{itemize}
+
+\subsubsection{动作 4 --- 星辉环绕（已移除视觉特效）}
+已移除所有视觉特效参数（紫环旋转、黑幕、眼镜发光、星星闪烁），
+仅保留动作时长（6s）和空壳函数。
+过渡到 DWM 透明方案后，半透明特效像素与黑色背景不兼容。
+
+\subsubsection{动作 5 --- 伸懒腰}
+\begin{itemize}
+    \item 右手切换 + 伸出（Param92 + Param118 + 手指张合）
+    \item 身体后仰（ParamBodyAngleX = $-5^\circ$）
+    \item 眯眼 + 张嘴（打哈欠表情）+ 深吸一口气
+    \item 4.5s 梯形曲线（快起 $\to$ 保持 $\to$ 快落）
+\end{itemize}
+
+\subsubsection{动作 6 --- 爱心眼}
+\begin{itemize}
+    \item 爱心眼闪烁（Param109 = 爱心眼开关）
+    \item 歪头 12° + 微笑 + 身体微倾
+    \item 3s 完成
+\end{itemize}
+
+\subsubsection{动作 7 --- 数钱}
+\begin{itemize}
+    \item 钱表情（Param122）+ 双眼放光（Param121/137/132）
+    \item 美滋滋微笑 + 歪头 + 身体摇晃
+    \item 3.5s 完成
+\end{itemize}
+
+\subsubsection{动作 8 --- 委屈}
+\begin{itemize}
+    \item 泪眼（Param130）+ 低头（ParamAngleY = 6°）
+    \item 嘴巴微颤 + 八字眉（眉头抬起）
+    \item 身体微微抽动（抽泣感）
+    \item 3.5s 完成
+\end{itemize}
+
+\subsubsection{动作 9 --- 法阵显现（已移除视觉特效）}
+已移除所有视觉特效参数（黑幕、白圈、七星盘、眼镜发光、镜头缩放），
+仅保留五阶段手势变化：举过头顶 → 剑指成型 → 指尖凝光 → 扩散 → 消散。
+身体姿态和剑指手势仍保留，视觉光圈参数全部移除。
+
+\subsubsection{动作 10 --- 害羞}
+\begin{itemize}
+    \item 黑脸（Param101）+ 低头 + 眼神躲闪
+    \item 害羞微笑 + 眯眼 + 身体扭捏
+    \item 3.5s 完成
+\end{itemize}
+
+\subsubsection{动作 11 --- 困惑（AI 触发专用）}
+\begin{itemize}
+    \item 歪头 + 皱眉 + 眯眼
+    \item 权重为 0（不自发触发，仅外部强制调用）
+    \item 3s 完成
+\end{itemize}
+
+\subsection{眨眼系统}
+
+\begin{itemize}
+    \item 间隔随机 2-5s 一次
+    \item 使用 $|\sin(20t)|$ 快速闭眼睁眼（0.15s）
+    \item 通过 ParamEyeLOpen / ROpen 控制
+\end{itemize}
+
+\subsection{呼吸与微动}
+
+使用 Perlin 噪声实现自然微动：
+\begin{itemize}
+    \item 呼吸：ParamBreath = PerlinNoise(phase, 0) $\times$ 0.4
+    \item 身体晃动：3 轴 Perlin 噪声 $\times$ 幅度常量
+    \item 头部微动：2 轴 Perlin 噪声 $\times$ 0.6/0.4
+    \item 眼球浮动：2 轴 Perlin 噪声 $\times$ 3/2
+\end{itemize}
+
+% ═══════════════════════════════════════════
+\section{目录结构}
+% ═══════════════════════════════════════════
+
+\begin{lstlisting}[frame=single,numbers=none,style=csharp]
+Desktop_per_pro/
++-- README.md                              # 项目说明
++-- project_brief/
+|   +-- report.pdf                         # 本文档 (PDF)
+|   +-- report.tex                         # 本文档 (LaTeX)
++-- code/desktop unity/
+    +-- desktop unity.sln                  # Visual Studio 解决方案
+    +-- Assets/
+    |   +-- Scenes/
+    |   |   +-- scene.scene               # 主场景
+    |   +-- Scripts/
+    |   |   +-- DesktopPet.cs              # 主控 + 物理 + 状态机
+    |   |   +-- Live2DRenderer.cs          # Live2D 渲染 + 动画 + 物理驱动
+    |   |   +-- ContextMenu.cs             # 右键菜单 UI
+    |   |   +-- DragHandler.cs             # 拖拽/抛掷/点击交互
+    |   |   +-- WindowOverlay.cs           # Win32 透明窗口
+    |   |   +-- TimeWeatherController.cs   # 昼夜/天气响应
+    |   |   +-- ChatBubble.cs              # 头顶气泡（含优先级系统）
+    |   |   +-- ChatManager.cs             # AI 对话管理 + Function Calling + 协程调度
+    |   |   +-- AutoChat.cs                # 自动闲聊
+    |   |   +-- BottomInputBar.cs          # 底部输入栏
+    |   |   +-- ReminderManager.cs         # 便签提醒 + Server酱³ 推送
+    |   |   +-- ServerPollService.cs       # 服务端轮询 + 数据查询
+    |   |   +-- PerformanceMonitor.cs      # FPS/CPU/内存监控
+    |   |   +-- SystemTrayManager.cs       # 系统托盘图标
+    |   |   +-- DebugWindow.cs             # 调试调参面板
+    |   |   +-- ToolCallInvoker.cs         # AI 工具调用（28+ 工具，含协程异步）
+    |   |   +-- PetConfig.cs              # 天机簿 — 配置持久化
+    |   |   +-- PetMemory.cs              # 忆境 — 长期记忆系统
+    |   |   +-- HybridRenderer.cs          # 混合渲染管理器
+    |   |   +-- IPetRenderer.cs            # 渲染器接口
+    |   |   +-- Model3DRenderer.cs         # 3D 渲染器 (预留)
+    |   +-- Live2D/
+    |   |   +-- Models/Fuxuan/             # 符玄 Live2D 模型
+    |   +-- Plugins/                       # Cubism SDK
+    +-- Packages/
+    |   +-- manifest.json                  # Unity 包管理
+    +-- ProjectSettings/                   # Unity 项目设置
+\end{lstlisting}
+
+% ═══════════════════════════════════════════
+\section{开发指南}
+% ═══════════════════════════════════════════
+
+\subsection{调试快捷键}
+
+\begin{itemize}
+    \item \texttt{1}：强制切换到 Live2D 渲染（HybridRenderer 调试用）
+    \item \texttt{2}：强制切换到 3D 渲染（HybridRenderer 调试用）
+    \item 控制台日志：各组件关键事件均有 Debug.Log 输出
+\end{itemize}
+
+\subsection{调参指南}
+
+\begin{itemize}
+    \item \textbf{模型大小/位置}：修改 Live2DRenderer.cs 顶部的
+        \texttt{LIVE2D\_SCALE}（默认 56.25）和 \texttt{LIVE2D\_OFFSET\_Y}（默认 0）
+    \item \textbf{动作时长}：各动作对应的 \texttt{*\_DURATION} 常量
+    \item \textbf{权重调整}：通过右键菜单 UI 实时调整
+    \item \textbf{过渡平滑度}：\texttt{WALK\_FADE\_IN\_DURATION}（0.3s）、
+        \texttt{IDLE\_BLEND\_DURATION}（0.4s）
+    \item \textbf{物理}：DesktopPet.cs 顶部的重力/速度常量
+    \item \textbf{输入栏位置}：BottomInputBar.cs 顶部的 \texttt{BAR\_LEFT/RIGHT/TOP/BOTTOM} 常量
+\end{itemize}
+
+\subsection{构建注意}
+
+\begin{itemize}
+    \item Camera Background 必须为纯黑 (0,0,0,0)（DWM 玻璃层透明用）
+    \item 构建版自动应用透明窗口设置（编辑器版不执行）
+    \item Live2D 模型需通过 Cubism SDK 导入生成 Prefab
+    \item 单例互斥锁防止 Build \& Run 产生多个实例
+    \item 必须在 Project Settings 中：Graphics API = D3D11，取消勾选 DXGI flip model
+\end{itemize}
+
+% ═══════════════════════════════════════════
+\section{待改进项}
+% ═══════════════════════════════════════════
+
+\subsection{AI 活动感知与性格优化}
+
+当前 AI 活动感知和性格表达存在以下改进空间：
+
+\begin{table}[H]
+\centering
+\caption{AI 活动感知改进方向}
+\label{tab:ai-improvements}
+\begin{tabular}{p{0.2\textwidth}p{0.35\textwidth}p{0.35\textwidth}}
+\toprule
+\textbf{维度} & \textbf{现状} & \textbf{改进目标} \\
+\midrule
+活动感知粒度 & 8 个笼统分类（coding/gaming/studying/browsing 等），\texttt{GetForegroundWindow} 快照模式 & ✅ 窗口标题已实时注入 SystemPrompt，DeepSeek 可自行理解用户活动 \\
+多窗口感知 & 仅追踪最顶层窗口，\texttt{EnumWindows} 未使用 & ✅ \texttt{EnumWindows} 枚举所有可见窗口，每 10s 刷新多窗口摘要注入 SystemPrompt \\
+浏览器深度 & 仅识别进程名 & ✅ Windows UI Automation 读取浏览器标签页标题，零依赖零安装 \\
+性格温婉约束 & SystemPrompt.txt 缺少"不要评判/说教"约束 & 加入温婉指令抑制 AI 说教倾向（✅ 已修复：SystemPrompt.txt 新增「温婉守则」） \\
+傲娇权重 & IdleChatGenerator 的 system prompt 中"傲娇"权重过高 & 平衡"傲"与"娇"的比例，语气更温柔（✅ 已修复：IdleChatGenerator 调整 system prompt 指令） \\
+窗口标题利用 & \texttt{Classify()} 后丢弃标题 & 传标题给 AI 用于回复上下文（✅ 已修复：ActivityTracker + ChatManager 实时注入） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{参考开源方案：} \href{https://github.com/ActivityWatch/aw-watcher-window}{ActivityWatch}（GitHub 14k+ stars）是最大的开源时间追踪项目，
+但其 Windows 实现同样使用 \texttt{GetForegroundWindow} 单窗口追踪。
+改进方向可借鉴其生态中的浏览器扩展 aw-watcher-web 获取标签页 URL，
+以及 aw-watcher-afk 组件检测空闲状态。
+
+% ═══════════════════════════════════════════
+\section{版本历史}
+% ═══════════════════════════════════════════
+
+\begin{table}[H]
+\centering
+\caption{版本历史}
+\label{tab:history}
+\begin{tabular}{cl>{\raggedright\arraybackslash}p{0.55\textwidth}}
+\toprule
+\textbf{日期} & \textbf{版本} & \textbf{变更} \\
+\midrule
+2025 & v0.1 & 透明窗口 + 基础物理 + Live2D 加载 \\
+2025 & v0.2 & 地面状态机 + 走路动画 \\
+2025 & v0.3 & 10 种空闲动作 + 强制动作系统 \\
+2025 & v0.4 & 右键菜单 UI + 权重编辑 \\
+2025 & v0.5 & 动作锁定机制 + 走路淡入过渡 \\
+2026-06-13 & v0.6 & 本文档 + 项目文档整理 \\
+2026-06-17 & v0.7 & 修复行走手臂被物理覆盖问题：添加 \texttt{[DefaultExecutionOrder(801)]} \\
+           &      & 确保 LateUpdate 跑在 CubismPhysicsController 之后；\\
+           &      & 体态参数提前到 Update() 设置供物理驱动衣服；\\
+           &      & 分离大/小范围手臂参数常量避免 clamp 满幅；\\
+           &      & 走路时 ForceUpdateNow 强制网格重算 \\
+2026-06-17 & v0.8 & 头发/裙子/法盘直接物理驱动（20+ 输出参数绕过物理延迟）\\
+           &      & 分区点击反馈（头/身/腿 3 区 + 参数保存防覆盖）\\
+           &      & 拖拽挣扎动画（双臂划水 + 双腿交替 + 扭动 + 表情）\\
+           &      & 时间/天气响应系统（wttr.in API + 昼夜犯困 + 天气表情）\\
+           &      & 新增第 11 个空闲动作「困惑」\\
+           &      & 待机气泡支持时间/天气特化内容\\
+           &      & 更新项目文档 README + LaTeX\\
+2026-06-18 & v0.9 & 窗口透明从色键（\#00FF00）切换为 DWM 玻璃层透明（DwmExtendFrameIntoClientArea）\\
+           &      & 移除 Live2D 星辉/法阵/数钱全部视觉特效参数（Param121/132/137 等）\\
+           &      & 简化聊天 UI：移除消息历史/状态栏/工具栏，仅保留输入框+发送按钮\\
+           &      & 底部输入栏（BottomInputBar）改为 Windows 搜索风格 + 固定坐标系统\\
+           &      & 输入栏坐标可调（BAR\_LEFT/RIGHT/TOP/BOTTOM 常量）\\
+           &      & 输入框放大 + 淡入动画\\
+           &      & Camera 背景统一改为纯黑 (0,0,0,0)\\
+           &      & Model3DRenderer 背景同样改为黑色\\
+           &      & 重建 BuildScript.cs（自动构建脚本）\\
+           &      & 更新 LaTeX 技术文档至 v0.9\\
+2026-06-19 & v0.10 & 性能监控系统（PerformanceMonitor：FPS/CPU/内存）\\
+           &       & 桌面宠物开机自启（系统托盘菜单）\\
+           &       & AI 回复优先级气泡系统（MsgPriority High/Normal/Low）\\
+           &       & 修复 AI 回复时被自动问候抢占的问题\\
+           &       & ToolCallInvoker 工具注册防抖\\
+2026-06-20 & v0.11 & 服务端推送轮询 + Server酱³ 手机推送\\
+           &       & 桌面开机通知到手机\\
+           &       & 微信课表小程序数据打通：成绩/课表/考试/学业概览\\
+           &       & ServerPollService 新增 3 个数据查询方法\\
+           &       & ToolCallInvoker 工具扩展至 24 个\\
+           &       & 新增 query\_scores / query\_schedule / query\_user\_status 术式\\
+           &       & ChatManager 提示词新增「卜算传讯」章节\\
+           &       & 修复逐句显示完后弹出全文的 bug\\
+2026-06-20 & N16  & \textbf{Everything 毫秒级文件搜索集成}\\
+           &       & 修复文件搜索 3s 超时：创建专用 search\_files 工具（10s 超时）\\
+           &       & ToolCallInvoker 工具扩展至 28+ 个\\
+           &       & 新增 FindEverythingCli() 自动检测 es.exe\\
+           &       & 新增 SearchRecursive() 递归回退搜索\\
+2026-06-22 & N18  & \textbf{气泡古风紫纹装饰系统}\\
+           &       & 待机气泡语料池大幅扩充：10$\to$46 条符玄风格台词（卜卦/穷观阵/青雀/景元/罗浮等）\\
+           &       & 天气/时段气泡全部翻倍：凌晨 5$\to$10、夜间 4$\to$10、早晨 4$\to$10\\
+           &       & 雷雨 3$\to$7、雪天 3$\to$8、晴天 4$\to$10\\
+           &       & 气泡紫色云纹角饰（左上+右下，螺旋算法代码生成）\\
+           &       & 12 颗独立呼吸闪烁星点（$\sin^2$ 脉冲 + 高斯光晕，每颗独立频率相位）\\
+           &       & 气泡顶部紫色装饰线 3px\\
+2026-06-22 & N19  & \textbf{协程异步工具系统}\\
+           &       & 5 个网络 IO/后台工具改为 Unity 协程异步执行（\texttt{RunAsyncTool}）\\
+           &       & ToolCallInvoker 新增 \texttt{RegisterCoroutineTools()} / \texttt{IsCoroutineTool()} / \texttt{ExecuteCoroutine()}\\
+           &       & ChatManager.DoToolLoop 分派同步 \texttt{Execute()} 与协程 \texttt{ExecuteCoroutine()}\\
+           &       & 修复 AutoChat 逐句显示完成后弹出全文的 bug（\texttt{idx >= total} 守卫）\\
+           &       & ToolCallInvoker 清理幽灵代码块修复编译错误\\
+           &       & 更新 README + LaTeX 技术文档\\
+2026-06-22 & N20  & \textbf{SystemPrompt 抽离 + 配置持久化 + 长期记忆}\\
+           &       & SystemPrompt 从内联字符串抽离为 \texttt{Resources/SystemPrompt.txt}，支持 \texttt{\{current\_time\}} 占位符\\
+           &       & 新增 PetConfig 天机簿 — 运行时配置 JSON 持久化（权重/API/天气等 15+ 项）\\
+           &       & 新增 PetMemory 忆境 — 长期记忆系统（自动记录工具交互摘要，注入 system prompt）\\
+           &       & ChatManager.Awake 加载 SystemPrompt.txt，BuildSystemPrompt 注入时间 + 记忆\\
+           &       & OnToolResult 自动调用 PetMemory.AddMemory 记录有意义交互（天气/搜索/提醒等）\\
+           &       & DesktopPet.Start 调用 PetConfig.ApplyAll 恢复持久化配置\\
+           &       & 右键菜单「保存配置」按钮调用 PetConfig.CollectAll + Save\\
+           &       & 右键菜单「清空忆境」按钮调用 PetMemory.ClearMemories\\
+           &       & 更新 README + LaTeX 技术文档\\
+2026-06-23 & N21  & \textbf{气泡尾巴对齐 + 平滑转身}\\
+           &       & ChatBubble 气泡被屏幕边缘卡住时，尾巴独立跟随角色头部（\texttt{tailOffsetX} 限幅插值）\\
+           &       & Live2DRenderer 方向切换改为 \texttt{Mathf.Lerp} 平滑渐变（\texttt{TURN\_SPEED=10}），消除 180° 瞬间翻转\\
+           &       & petVx=0 时保持最后朝向，不自动恢复默认\\
+           &       & 目录树格式修复，更新 README + LaTeX 技术文档\\
+2026-07-02 & N22  & \textbf{文档整理：记录 AI 活动感知与性格优化待改进事项}\\
+           &       & README 新增已知问题第 3 条「AI 活动感知与性格优化」\\
+           &       & LaTeX 技术文档新增「待改进项」章节\\
+           &       & 收录 tools/find_file.py（Python 文件搜索桥）\\
+           &       & 更新 .gitignore 排除临时构建文件\\
+2026-07-03 & N23  & \textbf{API Key 安全化 + AI 感知精细化 + 性格温婉约束 + 多窗口感知}\\
+           &       & \texttt{ChatConfig.cs} 中 API Key 改从环境变量读取（\texttt{DEEPSEEK\_API\_KEY} / \texttt{GLM\_API\_KEY}），防反编译泄露\\
+           &       & \texttt{ChatManager/TimeWeatherController} 加 \texttt{[NonSerialized]}，防 Unity 序列化覆盖环境变量\\
+           &       & \texttt{PetConfig} 中去掉 API Key 持久化，环境变量为唯一来源\\
+           &       & \texttt{ActivityTracker} 新增 \texttt{CurrentWindowTitle} / \texttt{CurrentProcessName} 公开接口\\
+           &       & \texttt{BuildSystemPrompt()} 实时注入当前前台窗口标题到 SystemPrompt\\
+           &       & \texttt{ActivityTracker} 新增 \texttt{EnumWindows} 多窗口感知，每 10s 刷新环境摘要\\
+           &       & \texttt{BuildSystemPrompt()} 注入多窗口摘要，AI 了解整体桌面环境\\
+           &       & \texttt{SystemPrompt.txt} 新增「温婉守则」章节，抑制说教倾向\\
+           &       & \texttt{IdleChatGenerator} 平衡傲娇比例为 3:7（傲:娇），语气更温柔\\
+           &       & 更新 README + LaTeX 技术文档\\
+2026-07-03 & N24  & \textbf{浏览器深度感知 — Windows UI Automation 集成}\\
+           &       & \texttt{BrowserTabReader} 新建静态类，通过反射调用 UIAutomationClient.dll 读取 Edge/Chrome/Firefox 标签\\
+           &       & \texttt{ActivityTracker} 新增浏览器标签轮询（每 5s），仅在浏览器前台时刷新\\
+           &       & \texttt{BuildSystemPrompt()} 注入浏览器标签摘要，AI 感知用户在看什么网页\\
+           &       & 更新 README + LaTeX 技术文档\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
+  |     |-- Models/
+  |     |     +-- FuXuan/             # 符玄模型
+  |     |-- Materials/
+  |     |-- Animations/
+  |     |     +-- AnimatorController.controller
+  |     +-- Plugins/
+  |           +-- TransparentWindowManager/
+  |-- Packages/
+  |-- ProjectSettings/
+  +-- .gitignore
+\end{verbatim}
+
+% ═══════════════════════════════════════════
+\begin{thebibliography}{99}
+% ═══════════════════════════════════════════
+
+\bibitem{TransparentWindow}
+XJINE. \textit{Unity\_TransparentWindowManager --- Make Unity's window transparent and overlay on desktop}.
+\url{https://github.com/XJINE/Unity_TransparentWindowManager}, 2018. MIT License.
+
+\bibitem{HoyoModels}
+hoyo-models Community. \textit{Honkai: Star Rail 3D Character Models}.
+\url{https://hoyo-models.vercel.app/hsr}, 2025.
+
+\bibitem{SRImporter}
+lethern. \textit{SR-Model-Importer --- Honkai: Star Rail Model Importer for Unity}.
+\url{https://github.com/lethern/SR-Model-Importer}, 2025.
+
+\bibitem{PetOriginal}
+原桌面宠物项目. \textit{Desktop Pet --- GDI+ + WebView2 桌面宠物}.
+路径：\texttt{D:/C/Desktop pet/text1.c}, 2025.
+
+\end{thebibliography}
+
+\end{document}

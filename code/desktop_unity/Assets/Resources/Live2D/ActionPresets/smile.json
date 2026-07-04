@@ -1,0 +1,34 @@
+{
+  "name": "smile",
+  "lockMovement": true,
+  "globalFadeIn": 0.2,
+  "globalFadeOut": 0.35,
+  "phases": [
+    {
+      "duration": 0.5,
+      "curve": "easeOutQuad",
+      "targets": [
+        { "s": "eye_l_smile", "v": 0.7 },
+        { "s": "eye_r_smile", "v": 0.7 },
+        { "s": "mouth_form", "v": 0.5 },
+        { "s": "brow_r_y", "v": 2 },
+        { "s": "brow_l_y", "v": 2 },
+        { "s": "head_angle_z", "v": 4 },
+        { "s": "head_angle_y", "v": -2 }
+      ]
+    },
+    {
+      "duration": 2.5,
+      "curve": "trapezoid",
+      "targets": [
+        { "s": "eye_l_smile", "v": 0.7 },
+        { "s": "eye_r_smile", "v": 0.7 },
+        { "s": "mouth_form", "v": 0.5 },
+        { "s": "brow_r_y", "v": 2 },
+        { "s": "brow_l_y", "v": 2 },
+        { "s": "head_angle_z", "v": 4 },
+        { "s": "head_angle_y", "v": -2 }
+      ]
+    }
+  ]
+}

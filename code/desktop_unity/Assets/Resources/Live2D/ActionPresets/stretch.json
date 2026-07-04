@@ -1,0 +1,38 @@
+{
+  "name": "stretch",
+  "lockMovement": true,
+  "globalFadeIn": 0.2,
+  "globalFadeOut": 0.35,
+  "phases": [
+    {
+      "duration": 0.6,
+      "curve": "easeOutQuad",
+      "targets": [
+        { "s": "arm_right_upper", "v": 8 },
+        { "s": "arm_right_mid", "v": 5 },
+        { "s": "arm_right_lower", "v": 6 },
+        { "s": "body_angle_x", "v": -8 },
+        { "s": "head_angle_x", "v": -10 },
+        { "s": "eye_l_open", "v": 0.3 },
+        { "s": "eye_r_open", "v": 0.3 },
+        { "s": "breath", "v": 0.6 },
+        { "s": "mouth_form", "v": 0.2 }
+      ]
+    },
+    {
+      "duration": 2.0,
+      "curve": "trapezoid",
+      "targets": [
+        { "s": "arm_right_upper", "v": 8 },
+        { "s": "arm_right_mid", "v": 5 },
+        { "s": "arm_right_lower", "v": 6 },
+        { "s": "body_angle_x", "v": -8 },
+        { "s": "head_angle_x", "v": -10 },
+        { "s": "eye_l_open", "v": 0.3 },
+        { "s": "eye_r_open", "v": 0.3 },
+        { "s": "breath", "v": 0.6 },
+        { "s": "mouth_form", "v": 0.2 }
+      ]
+    }
+  ]
+}
