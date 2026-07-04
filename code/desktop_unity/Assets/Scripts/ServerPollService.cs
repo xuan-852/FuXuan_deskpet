@@ -49,12 +49,21 @@ public class ServerPollService : MonoBehaviour
     //  生命周期
     // ================================================================
 
-    private void Start()
+    /// <summary>
+    /// 在 Awake 中初始化 HttpClient，确保 AddComponent 后立刻可用。
+    /// 因为 ToolCallInvoker 可能在 Start() 之前就通过 QueryScoresAsync() 等
+    /// 方法访问 _http，放在 Start() 里会导致 NullReferenceException。
+    /// </summary>
+    private void Awake()
     {
         _http = new HttpClient();
         _http.Timeout = TimeSpan.FromSeconds(5);
-        _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {desktopToken}");
+        if (!string.IsNullOrEmpty(desktopToken))
+            _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {desktopToken}");
+    }
 
+    private void Start()
+    {
         _reminder = GetComponent<ReminderManager>();
         if (_reminder == null) _reminder = FindObjectOfType<ReminderManager>();
         _bubble = GetComponent<ChatBubble>();

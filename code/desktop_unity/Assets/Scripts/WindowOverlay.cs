@@ -155,6 +155,7 @@ public class WindowOverlay : MonoBehaviour
     public System.IntPtr WindowHandle => _hwnd;
     private bool _applied = false;
     private bool _suspended = false;  // 睡眠挂起标记，阻止危险 Win32 调用
+    private bool _rebuildPending = false; // 延迟重建已调度，防重复
     private int _origW;
     private int _origH;
 
@@ -548,7 +549,7 @@ public class WindowOverlay : MonoBehaviour
 
     /// <summary>
     /// 系统挂起（睡眠/Sleep）时标记，阻止危险 Win32 调用。
-    /// 唤醒后重新应用窗口透明设置（DWM 已在睡眠期间重启）。
+    /// 唤醒后延迟重建窗口透明设置（避免 DWM/GPU 未恢复时直接操作导致系统崩溃）。
     /// </summary>
     private void OnApplicationPause(bool pause)
     {
@@ -559,68 +560,41 @@ public class WindowOverlay : MonoBehaviour
         }
         else
         {
-            UnityEngine.Debug.Log("[WindowOverlay] ▶ 系统唤醒，重新应用窗口设置");
-            _suspended = false;
+            UnityEngine.Debug.Log("[WindowOverlay] ▶ 系统唤醒（OnApplicationPause），延迟2s重建窗口");
 
             // ★ 安全模式检查：连续崩溃后跳过 DWM 重建
             if (UnityEngine.PlayerPrefs.GetString("_skip_dwm_rebuild", "") == "1")
             {
                 UnityEngine.Debug.Log("[WindowOverlay] 🛡 安全模式：跳过 DWM 玻璃层重建（唤醒）");
+                _suspended = false;
                 return;
             }
 
-            // 唤醒后 DWM 已重启，必须重新设窗口样式和 DWM 玻璃层
-            if (_hwnd != IntPtr.Zero)
-            {
-                // 验证句柄是否仍有效
-                if (!IsWindow(_hwnd))
-                {
-                    // 句柄已彻底失效（极罕见），用 productName 重新查找窗口
-                    _hwnd = FindUnityWindow();
-                    if (_hwnd == IntPtr.Zero)
-                    {
-                        UnityEngine.Debug.LogError("[WindowOverlay] 唤醒后无法找到窗口，跳过重新应用");
-                        _applied = false;
-                        return;
-                    }
-                }
-                ApplyNow();
-            }
-            else
-            {
-                _applied = false;
-            }
+            // ★ 不立即恢复，走延迟重建路径（与 OnResumeFromSleep 一致）
+            //   保持 _suspended=true 防止 SetClickThrough 等在 DWM 未就绪时调用 Win32 API
+            RebuildAfterDelay();
         }
     }
 
     /// <summary>
-    /// 外部调用的唤醒恢复入口（由时间间隙检测触发，弥补 OnApplicationPause 不可靠问题）。
-    /// 注意：唤醒后 DWM 和 GPU 驱动尚未完全就绪，不可立即操作窗口句柄。
-    /// 先设标记让 SetClickThrough 等调用跳过，延迟重建窗口设置。
+    /// 延迟 2 秒重建窗口设置（DWM 玻璃层 + 样式），等待 DWM/GPU 驱动完全恢复。
+    /// 重建完成后恢复 _suspended = false，允许正常 Win32 调用。
+    /// _rebuildPending 防止并发调度双重重建。
     /// </summary>
-    public void OnResumeFromSleep()
+    private void RebuildAfterDelay()
     {
-        if (!_suspended) return; // 可能已被 OnApplicationPause 处理过
-
-        // ★ 安全模式：连续崩溃后跳过 DWM 玻璃层重建（窗口黑底但不崩系统）
-        bool skipDwm = UnityEngine.PlayerPrefs.GetString("_skip_dwm_rebuild", "") == "1";
-
-        if (skipDwm)
+        if (_rebuildPending)
         {
-            UnityEngine.Debug.Log("[WindowOverlay] 🛡 安全模式：跳过 DWM 玻璃层重建");
-            _suspended = false;
+            UnityEngine.Debug.Log("[WindowOverlay] 延迟重建已在调度中，跳过重复请求");
             return;
         }
+        _rebuildPending = true;
 
-        UnityEngine.Debug.Log("[WindowOverlay] ▶ 时间间隙触发唤醒恢复，延迟2s重建窗口（期间保持_suspended=true阻止Win32调用）");
-
-        // ★ 保持 _suspended=true，禁止所有 SetWindowLong/SetWindowPos 调用！
-        //   延迟重建：等待 DWM/GPU 驱动完全恢复后再操作窗口句柄。
-        //   协程在恢复帧后正常运行，利用此延迟避免在恢复初期触发 DWM 崩溃。
         if (_hwnd != IntPtr.Zero)
         {
             RunAfterDelay(2f, () =>
             {
+                _rebuildPending = false;
                 if (_hwnd == IntPtr.Zero) return;
                 UnityEngine.Debug.Log("[WindowOverlay] 延迟重建：验证窗口句柄");
                 if (!IsWindow(_hwnd))
@@ -630,20 +604,22 @@ public class WindowOverlay : MonoBehaviour
                     {
                         UnityEngine.Debug.LogError("[WindowOverlay] 重建时无法找到窗口");
                         _applied = false;
-                        _suspended = false; // 恢复标记，避免永久阻塞
+                        _suspended = false;
                         return;
                     }
                 }
                 ApplyNow(); // 重建 DWM 玻璃层
-                _suspended = false; // ★ 重建完成后才恢复 Win32 调用
+                _suspended = false;
 
-                // ★ 同步恢复 DesktopPet 物理状态（OnApplicationPause 可能未被调用）
+                // ★ 恢复 DesktopPet 运行（只恢复暂停，不强制重置落地状态）
+                //   注意：DesktopPet.OnApplicationPause(false) 或 OnResumeFromSleep
+                //   已经（或即将）处理 onGround=false 和行走任务链。
+                //   这里如果强制 onGround=false 会打断已经开始的行走，导致唤醒后不走动。
                 DesktopPet pet = GetComponent<DesktopPet>();
                 if (pet != null)
                 {
                     pet.isPaused = false;
-                    pet.onGround = false; // 强制重新找地面
-                    UnityEngine.Debug.Log("[WindowOverlay] ✅ 已恢复 DesktopPet 物理状态");
+                    UnityEngine.Debug.Log("[WindowOverlay] ✅ 已恢复 DesktopPet 运行");
                 }
 
                 UnityEngine.Debug.Log("[WindowOverlay] ✅ 唤醒恢复完成，Win32 调用已恢复");
@@ -651,9 +627,30 @@ public class WindowOverlay : MonoBehaviour
         }
         else
         {
+            _rebuildPending = false;
             _applied = false;
             _suspended = false;
         }
+    }
+
+    /// <summary>
+    /// 外部调用的唤醒恢复入口（由时间间隙检测触发，弥补 OnApplicationPause 不可靠问题）。
+    /// 委托给 RebuildAfterDelay 做延迟重建。
+    /// </summary>
+    public void OnResumeFromSleep()
+    {
+        if (!_suspended) return; // 可能已被 OnApplicationPause 处理过
+
+        // ★ 安全模式：连续崩溃后跳过 DWM 玻璃层重建（窗口黑底但不崩系统）
+        if (UnityEngine.PlayerPrefs.GetString("_skip_dwm_rebuild", "") == "1")
+        {
+            UnityEngine.Debug.Log("[WindowOverlay] 🛡 安全模式：跳过 DWM 玻璃层重建");
+            _suspended = false;
+            return;
+        }
+
+        UnityEngine.Debug.Log("[WindowOverlay] ▶ 时间间隙触发唤醒恢复，委托 RebuildAfterDelay");
+        RebuildAfterDelay();
     }
 
     /// <summary>

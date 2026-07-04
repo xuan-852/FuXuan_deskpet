@@ -617,6 +617,9 @@ public class DesktopPet : MonoBehaviour
         if (_lastUpdateRealtime > 0f && (now - _lastUpdateRealtime) > 10f)
         {
             Debug.Log($"[DesktopPet] ⚠ 检测到时间间隙 {(now - _lastUpdateRealtime):F0}s，系统可能刚从睡眠恢复");
+            // 清空问候/闲话缓存，防止使用睡眠前生成的过时问候语
+            var idleGen = GetComponent<IdleChatGenerator>();
+            if (idleGen != null) idleGen.ClearCache();
             // 通知 WindowOverlay 暂停 Win32 操作
             var overlay = GetComponent<WindowOverlay>();
             if (overlay != null)
@@ -1017,7 +1020,10 @@ public class DesktopPet : MonoBehaviour
             if (wasSleep)
             {
                 Debug.Log("[DesktopPet] ▶ 系统唤醒（睡眠后恢复）");
-                // 唤醒后 Unity 会重创 D3D 设备和渲染上下文，所有老资源已释放
+                // 清空问候/闲话缓存，防止使用睡眠前生成的过时问候语
+                var idleGen = GetComponent<IdleChatGenerator>();
+                if (idleGen != null) idleGen.ClearCache();
+                // 唤醒后 Unity 会重建 D3D 设备和渲染上下文，所有老资源已释放
                 // WindowOverlay.OnApplicationPause(false) 已自动重建窗口样式/DWM 玻璃
                 // 这里只需要恢复物理状态
                 isPaused = false;

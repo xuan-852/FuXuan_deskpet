@@ -40,6 +40,29 @@ public class IdleChatGenerator : MonoBehaviour
     private bool _isIdleGenerating = false;
     private bool _isGreetingGenerating = false;
 
+    // 问候缓存对应的时间段标签（如 "上午"、"中午"、"下午"）
+    // 跨时段时自动清空旧缓存，防止上午的问候出现在中午
+    private string _greetingTimePeriod = "";
+    // 闲话缓存对应的时间段标签
+    private string _idleTimePeriod = "";
+
+    /// <summary>
+    /// 清空所有缓存（睡眠/挂起后调用），防止唤醒后使用过时的问候语/闲话。
+    /// 同时重置生成时间戳，确保唤醒后立即重新生成。 
+    /// </summary>
+    public void ClearCache()
+    {
+        _idleCache.Clear();
+        _greetingCache.Clear();
+        _lastIdleGenTime = -999f;
+        _lastGreetingGenTime = -999f;
+        _isIdleGenerating = false;
+        _isGreetingGenerating = false;
+        _greetingTimePeriod = "";
+        _idleTimePeriod = "";
+        Debug.Log("[IdleChatGenerator] 🧹 已清空所有缓存（系统挂起）");
+    }
+
     // ===== Fallback 备用库 =====
     // API 不可用/冷却中时使用，确保不会出现空气泡
     private static readonly string[] FALLBACK_IDLE = new string[]
@@ -51,7 +74,7 @@ public class IdleChatGenerator : MonoBehaviour
         "要不要一起说说话？",
         "唔…该做点什么好呢~",
         "闲来无事，看星星去~",
-        "主人辛苦啦，歇会儿吧~",
+        "累了就歇会儿吧~",
         "本座替你看着呢，安心~",
     };
 
@@ -74,6 +97,17 @@ public class IdleChatGenerator : MonoBehaviour
     /// <param name="timeContext">时间/天气等上下文描述</param>
     public string GetIdleLine(string timeContext)
     {
+        // ⚠️ 检测时间段是否变化 — 如果变了，清空旧闲话缓存
+        string currentPeriod = ExtractTimePeriod(timeContext);
+        if (_idleCache.Count > 0
+            && currentPeriod != _idleTimePeriod
+            && !string.IsNullOrEmpty(_idleTimePeriod))
+        {
+            Debug.Log($"[IdleChatGenerator] ⏰ 闲话时间段变化：'{_idleTimePeriod}' → '{currentPeriod}'，清空闲话缓存");
+            _idleCache.Clear();
+            _lastIdleGenTime = -999f;
+        }
+
         // 缓存不足 → 后台触发批量生成
         TryGenerateIdleBatch(timeContext);
 
@@ -93,6 +127,10 @@ public class IdleChatGenerator : MonoBehaviour
     {
         if (_isIdleGenerating) return;
         if (Time.time - _lastIdleGenTime < generationCooldown) return;
+
+        // 记录本次生成对应的时间段
+        _idleTimePeriod = ExtractTimePeriod(context);
+
         StartCoroutine(GenerateIdleBatchCoroutine(context));
     }
 
@@ -158,6 +196,18 @@ public class IdleChatGenerator : MonoBehaviour
     /// <summary>获取一句问候（优先从缓存取）</summary>
     public string GetGreeting(string timeContext)
     {
+        // ⚠️ 检测时间段是否变化 — 如果变了，清空旧缓存
+        // 防止上午生成的 "早安~" 在中午被取出
+        string currentPeriod = ExtractTimePeriod(timeContext);
+        if (_greetingCache.Count > 0
+            && currentPeriod != _greetingTimePeriod
+            && !string.IsNullOrEmpty(_greetingTimePeriod))
+        {
+            Debug.Log($"[IdleChatGenerator] ⏰ 时间段变化：'{_greetingTimePeriod}' → '{currentPeriod}'，清空问候缓存");
+            _greetingCache.Clear();
+            _lastGreetingGenTime = -999f; // 允许立即重新生成
+        }
+
         // 缓存不足 → 后台触发生成
         TryGenerateGreeting(timeContext);
 
@@ -167,11 +217,24 @@ public class IdleChatGenerator : MonoBehaviour
         return FALLBACK_GREETINGS[Random.Range(0, FALLBACK_GREETINGS.Length)];
     }
 
+    /// <summary>从时间上下文中提取时间段标签（"上午（10点钟）" → "上午"）</summary>
+    private string ExtractTimePeriod(string timeContext)
+    {
+        if (string.IsNullOrEmpty(timeContext)) return "";
+        int idx = timeContext.IndexOf('（');
+        if (idx > 0) return timeContext.Substring(0, idx);
+        return timeContext; // "周末，休息日" 等无括号的情况
+    }
+
     /// <summary>触发问候生成（如果满足冷却条件）</summary>
     public void TryGenerateGreeting(string context)
     {
         if (_isGreetingGenerating) return;
         if (Time.time - _lastGreetingGenTime < generationCooldown) return;
+
+        // 记录本次生成对应的时间段（用于后续跨时段检测）
+        _greetingTimePeriod = ExtractTimePeriod(context);
+
         StartCoroutine(GenerateGreetingCoroutine(context));
     }
 
@@ -182,20 +245,22 @@ public class IdleChatGenerator : MonoBehaviour
 
         string memories = BuildMemoryContext();
         string sysPrompt = string.Format(
-            "你是符玄，仙舟「罗浮」太卜司之首。现在你要主动问候你的主人（电脑前的用户）。\n" +
+            "你是符玄，仙舟「罗浮」太卜司之首。你正在对在电脑前的人说话，主动问候一句。\n" +
+            "符玄的性格：自信耿直，略带傲气，以「本座」自称。说话文雅带古风，常用卜算比喻。但对待眼前这人，态度温柔关切，不摆架子。\n" +
             "要求：\n" +
             "1. 每句话不超过30字\n" +
             "2. 语气温柔关切，七分温暖三分俏皮，不可傲慢或说教\n" +
-            "3. 结合当前的{0}来问候\n" +
-            "4. 如果有忆境记录，可以其中1句自然地提及最近的记忆（不要全围绕记忆）\n" +
-            "5. 不要重复，要有新意\n" +
-            "6. 直接输出问候语本身，不要加任何前缀后缀\n" +
-            "7. 「傲」与「娇」的比例大约 3:7 —— 多一分温柔，少一分傲气\n{1}",
+            "3. 日常问候如「早啊」「今天如何？」即可，不必过于正式\n" +
+            "4. 结合当前的{0}自然提及\n" +
+            "5. 如果有忆境记录，可以其中1句自然地提及最近的记忆（不要全围绕记忆）\n" +
+            "6. 不要重复，要有新意\n" +
+            "7. 直接输出问候语本身，不要加任何前缀后缀\n" +
+            "8. 「傲」与「娇」的比例大约 3:7 —— 多一分温柔，少一分傲气\n{1}",
             context, memories);
 
         string userPrompt = string.Format(
-            "请生成3句不同的问候语，每句不超过30字，结合{0}的特点。" +
-            "用 ||| 分隔。例如：晨光正好，今日宜出门走走~ ||| 看你精神不错，很好。",
+            "请生成3句不同的日常问候，每句不超过30字，结合{0}的特点。" +
+            "用 ||| 分隔，不要序号。例如：晨光正好，今日宜出门走走~ ||| 看你精神不错，很好。",
             context);
 
         string jsonBody = BuildSimpleRequestBody(sysPrompt, userPrompt);
