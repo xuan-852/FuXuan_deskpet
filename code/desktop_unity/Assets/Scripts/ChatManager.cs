@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using System.Linq;
+using Live2D.Cubism.Core;
 
 /// <summary>
 /// 聊天管理器 — 支持 OpenAI 兼容 Function Calling (工具调用)
@@ -111,7 +112,25 @@ public class ChatManager : MonoBehaviour
             }
         }
 
+        // ★ 注入身体参数知识（让 AI 了解如何控制自己的 Live2D 身体）
+        prompt += InjectParameterKnowledge();
+
         return prompt;
+    }
+
+    /// <summary>注入身体参数知识 — 让 AI 理解自己的 Live2D 参数</summary>
+    private string InjectParameterKnowledge()
+    {
+        // 查找场景中的 Live2DRenderer 以获取 Mapper 和 CubismModel
+        var renderer = FindObjectOfType<Live2DRenderer>();
+        if (renderer == null || renderer.Mapper == null || !renderer.Mapper.IsLoaded)
+        {
+            return "";
+        }
+
+        return ParameterKnowledgeProvider.GenerateKnowledgePrompt(
+            renderer.Mapper,
+            renderer.CubismModel);
     }
 
     // ==================================================================

@@ -1,6 +1,6 @@
 # 项目任务清单
 
-> 文件版本: N27 · 最后更新: 2026-07-05
+> 文件版本: N29 · 最后更新: 2026-07-06
 >
 > 图例: ✅ 已完成 / 🔧 已优化 / 🐛 已修复 / ⏳ 待办 / 💡 待研究 / ❌ 已废弃
 
@@ -387,16 +387,16 @@ public class ParameterVisionScanner : MonoBehaviour
 
 ---
 
-### 阶段三：ParameterKnowledgeBase — 参数知识库（预估 2 天）
+### 阶段三：ParameterKnowledgeBase — 参数知识库（预估 2 天）✅
 
 将验证后的 body schema 转化为 AI 可理解的结构化提示。
 
-| 组件 | 文件 | 说明 | 工作量 |
-|------|------|------|--------|
-| `ParameterKnowledgeProvider` | `Live2DFramework/ParameterKnowledgeProvider.cs` | 从 schema 生成 AI system prompt | 0.5天 |
-| Body schema JSON 格式定义 | `ParamMaps/schema_template.json` | 用于新模型的标准模板 | 0.5天 |
-| 参数知识注入 ChatManager | 修改 `ChatManager.cs` | 将 body knowledge 拼入 system prompt | 0.5天 |
-| GLM 辅助交叉验证 | 修改 `ParameterVisionScanner.cs` | 对已映射参数做二次确认 | 0.5天 |
+| 组件 | 文件 | 说明 | 工作量 | 状态 |
+|------|------|------|--------|------|
+| `ParameterKnowledgeProvider` | `Live2DFramework/ParameterKnowledgeProvider.cs` | 从 schema 生成 AI system prompt | 0.5天 | ✅ |
+| Body schema JSON 格式定义 | `ParamMaps/schema_template.json` | 用于新模型的标准模板 | 0.5天 | ✅ |
+| 参数知识注入 ChatManager | 修改 `ChatManager.cs` | 将 body knowledge 拼入 system prompt | 0.5天 | ✅ |
+| GLM 辅助交叉验证 | 修改 `ParameterVisionScanner.cs` | 对已映射参数做二次确认 | 0.5天 | ⏳ 可选优化 |
 
 #### 生成的 AI 提示示例
 
@@ -430,18 +430,18 @@ public class ParameterVisionScanner : MonoBehaviour
 
 ---
 
-### 阶段四：ActionAgent 动作代理（预估 5 天）
+### 阶段四：ActionAgent 动作代理（预估 5 天）✅
 
 真正的 AI 动作控制器。替代现在 `Live2DRenderer.cs` 中 3000+ 行 `UpdateIdleAnimation()` 硬编码。
 
-| 组件 | 文件 | 说明 | 工作量 |
-|------|------|------|--------|
-| `MotionPlanner` | `Live2DFramework/ActionAgent/MotionPlanner.cs` | 将意图拆解为时序参数序列 | 1.5天 |
-| `MotionGenerator` | `Live2DFramework/ActionAgent/MotionGenerator.cs` | 生成具体参数值 + 插值曲线，协程播放 | 1.5天 |
-| `SafetyValidator` | `Live2DFramework/ActionAgent/SafetyValidator.cs` | 参数范围/冲突/约束检查 | 0.5天 |
-| 工具 `control_body` | 修改 `ToolCallInvoker.cs` | AI 精确控制单个/多个参数 | 0.5天 |
-| 工具 `generate_motion` | 修改 `ToolCallInvoker.cs` | AI 描述式生成动作 | 0.5天 |
-| 工具 `explore_body` | 修改 `ToolCallInvoker.cs` | AI 自探索未知参数 | 0.5天 |
+| 组件 | 文件 | 说明 | 工作量 | 状态 |
+|------|------|------|--------|------|
+| `MotionPlanner` | `Live2DFramework/ActionAgent/MotionPlanner.cs` | 将意图拆解为时序参数序列 | 1.5天 | ✅ |
+| `MotionGenerator` | `Live2DFramework/ActionAgent/MotionGenerator.cs` | 生成具体参数值 + 插值曲线，协程播放 | 1.5天 | ✅ |
+| `SafetyValidator` | `Live2DFramework/ActionAgent/SafetyValidator.cs` | 参数范围/冲突/约束检查 | 0.5天 | ✅ |
+| 工具 `control_body` | 修改 `ToolCallInvoker.cs` | AI 精确控制单个/多个参数 | 0.5天 | ✅ |
+| 工具 `generate_motion` | 修改 `ToolCallInvoker.cs` | AI 描述式生成动作 | 0.5天 | ✅ |
+| 工具 `explore_body` | 修改 `ToolCallInvoker.cs` | AI 自探索未知参数 | 0.5天 | ✅ |
 
 #### 新增的工具定义
 
@@ -570,12 +570,13 @@ public class ParameterVisionScanner : MonoBehaviour
 |------|------|---------|---------|
 | 一 | 基础设施增强 | 4天 | 无 |
 | 二 | GLM-4V 视觉辅助验证 | 3天 | 阶段一完成 |
-| 三 | 参数知识库 | 2天 | 阶段一完成 |
-| 四 | ActionAgent 动作代理 | 5天 | 阶段二、三完成 |
+| 三 | 参数知识库 | 2天 | 阶段一完成 | ✅
+| 四 | ActionAgent 动作代理 | 5天 | 阶段二、三完成 | ✅
 | 五 | IdleActionScheduler | 2天 | 阶段四完成 |
 | 六 | 新模型接入流程 | 2天 | 阶段二、三完成 |
 | 七 | 硬编码迁移 | 2天 | 阶段四、五完成 |
-| **总计** | | **~20天** | |
+| 八 | **闭环视觉反馈学习系统** | 3天 | 阶段四完成、GLM-4V API |
+| **总计** | | **~23天** | |
 
 > 注：阶段一~三完成后（约 9 天）即可投入实际使用，后续阶段为持续优化。
 
@@ -632,5 +633,147 @@ public class ParameterVisionScanner : MonoBehaviour
 
 ---
 
-*N27 新章节 — 由 AI 基于架构分析整理，2026-07-05*
+---
+
+### 阶段八：闭环视觉反馈学习系统 — "模仿→对比→修正"自律循环（预估 3 天）
+
+> **核心愿景**：让 AI 通过 GLM-4V 视觉模型观察自己的动作效果，对比"预期标准画面"和"实际执行结果"之间的差异，自动修正底层参数，形成一个永不停止的自我优化闭环。
+
+#### 核心理念
+
+```
+                    ┌──────────────────────┐
+                    │   AI 下达动作指令      │
+                    │  "挥手打招呼"          │
+                    └──────────┬───────────┘
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │   MotionPlanner       │
+                    │   → 生成参数序列       │
+                    └──────────┬───────────┘
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │   MotionGenerator     │
+                    │   → 执行动作           │
+                    └──────────┬───────────┘
+                               │
+            ┌──────────────────┼──────────────────┐
+            ▼                  ▼                  ▼
+    ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+    │ 截取实际画面    │ │ 加载标准参考图  │ │ 调用 GLM-4V    │
+    │ (动作执行后)    │ │ (此动作的标准)  │ │ 对比分析差异    │
+    └───────┬───────┘ └───────┬───────┘ └───────┬───────┘
+            │                  │                  │
+            └──────────────────┼──────────────────┘
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │ GLM-4V 视觉对比分析    │
+                    │ "实际 vs 标准 差异:    │
+                    │  1. 右手抬高了 15°    │
+                    │  2. 头歪得不够左边     │
+                    │  3. 笑纹不够明显"      │
+                    └──────────┬───────────┘
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │ AI 自动修正决策        │
+                    │ "我知道了，应该：       │
+                    │  head_angle_z → -0.3  │
+                    │  eye_smile → 0.7"     │
+                    └──────────┬───────────┘
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │ 调用 control_body     │
+                    │ 微调参数再次对比       │
+                    └──────────┬───────────┘
+                               │
+                    ┌──────────▼───────────┐
+                    │ 循环 N 轮直至满意     │
+                    │ 或达到最大迭代次数     │
+                    └──────────────────────┘
+```
+
+#### 关键里程碑
+
+| 组件 | 文件 | 说明 | 工作量 |
+|------|------|------|--------|
+| `ActionReferenceManager` | `ActionAgent/ActionReferenceManager.cs` | 管理标准参考截图库（每个动作一张标准图） | 0.5天 |
+| `VisualFeedbackComparator` | `ActionAgent/VisualFeedbackComparator.cs` | 封装 GLM-4V 对比逻辑：截图→发送→解析差异报告 | 1天 |
+| `SelfImprovementLoop` | `ActionAgent/SelfImprovementLoop.cs` | 自律循环引擎：评估→修正→再评估，直到满意或达到上限 | 1天 |
+| `update_standard_ref` 工具 | 修改 `ToolCallInvoker.cs` | AI 可更新某动作的标准参考图 | 0.5天 |
+
+#### 标准参考图管理
+
+- 每个已知动作（挥手/点头/伸懒腰/法阵等）在首次"学会"时保存一张标准截图到本地
+- 文件路径: `Application.persistentDataPath/ActionRefs/<动作名>.png`
+- 格式: 512×512 RGBA，去背景，纯模型渲染
+- `ActionReferenceManager` 提供 `GetReference(actionName)` / `SaveReference(actionName, texture)` / `ListAllActions()`
+
+#### GLM-4V 对比 Prompt 设计
+
+```
+你是一个专业的动作质量评审员。
+请比较以下两张图片：
+
+【参考图】— 此动作的标准执行效果
+【实际图】— AI 当前执行的效果
+
+请从以下维度逐项分析差异（如果有）：
+1. 头部角度（左右/上下/歪头）
+2. 眼睛（睁度/笑纹/眼珠位置）
+3. 嘴巴（张嘴/微笑/撇嘴）
+4. 眉毛（高低/角度）
+5. 手/手臂位置（左右手）
+6. 身体角度（前后/旋转/侧摆）
+7. 整体姿态差异
+
+对每个有差异的部位，给出修正建议：
+- 参数名（语义名）
+- 当前估计值（0~1 或 -1~1）
+- 建议修正值
+- 修正方向（增大/减小）
+```
+
+#### 自律循环算法
+
+```
+SelfImprovement(actionName, maxIterations=3):
+  1. refImage = LoadReference(actionName)
+  2. if refImage == null: SaveCurrentAsReference(); return "已保存标准"
+  
+  3. for i = 1 to maxIterations:
+     a. actualImage = TakeScreenshot()
+     b. diffReport = GLM4V_Compare(refImage, actualImage)
+     c. if diffReport == "无明显差异" → return "完美达成 ✓"
+     d. corrections = ParseDiffReport(diffReport)
+     e. foreach correction in corrections:
+          control_body(correction.params)
+     f. WaitForModelUpdate()
+  
+  4. return "已尝试 {maxIterations} 轮修正，剩余差异: ..."
+```
+
+#### 与现有系统集成
+
+- `ToolCallInvoker` 新增工具 `self_improve` — "练习一个动作直到做好"
+- `ActionPresetPlayer` 执行完成后自动触发一次自我评估（可选）
+- `MotionGenerator` 播放完动作后挂载回调 → 触发 `VisualFeedbackComparator`
+- IdleActionScheduler 可选择性地启用"日常练习模式"——空闲时自动练习生疏动作
+
+#### 预期效果
+
+| 指标 | 初始状态 | 经过闭环训练后 |
+|------|---------|---------------|
+| 动作准确性 | 偏差 ±20~30% | 偏差 < 5% |
+| 标准动作库 | 0 张参考图 | 每个动作 1 张高质量参考 |
+| 参数敏感度 | AI 不知道参数实际效果 | AI 知道每个参数的视觉影响 |
+| 动作自然度 | 基本可识别 | 被用户误认为人工手调 |
+
+---
+
+*N29 新章节 — 2026-07-06，闭环控制启发来自用户 "让动作越做越熟练" 的无限学习系统愿景*
 

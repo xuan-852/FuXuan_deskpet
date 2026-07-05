@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -573,7 +574,81 @@ public class ToolCallInvoker : MonoBehaviour
         // ——— 28 (C). 内观自省：AI 分析参数变化效果（异步执行） ———
         _executors["explore_body"] = args => "⏳ 本座正在内观自省，请稍候……";
 
-        // ——— 28. 观云望气：直接读取本地的天气数据（不开网页） ———
+        // ——— 29. 御形：精确控制身体参数（同步设置） ———
+        _executors["control_body"] = args =>
+        {
+            var renderer = FindObjectOfType<Live2DRenderer>();
+            if (renderer == null || renderer.Mapper == null) return "❌ 本座法身未现";
+
+            var mapper = renderer.Mapper;
+
+            // 解析 expression 参数（可选）
+            string expression = JsonRead(args, "expression");
+            if (!string.IsNullOrEmpty(expression))
+            {
+                var templates = MotionPlanner.PlanFromDescription(expression, 1f, mapper);
+                if (templates.KeyFrames.Count > 0)
+                {
+                    // 套用第一个关键帧的参数
+                    foreach (var kv in templates.KeyFrames[0].Values)
+                        mapper.Set(kv.Key, kv.Value);
+                }
+            }
+
+            // 解析普通参数（排除控制参数名）
+            var controlKeys = new HashSet<string> { "expression", "duration" };
+            var paramValues = new Dictionary<string, float>();
+            var warnings = new List<string>();
+
+            foreach (string rawPair in args.Split(','))
+            {
+                string pair = rawPair.Trim().TrimStart('{').TrimEnd('}');
+                int colonIdx = pair.IndexOf(':');
+                if (colonIdx < 0) continue;
+
+                string key = pair.Substring(0, colonIdx).Trim().Trim('"');
+                string valStr = pair.Substring(colonIdx + 1).Trim().Trim('"');
+                if (controlKeys.Contains(key)) continue;
+
+                // 跳过 JSON 结构字符开头的（嵌套对象）
+                if (valStr.StartsWith("{") || valStr.StartsWith("[")) continue;
+
+                if (float.TryParse(valStr, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out float val))
+                {
+                    paramValues[key] = val;
+                }
+            }
+
+            // 也尝试从 "params" 字段读取
+            var fromParams = JsonReadDict(args, "params");
+            foreach (var kv in fromParams)
+                paramValues[kv.Key] = kv.Value;
+
+            if (paramValues.Count == 0 && string.IsNullOrEmpty(expression))
+                return "❌ 未指定任何参数或表情";
+
+            // 安全校验
+            var results = SafetyValidator.ValidateBulk(paramValues, mapper);
+            foreach (var r in results)
+                warnings.AddRange(r.Warnings);
+
+            // 应用参数
+            int applied = 0;
+            foreach (var kv in paramValues)
+            {
+                mapper.Set(kv.Key, kv.Value);
+                applied++;
+            }
+
+            // 构建返回信息
+            string result = $"✅ 已御形：{applied} 个参数已调整";
+            if (warnings.Count > 0)
+                result += "\n⚠ 注意：\n" + string.Join("\n", warnings);
+            return result;
+        };
+
+        // ——— 30. 观云望气：直接读取本地的天气数据（不开网页） ———
         _executors["get_weather"] = args =>
         {
             var tc = FindObjectOfType<TimeWeatherController>();
@@ -1465,6 +1540,48 @@ public class ToolCallInvoker : MonoBehaviour
         ""properties"": {}
       }
     }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""control_body"",
+      ""description"": ""【高级控制】御形：精确控制桌面宠物的身体参数。可同时指定多个语义参数的值，也可选择预设表情模板。参数值会被自动校验安全范围。用户说「把眼睛张大」「微笑」「调整表情」「向左看」「参数设置」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""params"": {
+            ""type"": ""object"",
+            ""description"": ""要设置的参数键值对，key=语义参数名，value=目标值。例如 {eye_l_open:0.8, eye_r_open:0.8, mouth_form:0.5}。支持的语义参数见前面列表。""
+          },
+          ""expression"": {
+            ""type"": ""string"",
+            ""description"": ""可选。预设表情模板：happy/sad/angry/surprised/sleepy/blush。设置后会先应用表情再叠加 params。""
+          }
+        },
+        ""required"": []
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""generate_motion"",
+      ""description"": ""【动作生成】演武：根据自然语言描述生成一段连续动作动画并播放。支持复杂时序动作，如「开心地挥手」「害羞地摇头」「伸懒腰」「惊讶地跳起来」。会自动编排关键帧序列实现平滑过渡。用户说「做一个动作」「表演一下」「动起来」「做个表情」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""description"": {
+            ""type"": ""string"",
+            ""description"": ""自然语言动作描述，越详细越好。例如：「开心地挥手3次」「害羞地低下头微笑」「惊讶地瞪大眼睛」「像伸懒腰一样舒展身体」""
+          },
+          ""duration"": {
+            ""type"": ""number"",
+            ""description"": ""可选。动作总时长（秒），默认3秒。越长动作越舒缓。""
+          }
+        },
+        ""required"": [""description""]
+      }
+    }
   }
 ]";
     }
@@ -1496,7 +1613,59 @@ public class ToolCallInvoker : MonoBehaviour
             ["search_files"]      = args => RunAsyncTool(() => SearchFilesTask(args)),
             ["search_file"]       = args => RunAsyncTool(() => Task.Run(() => SearchFileByPython(JsonRead(args, "query"), JsonRead(args, "root")))),
             ["explore_body"]      = args => ExploreBodyCoroutine(args),
+            ["generate_motion"]   = args => GenerateMotionCoroutine(args),
         };
+    }
+
+    // ================================================================
+    //  演武：根据描述生成并播放动作
+    // ================================================================
+
+    private IEnumerator GenerateMotionCoroutine(string args)
+    {
+        _coroutineResult = null;
+
+        var renderer = FindObjectOfType<Live2DRenderer>();
+        if (renderer == null || renderer.Mapper == null || renderer.CubismModel == null)
+        {
+            _coroutineResult = "❌ 本座法身未现，无法演武";
+            yield break;
+        }
+
+        var mapper = renderer.Mapper;
+        var model = renderer.CubismModel;
+
+        // 解析参数
+        string description = JsonRead(args, "description");
+        string durationStr = JsonRead(args, "duration");
+        float duration = 3f;
+        if (!string.IsNullOrEmpty(durationStr))
+            float.TryParse(durationStr, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out duration);
+
+        if (string.IsNullOrEmpty(description))
+        {
+            _coroutineResult = "❌ 请描述想要的动作，例如「开心地挥手」";
+            yield break;
+        }
+
+        // 规划动作
+        var plan = MotionPlanner.PlanFromDescription(description, duration, mapper);
+        if (plan == null || plan.KeyFrames.Count == 0)
+        {
+            _coroutineResult = $"❌ 未能理解「{description}」的演武方式";
+            yield break;
+        }
+
+        // 覆盖持续时间
+        if (duration > 0.5f)
+            plan.TotalDuration = duration;
+
+        // 创建 MotionGenerator 并播放
+        var generator = new MotionGenerator(mapper, model);
+        yield return generator.PlayAsync(plan);
+
+        _coroutineResult = $"✅ 演武完成：「{plan.Description}」，持续 {plan.TotalDuration:F1} 秒，共 {plan.KeyFrames.Count} 个关键帧";
     }
 
     // ================================================================
@@ -1645,23 +1814,21 @@ public class ToolCallInvoker : MonoBehaviour
         string paramSnapshot = "";
         if (mapper != null && model != null)
         {
-            var allParams = mapper.GetAllMappedParameters();
-            var activeParams = allParams.Where(p =>
+            var activeLines = new List<string>();
+            foreach (var kv in mapper.SemanticToId)
             {
-                if (p.value == null) return false;
-                int idx = model.IndexOfParameter(p.cdiName);
-                if (idx < 0) return false;
-                float v = model.ParametersToArray()[idx];
-                float normalized = Mathf.Abs(v - p.value.Value) / Mathf.Max(Mathf.Abs(p.rangeX), 0.01f);
-                return normalized > 0.05f;
-            }).Take(30).ToList();
-
-            paramSnapshot = string.Join("\n", activeParams.Select(p =>
-            {
-                int idx = model.IndexOfParameter(p.cdiName);
-                float v = idx >= 0 ? model.ParametersToArray()[idx] : 0;
-                return $"• {p.cdiName} = {v:F2} (区域:{p.bodyPart}, 默认:{p.value.Value:F2})";
-            }));
+                string semantic = kv.Key;
+                string paramId = kv.Value;
+                if (!mapper.TryGetRange(semantic, out var range)) continue;
+                float current = mapper.Get(semantic);
+                float normalized = Mathf.Abs(current - range.Default) / Mathf.Max(range.Max - range.Min, 0.01f);
+                if (normalized > 0.05f)
+                {
+                    string part = "unknown";
+                    activeLines.Add($"• {paramId} = {current:F2} (区域:{part}, 默认:{range.Default:F2})");
+                }
+            }
+            paramSnapshot = string.Join("\n", activeLines.Take(30));
             if (string.IsNullOrEmpty(paramSnapshot))
                 paramSnapshot = "（所有参数均在默认值附近）";
         }
@@ -1999,6 +2166,92 @@ public class ToolCallInvoker : MonoBehaviour
         }
 
         return "";
+    }
+
+    /// <summary>简易解析 JSON 对象为 Dictionary（仅支持 "key":value 或 "key":"value" 平铺结构）</summary>
+    private static Dictionary<string, float> JsonReadDict(string json, string objKey)
+    {
+        var dict = new Dictionary<string, float>();
+
+        // 找 objKey 对应的对象 { ... }
+        string search = $"\"{objKey}\":";
+        int objStart = json.IndexOf(search);
+        if (objStart < 0) return dict;
+
+        objStart += search.Length;
+        // 跳过空白到 {
+        while (objStart < json.Length && json[objStart] != '{') objStart++;
+        if (objStart >= json.Length) return dict;
+
+        // 找匹配的 }
+        int braceCount = 0;
+        int objEnd = objStart;
+        for (int i = objStart; i < json.Length; i++)
+        {
+            if (json[i] == '{') braceCount++;
+            else if (json[i] == '}')
+            {
+                braceCount--;
+                if (braceCount == 0) { objEnd = i; break; }
+            }
+        }
+
+        string inner = json.Substring(objStart + 1, objEnd - objStart - 1);
+        // 解析 key:value 对
+        int pos = 0;
+        while (pos < inner.Length)
+        {
+            // 跳过空白和逗号
+            while (pos < inner.Length && (inner[pos] == ' ' || inner[pos] == ',' || inner[pos] == '\n' || inner[pos] == '\r' || inner[pos] == '\t')) pos++;
+            if (pos >= inner.Length) break;
+
+            // 读 key
+            if (inner[pos] != '"') break;
+            pos++;
+            var keySb = new StringBuilder();
+            while (pos < inner.Length && inner[pos] != '"')
+            {
+                if (inner[pos] == '\\') { if (pos + 1 < inner.Length) { keySb.Append(inner[pos + 1]); pos += 2; } }
+                else { keySb.Append(inner[pos]); pos++; }
+            }
+            if (pos >= inner.Length) break;
+            pos++; // skip closing "
+
+            // 跳过冒号
+            while (pos < inner.Length && (inner[pos] == ' ' || inner[pos] == ':')) pos++;
+
+            // 读 value
+            if (pos >= inner.Length) break;
+
+            if (inner[pos] == '"')
+            {
+                // string value — skip
+                pos++;
+                while (pos < inner.Length && inner[pos] != '"')
+                {
+                    if (inner[pos] == '\\') pos += 2;
+                    else pos++;
+                }
+                pos++;
+            }
+            else
+            {
+                // numeric value
+                var valSb = new StringBuilder();
+                while (pos < inner.Length && inner[pos] != ',' && inner[pos] != '}' && inner[pos] != ' ')
+                {
+                    valSb.Append(inner[pos]); pos++;
+                }
+                string valStr = valSb.ToString();
+                if (float.TryParse(valStr, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out float val))
+                {
+                    dict[keySb.ToString()] = val;
+                }
+            }
+        }
+
+        return dict;
     }
 
     // ---- 截图 ----

@@ -1,0 +1,45 @@
+{
+  "formatVersion": "2.0",
+  "modelName": "your_model_name",
+  "description": "参数知识库模板 — 用于新模型接入时定义结构化参数知识",
+
+  "entries": [
+    {
+      "s": "example_param",           "p": "ParamExample",
+      "d": "参数描述",                "part": "head",
+      "domain": "normalized",         "axis": "X",
+      "min": -30,                     "max": 30,
+      "related": ["related_param"],
+      "relType": "symmetrical",
+      "prerequisite": "",
+      "side": ""
+    }
+  ],
+
+  "groups": [
+    {
+      "g": "head",
+      "title": "头部",
+      "params": ["example_param"]
+    }
+  ],
+
+  "relations": [
+    {
+      "type": "symmetrical",
+      "a": "example_param",
+      "b": "related_param",
+      "desc": "左右对称关联说明"
+    }
+  ],
+
+  "specialBehaviors": [
+    {
+      "name": "blink",
+      "title": "眨眼",
+      "params": ["eye_l_open", "eye_r_open"],
+      "pattern": "both_sync",
+      "desc": "两只眼睛同时闭合再睁开"
+    }
+  ]
+}
