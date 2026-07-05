@@ -23,6 +23,6 @@ public static class ChatConfig
     /// <summary>GLM API 基础地址</summary>
     public const string GlmApiBaseUrl = "https://open.bigmodel.cn/api/paas/v4";
 
-    /// <summary>GLM 视觉模型名</summary>
-    public const string GlmVisionModel = "glm-4v-flash";
+    /// <summary>GLM 视觉模型名 — 2026.7 使用付费版 glm-4.6v（¥2/M tokens，¥10 绰绰有余）</summary>
+    public const string GlmVisionModel = "glm-4.6v";
 }

@@ -1,6 +1,6 @@
 # 项目任务清单
 
-> 文件版本: N26 (3f6fa02) · 最后更新: 2026-07-03
+> 文件版本: N27 · 最后更新: 2026-07-05
 >
 > 图例: ✅ 已完成 / 🔧 已优化 / 🐛 已修复 / ⏳ 待办 / 💡 待研究 / ❌ 已废弃
 
@@ -275,4 +275,362 @@
 
 ---
 
-*本清单由 AI 基于代码分析、Git 提交记录、README、LaTeX 文档综合整理。*
+## 十四、通用动作代理系统（新架构 · N27 规划）
+
+> **核心目标**：构建一个能理解任意 Live2D 模型参数的动作代理，使 AI（DeepSeek）能精确控制模型的每个身体部位，摆脱当前 3000+ 行硬编码动画的架构限制。
+
+### 总体架构
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Layer 4: ActionGenerator — 动作生成器                    │
+│  自然语言描述 → 时序参数序列 → 协程播放                    │
+├──────────────────────────────────────────────────────────┤
+│  Layer 3: ActionAgent — 动作代理（AI 大脑）               │
+│  理解参数语义 → 决策动作序列 → 生成器 + 工具调用           │
+├──────────────────────────────────────────────────────────┤
+│  Layer 2: ParameterKnowledgeBase — 参数知识库             │
+│  完整的 body schema → 参数关联/约束/分组                  │
+├──────────────────────────────────────────────────────────┤
+│  Layer 1: ModelAnalyzer & Mapper — 基础层（已有需增强）   │
+│  语义映射 + 参数范围 + cdi3 中文名 + 运行时自动分析        │
+└──────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 阶段一：基础设施增强（预估 4 天）
+
+| 组件 | 文件 | 说明 | 工作量 |
+|------|------|------|--------|
+| `ModelBodySchema` 数据结构 | `Live2DFramework/ModelBodySchema.cs` | 参数定义/分组/关联关系的结构化数据模型 | 0.5天 |
+| `RuntimeModelAnalyzer` | `Live2DFramework/RuntimeModelAnalyzer.cs` | 运行时自动分析模型所有参数，无需 Editor，输出 schema | 1天 |
+| `ParameterRelationDetector` | `Live2DFramework/ParameterRelationDetector.cs` | 自动检测参数间关联（左右联动/互斥/从属） | 1天 |
+| `fuxuan_map.json` 升级 v2 | `ParamMaps/fuxuan_map.json` | 增加 bodyPart/constraints/relations 字段 | 0.5天 |
+| `Live2DModelAnalyzer` 增强 | 修改现有文件 | KNOWN_PATTERNS 扩展覆盖更多语义 | 0.5天 |
+| 现有 `Live2DRenderer.cs` 硬编码参数常量梳理 | 修改现有文件 | 标记所有待迁移的硬编码动画段 | 0.5天 |
+
+#### 关键数据结构 `ModelBodySchema`
+
+```csharp
+public class ModelBodySchema
+{
+    public string modelName;
+    public List<ParameterDef> parameters;
+    public List<ParameterGroup> groups;       // 按部位分组
+    public List<ParameterRelation> relations; // 关联关系
+}
+
+public class ParameterDef
+{
+    public string semantic;      // 语义名
+    public string paramId;       // 模型参数 ID
+    public float min, max, defaultValue;
+    public string bodyPart;      // eye/mouth/arm/hair/...
+    public string cdiName;       // 中文名
+    public string description;   // 验证后的描述
+}
+
+public class ParameterGroup
+{
+    public string groupName;     // "eyes", "left_arm", ...
+    public string displayName;  // "眼睛"
+    public List<string> params; // 包含的语义参数名
+    public List<SpecialBehavior> specialBehaviors; // 特殊行为
+}
+```
+
+---
+
+### 阶段二：GLM-4V 视觉辅助验证（预估 3 天）
+
+利用已有的 `ChatConfig.GlmApiKey` + `TakeScreenshotAndAnalyze()` 基础设施，让智谱视觉模型替代人眼来观察参数变化效果。
+
+| 组件 | 文件 | 说明 | 工作量 |
+|------|------|------|--------|
+| `ParameterVisionScanner` | `Live2DFramework/ParameterVisionScanner.cs` | 参数的自动化视觉扫描引擎 | 1.5天 |
+| Editor 按钮「🔮 智谱扫描」 | 修改 `Live2DParameterVerifier.cs` | 一键触发全参数扫描 | 0.5天 |
+| 运行时`explore_body` 工具 | 修改 `ToolCallInvoker.cs` | 给 AI 提供自探索参数的工具 | 0.5天 |
+| GLM-4V Prompt 优化 | `ParameterVisionScanner.cs` 内部 | 精细设计前后对比分析 prompt | 0.5天 |
+
+#### 核心流程
+
+```
+for each 未映射参数:
+  ├ 截图(默认值)       → BEFORE
+  ├ 设参数到测试值     → AFTER
+  ├ 发 BEFORE+AFTER 到 GLM-4V
+  │   prompt: "这两张图有什么区别？哪个部位动了？"
+  ├ 收分析结果
+  └ 自动填入语义名 + 描述
+
+预期效果: 91 参数 × 5 步 × 0.5s ≈ 4 分钟全自动扫描
+```
+
+#### `ParameterVisionScanner` 核心方法签名
+
+```csharp
+public class ParameterVisionScanner : MonoBehaviour
+{
+    public IEnumerator AnalyzeParameter(string paramId, string cdiName,
+        float min, float max, float defaultValue);
+    // → 返回结构化的 ParameterAnalysisResult
+
+    public IEnumerator BatchAnalyzeAll(CubismModel model,
+        List<string> unmappedParamIds, Action<float> onProgress);
+    // → 批量扫描所有未映射参数
+
+    public IEnumerator SymmetryCheck(string leftParam, string rightParam);
+    // → 检测左右手是否标反（已知 cdi3.json 常有此问题）
+}
+```
+
+---
+
+### 阶段三：ParameterKnowledgeBase — 参数知识库（预估 2 天）
+
+将验证后的 body schema 转化为 AI 可理解的结构化提示。
+
+| 组件 | 文件 | 说明 | 工作量 |
+|------|------|------|--------|
+| `ParameterKnowledgeProvider` | `Live2DFramework/ParameterKnowledgeProvider.cs` | 从 schema 生成 AI system prompt | 0.5天 |
+| Body schema JSON 格式定义 | `ParamMaps/schema_template.json` | 用于新模型的标准模板 | 0.5天 |
+| 参数知识注入 ChatManager | 修改 `ChatManager.cs` | 将 body knowledge 拼入 system prompt | 0.5天 |
+| GLM 辅助交叉验证 | 修改 `ParameterVisionScanner.cs` | 对已映射参数做二次确认 | 0.5天 |
+
+#### 生成的 AI 提示示例
+
+```
+【你的身体参数 — 符玄】
+你拥有以下可控制的身体部位：
+
+■ 头部 (head)
+  head_angle_x [-30~30]  左右摇头（负=左, 正=右）
+  head_angle_y [-30~30]  上下点头（负=低, 正=仰）
+  head_angle_z [-30~30]  歪头（负=左歪, 正=右歪）
+
+■ 眼睛 (eyes)
+  eye_l_open [0~1]   左眼睁开度（0=闭, 1=全开）
+  eye_r_open [0~1]   右眼睁开度（0=闭, 1=全开）
+  注意: 左右眼通常一起控制（眨眼），特殊表情可单眼
+
+  eye_ball_x [-1~1]  眼珠左右（负=左看, 正=右看）
+  eye_ball_y [-1~1]  眼珠上下（负=上看, 正=下看）
+
+  eye_l_smile [0~1]  左眼笑纹
+  eye_r_smile [0~1]  右眼笑纹
+  注意: smile 与 open 可叠加使用（眯眼笑）
+
+■ 嘴 (mouth)
+  mouth_form [-1~1]   嘴型（负=撇嘴, 正=微笑/张嘴, 配合 open_y）
+  mouth_open_y [0~1]  嘴张开度
+
+...
+```
+
+---
+
+### 阶段四：ActionAgent 动作代理（预估 5 天）
+
+真正的 AI 动作控制器。替代现在 `Live2DRenderer.cs` 中 3000+ 行 `UpdateIdleAnimation()` 硬编码。
+
+| 组件 | 文件 | 说明 | 工作量 |
+|------|------|------|--------|
+| `MotionPlanner` | `Live2DFramework/ActionAgent/MotionPlanner.cs` | 将意图拆解为时序参数序列 | 1.5天 |
+| `MotionGenerator` | `Live2DFramework/ActionAgent/MotionGenerator.cs` | 生成具体参数值 + 插值曲线，协程播放 | 1.5天 |
+| `SafetyValidator` | `Live2DFramework/ActionAgent/SafetyValidator.cs` | 参数范围/冲突/约束检查 | 0.5天 |
+| 工具 `control_body` | 修改 `ToolCallInvoker.cs` | AI 精确控制单个/多个参数 | 0.5天 |
+| 工具 `generate_motion` | 修改 `ToolCallInvoker.cs` | AI 描述式生成动作 | 0.5天 |
+| 工具 `explore_body` | 修改 `ToolCallInvoker.cs` | AI 自探索未知参数 | 0.5天 |
+
+#### 新增的工具定义
+
+```json
+{
+  "name": "control_body",
+  "description": "精确控制你的身体参数。可指定任意语义参数的值（按0~1归一化），
+   可组合多个参数同时运动，可设置持续时间。
+   示例: {\"params\": {\"head_angle_x\": 0.3, \"eye_ball_y\": -0.5, \"eye_l_smile\": 0.8},
+          \"duration\": 1.5, \"expression\": \"happy\"}"
+}
+
+{
+  "name": "generate_motion",
+  "description": "通过自然语言描述生成一段动作。
+   示例: {\"description\": \"开心地挥手打招呼\", \"duration\": 3.0}"
+}
+
+{
+  "name": "explore_body",
+  "description": "探索你不熟悉的模型参数。传入参数名或部位名，
+   系统会自动测试该参数范围并通过GLM视觉分析描述其效果。
+   示例: {\"target\": \"Param42\"} 或 {\"target\": \"left_arm\"}"
+}
+```
+
+---
+
+### 阶段五：IdleActionScheduler — 空闲动作调度器（预估 2 天）
+
+替代 `switch(_currentIdleAction)` 的 11 路硬编码分支。
+
+| 组件 | 文件 | 说明 | 工作量 |
+|------|------|------|--------|
+| `IdleActionScheduler` | `Live2DFramework/ActionAgent/IdleActionScheduler.cs` | JSON 数据驱动的空闲动作调度 | 1天 |
+| 空闲动作 JSON 定义 | `Resources/Live2D/IdleActions/` | 所有空闲动作的 JSON 配置 | 0.5天 |
+| 集成到 LateUpdate | 修改 `Live2DRenderer.cs` | 替换 switch-case 调用 | 0.5天 |
+
+#### 空闲动作 JSON 格式示例
+
+```json
+{
+  "actions": [
+    {
+      "id": 1, "name": "tilt", "weight": 10,
+      "cooldown": 30,
+      "phases": [
+        {"duration": 0.3, "curve": "easeOut", "targets": {"head_angle_z": 0.5}},
+        {"duration": 1.5, "curve": "hold",    "targets": {"head_angle_z": 0.5}},
+        {"duration": 0.3, "curve": "easeIn",  "targets": {"head_angle_z": 0}}
+      ]
+    },
+    {
+      "id": 4, "name": "star_spin", "weight": 3,
+      "cooldown": 120,
+      "special": "hardcoded_star_spin",
+      "description": "星辉动作较复杂，暂时保留硬编码"
+    }
+  ]
+}
+```
+
+---
+
+### 阶段六：新模型接入流程（预估 2 天）
+
+**全流程**：从拿到新模型到 AI 能完全控制它。
+
+```
+拿到新模型文件夹
+    │
+    ▼
+① 放入 StreamingAssets/Live2D/<ModelName>/
+    │
+    ▼
+② RuntimeModelAnalyzer 自动分析
+   → 输出 ModelBodySchema（参数列表 + 自动匹配 + cdi3中文名）
+    │
+    ▼
+③ ★ 一键「智谱扫描」
+   → ParameterVisionScanner 逐个测试未知参数
+   → GLM-4V 分析每个参数效果
+   → 自动生成语义名建议 + 描述
+   → 耗时约 4 分钟（全自动）
+    │
+    ▼
+④ 人工校对（15分钟）
+   → 重点检查左右手/特效参数
+   → 修正 GLM 判断错误的映射
+   → 保存 param_map.json
+    │
+    ▼
+⑤ ParameterKnowledgeProvider 生成 body schema
+   → 注入 AI system prompt
+    │
+    ▼
+⑥ 新模型上线 ✓
+   → AI 可以通过 control_body / generate_motion 自由控制
+```
+
+---
+
+### 阶段七：硬编码迁移（预估 2 天）
+
+将 `Live2DRenderer.cs` 中现有的硬编码动画逐步迁移：
+
+| 动作 | 当前方法 | 迁移目标 |
+|------|---------|---------|
+| 歪头 (id=1) | `UpdateIdleTilt()` ~30行 | IdleAction JSON |
+| 微笑 (id=2) | `UpdateIdleSmile()` ~10行 | IdleAction JSON |
+| 挑眉 (id=3) | `UpdateIdleBrow()` ~15行 | IdleAction JSON |
+| 星辉 (id=4) | `UpdateStarSpin()` ~250行 | 保留硬编码（复杂时序+特效参数联动） |
+| 伸懒腰 (id=5) | switch-case ~40行 | ActionPreset JSON (已有 stretch.json) |
+| 委屈 (id=6) | switch-case ~30行 | ActionPreset JSON |
+| 法阵 (id=7) | `UpdateMagicCircle()` ~350行 | 保留硬编码（复杂时序+弹簧物理飘动） |
+| 害羞 (id=8) | switch-case ~20行 | ActionPreset JSON (已有 blush.json) |
+| 困惑 (id=11) | switch-case ~20行 | ActionPreset JSON (已有 confuse.json) |
+| 走路犯困表情 | `UpdateWalkExpression()` ~50行 | MotionGenerator 生成 |
+| 拖拽挣扎 | 硬编码 ~80行 | MotionGenerator 生成 |
+
+---
+
+### 总计工作量
+
+| 阶段 | 内容 | 预估天数 | 先决条件 |
+|------|------|---------|---------|
+| 一 | 基础设施增强 | 4天 | 无 |
+| 二 | GLM-4V 视觉辅助验证 | 3天 | 阶段一完成 |
+| 三 | 参数知识库 | 2天 | 阶段一完成 |
+| 四 | ActionAgent 动作代理 | 5天 | 阶段二、三完成 |
+| 五 | IdleActionScheduler | 2天 | 阶段四完成 |
+| 六 | 新模型接入流程 | 2天 | 阶段二、三完成 |
+| 七 | 硬编码迁移 | 2天 | 阶段四、五完成 |
+| **总计** | | **~20天** | |
+
+> 注：阶段一~三完成后（约 9 天）即可投入实际使用，后续阶段为持续优化。
+
+---
+
+### 依赖现状
+
+| 基础设施 | 状态 | 说明 |
+|----------|------|------|
+| ChatConfig.GlmApiKey | ✅ 已有 | 从环境变量读取 |
+| ChatConfig.GlmVisionModel | ✅ 已有 | 默认 `glm-4v-flash` |
+| ChatConfig.GlmApiBaseUrl | ✅ 已有 | `https://open.bigmodel.cn/api/paas/v4` |
+| 截图→base64→GLM API 调用 | ✅ 已有 | `TakeScreenshotAndAnalyze()` 协程 |
+| CubismModel 运行时参数读写 | ✅ 已有 | `_model.Parameters` / `ForceUpdateNow()` |
+| 语义映射 JSON 格式 | ✅ 已有 | entries 数组格式 |
+| Live2DParameterVerifier Editor | ✅ 已有 | 滑块验证 + CDI 加载 + 映射编辑 |
+
+**所有外部依赖已就绪，只需编码实现。**
+
+---
+
+### 与现有系统的关系
+
+```
+                    ┌──────────────────┐
+                    │   ChatManager    │ ← DeepSeek 对话
+                    │   (DeepSeek)     │
+                    └───────┬──────────┘
+                            │ function_call
+                            ▼
+                    ┌──────────────────┐
+                    │ ToolCallInvoker   │ ← 注册了 control_body / generate_motion
+                    └───────┬──────────┘
+                            │ 调用
+                            ▼
+┌──────────────────────────────────────────────────────────┐
+│  ActionAgent (新)                                         │
+│  ┌──────────┐ ┌──────────┐ ┌───────────────┐           │
+│  │ Motion   │→│ Motion   │→│ Safety        │           │
+│  │ Planner  │ │ Generator │ │ Validator     │           │
+│  └──────────┘ └──────────┘ └───────────────┘           │
+└────────────────────────┬─────────────────────────────────┘
+                         │ 语义参数
+                         ▼
+┌──────────────────────────────────────────────────────────┐
+│  Live2DParameterMapper   ← 已有，将参数路由到 CubismModel │
+└──────────────────────────────────────────────────────────┘
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+   ExpressionManager  ActionPreset  CubismPhysics
+    (已有)          Player (已有)    (SDK 原生)
+```
+
+---
+
+*N27 新章节 — 由 AI 基于架构分析整理，2026-07-05*
+

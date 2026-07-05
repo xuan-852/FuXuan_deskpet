@@ -570,6 +570,9 @@ public class ToolCallInvoker : MonoBehaviour
             return "✅ 已归元，恢复常态";
         };
 
+        // ——— 28 (C). 内观自省：AI 分析参数变化效果（异步执行） ———
+        _executors["explore_body"] = args => "⏳ 本座正在内观自省，请稍候……";
+
         // ——— 28. 观云望气：直接读取本地的天气数据（不开网页） ———
         _executors["get_weather"] = args =>
         {
@@ -1451,6 +1454,17 @@ public class ToolCallInvoker : MonoBehaviour
         ""required"": [""path""]
       }
     }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""explore_body"",
+      ""description"": ""【AI 调试专用】内观自省：截取桌面宠物当前渲染图，使用 GLM-4V 视觉模型分析身体各区域（面部/视线/嘴/头/躯干/发/手等）的状态，给出参数调整建议。用户说「看看我哪里不对」「自省」「内观」「身体状态」「我的表情怎么样」「调试身体」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {}
+      }
+    }
   }
 ]";
     }
@@ -1481,6 +1495,7 @@ public class ToolCallInvoker : MonoBehaviour
             ["query_user_status"] = args => RunAsyncTool(() => FindObjectOfType<ServerPollService>()?.QueryUserStatusAsync() ?? Task.FromResult("❌ 课表传讯服务未就绪")),
             ["search_files"]      = args => RunAsyncTool(() => SearchFilesTask(args)),
             ["search_file"]       = args => RunAsyncTool(() => Task.Run(() => SearchFileByPython(JsonRead(args, "query"), JsonRead(args, "root")))),
+            ["explore_body"]      = args => ExploreBodyCoroutine(args),
         };
     }
 
@@ -1597,6 +1612,146 @@ public class ToolCallInvoker : MonoBehaviour
         {
             UnityEngine.Debug.LogWarning($"[ToolCallInvoker] GLM 响应解析失败: {e.Message}");
             _coroutineResult = "❌ 法眼所见无法解读";
+        }
+    }
+
+    /// <summary>内观自省：截取模型当前渲染图 → GLM-4V 分析身体部位 → 尝试参数联动调优</summary>
+    private IEnumerator ExploreBodyCoroutine(string args)
+    {
+        _coroutineResult = null;
+
+        // ——— 1. 找渲染器 ———
+        var renderer = FindObjectOfType<Live2DRenderer>();
+        if (renderer == null)
+        {
+            _coroutineResult = "❌ 本座法身未现，无法内观";
+            yield break;
+        }
+
+        // ——— 2. 截模型渲染快照 ———
+        byte[] pngBytes = renderer.CaptureModelSnapshot();
+        if (pngBytes == null || pngBytes.Length < 50)
+        {
+            _coroutineResult = "❌ 内观摄形失败，镜中无影";
+            yield break;
+        }
+
+        string base64 = Convert.ToBase64String(pngBytes);
+        string dataUrl = "data:image/png;base64," + base64;
+
+        // ——— 3. 读取当前参数状态 ———
+        var mapper = renderer.Mapper;
+        var model = renderer.CubismModel;
+        string paramSnapshot = "";
+        if (mapper != null && model != null)
+        {
+            var allParams = mapper.GetAllMappedParameters();
+            var activeParams = allParams.Where(p =>
+            {
+                if (p.value == null) return false;
+                int idx = model.IndexOfParameter(p.cdiName);
+                if (idx < 0) return false;
+                float v = model.ParametersToArray()[idx];
+                float normalized = Mathf.Abs(v - p.value.Value) / Mathf.Max(Mathf.Abs(p.rangeX), 0.01f);
+                return normalized > 0.05f;
+            }).Take(30).ToList();
+
+            paramSnapshot = string.Join("\n", activeParams.Select(p =>
+            {
+                int idx = model.IndexOfParameter(p.cdiName);
+                float v = idx >= 0 ? model.ParametersToArray()[idx] : 0;
+                return $"• {p.cdiName} = {v:F2} (区域:{p.bodyPart}, 默认:{p.value.Value:F2})";
+            }));
+            if (string.IsNullOrEmpty(paramSnapshot))
+                paramSnapshot = "（所有参数均在默认值附近）";
+        }
+
+        // ——— 4. 构建 GLM 视觉提示（精细到身体区域的分析） ———
+        string prompt =
+            "你是一名 Live2D 模型调试专家。请严格分析这张桌面宠物（符玄/玄机）的当前渲染截图，逐区域回答：\n\n"
+            + "1. **面部朝向与视线**：脸向左/右/前？视线方向？眉毛、眼睛形状？\n"
+            + "2. **嘴巴与表情**：嘴张开程度？整体情绪（平静/微笑/惊讶/生气）？\n"
+            + "3. **头部姿态**：头向左/右转？上扬/低头？\n"
+            + "4. **身体朝向**： torso（躯干）朝左/右/前？\n"
+            + "5. **头发与飘带**：头发/飘带的动态状态（是否有风吹动效果）？\n"
+            + "6. **手部**：手的位置高度，手指形态？\n"
+            + "7. **其他明显特征**：是否有特殊效果、表情切换、动作播放？\n\n"
+            + "当前激活参数以供参考（参数名=当前值）：\n" + paramSnapshot + "\n\n"
+            + "请指出哪些参数需要调整以达到期望的表情/姿态，并给出具体的参数方向和幅度建议。\n"
+            + "回复格式：先输出分析结论，再以 ###参数调整建议### 开头列出建议。";
+
+        string requestId = Guid.NewGuid().ToString("N");
+        string jsonBody = "{";
+        jsonBody += "\"model\":\"" + EscapeJsonStr(ChatConfig.GlmVisionModel) + "\",";
+        jsonBody += "\"messages\":[{";
+        jsonBody += "\"role\":\"user\",";
+        jsonBody += "\"content\":[";
+        jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJsonStr(prompt) + "\"},";
+        jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJsonStr(dataUrl) + "\"}}";
+        jsonBody += "]";
+        jsonBody += "}],";
+        jsonBody += "\"request_id\":\"" + requestId + "\"";
+        jsonBody += "}";
+
+        // ——— 5. 发请求 ———
+        string fullUrl = ChatConfig.GlmApiBaseUrl.TrimEnd('/') + "/chat/completions";
+        string responseText = null;
+
+        using (UnityWebRequest req = new UnityWebRequest(fullUrl, "POST"))
+        {
+            byte[] bodyBytes = Encoding.UTF8.GetBytes(jsonBody);
+            req.uploadHandler = new UploadHandlerRaw(bodyBytes);
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("Authorization", "Bearer " + ChatConfig.GlmApiKey);
+            req.timeout = 60;
+
+            yield return req.SendWebRequest();
+
+            if (req.result == UnityWebRequest.Result.Success)
+            {
+                responseText = req.downloadHandler.text;
+            }
+            else
+            {
+                string errBody = req.downloadHandler?.text ?? "";
+                string errMsg = req.error;
+                if (!string.IsNullOrEmpty(errBody) && errBody.Contains("\"message\""))
+                {
+                    try
+                    {
+                        var errObj = UnityEngine.JsonUtility.FromJson<GlmErrorResponse>(errBody);
+                        if (errObj != null && !string.IsNullOrEmpty(errObj.error.message))
+                            errMsg = errObj.error.message;
+                    }
+                    catch { }
+                }
+                UnityEngine.Debug.LogWarning($"[ToolCallInvoker] 内观自省失败: {errMsg}");
+                _coroutineResult = "❌ 内观受阻：" + errMsg;
+                yield break;
+            }
+        }
+
+        // ——— 6. 解析 ———
+        try
+        {
+            var resp = UnityEngine.JsonUtility.FromJson<GlmVisionResponse>(responseText);
+            if (resp != null && resp.choices != null && resp.choices.Length > 0
+                && resp.choices[0].message != null)
+            {
+                string analysis = resp.choices[0].message.content;
+                if (!string.IsNullOrEmpty(analysis))
+                {
+                    _coroutineResult = "🧘 内观自省之果：\n" + analysis.Trim();
+                    yield break;
+                }
+            }
+            _coroutineResult = "❌ 内观所见无法解读（API 返回格式异常）";
+        }
+        catch (Exception e)
+        {
+            UnityEngine.Debug.LogWarning($"[ToolCallInvoker] 内观响应解析失败: {e.Message}");
+            _coroutineResult = "❌ 内观所见无法解读";
         }
     }
 

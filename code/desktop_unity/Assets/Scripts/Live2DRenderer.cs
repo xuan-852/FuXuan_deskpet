@@ -353,6 +353,28 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     // ===== Live2DParameterMapper + 新动作系统 =====
     private Live2DParameterMapper _mapper;
     public Live2DActionController ActionController { get; private set; }
+    public Live2DParameterMapper Mapper => _mapper;
+    public CubismModel CubismModel => _cubismModel;
+
+    /// <summary>截取当前模型渲染快照（PNG bytes），供 GLM 视觉分析用</summary>
+    public byte[] CaptureModelSnapshot()
+    {
+        if (_overlayRT == null || !_overlayRT.IsCreated()) return null;
+        try
+        {
+            RenderTexture prev = RenderTexture.active;
+            RenderTexture.active = _overlayRT;
+            var tex = new Texture2D(_overlayRT.width, _overlayRT.height, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, _overlayRT.width, _overlayRT.height), 0, 0);
+            tex.Apply();
+            RenderTexture.active = prev;
+            byte[] bytes = tex.EncodeToPNG();
+            DestroyImmediate(tex);
+            return bytes;
+        }
+        catch { return null; }
+    }
+
     // =====
 
     // ===== 调试偏移系统（DebugWindow 实时调参） =====

@@ -121,9 +121,11 @@ public static class ParameterRelationDetector
     {
         // 按 cdi 名分组检测：名字中带"左"和带"右"的对应参数
         var leftParams = parameters.FindAll(p =>
-            p.cdiName.Contains("左") || (!string.IsNullOrEmpty(p.semantic) && p.semantic.Contains("_l_")));
+            (!string.IsNullOrEmpty(p.cdiName) && p.cdiName.Contains("左")) ||
+            (!string.IsNullOrEmpty(p.semantic) && p.semantic.Contains("_l_")));
         var rightParams = parameters.FindAll(p =>
-            p.cdiName.Contains("右") || (!string.IsNullOrEmpty(p.semantic) && p.semantic.Contains("_r_")));
+            (!string.IsNullOrEmpty(p.cdiName) && p.cdiName.Contains("右")) ||
+            (!string.IsNullOrEmpty(p.semantic) && p.semantic.Contains("_r_")));
 
         // 尝试按名称模式配对
         foreach (var left in leftParams)

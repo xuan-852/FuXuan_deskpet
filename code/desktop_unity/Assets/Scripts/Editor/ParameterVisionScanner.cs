@@ -612,11 +612,11 @@ public class ParameterVisionScanner : EditorWindow
             string cdiCtx = "";
             if (_cdiNames.TryGetValue(_currentParamId, out string cdiName))
             {
-                cdiCtx = $"\n【模型原始标注】此参数在模型文件中名为：""{cdiName}""";
+                cdiCtx = $"\n【模型原始标注】此参数在模型文件中名为：\"{cdiName}\"";
                 if (_cdiGroupIds.TryGetValue(_currentParamId, out string gid) &&
                     _cdiGroupNameLookup.TryGetValue(gid, out string gname))
                 {
-                    cdiCtx += $"，属于 ""{gname}"" 组（{gid}）。同组参数通常控制相关的部位或效果。";
+                    cdiCtx += $"，属于 \"{gname}\" 组（{gid}）。同组参数通常控制相关的部位或效果。";
                 }
                 else
                 {
@@ -1419,7 +1419,7 @@ public class ParameterVisionScanner : EditorWindow
                 }
                 if (_lastAppliedCount > 0)
                 {
-                    EditorGUILayout.HelpBox($"✅ 已写入 {_lastAppliedCount} 条到 fuxuan_map.json", MessageType.Success);
+                    EditorGUILayout.HelpBox($"✅ 已写入 {_lastAppliedCount} 条到 fuxuan_map.json", MessageType.Info);
                 }
             }
         }
