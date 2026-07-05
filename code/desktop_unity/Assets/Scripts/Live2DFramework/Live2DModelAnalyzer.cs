@@ -78,6 +78,97 @@ public static class Live2DModelAnalyzer
 
         // 肩膀
         { "shoulder",       "shoulder" },
+
+        // ─── 新增: 手臂 ───
+        // 右手臂
+        { "arm_r_up",       "arm_right_upper" },
+        { "arm_r_mid",      "arm_right_mid" },
+        { "arm_r_low",      "arm_right_lower" },
+        { "arm_r_rot",      "arm_right_rotation" },
+        { "arm_r_base",     "arm_right_base_rotation" },
+        { "arm_r_sw",       "arm_right_switch" },
+        { "arm_r_reach",    "arm_right_reach" },
+        { "arm_r_wrist",    "arm_right_wrist_z" },
+        // 左手臂
+        { "arm_l_up",       "arm_left_upper" },
+        { "arm_l_mid",      "arm_left_mid" },
+        { "arm_l_low",      "arm_left_lower" },
+        { "arm_l_ext",      "arm_left_extra" },
+        { "arm_l_ext2",     "arm_left_extra2" },
+
+        // ─── 新增: 手掌图层切换 ───
+        { "handlayer95",    "hand_layer_95" },
+        { "handlayer117",   "hand_layer_117" },
+        { "handlayer98",    "hand_layer_98" },
+        { "handlayer100",   "hand_layer_100" },
+        { "handlayer116",   "hand_layer_116" },
+        { "handlayer120",   "hand_layer_120" },
+        { "handlayer108",   "hand_layer_108" },
+        { "handlayer119",   "hand_layer_119" },
+
+        // ─── 新增: 手指 ───
+        { "normalfinger1",  "finger_normal_1" },
+        { "normalfinger2",  "finger_normal_2" },
+        { "normalfinger3",  "finger_normal_3" },
+        { "normalfinger4",  "finger_normal_4" },
+        { "normalfinger5",  "finger_normal_5" },
+        { "finger_z",       "finger_z_rotate" },
+        { "fthumb",         "finger_thumb" },
+        { "findex",         "finger_index" },
+        { "fmiddle",        "finger_middle" },
+        { "fring",          "finger_ring" },
+        { "fpinky",         "finger_pinky" },
+        { "swordswitch",    "sword_finger_switch" },
+
+        // ─── 新增: 腿 ───
+        { "leg_l_lift",     "leg_l_lift" },
+        { "leg_r_lift",     "leg_r_lift" },
+        { "leg_l_swing",    "leg_l_swing" },
+        { "leg_r_swing",    "leg_r_swing" },
+        { "leg_l_bend",     "leg_l_bend" },
+        { "leg_r_bend",     "leg_r_bend" },
+
+        // ─── 新增: 头发 ───
+        { "hair_bangs_1",   "hair_bangs_1" },
+        { "hair_bangs_2",   "hair_bangs_2" },
+        { "hair_bangs_3",   "hair_bangs_3" },
+        { "hair_physics_1", "hair_physics_1" },
+        { "hair_physics_2", "hair_physics_2" },
+        { "hair_physics_3", "hair_physics_3" },
+        { "hair_back_b_1",  "hair_back_b_1" },
+        { "hair_back_b_2",  "hair_back_b_2" },
+        { "hair_side_1",    "hair_side_1" },
+        { "hair_side_2",    "hair_side_2" },
+        { "hair_side_3",    "hair_side_3" },
+        { "hair_back_1",    "hair_back_1" },
+        { "hair_back_2",    "hair_back_2" },
+        { "hair_back_3",    "hair_back_3" },
+        { "hair_back_4",    "hair_back_4" },
+        { "hair_ornament_1","hair_ornament_1" },
+        { "hair_ornament_2","hair_ornament_2" },
+        { "hair_ornament_3","hair_ornament_3" },
+        { "hair_head_orn","hair_head_ornament" },
+
+        // ─── 新增: 裙子 ───
+        { "skirt_drive_1",  "skirt_drive_1" },
+        { "skirt_drive_2",  "skirt_drive_2" },
+        { "skirt_drive_3",  "skirt_drive_3" },
+        { "skirt_drive_4",  "skirt_drive_4" },
+        { "skirt_drive_5",  "skirt_drive_5" },
+        { "skirt_drive_6",  "skirt_drive_6" },
+        { "skirt_drive_7",  "skirt_drive_7" },
+
+        // ─── 新增: 特殊效果 ───
+        { "special_money",  "special_money" },
+        { "special_tear",   "special_tear" },
+        { "special_blush",  "special_blush_dark" },
+        { "special_angry",  "special_angry" },
+        { "special_outer",  "special_outer_mask" },
+
+        // ─── 新增: 镜头 ───
+        { "camerax",        "camera_x" },
+        { "cameray",        "camera_y" },
+        { "char_scale",     "character_scale" },
     };
 
     /// <summary>分析结果</summary>
@@ -153,15 +244,45 @@ public static class Live2DModelAnalyzer
     static string SuggestSemanticName(string paramId, float min, float max)
     {
         float range = Mathf.Abs(max - min);
+        string lower = paramId.ToLower();
+
+        // 先尝试 ID 中含有的关键词
+        if (lower.Contains("hair"))  return $"hair_{lower}";
+        if (lower.Contains("skirt")) return $"skirt_{lower}";
+        if (lower.Contains("arm"))   return $"arm_{lower}";
+        if (lower.Contains("finger") || lower.Contains("hand")) return $"finger_{lower}";
+        if (lower.Contains("leg"))   return $"leg_{lower}";
+        if (lower.Contains("eye"))   return $"eye_{lower}";
+        if (lower.Contains("brow"))  return $"brow_{lower}";
+        if (lower.Contains("mouth")) return $"mouth_{lower}";
+        if (lower.Contains("body") || lower.Contains("x") || lower.Contains("y") || lower.Contains("z"))
+            return $"body_{lower}";
 
         // 按范围猜测部位
-        if (range > 60f)      return $"body_part_{paramId.ToLower()}";       // 大范围 → 身体/头
-        else if (range > 20f) return $"limb_part_{paramId.ToLower()}";       // 中范围 → 手臂/腿
-        else if (range > 5f)  return $"finger_part_{paramId.ToLower()}";     // 小范围 → 手指
-        else if (range > 1f)  return $"micro_part_{paramId.ToLower()}";      // 微调
-        else                  return $"toggle_{paramId.ToLower()}";           // 开关
+        if (range > 60f)      return $"body_{lower}";           // 大范围 → 身体/头
+        else if (range > 20f) return $"limb_{lower}";           // 中范围 → 手臂/腿
+        else if (range > 5f)  return $"finger_{lower}";         // 小范围 → 手指
+        else if (range > 1f)  return $"micro_{lower}";          // 微调
+        else                  return $"toggle_{lower}";          // 开关
+    }
 
-        // 未来可以加入更智能的推断（如范围对称性 → 左右配对）
+    /// <summary>
+    /// 生成模型的完整 BodySchema（含参数定义、分组、关联检测）
+    /// 这是推荐的新方法，整合了 RuntimeModelAnalyzer + ParameterRelationDetector
+    /// </summary>
+    public static ModelBodySchema GenerateBodySchema(CubismModel model, string cdiJson = null)
+    {
+        // 使用 RuntimeModelAnalyzer 做核心分析
+        var schema = RuntimeModelAnalyzer.AnalyzeModel(model, cdiJson);
+
+        // 使用 ParameterRelationDetector 检测关联
+        schema.relations = ParameterRelationDetector.DetectRelations(schema.parameters);
+
+        // 覆盖一些分析器无法自动获取的元数据
+        schema.schemaVersion = "2.0";
+        schema.generatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+        return schema;
     }
 
     /// <summary>生成映射模板（供人工填写）</summary>
@@ -339,6 +460,97 @@ public static class Live2DModelAnalyzer
 
         GUIUtility.systemCopyBuffer = sb.ToString();
         Debug.Log("AI 分析提示已复制到剪贴板，请粘贴给 AI 助手分析");
+    }
+
+    /// <summary>
+    /// Editor 菜单项：生成完整的 ModelBodySchema 并打印到日志
+    /// </summary>
+    [MenuItem("Tools/Live2D/生成身体图式 (BodySchema)")]
+    public static void GenerateBodySchemaForSelected()
+    {
+        var selected = Selection.activeGameObject;
+        if (selected == null)
+        {
+            Debug.LogError("请先在 Hierarchy 中选中 Live2D 模型根物体");
+            return;
+        }
+
+        var model = selected.GetComponentInChildren<CubismModel>();
+        if (model == null)
+        {
+            Debug.LogError("选中物体中没有 CubismModel 组件");
+            return;
+        }
+
+        // 尝试找 cdi3.json
+        string cdiJson = null;
+        string modelAssetPath = UnityEditor.AssetDatabase.GetAssetPath(model);
+        if (!string.IsNullOrEmpty(modelAssetPath))
+        {
+            string modelDir = System.IO.Path.GetDirectoryName(modelAssetPath);
+            if (!string.IsNullOrEmpty(modelDir))
+            {
+                cdiJson = RuntimeModelAnalyzer.LoadCdi3FromStreamingAssets(
+                    modelDir.Replace(Application.streamingAssetsPath, "").TrimStart('/', '\\'));
+            }
+        }
+
+        var schema = GenerateBodySchema(model, cdiJson);
+        RuntimeModelAnalyzer.LogSchema(schema);
+
+        // 打印关联摘要
+        string relSummary = ParameterRelationDetector.GetRelationsSummary(schema.relations);
+        Debug.Log(relSummary);
+
+        // 复制 JSON 到剪贴板
+        string json = RuntimeModelAnalyzer.SchemaToJson(schema);
+        GUIUtility.systemCopyBuffer = json;
+        Debug.Log($"BodySchema JSON 已复制到剪贴板 ({json.Length} 字符)");
+    }
+
+    /// <summary>
+    /// Editor 菜单项：分析未映射参数并交由 GLM-4V 视觉分析
+    /// （需要 ToolCallInvoker 的 take_screenshot 工具配合）
+    /// </summary>
+    [MenuItem("Tools/Live2D/未映射参数 GLM-4V 分析")]
+    public static void PrepareUnmappedForVision()
+    {
+        var selected = Selection.activeGameObject;
+        if (selected == null) return;
+
+        var model = selected.GetComponentInChildren<CubismModel>();
+        if (model == null) return;
+
+        var schema = GenerateBodySchema(model);
+        var unmapped = schema.GetUnmappedParams();
+
+        if (unmapped.Count == 0)
+        {
+            Debug.Log("所有参数均已映射，无需视觉分析。");
+            return;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"# GLM-4V 参数视觉分析任务 — {schema.modelName}");
+        sb.AppendLine($"共 {unmapped.Count} 个未映射参数需要视觉验证：\n");
+
+        foreach (var p in unmapped)
+        {
+            sb.AppendLine($"## {p.paramId}");
+            sb.AppendLine($"- 范围: [{p.min:F2}, {p.max:F2}]");
+            sb.AppendLine($"- 默认值: {p.defaultValue:F3}");
+            sb.AppendLine($"- 中文名: {(string.IsNullOrEmpty(p.cdiName) ? "无" : p.cdiName)}");
+            sb.AppendLine($"- 推断部位: {p.bodyPart}");
+            sb.AppendLine($"- 验证步骤:");
+            sb.AppendLine($"  1. 将该参数设为 min ({p.min:F2})，截图");
+            sb.AppendLine($"  2. 设为 max ({p.max:F2})，截图");
+            sb.AppendLine($"  3. 对比两张截图，描述发生了什么变化");
+            sb.AppendLine($"  4. 给出推荐语义名（参考标准语义列表）");
+            sb.AppendLine();
+        }
+
+        GUIUtility.systemCopyBuffer = sb.ToString();
+        Debug.Log($"GLM-4V 分析提示已复制到剪贴板 ({unmapped.Count} 个未映射参数)");
     }
 #endif
 }
