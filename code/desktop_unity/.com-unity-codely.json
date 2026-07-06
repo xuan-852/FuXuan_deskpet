@@ -1,10 +1,10 @@
 {
-  "unity_port": 57168,
-  "stream_port": 57198,
+  "unity_port": 65244,
+  "stream_port": 65265,
   "created_date": "2026-06-10T05:57:39.3472357Z",
   "project_path": "D:/Unity/projects/Desktop_per_pro/code/desktop_unity/Assets",
   "reloading": false,
   "reason": "ready",
   "seq": 1,
-  "last_heartbeat": "2026-07-06T09:58:01.9568023Z"
+  "last_heartbeat": "2026-07-06T21:58:19.6690733Z"
 }

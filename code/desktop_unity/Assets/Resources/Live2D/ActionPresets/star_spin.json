@@ -141,7 +141,6 @@
     }
   ]
 }
-        { "s": "arm_right_mid", "v": 0 },
         { "s": "arm_right_lower", "v": 0 },
         { "s": "arm_right_rotation", "v": 0 },
         { "s": "arm_right_base_rotation", "v": 0 },

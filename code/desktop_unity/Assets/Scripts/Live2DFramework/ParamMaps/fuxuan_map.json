@@ -1,347 +1,2879 @@
-{
+﻿{
   "formatVersion": "2.0",
   "modelName": "符玄 (Fuxuan)",
   "description": "符玄 Live2D 模型参数 → 语义化名称映射表 v2（含部位标注、约束条件、参数关联）",
   "schemaDate": "2025-01-01",
-
   "entries": [
-    {"s": "body_angle_x",            "p": "ParamBodyAngleX", "d": "身体旋转X",         "part": "body", "domain": "angle",   "axis": "X", "min": -30, "max": 30},
-    {"s": "body_angle_y",            "p": "ParamBodyAngleY", "d": "身体旋转Y",         "part": "body", "domain": "angle",   "axis": "Y", "min": -30, "max": 30},
-    {"s": "body_angle_z",            "p": "ParamBodyAngleZ", "d": "身体旋转Z",         "part": "body", "domain": "angle",   "axis": "Z", "min": -30, "max": 30},
-    {"s": "head_angle_x",            "p": "ParamAngleX",     "d": "角度 X",            "part": "head", "domain": "angle",   "axis": "X", "min": -30, "max": 30},
-    {"s": "head_angle_y",            "p": "ParamAngleY",     "d": "角度 Y",            "part": "head", "domain": "angle",   "axis": "Y", "min": -30, "max": 30},
-    {"s": "head_angle_z",            "p": "ParamAngleZ",     "d": "角度 Z",            "part": "head", "domain": "angle",   "axis": "Z", "min": -30, "max": 30},
-    {"s": "breath",                  "p": "ParamBreath",     "d": "呼吸",              "part": "breath","domain":"normalized","axis": "", "min": 0, "max": 1},
-
-    {"s": "eye_l_open",              "p": "ParamEyeLOpen",   "d": "左眼开闭",          "part": "eye",  "domain": "normalized","axis": "", "min": 0, "max": 1, "related": ["eye_r_open"], "relType": "symmetrical"},
-    {"s": "eye_r_open",              "p": "ParamEyeROpen",   "d": "右眼开闭",          "part": "eye",  "domain": "normalized","axis": "", "min": 0, "max": 1, "related": ["eye_l_open"], "relType": "symmetrical"},
-    {"s": "eye_ball_x",              "p": "ParamEyeBallX",   "d": "眼珠X",             "part": "eye",  "domain": "angle",   "axis": "X", "min": -1, "max": 1, "related": ["eye_ball_y"], "relType": "coupled"},
-    {"s": "eye_ball_y",              "p": "ParamEyeBallY",   "d": "眼珠Y",             "part": "eye",  "domain": "angle",   "axis": "Y", "min": -1, "max": 1, "related": ["eye_ball_x"], "relType": "coupled"},
-    {"s": "eye_l_smile",             "p": "ParamEyeLSmile",  "d": "左眼微笑",          "part": "eye",  "domain": "normalized","axis": "", "min": 0, "max": 1, "related": ["eye_r_smile"], "relType": "symmetrical"},
-    {"s": "eye_r_smile",             "p": "ParamEyeRSmile",  "d": "右眼微笑",          "part": "eye",  "domain": "normalized","axis": "", "min": 0, "max": 1, "related": ["eye_l_smile"], "relType": "symmetrical"},
-    {"s": "eye_heart",               "p": "Param109",        "d": "爱心",              "part": "eye",  "domain": "toggle",  "axis": "", "min": 0, "max": 1},
-
-    {"s": "brow_r_y",                "p": "ParamBrowRY",     "d": "右眉上下",          "part": "brow", "domain": "angle",   "axis": "Y", "min": -1, "max": 1, "related": ["brow_l_y"], "relType": "symmetrical"},
-    {"s": "brow_l_y",                "p": "ParamBrowLY",     "d": "左眉上下",          "part": "brow", "domain": "angle",   "axis": "Y", "min": -1, "max": 1, "related": ["brow_r_y"], "relType": "symmetrical"},
-    {"s": "brow_l_angle",            "p": "ParamBrowL",      "d": "左眉角度",          "part": "brow", "domain": "angle",   "axis": "X", "min": -1, "max": 1, "related": ["brow_r_angle"], "relType": "symmetrical"},
-    {"s": "brow_r_angle",            "p": "ParamBrowR",      "d": "右眉角度",          "part": "brow", "domain": "angle",   "axis": "X", "min": -1, "max": 1, "related": ["brow_l_angle"], "relType": "symmetrical"},
-
-    {"s": "mouth_form",              "p": "ParamMouthForm",  "d": "嘴变形",            "part": "mouth","domain": "normalized","axis": "", "min": 0, "max": 1},
-    {"s": "mouth_open_y",            "p": "ParamMouthOpenY", "d": "嘴张开闭合",        "part": "mouth","domain": "normalized","axis": "Y", "min": 0, "max": 1},
-
-    {"s": "arm_right_upper",         "p": "Param31",         "d": "右手臂上段",        "part": "arm",  "domain": "angle",   "axis": "", "min": -30, "max": 30, "side": "right"},
-    {"s": "arm_right_mid",           "p": "Param32",         "d": "右手臂中段",        "part": "arm",  "domain": "angle",   "axis": "", "min": -30, "max": 30, "side": "right"},
-    {"s": "arm_right_lower",         "p": "Param33",         "d": "右手臂下段",        "part": "arm",  "domain": "angle",   "axis": "", "min": -30, "max": 30, "side": "right"},
-    {"s": "arm_right_rotation",      "p": "Param94",         "d": "右手上臂旋转",      "part": "arm",  "domain": "angle",   "axis": "Z", "min": -30, "max": 30, "side": "right"},
-    {"s": "arm_right_base_rotation", "p": "Param97",         "d": "右手基础上臂旋转",  "part": "arm",  "domain": "angle",   "axis": "Z", "min": -30, "max": 30, "side": "right"},
-    {"s": "arm_right_switch",        "p": "Param93",         "d": "右手基础切换",      "part": "arm",  "domain": "toggle",  "axis": "", "min": 0, "max": 1, "side": "right"},
-    {"s": "arm_right_reach",         "p": "Param118",        "d": "右手伸出参数",      "part": "arm",  "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right"},
-    {"s": "arm_right_wrist_z",       "p": "Param99",         "d": "右手基础手腕Z",     "part": "arm",  "domain": "angle",   "axis": "Z", "min": -30, "max": 30, "side": "right"},
-
-    {"s": "arm_left_upper",          "p": "Param34",         "d": "左手臂上段",        "part": "arm",  "domain": "angle",   "axis": "", "min": -30, "max": 30, "side": "left"},
-    {"s": "arm_left_mid",            "p": "Param36",         "d": "左手臂中段",        "part": "arm",  "domain": "angle",   "axis": "", "min": -30, "max": 30, "side": "left"},
-    {"s": "arm_left_lower",          "p": "Param37",         "d": "左手臂下段",        "part": "arm",  "domain": "angle",   "axis": "", "min": -30, "max": 30, "side": "left"},
-    {"s": "arm_left_extra",          "p": "Param38",         "d": "左袖1",             "part": "arm",  "domain": "angle",   "axis": "", "min": -30, "max": 30, "side": "left"},
-    {"s": "arm_left_extra2",         "p": "Param39",         "d": "左袖2",             "part": "arm",  "domain": "angle",   "axis": "", "min": -30, "max": 30, "side": "left"},
-
-    {"s": "hand_layer_95",           "p": "Param95",         "d": "右手上壁透视",      "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right"},
-    {"s": "hand_layer_117",          "p": "Param117",        "d": "右手上壁透视2",     "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right"},
-    {"s": "hand_layer_98",           "p": "Param98",         "d": "右手下壁透视",      "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right"},
-    {"s": "hand_layer_100",          "p": "Param100",        "d": "右手手透视",        "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right"},
-    {"s": "hand_layer_116",          "p": "Param116",        "d": "透视2",             "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right"},
-    {"s": "hand_layer_120",          "p": "Param120",        "d": "手向前透视效果",    "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right"},
-    {"s": "hand_layer_108",          "p": "Param108",        "d": "右手图层顺序",      "part": "hand", "domain": "toggle",  "axis": "", "min": 0, "max": 1, "side": "right"},
-    {"s": "hand_layer_119",          "p": "Param119",        "d": "伸手图层调整",      "part": "hand", "domain": "toggle",  "axis": "", "min": 0, "max": 1, "side": "right"},
-
-    {"s": "leg_l_lift",              "p": "Param165",        "d": "抬腿",              "part": "leg",  "domain": "angle",   "axis": "", "min": -20, "max": 20, "side": "left"},
-    {"s": "leg_r_lift",              "p": "Param164",        "d": "腿(可能废弃)",      "part": "leg",  "domain": "angle",   "axis": "", "min": -20, "max": 20, "side": "right"},
-    {"s": "leg_l_swing",             "p": "Param126",        "d": "左腿前后摆",        "part": "leg",  "domain": "angle",   "axis": "", "min": -20, "max": 20, "side": "left"},
-    {"s": "leg_l_bend",              "p": "Param127",        "d": "左脚旋转",          "part": "leg",  "domain": "angle",   "axis": "", "min": -10, "max": 10, "side": "left"},
-    {"s": "leg_r_swing",             "p": "Param129",        "d": "右腿前后摆",        "part": "leg",  "domain": "angle",   "axis": "", "min": -20, "max": 20, "side": "right"},
-    {"s": "leg_r_bend",              "p": "Param131",        "d": "右脚旋转",          "part": "leg",  "domain": "angle",   "axis": "", "min": -10, "max": 10, "side": "right"},
-
-    {"s": "shoulder",                "p": "Param153",        "d": "耸肩",              "part": "shoulder","domain":"normalized","axis": "", "min": 0, "max": 1},
-
-    {"s": "hair_bangs_1",            "p": "Param5",          "d": "刘海物理c",         "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_bangs_2",            "p": "Param7",          "d": "刘海物理b",         "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_bangs_3",            "p": "Param9",          "d": "刘海物理a",         "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_physics_1",          "p": "Param11",         "d": "头发物理2c",        "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_physics_2",          "p": "Param14",         "d": "头发物理2b",        "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_physics_3",          "p": "Param17",         "d": "头发物理2a",        "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_back_b_1",           "p": "Param19",         "d": "后发B",             "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_back_b_2",           "p": "Param21",         "d": "后发A",             "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_side_1",             "p": "Param23",         "d": "鬓发c",             "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_side_2",             "p": "Param35",         "d": "鬓发b",             "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_side_3",             "p": "Param41",         "d": "鬓发a",             "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_side_left_rotate",   "p": "Param43",         "d": "左侧头发旋转",      "part": "hair", "domain": "angle",   "axis": "", "min": -1, "max": 1},
-    {"s": "hair_back_2",             "p": "Param45",         "d": "后发c",             "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_left_position",      "p": "Param55",         "d": "左侧头发位置",      "part": "hair", "domain": "angle",   "axis": "", "min": -1, "max": 1},
-    {"s": "hair_back_4",             "p": "Param62",         "d": "后发a",             "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_ornament_1",         "p": "Param91",         "d": "饰品C",             "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_ornament_2",         "p": "Param74",         "d": "饰品b",             "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_ornament_3",         "p": "Param89",         "d": "饰品a",             "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-    {"s": "hair_head_ornament",      "p": "Param169",        "d": "头饰(可能废弃)",    "part": "hair", "domain": "angle",   "axis": "", "min": -15, "max": 15},
-
-    {"s": "skirt_drive_1",           "p": "Param82",         "d": "裙子3x",            "part": "skirt","domain": "angle",   "axis": "", "min": -20, "max": 20},
-    {"s": "skirt_drive_2",           "p": "Param87",         "d": "裙子x2",            "part": "skirt","domain": "angle",   "axis": "", "min": -20, "max": 20},
-    {"s": "skirt_drive_3",           "p": "Param84",         "d": "裙子1x",            "part": "skirt","domain": "angle",   "axis": "", "min": -20, "max": 20},
-    {"s": "skirt_drive_4",           "p": "Param49",         "d": "七星盘X4",          "part": "skirt","domain": "angle",   "axis": "", "min": -20, "max": 20},
-    {"s": "skirt_drive_5",           "p": "Param51",         "d": "七星盘X3",          "part": "skirt","domain": "angle",   "axis": "", "min": -20, "max": 20},
-    {"s": "skirt_drive_6",           "p": "Param57",         "d": "七星盘X2",          "part": "skirt","domain": "angle",   "axis": "", "min": -20, "max": 20},
-    {"s": "skirt_drive_7",           "p": "Param60",         "d": "七星盘X1",          "part": "skirt","domain": "angle",   "axis": "", "min": -20, "max": 20},
-    {"s": "star_plate_transparency", "p": "Param154",        "d": "七星盘透明",        "part": "skirt","domain": "normalized","axis": "", "min": 0, "max": 1},
-
-    {"s": "special_money",           "p": "Param122",        "d": "钱",                "part": "special","domain":"toggle","axis": "", "min": 0, "max": 1},
-    {"s": "special_tear",            "p": "Param130",        "d": "泪眼",              "part": "special","domain":"toggle","axis": "", "min": 0, "max": 1},
-    {"s": "special_blush_dark",      "p": "Param101",        "d": "黑脸",              "part": "special","domain":"toggle","axis": "", "min": 0, "max": 1},
-    {"s": "special_angry",           "p": "Param104",        "d": "生气",              "part": "special","domain":"toggle","axis": "", "min": 0, "max": 1},
-    {"s": "special_outer_mask",      "p": "Param401",        "d": "外蒙版",            "part": "special","domain":"toggle","axis": "", "min": 0, "max": 1},
-
-    {"s": "star_visibility",         "p": "Param451",        "d": "星显隐",            "part": "special","domain":"toggle","axis": "", "min": 0, "max": 1},
-    {"s": "star_size",               "p": "Param541",        "d": "星大小",            "part": "special","domain":"normalized","axis": "", "min": 0, "max": 1},
-    {"s": "star_outer_scale",        "p": "Param1071",       "d": "外围星变大",        "part": "special","domain":"normalized","axis": "", "min": 0, "max": 1},
-    {"s": "star_outer_appear",       "p": "Param1081",       "d": "外星出现",          "part": "special","domain":"toggle","axis": "", "min": 0, "max": 1},
-
-    {"s": "sword_finger_switch",     "p": "Param92",         "d": "右手切换(剑指/正常)","part":"hand","domain":"toggle","axis": "", "min": 0, "max": 1, "side": "right",
-        "note": "0=正常手掌, 1=剑指手势, 影响 finger_thumb~pinky"},
-    {"s": "finger_normal_1",         "p": "Param102",        "d": "右手手指1",         "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right",
-        "prerequisite": "sword_finger_switch=0"},
-    {"s": "finger_normal_2",         "p": "Param103",        "d": "右手手指2",         "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right",
-        "prerequisite": "sword_finger_switch=0"},
-    {"s": "finger_normal_3",         "p": "Param105",        "d": "右手手指3",         "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right",
-        "prerequisite": "sword_finger_switch=0"},
-    {"s": "finger_normal_4",         "p": "Param106",        "d": "右手手指4",         "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right",
-        "prerequisite": "sword_finger_switch=0"},
-    {"s": "finger_normal_5",         "p": "Param107",        "d": "右手手指5",         "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right",
-        "prerequisite": "sword_finger_switch=0"},
-    {"s": "finger_z_rotate",         "p": "Param110",        "d": "右手手指Z旋转",     "part": "hand", "domain": "angle",   "axis": "Z", "min": -20, "max": 20, "side": "right",
-        "prerequisite": "sword_finger_switch=0"},
-    {"s": "finger_thumb",            "p": "Param111",        "d": "拇指",              "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right",
-        "prerequisite": "sword_finger_switch=1"},
-    {"s": "finger_index",            "p": "Param112",        "d": "食指",              "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right",
-        "prerequisite": "sword_finger_switch=1"},
-    {"s": "finger_middle",           "p": "Param113",        "d": "中指",              "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right",
-        "prerequisite": "sword_finger_switch=1"},
-    {"s": "finger_ring",             "p": "Param114",        "d": "无名指",            "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right",
-        "prerequisite": "sword_finger_switch=1"},
-    {"s": "finger_pinky",            "p": "Param115",        "d": "小指",              "part": "hand", "domain": "normalized","axis": "", "min": 0, "max": 1, "side": "right",
-        "prerequisite": "sword_finger_switch=1"},
-
-    {"s": "camera_x",                "p": "Param155",        "d": "镜头X",             "part": "camera","domain":"position","axis": "X", "min": -30, "max": 30},
-    {"s": "camera_y",                "p": "Param156",        "d": "镜头Y",             "part": "camera","domain":"position","axis": "Y", "min": -30, "max": 30},
-    {"s": "character_scale",          "p": "Param157",        "d": "人物缩放",          "part": "camera","domain":"scale","axis": "", "min": 0.5, "max": 1.5},
-
-    {"s": "hair_side_spread",        "p": "Param54",         "d": "侧发展开",          "part": "hair", "domain": "angle",   "axis": "", "min": -1, "max": 1},
-    {"s": "brow_r_rot",              "p": "ParamBrowRAngle", "d": "右眉旋转角度",      "part": "brow", "domain": "angle",   "axis": "Z", "min": -1, "max": 1, "related": ["brow_l_rot"], "relType": "symmetrical"},
-    {"s": "brow_l_rot",              "p": "ParamBrowLAngle", "d": "左眉旋转角度",      "part": "brow", "domain": "angle",   "axis": "Z", "min": -1, "max": 1, "related": ["brow_r_rot"], "relType": "symmetrical"},
-    {"s": "brow_l_form",             "p": "ParamBrowLForm",  "d": "左眉形状",          "part": "brow", "domain": "angle",   "axis": "", "min": -1, "max": 1},
-    {"s": "body_angle_y2",           "p": "ParamBodyAngleY2","d": "身体旋转Y2",        "part": "body", "domain": "angle",   "axis": "Y", "min": -10, "max": 10},
-    {"s": "body_angle_z2",           "p": "ParamBodyAngleZ2","d": "身体旋转Z2",        "part": "body", "domain": "angle",   "axis": "Z", "min": -10, "max": 10},
-    {"s": "arm_right_upper_rotate",  "p": "Param251",        "d": "右上臂旋转",        "part": "arm",  "domain": "angle",   "axis": "", "min": -10, "max": 10, "side": "right"},
-    {"s": "chest_effect",            "p": "Param431",        "d": "胸部紫色光环",      "part": "special","domain":"toggle","axis": "", "min": 0, "max": 1},
-    {"s": "neck_decor_show",         "p": "Param991",        "d": "颈部装饰显隐",      "part": "special","domain":"toggle","axis": "", "min": 0, "max": 1},
-    {"s": "character_visibility",    "p": "Param121",        "d": "角色整体显隐",      "part": "special","domain":"toggle","axis": "", "min": 0, "max": 1},
-    {"s": "arm_r_sword",             "p": "Param_Angle_Rotation_1_ArtMesh249","d": "右臂剑显隐","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"right"},
-    {"s": "arm_r_cape_rot",          "p": "Param_Angle_Rotation_2_ArtMesh249","d": "右臂披肩旋转","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"right"},
-    {"s": "arm_r_sword_rot3",        "p": "Param_Angle_Rotation_3_ArtMesh249","d": "右臂剑旋转3","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"right"},
-    {"s": "arm_r_sword_rot4",        "p": "Param_Angle_Rotation_4_ArtMesh249","d": "右臂剑旋转4","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"right"},
-    {"s": "arm_r_sword_rot5",        "p": "Param_Angle_Rotation_5_ArtMesh249","d": "右臂剑旋转5","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"right"},
-    {"s": "skirt_r_swing",           "p": "Param_Angle_Rotation_6_ArtMesh249","d": "右裙摆旋转","part":"skirt","domain":"angle","axis":"","min":-45,"max":45},
-
-    {"s": "arm_l_ribbon_0",          "p": "Param_Angle_Rotation_1_ArtMesh272","d": "左丝带旋转0","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"left"},
-    {"s": "arm_l_ribbon_1",          "p": "Param_Angle_Rotation_2_ArtMesh272","d": "左丝带旋转1","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"left"},
-    {"s": "arm_l_ribbon_2",          "p": "Param_Angle_Rotation_3_ArtMesh272","d": "左丝带旋转2","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"left"},
-    {"s": "arm_l_ribbon_3",          "p": "Param_Angle_Rotation_4_ArtMesh272","d": "左丝带旋转3","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"left"},
-    {"s": "arm_l_ribbon_4",          "p": "Param_Angle_Rotation_5_ArtMesh272","d": "左丝带旋转4","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"left"},
-    {"s": "arm_l_ribbon_5",          "p": "Param_Angle_Rotation_6_ArtMesh272","d": "左丝带旋转5","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"left"},
-    {"s": "arm_l_ribbon_6",          "p": "Param_Angle_Rotation_7_ArtMesh272","d": "左丝带旋转6","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"left"},
-
-    {"s": "outer_purple_ring_rot",   "p": "Param421",       "d": "外紫环旋转",        "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "outer_purple_ring_size",  "p": "Param441",       "d": "外紫环大小",        "part":"special","domain":"normalized","axis":"","min":0,"max":1},
-    {"s": "mid_purple_ring_rot",     "p": "Param901",       "d": "中紫环旋转",        "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "mid_purple_ring_show",    "p": "Param911",       "d": "中紫环显隐",        "part":"special","domain":"toggle","axis":"","min":0,"max":1},
-    {"s": "mid_purple_ring_size",    "p": "Param961",       "d": "中紫环大小",        "part":"special","domain":"normalized","axis":"","min":0,"max":1},
-    {"s": "inner_purple_ring_rot",   "p": "Param881",       "d": "内紫环旋转",        "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "inner_purple_ring_show",  "p": "Param741",       "d": "内紫环显隐",        "part":"special","domain":"toggle","axis":"","min":0,"max":1},
-    {"s": "inner_purple_ring_size",  "p": "Param731",       "d": "内紫环大小",        "part":"special","domain":"normalized","axis":"","min":0,"max":1},
-    {"s": "mid_mask",                "p": "Param411",       "d": "中蒙版",            "part":"special","domain":"toggle","axis":"","min":0,"max":1},
-    {"s": "inner_mask",              "p": "Param891",       "d": "内蒙版",            "part":"special","domain":"toggle","axis":"","min":0,"max":1},
-
-    {"s": "outer_yellow_ring_rot",   "p": "Param981",       "d": "外黄环旋转",        "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "outer_yellow_ring_size",  "p": "Param1001",      "d": "外黄环大小",        "part":"special","domain":"normalized","axis":"","min":0,"max":1},
-    {"s": "inner_yellow_ring_rot",   "p": "Param1051",      "d": "内黄环旋转",        "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "inner_yellow_ring_show",  "p": "Param1031",      "d": "内黄环显隐",        "part":"special","domain":"toggle","axis":"","min":0,"max":1},
-    {"s": "inner_yellow_ring_size",  "p": "Param1021",      "d": "内黄环大小",        "part":"special","domain":"normalized","axis":"","min":0,"max":1},
-
-    {"s": "body_angle_x2",           "p": "ParamBodyAngleX2","d": "身体X2旋转",       "part":"body","domain":"angle","axis":"X","min":-30,"max":30},
-    {"s": "body_x_anim_upper",       "p": "Param125",       "d": "身体X动画上半身",   "part":"body","domain":"angle","axis":"X","min":-30,"max":30},
-    {"s": "body_y_anim",             "p": "Param123",       "d": "身体Y动画",         "part":"body","domain":"angle","axis":"Y","min":-30,"max":30},
-    {"s": "body_z_anim",             "p": "Param124",       "d": "身体Z动画",         "part":"body","domain":"angle","axis":"Z","min":-30,"max":30},
-    {"s": "body_zz",                 "p": "Param128",       "d": "身体ZZ",            "part":"body","domain":"angle","axis":"","min":-30,"max":30},
-
-    {"s": "head_angle_x2",           "p": "Param25",        "d": "头部X2",            "part":"head","domain":"angle","axis":"X","min":-30,"max":30},
-    {"s": "head_angle_y3",           "p": "Param248",       "d": "头部Y",             "part":"head","domain":"angle","axis":"Y","min":-30,"max":30},
-    {"s": "head_angle_z3",           "p": "Param249",       "d": "头部Z",             "part":"head","domain":"angle","axis":"Z","min":-30,"max":30},
-
-    {"s": "brow_r_x",                "p": "ParamBrowRX",    "d": "右眉左右",          "part":"brow","domain":"angle","axis":"X","min":-1,"max":1,"related":["brow_l_x"],"relType":"symmetrical"},
-    {"s": "brow_l_x",                "p": "ParamBrowLX",    "d": "左眉左右",          "part":"brow","domain":"angle","axis":"X","min":-1,"max":1,"related":["brow_r_x"],"relType":"symmetrical"},
-    {"s": "brow_r_form",             "p": "ParamBrowRForm", "d": "右眉形状",          "part":"brow","domain":"angle","axis":"","min":-1,"max":1},
-
-    {"s": "eye_squint_r",            "p": "Param149",       "d": "右眯眼瞪眼",        "part":"eye","domain":"normalized","axis":"","min":-1,"max":1,"related":["eye_squint_l"],"relType":"symmetrical"},
-    {"s": "eye_squint_l",            "p": "Param150",       "d": "左眯眼瞪眼",        "part":"eye","domain":"normalized","axis":"","min":-1,"max":1,"related":["eye_squint_r"],"relType":"symmetrical"},
-    {"s": "mouth_jaw",               "p": "Param163",       "d": "下颌开闭",          "part":"mouth","domain":"normalized","axis":"","min":0,"max":1},
-    {"s": "mouth_form_follow",       "p": "Param250",       "d": "嘴变形联动",        "part":"mouth","domain":"normalized","axis":"","min":0,"max":1},
-
-    {"s": "necklace_3",              "p": "Param46",        "d": "颈饰3y",            "part":"body","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "necklace_3x",             "p": "Param47",        "d": "颈饰3x",            "part":"body","domain":"angle","axis":"X","min":-15,"max":15},
-    {"s": "necklace_2y",             "p": "Param141",       "d": "颈饰2y",            "part":"body","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "necklace_2x",             "p": "Param140",       "d": "颈饰2x",            "part":"body","domain":"angle","axis":"X","min":-15,"max":15},
-    {"s": "necklace_1y",             "p": "Param143",       "d": "颈饰1y",            "part":"body","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "necklace_1x",             "p": "Param142",       "d": "颈饰1x",            "part":"body","domain":"angle","axis":"X","min":-15,"max":15},
-
-    {"s": "skirt_drive_3y",          "p": "Param83",        "d": "裙子3y",            "part":"skirt","domain":"angle","axis":"Y","min":-20,"max":20},
-    {"s": "skirt_drive_2y",          "p": "Param86",        "d": "裙子y2",            "part":"skirt","domain":"angle","axis":"Y","min":-20,"max":20},
-    {"s": "skirt_drive_1y",          "p": "Param85",        "d": "裙子1y",            "part":"skirt","domain":"angle","axis":"Y","min":-20,"max":20},
-
-    {"s": "disk_y4",                 "p": "Param50",        "d": "七星盘y4",          "part":"skirt","domain":"angle","axis":"Y","min":-20,"max":20},
-    {"s": "disk_y3",                 "p": "Param53",        "d": "七星盘y3",          "part":"skirt","domain":"angle","axis":"Y","min":-20,"max":20},
-    {"s": "disk_y2",                 "p": "Param59",        "d": "七星盘y2",          "part":"skirt","domain":"angle","axis":"Y","min":-20,"max":20},
-    {"s": "disk_y1",                 "p": "Param75",        "d": "七星盘y1",          "part":"skirt","domain":"angle","axis":"Y","min":-20,"max":20},
-
-    {"s": "curtain_3x",              "p": "Param76",        "d": "帘子3x",            "part":"skirt","domain":"angle","axis":"X","min":-20,"max":20},
-    {"s": "curtain_3y",              "p": "Param77",        "d": "帘子3y",            "part":"skirt","domain":"angle","axis":"Y","min":-20,"max":20},
-    {"s": "curtain_2x",              "p": "Param80",        "d": "帘子2x",            "part":"skirt","domain":"angle","axis":"X","min":-20,"max":20},
-    {"s": "curtain_2y",              "p": "Param81",        "d": "帘子2y",            "part":"skirt","domain":"angle","axis":"Y","min":-20,"max":20},
-    {"s": "curtain_1x",              "p": "Param78",        "d": "帘子1x",            "part":"skirt","domain":"angle","axis":"X","min":-20,"max":20},
-    {"s": "curtain_1y",              "p": "Param79",        "d": "帘子1y",            "part":"skirt","domain":"angle","axis":"Y","min":-20,"max":20},
-
-    {"s": "tassel_1",                "p": "Param24",        "d": "穗子1",             "part":"body","domain":"angle","axis":"","min":-15,"max":15},
-    {"s": "tassel_2",                "p": "Param26",        "d": "穗子2",             "part":"body","domain":"angle","axis":"","min":-15,"max":15},
-    {"s": "tassel_1l",               "p": "Param27",        "d": "穗子1L",            "part":"body","domain":"angle","axis":"","min":-15,"max":15},
-    {"s": "tassel_2l",               "p": "Param28",        "d": "穗子2L",            "part":"body","domain":"angle","axis":"","min":-15,"max":15},
-
-    {"s": "cup",                     "p": "Param29",        "d": "水杯",              "part":"body","domain":"angle","axis":"","min":-30,"max":30},
-
-    {"s": "arm_ring_l_2",            "p": "Param144",       "d": "左环2",             "part":"arm","domain":"angle","axis":"","min":-15,"max":15,"side":"left"},
-    {"s": "arm_ring_l_1",            "p": "Param145",       "d": "左环1",             "part":"arm","domain":"angle","axis":"","min":-15,"max":15,"side":"left"},
-    {"s": "arm_ring_r_3",            "p": "Param148",       "d": "右环3",             "part":"arm","domain":"angle","axis":"","min":-15,"max":15,"side":"right"},
-    {"s": "arm_ring_r_2",            "p": "Param146",       "d": "右环2",             "part":"arm","domain":"angle","axis":"","min":-15,"max":15,"side":"right"},
-    {"s": "arm_ring_r_1",            "p": "Param151",       "d": "右环1",             "part":"arm","domain":"angle","axis":"","min":-15,"max":15,"side":"right"},
-
-    {"s": "clothes_l_ornament",      "p": "Param52",        "d": "衣服左饰",          "part":"body","domain":"angle","axis":"","min":-15,"max":15},
-    {"s": "l_ribbon_3",              "p": "Param58",        "d": "左衣带子3",         "part":"body","domain":"angle","axis":"","min":-15,"max":15,"side":"left"},
-    {"s": "l_ribbon_2",              "p": "Param147",       "d": "左衣带2",           "part":"body","domain":"angle","axis":"","min":-15,"max":15,"side":"left"},
-    {"s": "l_ribbon_1",              "p": "Param152",       "d": "左衣带1",           "part":"body","domain":"angle","axis":"","min":-15,"max":15,"side":"left"},
-    {"s": "r_ribbon_3",              "p": "Param61",        "d": "右衣带子3",         "part":"body","domain":"angle","axis":"","min":-15,"max":15,"side":"right"},
-    {"s": "r_ribbon_2a",             "p": "Param72",        "d": "右衣带2",           "part":"body","domain":"angle","axis":"","min":-15,"max":15,"side":"right"},
-    {"s": "r_ribbon_2b",             "p": "Param48",        "d": "右衣带2(2)",        "part":"body","domain":"angle","axis":"","min":-15,"max":15,"side":"right"},
-
-    {"s": "outer_mask_2",            "p": "Param971",       "d": "外蒙版(2)",         "part":"special","domain":"toggle","axis":"","min":0,"max":1},
-    {"s": "inner_mask_2",            "p": "Param892",       "d": "内蒙版(2)",         "part":"special","domain":"toggle","axis":"","min":0,"max":1},
-
-    {"s": "purple_ring_rot_2_l1",    "p": "Param422",       "d": "外紫环转(层2)",     "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "purple_ring_rot_2_l2",    "p": "Param902",       "d": "中紫环转(层2)",     "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "purple_ring_rot_2_l3",    "p": "Param882",       "d": "内紫环转(层2)",     "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "yellow_ring_rot_2_l1",    "p": "Param982",       "d": "外黄环转(层2)",     "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "yellow_ring_rot_2_l2",    "p": "Param1052",      "d": "内黄环转(层2)",     "part":"special","domain":"angle","axis":"","min":0,"max":360},
-
-    {"s": "arm_r_ribbon_6",          "p": "Param_Angle_Rotation_7_ArtMesh249","d": "右丝带旋转6","part":"arm","domain":"angle","axis":"","min":-45,"max":45,"side":"right"},
-
-    {"s": "head_param93",            "p": "Param66",        "d": "参数93(未知)",       "part":"head","domain":"angle","axis":"","min":-30,"max":30},
-
-    {"s": "ring_layer2_p1",          "p": "Param158",       "d": "环层2-1",            "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "ring_layer2_p2",          "p": "Param166",       "d": "环层2-2",            "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "ring_layer2_p3",          "p": "Param167",       "d": "环层2-3",            "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "ring_layer2_p4",          "p": "Param168",       "d": "环层2-4",            "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "ring_layer2_p5",          "p": "Param170",       "d": "环层2-5",            "part":"special","domain":"angle","axis":"","min":0,"max":360},
-    {"s": "ring_layer2_p6",          "p": "Param171",       "d": "环层2-6",            "part":"special","domain":"angle","axis":"","min":0,"max":360},
-
-    {"s": "hair_bangs_1y",           "p": "Param6",         "d": "刘海物理cy",        "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_bangs_2y",           "p": "Param8",         "d": "刘海物理by",        "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_bangs_3y",           "p": "Param10",        "d": "刘海物理ay",        "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_physics_1y",         "p": "Param12",        "d": "头发物理2cy",       "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_physics_2y",         "p": "Param16",        "d": "头发物理2by",       "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_physics_3y",         "p": "Param18",        "d": "头发物理2ay",       "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_side_1y",            "p": "Param30",        "d": "鬓发cy",             "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_side_2y",            "p": "Param40",        "d": "鬓发by",             "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_side_3y",            "p": "Param42",        "d": "鬓发ay",             "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_ornament_1y",        "p": "Param96",        "d": "饰品CY",             "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_ornament_2y",        "p": "Param88",        "d": "饰品by",             "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_ornament_3y",        "p": "Param90",        "d": "饰品ay",             "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_back_b_1y",          "p": "Param20",        "d": "后发BY",             "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_back_b_2y",          "p": "Param22",        "d": "后发AY",             "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_back_dy",            "p": "Param44",        "d": "后发dy",             "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_back_cy",            "p": "Param56",        "d": "后发by",             "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-    {"s": "hair_back_ay",            "p": "Param73",        "d": "后发ay",             "part":"hair","domain":"angle","axis":"Y","min":-15,"max":15},
-
-    {"s": "overlay_black",           "p": "Param137",       "d": "黑幕透明显现",       "part":"camera","domain":"normalized","axis":"","min":0,"max":1},
-    {"s": "overlay_white_x",         "p": "Param138",       "d": "白色透明x",          "part":"camera","domain":"position","axis":"X","min":-30,"max":30},
-    {"s": "overlay_white_y",         "p": "Param139",       "d": "白色透明y",          "part":"camera","domain":"position","axis":"Y","min":-30,"max":30},
-    {"s": "overlay_white_glow",      "p": "Param132",       "d": "白色覆盖层",         "part":"camera","domain":"normalized","axis":"","min":0,"max":1},
-    {"s": "white_circle_opacity",    "p": "Param136",       "d": "白圈不透明度",       "part":"camera","domain":"normalized","axis":"","min":0,"max":1},
-    {"s": "white_circle_size",       "p": "Param133",       "d": "白圈大小",           "part":"camera","domain":"normalized","axis":"","min":0,"max":1},
-    {"s": "white_circle_x",          "p": "Param134",       "d": "白圈位移x",          "part":"camera","domain":"position","axis":"X","min":-30,"max":30},
-    {"s": "white_circle_y",          "p": "Param135",       "d": "白圈位移Y",          "part":"camera","domain":"position","axis":"Y","min":-30,"max":30}
+    {
+      "s": "body_angle_x",
+      "p": "ParamBodyAngleX",
+      "d": "身体旋转X",
+      "part": "body",
+      "domain": "angle",
+      "axis": "X",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "body_angle_y",
+      "p": "ParamBodyAngleY",
+      "d": "身体旋转Y",
+      "part": "body",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "body_angle_z",
+      "p": "ParamBodyAngleZ",
+      "d": "身体旋转Z",
+      "part": "body",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "head_angle_x",
+      "p": "ParamAngleX",
+      "d": "角度 X",
+      "part": "head",
+      "domain": "angle",
+      "axis": "X",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "head_angle_y",
+      "p": "ParamAngleY",
+      "d": "角度 Y",
+      "part": "head",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "head_angle_z",
+      "p": "ParamAngleZ",
+      "d": "角度 Z",
+      "part": "head",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "breath",
+      "p": "ParamBreath",
+      "d": "呼吸",
+      "part": "breath",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "eye_l_open",
+      "p": "ParamEyeLOpen",
+      "d": "左眼开闭",
+      "part": "eye",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "related": [
+        "eye_r_open"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "eye_r_open",
+      "p": "ParamEyeROpen",
+      "d": "右眼开闭",
+      "part": "eye",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "related": [
+        "eye_l_open"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "eye_ball_x",
+      "p": "ParamEyeBallX",
+      "d": "眼珠X",
+      "part": "eye",
+      "domain": "angle",
+      "axis": "X",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "eye_ball_y"
+      ],
+      "relType": "coupled"
+    },
+    {
+      "s": "eye_ball_y",
+      "p": "ParamEyeBallY",
+      "d": "眼珠Y",
+      "part": "eye",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "eye_ball_x"
+      ],
+      "relType": "coupled"
+    },
+    {
+      "s": "eye_l_smile",
+      "p": "ParamEyeLSmile",
+      "d": "左眼微笑",
+      "part": "eye",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "related": [
+        "eye_r_smile"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "eye_r_smile",
+      "p": "ParamEyeRSmile",
+      "d": "右眼微笑",
+      "part": "eye",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "related": [
+        "eye_l_smile"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "eye_heart",
+      "p": "Param109",
+      "d": "爱心",
+      "part": "eye",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "brow_r_y",
+      "p": "ParamBrowRY",
+      "d": "右眉上下",
+      "part": "brow",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "brow_l_y"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "brow_l_y",
+      "p": "ParamBrowLY",
+      "d": "左眉上下",
+      "part": "brow",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "brow_r_y"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "brow_l_angle",
+      "p": "ParamBrowLAngle",
+      "d": "左眉角度",
+      "part": "brow",
+      "domain": "angle",
+      "axis": "X",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "brow_r_angle"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "brow_r_angle",
+      "p": "ParamBrowRAngle",
+      "d": "右眉角度",
+      "part": "brow",
+      "domain": "angle",
+      "axis": "X",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "brow_l_angle"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "mouth_form",
+      "p": "ParamMouthForm",
+      "d": "嘴变形",
+      "part": "mouth",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "mouth_open_y",
+      "p": "ParamMouthOpenY",
+      "d": "嘴张开闭合",
+      "part": "mouth",
+      "domain": "normalized",
+      "axis": "Y",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "arm_right_upper",
+      "p": "Param31",
+      "d": "右手臂上段",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -30,
+      "max": 30,
+      "side": "right"
+    },
+    {
+      "s": "arm_right_mid",
+      "p": "Param32",
+      "d": "右手臂中段",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -30,
+      "max": 30,
+      "side": "right"
+    },
+    {
+      "s": "arm_right_lower",
+      "p": "Param33",
+      "d": "右手臂下段",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -30,
+      "max": 30,
+      "side": "right"
+    },
+    {
+      "s": "arm_right_upper_extra",
+      "p": "Param94",
+      "d": "右手臂上段旋转",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -30,
+      "max": 30,
+      "side": "right"
+    },
+    {
+      "s": "arm_right_base_rotation",
+      "p": "Param97",
+      "d": "右手基础上臂旋转",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -30,
+      "max": 30,
+      "side": "right"
+    },
+    {
+      "s": "arm_right_switch",
+      "p": "Param93",
+      "d": "右手基础切换",
+      "part": "arm",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right"
+    },
+    {
+      "s": "arm_right_reach",
+      "p": "Param118",
+      "d": "右手伸出参数",
+      "part": "arm",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right"
+    },
+    {
+      "s": "arm_right_wrist_z",
+      "p": "Param99",
+      "d": "右手基础手腕Z",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -30,
+      "max": 30,
+      "side": "right"
+    },
+    {
+      "s": "arm_left_upper",
+      "p": "Param34",
+      "d": "左手臂上段",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -30,
+      "max": 30,
+      "side": "left"
+    },
+    {
+      "s": "arm_left_mid",
+      "p": "Param36",
+      "d": "左手臂中段",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -30,
+      "max": 30,
+      "side": "left"
+    },
+    {
+      "s": "arm_left_lower",
+      "p": "Param37",
+      "d": "左手臂下段",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -30,
+      "max": 30,
+      "side": "left"
+    },
+    {
+      "s": "arm_left_extra",
+      "p": "Param38",
+      "d": "左袖1",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -30,
+      "max": 30,
+      "side": "left"
+    },
+    {
+      "s": "arm_left_extra2",
+      "p": "Param39",
+      "d": "左袖2",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -30,
+      "max": 30,
+      "side": "left"
+    },
+    {
+      "s": "hand_layer_95",
+      "p": "Param95",
+      "d": "右手上壁透视",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right"
+    },
+    {
+      "s": "hand_layer_117",
+      "p": "Param117",
+      "d": "右手上壁透视2",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right"
+    },
+    {
+      "s": "hand_layer_98",
+      "p": "Param98",
+      "d": "右手下壁透视",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right"
+    },
+    {
+      "s": "hand_layer_100",
+      "p": "Param100",
+      "d": "右手手透视",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right"
+    },
+    {
+      "s": "hand_layer_116",
+      "p": "Param116",
+      "d": "透视2",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right"
+    },
+    {
+      "s": "hand_layer_120",
+      "p": "Param120",
+      "d": "手向前透视效果",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right"
+    },
+    {
+      "s": "hand_layer_108",
+      "p": "Param108",
+      "d": "右手图层顺序",
+      "part": "hand",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right"
+    },
+    {
+      "s": "hand_layer_119",
+      "p": "Param119",
+      "d": "伸手图层调整",
+      "part": "hand",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right"
+    },
+    {
+      "s": "leg_l_lift",
+      "p": "Param165",
+      "d": "抬腿",
+      "part": "leg",
+      "domain": "angle",
+      "axis": "",
+      "min": -20,
+      "max": 20,
+      "side": "left"
+    },
+    {
+      "s": "leg_r_lift",
+      "p": "Param164",
+      "d": "腿(可能废弃)",
+      "part": "leg",
+      "domain": "angle",
+      "axis": "",
+      "min": -20,
+      "max": 20,
+      "side": "right"
+    },
+    {
+      "s": "leg_l_swing",
+      "p": "Param126",
+      "d": "左腿前后摆",
+      "part": "leg",
+      "domain": "angle",
+      "axis": "",
+      "min": -20,
+      "max": 20,
+      "side": "left"
+    },
+    {
+      "s": "leg_l_bend",
+      "p": "Param127",
+      "d": "左脚旋转",
+      "part": "leg",
+      "domain": "angle",
+      "axis": "",
+      "min": -10,
+      "max": 10,
+      "side": "left"
+    },
+    {
+      "s": "leg_r_swing",
+      "p": "Param129",
+      "d": "右腿前后摆",
+      "part": "leg",
+      "domain": "angle",
+      "axis": "",
+      "min": -20,
+      "max": 20,
+      "side": "right"
+    },
+    {
+      "s": "leg_r_bend",
+      "p": "Param131",
+      "d": "右脚旋转",
+      "part": "leg",
+      "domain": "angle",
+      "axis": "",
+      "min": -10,
+      "max": 10,
+      "side": "right"
+    },
+    {
+      "s": "shoulder",
+      "p": "Param153",
+      "d": "耸肩",
+      "part": "shoulder",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "hair_bangs_1",
+      "p": "Param5",
+      "d": "刘海物理c",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_bangs_2",
+      "p": "Param7",
+      "d": "刘海物理b",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_bangs_3",
+      "p": "Param9",
+      "d": "刘海物理a",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_physics_1",
+      "p": "Param11",
+      "d": "头发物理2c",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_physics_2b",
+      "p": "Param14",
+      "d": "头发物理2b",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_physics_3",
+      "p": "Param17",
+      "d": "头发物理2a",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_back_b_1",
+      "p": "Param19",
+      "d": "后发B",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_back_b_2",
+      "p": "Param21",
+      "d": "后发A",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_side_1",
+      "p": "Param23",
+      "d": "鬓发c",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_side_2",
+      "p": "Param35",
+      "d": "鬓发b",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_side_3",
+      "p": "Param41",
+      "d": "鬓发a",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_back_4",
+      "p": "Param43",
+      "d": "后发d",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -1,
+      "max": 1
+    },
+    {
+      "s": "hair_back_3",
+      "p": "Param45",
+      "d": "后发c",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_back_2",
+      "p": "Param55",
+      "d": "后发b",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -1,
+      "max": 1
+    },
+    {
+      "s": "hair_back_a_orig",
+      "p": "Param62",
+      "d": "后发a",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_ornament_3c",
+      "p": "Param91",
+      "d": "饰品C",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_ornament_2",
+      "p": "Param74",
+      "d": "饰品b",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_ornament_3",
+      "p": "Param89",
+      "d": "饰品a",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_head_ornament",
+      "p": "Param169",
+      "d": "头饰(可能废弃)",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "skirt_drive_3",
+      "p": "Param82",
+      "d": "裙子3x",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "skirt_drive_2",
+      "p": "Param87",
+      "d": "裙子x2",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "skirt_drive_1",
+      "p": "Param84",
+      "d": "裙子1x",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "skirt_drive_4",
+      "p": "Param49",
+      "d": "七星盘X4",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "skirt_drive_5",
+      "p": "Param51",
+      "d": "七星盘X3",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "skirt_drive_6",
+      "p": "Param57",
+      "d": "七星盘X2",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "skirt_drive_7",
+      "p": "Param60",
+      "d": "七星盘X1",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "star_plate_transparency",
+      "p": "Param154",
+      "d": "七星盘透明",
+      "part": "skirt",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "special_money",
+      "p": "Param122",
+      "d": "钱",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "special_tear",
+      "p": "Param130",
+      "d": "泪眼",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "special_blush_dark",
+      "p": "Param101",
+      "d": "黑脸",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "special_angry",
+      "p": "Param104",
+      "d": "生气",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "special_outer_mask",
+      "p": "Param401",
+      "d": "外蒙版",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "star_visibility",
+      "p": "Param451",
+      "d": "星显隐",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "star_size",
+      "p": "Param541",
+      "d": "星大小",
+      "part": "special",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "star_outer_scale",
+      "p": "Param1071",
+      "d": "外围星变大",
+      "part": "special",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "star_outer_visibility",
+      "p": "Param1081",
+      "d": "特效（星显隐）",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "hand_right_switch",
+      "p": "Param92",
+      "d": "右手切换",
+      "part": "hand",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right",
+      "note": "0=正常手掌, 1=剑指手势, 影响 finger_thumb~pinky"
+    },
+    {
+      "s": "finger_normal_1",
+      "p": "Param102",
+      "d": "右手手指1",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right",
+      "prerequisite": "sword_finger_switch=0"
+    },
+    {
+      "s": "finger_normal_2",
+      "p": "Param103",
+      "d": "右手手指2",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right",
+      "prerequisite": "sword_finger_switch=0"
+    },
+    {
+      "s": "finger_normal_3",
+      "p": "Param105",
+      "d": "右手手指3",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right",
+      "prerequisite": "sword_finger_switch=0"
+    },
+    {
+      "s": "finger_normal_4",
+      "p": "Param106",
+      "d": "右手手指4",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right",
+      "prerequisite": "sword_finger_switch=0"
+    },
+    {
+      "s": "finger_normal_5",
+      "p": "Param107",
+      "d": "右手手指5",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right",
+      "prerequisite": "sword_finger_switch=0"
+    },
+    {
+      "s": "finger_z_rotate",
+      "p": "Param110",
+      "d": "右手手指Z旋转",
+      "part": "hand",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -20,
+      "max": 20,
+      "side": "right",
+      "prerequisite": "sword_finger_switch=0"
+    },
+    {
+      "s": "finger_thumb",
+      "p": "Param111",
+      "d": "拇指",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right",
+      "prerequisite": "sword_finger_switch=1"
+    },
+    {
+      "s": "finger_index",
+      "p": "Param112",
+      "d": "食指",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right",
+      "prerequisite": "sword_finger_switch=1"
+    },
+    {
+      "s": "finger_middle",
+      "p": "Param113",
+      "d": "中指",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right",
+      "prerequisite": "sword_finger_switch=1"
+    },
+    {
+      "s": "finger_ring",
+      "p": "Param114",
+      "d": "无名指",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right",
+      "prerequisite": "sword_finger_switch=1"
+    },
+    {
+      "s": "finger_pinky",
+      "p": "Param115",
+      "d": "小指",
+      "part": "hand",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "right",
+      "prerequisite": "sword_finger_switch=1"
+    },
+    {
+      "s": "camera_x",
+      "p": "Param155",
+      "d": "镜头X",
+      "part": "camera",
+      "domain": "position",
+      "axis": "X",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "camera_y",
+      "p": "Param156",
+      "d": "镜头Y",
+      "part": "camera",
+      "domain": "position",
+      "axis": "Y",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "character_scale",
+      "p": "Param157",
+      "d": "人物缩小放大",
+      "part": "camera",
+      "domain": "scale",
+      "axis": "",
+      "min": 0.5,
+      "max": 1.5
+    },
+    {
+      "s": "hair_back_c",
+      "p": "Param54",
+      "d": "后发cy",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "",
+      "min": -1,
+      "max": 1
+    },
+    {
+      "s": "brow_r_rot",
+      "p": "ParamBrowRAngle",
+      "d": "右眉旋转角度",
+      "part": "brow",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "brow_l_rot"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "brow_l_rot",
+      "p": "ParamBrowLAngle",
+      "d": "左眉旋转角度",
+      "part": "brow",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "brow_r_rot"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "brow_l_form",
+      "p": "ParamBrowLForm",
+      "d": "左眉变形",
+      "part": "brow",
+      "domain": "angle",
+      "axis": "",
+      "min": -1,
+      "max": 1
+    },
+    {
+      "s": "body_angle_y2",
+      "p": "ParamBodyAngleY2",
+      "d": "身体旋转Y2",
+      "part": "body",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -10,
+      "max": 10
+    },
+    {
+      "s": "body_angle_z2",
+      "p": "ParamBodyAngleZ2",
+      "d": "身体旋转Z2",
+      "part": "body",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -10,
+      "max": 10
+    },
+    {
+      "s": "body_translation_x",
+      "p": "Param251",
+      "d": "身体水平位移",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -10,
+      "max": 10,
+      "side": "right"
+    },
+    {
+      "s": "outer_purple_ring_visibility",
+      "p": "Param431",
+      "d": "外紫环显隐",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "outer_yellow_ring_visibility",
+      "p": "Param991",
+      "d": "外黄环显隐",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "special_black_overlay",
+      "p": "Param121",
+      "d": "黑幕切换",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "arm_r_ribbon_a1",
+      "p": "Param_Angle_Rotation_1_ArtMesh249",
+      "d": "右丝带旋a1",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "right"
+    },
+    {
+      "s": "arm_r_ribbon_a2",
+      "p": "Param_Angle_Rotation_2_ArtMesh249",
+      "d": "右丝带旋a2",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "right"
+    },
+    {
+      "s": "arm_r_ribbon_a3",
+      "p": "Param_Angle_Rotation_3_ArtMesh249",
+      "d": "右丝带旋a3",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "right"
+    },
+    {
+      "s": "arm_r_ribbon_a4",
+      "p": "Param_Angle_Rotation_4_ArtMesh249",
+      "d": "右丝带旋a4",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "right"
+    },
+    {
+      "s": "arm_r_ribbon_a4b",
+      "p": "Param_Angle_Rotation_5_ArtMesh249",
+      "d": "右丝带旋a5",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "right"
+    },
+    {
+      "s": "arm_r_ribbon_a5",
+      "p": "Param_Angle_Rotation_6_ArtMesh249",
+      "d": "右丝带旋a6",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45
+    },
+    {
+      "s": "arm_l_ribbon_a1",
+      "p": "Param_Angle_Rotation_1_ArtMesh272",
+      "d": "左丝带旋a1",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "left"
+    },
+    {
+      "s": "arm_l_ribbon_a2",
+      "p": "Param_Angle_Rotation_2_ArtMesh272",
+      "d": "左丝带旋a2",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "left"
+    },
+    {
+      "s": "arm_l_ribbon_a3",
+      "p": "Param_Angle_Rotation_3_ArtMesh272",
+      "d": "左丝带旋a3",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "left"
+    },
+    {
+      "s": "arm_l_ribbon_a4",
+      "p": "Param_Angle_Rotation_4_ArtMesh272",
+      "d": "左丝带旋a4",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "left"
+    },
+    {
+      "s": "arm_l_ribbon_a5",
+      "p": "Param_Angle_Rotation_5_ArtMesh272",
+      "d": "左丝带旋a5",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "left"
+    },
+    {
+      "s": "arm_l_ribbon_a6",
+      "p": "Param_Angle_Rotation_6_ArtMesh272",
+      "d": "左丝带旋a6",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "left"
+    },
+    {
+      "s": "arm_l_ribbon_a7",
+      "p": "Param_Angle_Rotation_7_ArtMesh272",
+      "d": "左丝带旋a7",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "left"
+    },
+    {
+      "s": "outer_purple_ring_rot",
+      "p": "Param421",
+      "d": "外紫环旋转",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "outer_purple_ring_size",
+      "p": "Param441",
+      "d": "外紫环大小",
+      "part": "special",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "mid_purple_ring_rot",
+      "p": "Param901",
+      "d": "中紫环旋转",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "special_middle_purple_ring_visibility",
+      "p": "Param911",
+      "d": "中紫环显隐",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "mid_purple_ring_size",
+      "p": "Param961",
+      "d": "中紫环大小",
+      "part": "special",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "inner_purple_ring_rot",
+      "p": "Param881",
+      "d": "内紫环旋转",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "inner_purple_ring_show",
+      "p": "Param741",
+      "d": "内紫环显隐",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "inner_purple_ring_size",
+      "p": "Param731",
+      "d": "内紫环大小",
+      "part": "special",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "mid_mask",
+      "p": "Param411",
+      "d": "中蒙版",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "inner_mask",
+      "p": "Param891",
+      "d": "内蒙版",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "outer_yellow_ring_rot",
+      "p": "Param981",
+      "d": "外黄环旋转",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "outer_yellow_ring_size",
+      "p": "Param1001",
+      "d": "外黄环大小",
+      "part": "special",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "inner_yellow_ring_rot",
+      "p": "Param1051",
+      "d": "内黄环旋转",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "inner_yellow_ring_show",
+      "p": "Param1031",
+      "d": "内黄环显隐",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "inner_yellow_ring_size",
+      "p": "Param1021",
+      "d": "内黄环大小",
+      "part": "special",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "body_angle_x2",
+      "p": "ParamBodyAngleX2",
+      "d": "身体X2旋转",
+      "part": "body",
+      "domain": "angle",
+      "axis": "X",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "body_angle_x_extra1",
+      "p": "Param125",
+      "d": "身体X旋转(125)",
+      "part": "body",
+      "domain": "angle",
+      "axis": "X",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "body_y_anim",
+      "p": "Param123",
+      "d": "身体Y动画",
+      "part": "body",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "body_z",
+      "p": "Param124",
+      "d": "身体Z旋转",
+      "part": "body",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "body_angle_x_extra2",
+      "p": "Param128",
+      "d": "身体X旋转(128)",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "head_angle_x2",
+      "p": "Param25",
+      "d": "头部X2",
+      "part": "head",
+      "domain": "angle",
+      "axis": "X",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "head_angle_y3",
+      "p": "Param248",
+      "d": "头部Y",
+      "part": "head",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "head_angle_z3",
+      "p": "Param249",
+      "d": "头部Z",
+      "part": "head",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "brow_r_x",
+      "p": "ParamBrowRX",
+      "d": "右眉左右",
+      "part": "brow",
+      "domain": "angle",
+      "axis": "X",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "brow_l_x"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "brow_l_x",
+      "p": "ParamBrowLX",
+      "d": "左眉左右",
+      "part": "brow",
+      "domain": "angle",
+      "axis": "X",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "brow_r_x"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "brow_r_form",
+      "p": "ParamBrowRForm",
+      "d": "右眉变形",
+      "part": "brow",
+      "domain": "angle",
+      "axis": "",
+      "min": -1,
+      "max": 1
+    },
+    {
+      "s": "eye_squint_r",
+      "p": "Param149",
+      "d": "眯眼瞪眼R",
+      "part": "eye",
+      "domain": "normalized",
+      "axis": "",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "eye_squint_l"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "eye_squint_l",
+      "p": "Param150",
+      "d": "眯眼瞪眼L",
+      "part": "eye",
+      "domain": "normalized",
+      "axis": "",
+      "min": -1,
+      "max": 1,
+      "related": [
+        "eye_squint_r"
+      ],
+      "relType": "symmetrical"
+    },
+    {
+      "s": "mouth_jaw",
+      "p": "Param163",
+      "d": "下颌开闭",
+      "part": "mouth",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "mouth_form_follow",
+      "p": "Param250",
+      "d": "嘴变形联动",
+      "part": "mouth",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "necklace_3",
+      "p": "Param46",
+      "d": "颈饰3y",
+      "part": "body",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "necklace_3x",
+      "p": "Param47",
+      "d": "颈饰3x",
+      "part": "body",
+      "domain": "angle",
+      "axis": "X",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "necklace_2y",
+      "p": "Param141",
+      "d": "颈饰2y",
+      "part": "body",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "necklace_2x",
+      "p": "Param140",
+      "d": "颈饰2x",
+      "part": "body",
+      "domain": "angle",
+      "axis": "X",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "necklace_1y",
+      "p": "Param143",
+      "d": "颈饰1y",
+      "part": "body",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "necklace_1x",
+      "p": "Param142",
+      "d": "颈饰1x",
+      "part": "body",
+      "domain": "angle",
+      "axis": "X",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "skirt_drive_3y",
+      "p": "Param83",
+      "d": "裙子3y",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "skirt_drive_y2",
+      "p": "Param86",
+      "d": "裙子y2",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "skirt_drive_1y",
+      "p": "Param85",
+      "d": "裙子1y",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "disk_y4",
+      "p": "Param50",
+      "d": "七星盘y4",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "disk_y3",
+      "p": "Param53",
+      "d": "七星盘y3",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "disk_y2",
+      "p": "Param59",
+      "d": "七星盘y2",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "disk_y1",
+      "p": "Param75",
+      "d": "七星盘y1",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "curtain_3x",
+      "p": "Param76",
+      "d": "帘子3x",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "X",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "curtain_3y",
+      "p": "Param77",
+      "d": "帘子3y",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "curtain_2x",
+      "p": "Param80",
+      "d": "帘子2x",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "X",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "curtain_2y",
+      "p": "Param81",
+      "d": "帘子2y",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "curtain_1x",
+      "p": "Param78",
+      "d": "帘子1x",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "X",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "curtain_1y",
+      "p": "Param79",
+      "d": "帘子1y",
+      "part": "skirt",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -20,
+      "max": 20
+    },
+    {
+      "s": "tassel_1",
+      "p": "Param24",
+      "d": "穗子1",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "tassel_2",
+      "p": "Param26",
+      "d": "穗子2",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "tassel_1l",
+      "p": "Param27",
+      "d": "穗子1L",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "tassel_2l",
+      "p": "Param28",
+      "d": "穗子2L",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "cup",
+      "p": "Param29",
+      "d": "水杯",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "arm_ring_l_2",
+      "p": "Param144",
+      "d": "左环2",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15,
+      "side": "left"
+    },
+    {
+      "s": "arm_ring_l_1",
+      "p": "Param145",
+      "d": "左环1",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15,
+      "side": "left"
+    },
+    {
+      "s": "arm_ring_r_3",
+      "p": "Param148",
+      "d": "右环3",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15,
+      "side": "right"
+    },
+    {
+      "s": "arm_ring_r_2",
+      "p": "Param146",
+      "d": "右环2",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15,
+      "side": "right"
+    },
+    {
+      "s": "arm_ring_r_1",
+      "p": "Param151",
+      "d": "右环1",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15,
+      "side": "right"
+    },
+    {
+      "s": "clothes_l_ornament",
+      "p": "Param52",
+      "d": "衣服左饰",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "l_ribbon_3",
+      "p": "Param58",
+      "d": "左衣带子3",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15,
+      "side": "left"
+    },
+    {
+      "s": "l_ribbon_2",
+      "p": "Param147",
+      "d": "左衣带2",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15,
+      "side": "left"
+    },
+    {
+      "s": "l_ribbon_1",
+      "p": "Param152",
+      "d": "左衣带1",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15,
+      "side": "left"
+    },
+    {
+      "s": "r_ribbon_3",
+      "p": "Param61",
+      "d": "右衣带子3",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15,
+      "side": "right"
+    },
+    {
+      "s": "r_ribbon_2a",
+      "p": "Param72",
+      "d": "右衣带2",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15,
+      "side": "right"
+    },
+    {
+      "s": "r_ribbon_2b",
+      "p": "Param48",
+      "d": "右衣带2(2)",
+      "part": "body",
+      "domain": "angle",
+      "axis": "",
+      "min": -15,
+      "max": 15,
+      "side": "right"
+    },
+    {
+      "s": "outer_mask_2",
+      "p": "Param971",
+      "d": "外蒙版(2)",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "inner_mask_2",
+      "p": "Param892",
+      "d": "内蒙版(2)",
+      "part": "special",
+      "domain": "toggle",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "purple_ring_rot_2_l1",
+      "p": "Param422",
+      "d": "外紫环转(层2)",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "purple_ring_rot_2_l2",
+      "p": "Param902",
+      "d": "中紫环转(层2)",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "purple_ring_rot_2_l3",
+      "p": "Param882",
+      "d": "内紫环转(层2)",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "yellow_ring_rot_2_l1",
+      "p": "Param982",
+      "d": "外黄环转(层2)",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "yellow_ring_rot_2_l2",
+      "p": "Param1052",
+      "d": "内黄环转(层2)",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "arm_r_ribbon_a7",
+      "p": "Param_Angle_Rotation_7_ArtMesh249",
+      "d": "右丝带旋a7",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "",
+      "min": -45,
+      "max": 45,
+      "side": "right"
+    },
+    {
+      "s": "head_param93",
+      "p": "Param66",
+      "d": "参数93(未知)",
+      "part": "head",
+      "domain": "angle",
+      "axis": "",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "ring_layer2_p1",
+      "p": "Param158",
+      "d": "环层2-1",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "purple_ring_visibility_1",
+      "p": "Param166",
+      "d": "紫环显隐1",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "special_purple_ring_outer_visibility",
+      "p": "Param167",
+      "d": "外紫环显隐2",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "purple_ring_visibility_2",
+      "p": "Param168",
+      "d": "紫环显隐2",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "ring_layer2_p5",
+      "p": "Param170",
+      "d": "环层2-5",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "ring_layer2_p6",
+      "p": "Param171",
+      "d": "环层2-6",
+      "part": "special",
+      "domain": "angle",
+      "axis": "",
+      "min": 0,
+      "max": 360
+    },
+    {
+      "s": "hair_bangs_1y",
+      "p": "Param6",
+      "d": "刘海物理cy",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_bangs_2y",
+      "p": "Param8",
+      "d": "刘海物理by",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_bangs_3y",
+      "p": "Param10",
+      "d": "刘海物理ay",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_physics_1y",
+      "p": "Param12",
+      "d": "头发物理2cy",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_physics_2y",
+      "p": "Param16",
+      "d": "头发物理2by",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_physics_3y",
+      "p": "Param18",
+      "d": "头发物理2ay",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_side_1y",
+      "p": "Param30",
+      "d": "鬓发cy",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_side_2y",
+      "p": "Param40",
+      "d": "鬓发by",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_side_3y",
+      "p": "Param42",
+      "d": "鬓发ay",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_ornament_1y",
+      "p": "Param96",
+      "d": "饰品CY",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_ornament_by",
+      "p": "Param88",
+      "d": "发饰by",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_ornament_3y",
+      "p": "Param90",
+      "d": "饰品ay",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_back_b_1y",
+      "p": "Param20",
+      "d": "后发BY",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_back_b_2y",
+      "p": "Param22",
+      "d": "后发AY",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_back_dy",
+      "p": "Param44",
+      "d": "后发dy",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_back_b",
+      "p": "Param56",
+      "d": "后发by",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "hair_back_a",
+      "p": "Param73",
+      "d": "后发ay",
+      "part": "hair",
+      "domain": "angle",
+      "axis": "Y",
+      "min": -15,
+      "max": 15
+    },
+    {
+      "s": "overlay_black",
+      "p": "Param137",
+      "d": "黑幕透明显现",
+      "part": "camera",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "overlay_white_x",
+      "p": "Param138",
+      "d": "白色透明x",
+      "part": "camera",
+      "domain": "position",
+      "axis": "X",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "overlay_white_y",
+      "p": "Param139",
+      "d": "白色透明y",
+      "part": "camera",
+      "domain": "position",
+      "axis": "Y",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "special_eye_glow",
+      "p": "Param132",
+      "d": "眼镜发光",
+      "part": "camera",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "white_circle_opacity",
+      "p": "Param136",
+      "d": "白圈不透明度",
+      "part": "camera",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "white_circle_size",
+      "p": "Param133",
+      "d": "白圈大小",
+      "part": "camera",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1
+    },
+    {
+      "s": "white_circle_x",
+      "p": "Param134",
+      "d": "白圈位移x",
+      "part": "camera",
+      "domain": "position",
+      "axis": "X",
+      "min": -30,
+      "max": 30
+    },
+    {
+      "s": "white_circle_y",
+      "p": "Param135",
+      "d": "白圈位移Y",
+      "part": "camera",
+      "domain": "position",
+      "axis": "Y",
+      "min": -30,
+      "max": 30
+    }
   ],
-
   "relations": [
-    {"type": "symmetrical", "a": "eye_l_open",       "b": "eye_r_open",       "desc": "左右眼开闭对称"},
-    {"type": "symmetrical", "a": "eye_l_smile",      "b": "eye_r_smile",      "desc": "左右眼微笑对称"},
-    {"type": "symmetrical", "a": "brow_l_y",         "b": "brow_r_y",         "desc": "左右眉上下对称"},
-    {"type": "symmetrical", "a": "brow_l_angle",     "b": "brow_r_angle",     "desc": "左右眉角度对称"},
-    {"type": "symmetrical", "a": "brow_l_rot",       "b": "brow_r_rot",       "desc": "左右眉旋转角度对称"},
-    {"type": "symmetrical", "a": "brow_l_x",         "b": "brow_r_x",         "desc": "左右眉左右移动对称"},
-    {"type": "symmetrical", "a": "eye_squint_l",      "b": "eye_squint_r",      "desc": "左右眯眼瞪眼对称"},
-    {"type": "coupled",     "a": "eye_ball_x",       "b": "eye_ball_y",       "desc": "眼珠XY组合成视线方向"},
-    {"type": "prerequisite","a": "sword_finger_switch", "b": "finger_thumb,finger_index,finger_middle,finger_ring,finger_pinky",
-        "desc": "sword_finger_switch=1 时启用剑指手指"},
-    {"type": "prerequisite","a": "sword_finger_switch", "b": "finger_normal_1,finger_normal_2,finger_normal_3,finger_normal_4,finger_normal_5,finger_z_rotate",
-        "desc": "sword_finger_switch=0 时启用正常手指"}
+    {
+      "type": "symmetrical",
+      "a": "eye_l_open",
+      "b": "eye_r_open",
+      "desc": "左右眼开闭对称"
+    },
+    {
+      "type": "symmetrical",
+      "a": "eye_l_smile",
+      "b": "eye_r_smile",
+      "desc": "左右眼微笑对称"
+    },
+    {
+      "type": "symmetrical",
+      "a": "brow_l_y",
+      "b": "brow_r_y",
+      "desc": "左右眉上下对称"
+    },
+    {
+      "type": "symmetrical",
+      "a": "brow_l_angle",
+      "b": "brow_r_angle",
+      "desc": "左右眉角度对称"
+    },
+    {
+      "type": "symmetrical",
+      "a": "brow_l_rot",
+      "b": "brow_r_rot",
+      "desc": "左右眉旋转角度对称"
+    },
+    {
+      "type": "symmetrical",
+      "a": "brow_l_x",
+      "b": "brow_r_x",
+      "desc": "左右眉左右移动对称"
+    },
+    {
+      "type": "symmetrical",
+      "a": "eye_squint_l",
+      "b": "eye_squint_r",
+      "desc": "左右眯眼瞪眼对称"
+    },
+    {
+      "type": "coupled",
+      "a": "eye_ball_x",
+      "b": "eye_ball_y",
+      "desc": "眼珠XY组合成视线方向"
+    },
+    {
+      "type": "prerequisite",
+      "a": "sword_finger_switch",
+      "b": "finger_thumb,finger_index,finger_middle,finger_ring,finger_pinky",
+      "desc": "sword_finger_switch=1 时启用剑指手指"
+    },
+    {
+      "type": "prerequisite",
+      "a": "sword_finger_switch",
+      "b": "finger_normal_1,finger_normal_2,finger_normal_3,finger_normal_4,finger_normal_5,finger_z_rotate",
+      "desc": "sword_finger_switch=0 时启用正常手指"
+    }
   ],
-
   "groups": [
-    {"g": "body",      "title": "身体",       "params": ["body_angle_x","body_angle_y","body_angle_z","body_angle_y2","body_angle_z2","body_angle_x2","body_x_anim_upper","body_y_anim","body_z_anim","body_zz","necklace_3","necklace_3x","necklace_2y","necklace_2x","necklace_1y","necklace_1x","tassel_1","tassel_2","tassel_1l","tassel_2l","cup","clothes_l_ornament","l_ribbon_3","l_ribbon_2","l_ribbon_1","r_ribbon_3","r_ribbon_2a","r_ribbon_2b"]},
-    {"g": "head",      "title": "头部",       "params": ["head_angle_x","head_angle_y","head_angle_z","head_angle_x2","head_angle_y3","head_angle_z3","head_param93"]},
-    {"g": "breath",    "title": "呼吸",       "params": ["breath"]},
-    {"g": "eyes",      "title": "眼睛",       "params": ["eye_l_open","eye_r_open","eye_ball_x","eye_ball_y","eye_l_smile","eye_r_smile","eye_heart","eye_squint_l","eye_squint_r"]},
-    {"g": "brow",      "title": "眉毛",       "params": ["brow_l_y","brow_r_y","brow_l_angle","brow_r_angle","brow_l_rot","brow_r_rot","brow_l_form","brow_r_form","brow_l_x","brow_r_x"]},
-    {"g": "mouth",     "title": "嘴",         "params": ["mouth_form","mouth_open_y","mouth_jaw","mouth_form_follow"]},
-    {"g": "arm_right", "title": "右手臂",     "params": ["arm_right_upper","arm_right_mid","arm_right_lower","arm_right_rotation","arm_right_base_rotation","arm_right_switch","arm_right_reach","arm_right_wrist_z","arm_right_upper_rotate","arm_r_sword","arm_r_cape_rot","arm_r_sword_rot3","arm_r_sword_rot4","arm_r_sword_rot5","arm_r_ribbon_6","arm_ring_r_3","arm_ring_r_2","arm_ring_r_1"]},
-    {"g": "arm_left",  "title": "左手臂",     "params": ["arm_left_upper","arm_left_mid","arm_left_lower","arm_left_extra","arm_left_extra2","arm_l_ribbon_0","arm_l_ribbon_1","arm_l_ribbon_2","arm_l_ribbon_3","arm_l_ribbon_4","arm_l_ribbon_5","arm_l_ribbon_6","arm_ring_l_2","arm_ring_l_1"]},
-    {"g": "hand_right","title": "右手掌",     "params": ["hand_layer_95","hand_layer_117","hand_layer_98","hand_layer_100","hand_layer_116","hand_layer_120","hand_layer_108","hand_layer_119"]},
-    {"g": "finger",    "title": "右手指",     "params": ["sword_finger_switch","finger_normal_1","finger_normal_2","finger_normal_3","finger_normal_4","finger_normal_5","finger_z_rotate","finger_thumb","finger_index","finger_middle","finger_ring","finger_pinky"]},
-    {"g": "leg",       "title": "腿",         "params": ["leg_l_lift","leg_r_lift","leg_l_swing","leg_l_bend","leg_r_swing","leg_r_bend"]},
-    {"g": "shoulder",  "title": "肩膀",       "params": ["shoulder"]},
-    {"g": "hair",      "title": "头发",       "params": ["hair_bangs_1","hair_bangs_2","hair_bangs_3","hair_physics_1","hair_physics_2","hair_physics_3","hair_back_b_1","hair_back_b_2","hair_side_1","hair_side_2","hair_side_3","hair_side_left_rotate","hair_back_2","hair_left_position","hair_back_4","hair_side_spread","hair_ornament_1","hair_ornament_2","hair_ornament_3","hair_head_ornament","hair_bangs_1y","hair_bangs_2y","hair_bangs_3y","hair_physics_1y","hair_physics_2y","hair_physics_3y","hair_side_1y","hair_side_2y","hair_side_3y","hair_ornament_1y","hair_ornament_2y","hair_ornament_3y","hair_back_b_1y","hair_back_b_2y","hair_back_dy","hair_back_cy","hair_back_ay"]},
-    {"g": "skirt",     "title": "裙子",       "params": ["skirt_drive_1","skirt_drive_2","skirt_drive_3","skirt_drive_4","skirt_drive_5","skirt_drive_6","skirt_drive_7","star_plate_transparency","skirt_r_swing","skirt_drive_3y","skirt_drive_2y","skirt_drive_1y","disk_y4","disk_y3","disk_y2","disk_y1","curtain_3x","curtain_3y","curtain_2x","curtain_2y","curtain_1x","curtain_1y"]},
-    {"g": "special",   "title": "特殊效果",   "params": ["special_money","special_tear","special_blush_dark","special_angry","special_outer_mask","star_visibility","star_size","star_outer_scale","star_outer_appear","chest_effect","neck_decor_show","character_visibility","outer_purple_ring_rot","outer_purple_ring_size","mid_purple_ring_rot","mid_purple_ring_show","mid_purple_ring_size","inner_purple_ring_rot","inner_purple_ring_show","inner_purple_ring_size","mid_mask","inner_mask","outer_yellow_ring_rot","outer_yellow_ring_size","inner_yellow_ring_rot","inner_yellow_ring_show","inner_yellow_ring_size","outer_mask_2","inner_mask_2","purple_ring_rot_2_l1","purple_ring_rot_2_l2","purple_ring_rot_2_l3","yellow_ring_rot_2_l1","yellow_ring_rot_2_l2","ring_layer2_p1","ring_layer2_p2","ring_layer2_p3","ring_layer2_p4","ring_layer2_p5","ring_layer2_p6"]},
-    {"g": "camera",    "title": "镜头",       "params": ["camera_x","camera_y","character_scale","overlay_black","overlay_white_x","overlay_white_y","overlay_white_glow","white_circle_opacity","white_circle_size","white_circle_x","white_circle_y"]}
+    {
+      "g": "body",
+      "title": "身体",
+      "params": [
+        "body_angle_x",
+        "body_angle_y",
+        "body_angle_z",
+        "body_angle_y2",
+        "body_angle_z2",
+        "body_angle_x2",
+        "body_x_anim_upper",
+        "body_y_anim",
+        "body_z_anim",
+        "body_zz",
+        "necklace_3",
+        "necklace_3x",
+        "necklace_2y",
+        "necklace_2x",
+        "necklace_1y",
+        "necklace_1x",
+        "tassel_1",
+        "tassel_2",
+        "tassel_1l",
+        "tassel_2l",
+        "cup",
+        "clothes_l_ornament",
+        "l_ribbon_3",
+        "l_ribbon_2",
+        "l_ribbon_1",
+        "r_ribbon_3",
+        "r_ribbon_2a",
+        "r_ribbon_2b"
+      ]
+    },
+    {
+      "g": "head",
+      "title": "头部",
+      "params": [
+        "head_angle_x",
+        "head_angle_y",
+        "head_angle_z",
+        "head_angle_x2",
+        "head_angle_y3",
+        "head_angle_z3",
+        "head_param93"
+      ]
+    },
+    {
+      "g": "breath",
+      "title": "呼吸",
+      "params": [
+        "breath"
+      ]
+    },
+    {
+      "g": "eyes",
+      "title": "眼睛",
+      "params": [
+        "eye_l_open",
+        "eye_r_open",
+        "eye_ball_x",
+        "eye_ball_y",
+        "eye_l_smile",
+        "eye_r_smile",
+        "eye_heart",
+        "eye_squint_l",
+        "eye_squint_r"
+      ]
+    },
+    {
+      "g": "brow",
+      "title": "眉毛",
+      "params": [
+        "brow_l_y",
+        "brow_r_y",
+        "brow_l_angle",
+        "brow_r_angle",
+        "brow_l_rot",
+        "brow_r_rot",
+        "brow_l_form",
+        "brow_r_form",
+        "brow_l_x",
+        "brow_r_x"
+      ]
+    },
+    {
+      "g": "mouth",
+      "title": "嘴",
+      "params": [
+        "mouth_form",
+        "mouth_open_y",
+        "mouth_jaw",
+        "mouth_form_follow"
+      ]
+    },
+    {
+      "g": "arm_right",
+      "title": "右手臂",
+      "params": [
+        "arm_right_upper",
+        "arm_right_mid",
+        "arm_right_lower",
+        "arm_right_rotation",
+        "arm_right_base_rotation",
+        "arm_right_switch",
+        "arm_right_reach",
+        "arm_right_wrist_z",
+        "arm_right_upper_rotate",
+        "arm_r_sword",
+        "arm_r_cape_rot",
+        "arm_r_sword_rot3",
+        "arm_r_sword_rot4",
+        "arm_r_sword_rot5",
+        "arm_r_ribbon_6",
+        "arm_ring_r_3",
+        "arm_ring_r_2",
+        "arm_ring_r_1"
+      ]
+    },
+    {
+      "g": "arm_left",
+      "title": "左手臂",
+      "params": [
+        "arm_left_upper",
+        "arm_left_mid",
+        "arm_left_lower",
+        "arm_left_extra",
+        "arm_left_extra2",
+        "arm_l_ribbon_0",
+        "arm_l_ribbon_1",
+        "arm_l_ribbon_2",
+        "arm_l_ribbon_3",
+        "arm_l_ribbon_4",
+        "arm_l_ribbon_5",
+        "arm_l_ribbon_6",
+        "arm_ring_l_2",
+        "arm_ring_l_1"
+      ]
+    },
+    {
+      "g": "hand_right",
+      "title": "右手掌",
+      "params": [
+        "hand_layer_95",
+        "hand_layer_117",
+        "hand_layer_98",
+        "hand_layer_100",
+        "hand_layer_116",
+        "hand_layer_120",
+        "hand_layer_108",
+        "hand_layer_119"
+      ]
+    },
+    {
+      "g": "finger",
+      "title": "右手指",
+      "params": [
+        "sword_finger_switch",
+        "finger_normal_1",
+        "finger_normal_2",
+        "finger_normal_3",
+        "finger_normal_4",
+        "finger_normal_5",
+        "finger_z_rotate",
+        "finger_thumb",
+        "finger_index",
+        "finger_middle",
+        "finger_ring",
+        "finger_pinky"
+      ]
+    },
+    {
+      "g": "leg",
+      "title": "腿",
+      "params": [
+        "leg_l_lift",
+        "leg_r_lift",
+        "leg_l_swing",
+        "leg_l_bend",
+        "leg_r_swing",
+        "leg_r_bend"
+      ]
+    },
+    {
+      "g": "shoulder",
+      "title": "肩膀",
+      "params": [
+        "shoulder"
+      ]
+    },
+    {
+      "g": "hair",
+      "title": "头发",
+      "params": [
+        "hair_bangs_1",
+        "hair_bangs_2",
+        "hair_bangs_3",
+        "hair_physics_1",
+        "hair_physics_2",
+        "hair_physics_3",
+        "hair_back_b_1",
+        "hair_back_b_2",
+        "hair_side_1",
+        "hair_side_2",
+        "hair_side_3",
+        "hair_side_left_rotate",
+        "hair_back_2",
+        "hair_left_position",
+        "hair_back_4",
+        "hair_side_spread",
+        "hair_ornament_1",
+        "hair_ornament_2",
+        "hair_ornament_3",
+        "hair_head_ornament",
+        "hair_bangs_1y",
+        "hair_bangs_2y",
+        "hair_bangs_3y",
+        "hair_physics_1y",
+        "hair_physics_2y",
+        "hair_physics_3y",
+        "hair_side_1y",
+        "hair_side_2y",
+        "hair_side_3y",
+        "hair_ornament_1y",
+        "hair_ornament_2y",
+        "hair_ornament_3y",
+        "hair_back_b_1y",
+        "hair_back_b_2y",
+        "hair_back_dy",
+        "hair_back_cy",
+        "hair_back_ay"
+      ]
+    },
+    {
+      "g": "skirt",
+      "title": "裙子",
+      "params": [
+        "skirt_drive_1",
+        "skirt_drive_2",
+        "skirt_drive_3",
+        "skirt_drive_4",
+        "skirt_drive_5",
+        "skirt_drive_6",
+        "skirt_drive_7",
+        "star_plate_transparency",
+        "skirt_r_swing",
+        "skirt_drive_3y",
+        "skirt_drive_2y",
+        "skirt_drive_1y",
+        "disk_y4",
+        "disk_y3",
+        "disk_y2",
+        "disk_y1",
+        "curtain_3x",
+        "curtain_3y",
+        "curtain_2x",
+        "curtain_2y",
+        "curtain_1x",
+        "curtain_1y"
+      ]
+    },
+    {
+      "g": "special",
+      "title": "特殊效果",
+      "params": [
+        "special_money",
+        "special_tear",
+        "special_blush_dark",
+        "special_angry",
+        "special_outer_mask",
+        "star_visibility",
+        "star_size",
+        "star_outer_scale",
+        "star_outer_appear",
+        "chest_effect",
+        "neck_decor_show",
+        "character_visibility",
+        "outer_purple_ring_rot",
+        "outer_purple_ring_size",
+        "mid_purple_ring_rot",
+        "mid_purple_ring_show",
+        "mid_purple_ring_size",
+        "inner_purple_ring_rot",
+        "inner_purple_ring_show",
+        "inner_purple_ring_size",
+        "mid_mask",
+        "inner_mask",
+        "outer_yellow_ring_rot",
+        "outer_yellow_ring_size",
+        "inner_yellow_ring_rot",
+        "inner_yellow_ring_show",
+        "inner_yellow_ring_size",
+        "outer_mask_2",
+        "inner_mask_2",
+        "purple_ring_rot_2_l1",
+        "purple_ring_rot_2_l2",
+        "purple_ring_rot_2_l3",
+        "yellow_ring_rot_2_l1",
+        "yellow_ring_rot_2_l2",
+        "ring_layer2_p1",
+        "ring_layer2_p2",
+        "ring_layer2_p3",
+        "ring_layer2_p4",
+        "ring_layer2_p5",
+        "ring_layer2_p6"
+      ]
+    },
+    {
+      "g": "camera",
+      "title": "镜头",
+      "params": [
+        "camera_x",
+        "camera_y",
+        "character_scale",
+        "overlay_black",
+        "overlay_white_x",
+        "overlay_white_y",
+        "overlay_white_glow",
+        "white_circle_opacity",
+        "white_circle_size",
+        "white_circle_x",
+        "white_circle_y"
+      ]
+    }
   ],
-
   "specialBehaviors": [
-    {"name": "blink", "title": "眨眼",
-     "params": ["eye_l_open","eye_r_open"],
-     "pattern": "both_sync",
-     "sequence": [
-       {"p": "eye_l_open", "v": 0, "t": 0},
-       {"p": "eye_r_open", "v": 0, "t": 0},
-       {"p": "eye_l_open", "v": 1, "t": 0.1},
-       {"p": "eye_r_open", "v": 1, "t": 0.1}
-     ]},
-    {"name": "gaze", "title": "注视",
-     "params": ["eye_ball_x","eye_ball_y"],
-     "pattern": "coupled",
-     "desc": "eye_ball_x + eye_ball_y 组合成视线方向"},
-    {"name": "sword_switch", "title": "剑指切换",
-     "params": ["sword_finger_switch"],
-     "pattern": "toggle",
-     "desc": "0=正常手, 1=剑指手势"},
-    {"name": "breath_auto", "title": "呼吸循环",
-     "params": ["breath"],
-     "pattern": "wave",
-     "desc": "0→1→0 循环模拟呼吸"}
+    {
+      "name": "blink",
+      "title": "眨眼",
+      "params": [
+        "eye_l_open",
+        "eye_r_open"
+      ],
+      "pattern": "both_sync",
+      "sequence": [
+        {
+          "p": "eye_l_open",
+          "v": 0,
+          "t": 0
+        },
+        {
+          "p": "eye_r_open",
+          "v": 0,
+          "t": 0
+        },
+        {
+          "p": "eye_l_open",
+          "v": 1,
+          "t": 0.1
+        },
+        {
+          "p": "eye_r_open",
+          "v": 1,
+          "t": 0.1
+        }
+      ]
+    },
+    {
+      "name": "gaze",
+      "title": "注视",
+      "params": [
+        "eye_ball_x",
+        "eye_ball_y"
+      ],
+      "pattern": "coupled",
+      "desc": "eye_ball_x + eye_ball_y 组合成视线方向"
+    },
+    {
+      "name": "sword_switch",
+      "title": "剑指切换",
+      "params": [
+        "sword_finger_switch"
+      ],
+      "pattern": "toggle",
+      "desc": "0=正常手, 1=剑指手势"
+    },
+    {
+      "name": "breath_auto",
+      "title": "呼吸循环",
+      "params": [
+        "breath"
+      ],
+      "pattern": "wave",
+      "desc": "0→1→0 循环模拟呼吸"
+    }
   ],
-
   "knownIssues": [
     "Param94 (arm_right_rotation) cdi标注'右手上臂旋转'但实际控制左手上臂",
     "Param164 (leg_r_lift) 拖动无反应，可能已废弃",

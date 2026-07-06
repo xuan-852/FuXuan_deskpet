@@ -35,6 +35,9 @@ public class SelfTrainingManager : EditorWindow
         window.Show();
     }
 
+    // 🧿 视觉具身验证入口已移至 VisionVerifyWindow（独立窗口，功能更完整）
+    // Tools/Live2D/🧿 视觉具身验证 (vis_verify) 菜单项在 VisionVerifyWindow.cs 中定义
+
     // ================================================================
     //  Config
     // ================================================================

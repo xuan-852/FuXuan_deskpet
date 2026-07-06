@@ -47,48 +47,7 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     const float HEAD_Y             = 0.4f;   // 头部上下
     const float EYE_X              = 3f;     // 眼珠左右
     const float EYE_Y              = 2f;     // 眼珠上下
-    const float IDLE_TILT          = 8f;     // 歪头幅度
-    const float IDLE_SMILE         = 0.6f;   // 微笑幅度
-    const float IDLE_MOUTH         = 0.4f;   // 张嘴幅度
-    const float IDLE_BROW          = 6f;     // 眉毛幅度（动作2）
-    const float IDLE_BROW_Y        = 6f;     // 眉毛抬起幅度（动作3）
-
-    // -- 丰富静止动作 --
-
-    // 动作1: 星辉环绕（紫环旋转 + 星星闪烁）
     const float SPIN_DURATION      = 6f;
-    const float SPIN_RING_OUTER    = 30f;    // 外紫环旋转幅度
-    const float SPIN_RING_MID      = 45f;    // 中紫环旋转幅度
-    const float SPIN_RING_INNER    = 60f;    // 内紫环旋转幅度
-
-    // 动作2: 伸懒腰（抬右手 + 后仰 + 眯眼张嘴）
-    const float STRETCH_DURATION   = 4.5f;
-    const float STRETCH_R_ARM      = 25f;    // 右手伸出
-    const float STRETCH_BODY_BACK  = -5f;    // 身体后仰
-    const float STRETCH_MOUTH_OPEN = 0.6f;   // 张嘴
-    const float STRETCH_EYE_CLOSE  = 0.4f;   // 眯眼
-
-
-    // 动作8: 委屈 😢
-    const float CRY_DURATION       = 3.5f;
-    const float CRY_HEAD_DOWN      = 6f;     // 低头幅度
-    const float CRY_MOUTH_TREM     = 0.3f;   // 嘴巴微颤
-    const float CRY_BROW_UP        = 5f;     // 眉毛抬起（委屈八字眉）
-
-    // 动作10: 害羞黑脸 😊🖤
-    const float BLUSH_DURATION     = 3.5f;
-    const float BLUSH_DARK         = 1f;     // 黑脸程度
-    const float BLUSH_LOOK_AWAY    = -8f;    // 眼神躲闪
-    const float BLUSH_SMILE        = 0.5f;   // 害羞微笑
-
-    // 动作11: 困惑 🤔（歪头+皱眉+眯眼，只在 AI 困惑时触发）
-    const float CONFUSE_DURATION    = 3f;
-    const float CONFUSE_TILT        = 15f;    // 歪头幅度
-    const float CONFUSE_BROW        = -3f;    // 皱眉（负=压低）
-    const float CONFUSE_EYE_SQUINT  = 0.15f;  // 眯眼幅度
-    const float CONFUSE_MOUTH       = 0.2f;   // 微微张嘴
-    const float CONFUSE_HEAD_SIDE   = -5f;    // 头侧偏
-    const float CONFUSE_BODY_SIDE   = 3f;     // 身体微侧
 
     // 动作9: 法阵显现 ✨（起势→剑指朝天结印→指尖凝光→扩散至全屏→消散）
     const float CIRCLE_DURATION       = 8.0f;
@@ -1560,7 +1519,7 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
                 case 4: UpdateStarSpin(); break;
                 case 7: UpdateMagicCircle(); break;
                 default:
-                    // 非特殊动作 → JSON 调度器驱动
+                    // 非特殊动作 → JSON 调度器驱动（Phase 7 迁移后调度器永不为空）
                     if (_idleScheduler != null && _idleScheduler.CurrentState.isActive)
                     {
                         bool completed = _idleScheduler.UpdatePhase(Time.deltaTime);
@@ -1575,54 +1534,12 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
                     }
                     else
                     {
-                        // 降级：无调度器时用旧逻辑
-                        switch (_currentIdleAction)
-                        {
-                            case 1: UpdateIdleTilt(); break;
-                            case 2: UpdateIdleSmile(); break;
-                            case 3: UpdateIdleBrow(); break;
-                            case 5: UpdateStretch(); break;
-                            case 6: UpdateCry(); break;
-                            case 8: UpdateBlush(); break;
-                            case 9: UpdateConfuse(); break;
-                            default: ResetIdleAction(true); break;
-                        }
+                        // 降级：调度器不可用，安全清理
+                        ResetIdleAction(true);
                     }
                     break;
             }
         }
-    }
-
-    #region 空闲随机动作
-
-    /// <summary>动作1: 歪头 — 往一侧歪头卖萌</summary>
-    private void UpdateIdleTilt()
-    {
-        float duration = 2f;
-        float t = Mathf.Sin(_idleActionTime / duration * Mathf.PI);
-        SetParameter("ParamAngleZ", t * IDLE_TILT);
-        if (_idleActionTime >= duration) ResetIdleAction(true);
-    }
-
-    /// <summary>动作2: 微笑 — 眯眼微笑</summary>
-    private void UpdateIdleSmile()
-    {
-        float duration = 2f;
-        float t = Mathf.Sin(_idleActionTime / duration * Mathf.PI);
-        SetParameter("ParamEyeLSmile", t * IDLE_SMILE);
-        SetParameter("ParamEyeRSmile", t * IDLE_SMILE);
-        SetParameter("ParamMouthForm", t * IDLE_MOUTH);
-        if (_idleActionTime >= duration) ResetIdleAction(true);
-    }
-
-    /// <summary>动作3: 挑眉 — 眉毛微动</summary>
-    private void UpdateIdleBrow()
-    {
-        float duration = 2f;
-        float t = Mathf.Sin(_idleActionTime / duration * Mathf.PI);
-        SetParameter("ParamBrowRY", t * IDLE_BROW_Y);
-        SetParameter("ParamBrowLY", t * IDLE_BROW_Y);
-        if (_idleActionTime >= duration) ResetIdleAction(true);
     }
 
     /// <summary>
@@ -1876,175 +1793,7 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         SetHandLayer(handLayer);
     }
 
-    /// <summary>
-    /// 动作5: 伸懒腰 🥱
-    /// 右手举高 + 身体后仰 + 眯眼张嘴
-    /// </summary>
-    private void UpdateStretch()
-    {
-        float p = _complexActionPhase;
-        float duration = STRETCH_DURATION;
 
-        float t = Mathf.Clamp01(p / duration);
-
-        // 0→1 (起) 然后保持到快结束
-        float rise = Mathf.Clamp01(t * 3f);
-        float hold = Mathf.Clamp01((1f - t) * 3f);
-        float phase = Mathf.Min(rise, hold); // 梯形：快速起→保持→快速落
-
-        // ★ 右臂全套抬升参数
-        SetParameter("Param31", phase * 4f);   // 右臂R1（前臂）
-        SetParameter("Param32", phase * 3f);   // 右臂R2
-        SetParameter("Param33", phase * 5f);   // 右臂R1（上臂）
-        SetParameter("Param94", phase * 10f);  // 右手上臂旋转
-        SetParameter("Param97", phase * 3f);   // 右手 基础上臂旋转
-        SetParameter("Param95", phase * 0.8f); // 右手 基础 上壁透视
-        SetParameter("Param117", phase * 0.5f);// 右手 基础 上壁透视2
-        SetParameter("Param98", phase * 0.6f); // 右手 基础下壁透视
-        SetParameter("Param100", phase * 0.6f);// 右手 基础手 透视
-        SetParameter("Param116", phase * 0.4f);// 透视2
-        SetParameter("Param120", phase * 0.8f);// 手 向前透视效果
-        SetParameter("Param108", phase * 0.8f);// 右手 基础 图层顺序
-        SetParameter("Param119", phase * 0.8f);// 伸手 图层调整
-        SetParameter("Param93", phase);         // 右手 基础 切换
-        SetParameter("Param118", phase * 0.6f); // 右手伸出参数
-        // 左臂配合（自然放下）
-        SetParameter("Param34", phase * 0f);   // 左臂L1
-        SetParameter("Param36", phase * 0f);   // 左臂L2
-        SetParameter("Param37", phase * 0f);   // 左臂L3
-
-        // 身体后仰
-        SetParameter("ParamBodyAngleX", phase * STRETCH_BODY_BACK);
-        SetParameter("ParamBodyAngleZ", phase * 3f); // 身体微侧
-
-        // 头略微后仰
-        SetParameter("ParamAngleX", phase * (-8f));
-
-        // 眯眼 + 张嘴（打哈欠表情）
-        SetParameter("ParamEyeLOpen", 1f - phase * STRETCH_EYE_CLOSE);
-        SetParameter("ParamEyeROpen", 1f - phase * STRETCH_EYE_CLOSE);
-        SetParameter("ParamMouthForm", phase * STRETCH_MOUTH_OPEN);
-        SetParameter("ParamBreath", phase * 0.5f); // 深吸一口气
-
-        // 结束恢复
-        if (t >= 1f) ResetIdleAction(true);
-    }
-
-    /// <summary>
-    /// 动作8: 委屈 😢
-    /// 泪眼汪汪 + 低头 + 八字眉 + 嘴巴微颤
-    /// </summary>
-    private void UpdateCry()
-    {
-        float p = _complexActionPhase;
-        float duration = CRY_DURATION;
-
-        float t = Mathf.Clamp01(p / duration);
-        float eased = Mathf.Sin(t * Mathf.PI);
-
-        // 泪眼表情（Param130 = 泪眼）
-        float tear = Mathf.Sin(p * 4f) * eased;
-        float tearFade = Mathf.Clamp01(tear);
-        SetParameter("Param130", tearFade);
-
-        // 低头（委屈低头）
-        SetParameter("ParamAngleY", eased * CRY_HEAD_DOWN);
-
-        // 嘴巴微颤（委屈时嘴巴会有点抖）
-        float mouthTrem = Mathf.Sin(p * 6f) * eased * CRY_MOUTH_TREM;
-        SetParameter("ParamMouthForm", Mathf.Abs(mouthTrem));
-
-        // 八字眉（眉头抬起 = 委屈状）
-        float browUp = eased * CRY_BROW_UP;
-        SetParameter("ParamBrowRY", browUp);   // 右眉抬起
-        SetParameter("ParamBrowLY", browUp);   // 左眉抬起
-
-        // 眼睛微微睁大（泪眼汪汪）
-        SetParameter("ParamEyeLOpen", 1f + eased * 0.15f);
-        SetParameter("ParamEyeROpen", 1f + eased * 0.15f);
-
-        // 身体微微抽动（抽泣感）
-        float sob = Mathf.Sin(p * 3.5f) * eased * 1.5f;
-        SetParameter("ParamBodyAngleX", sob);
-        SetParameter("ParamBodyAngleZ", sob * 0.5f);
-
-        if (t >= 1f) ResetIdleAction(true);
-    }
-
-    /// <summary>
-    /// 动作10: 害羞黑脸 😊🖤
-    /// 脸黑（Param101）+ 眼神躲闪 + 低头害羞微笑
-    /// </summary>
-    private void UpdateBlush()
-    {
-        float p = _complexActionPhase;
-        float duration = BLUSH_DURATION;
-
-        float t = Mathf.Clamp01(p / duration);
-        float eased = Mathf.Sin(t * Mathf.PI);
-
-        // 黑脸表情（Param101 = 黑脸）
-        float darkPulse = (Mathf.Sin(p * 3f) + 1f) * 0.5f * eased;
-        SetParameter("Param101", darkPulse * BLUSH_DARK);
-
-        // 害羞低头 + 眼神躲闪
-        SetParameter("ParamAngleY", eased * 4f);            // 微低头
-        SetParameter("ParamAngleZ", Mathf.Sin(p * 1.5f) * eased * BLUSH_LOOK_AWAY); // 头扭开
-
-        // 害羞微笑
-        SetParameter("ParamEyeLSmile", eased * BLUSH_SMILE);
-        SetParameter("ParamEyeRSmile", eased * BLUSH_SMILE);
-
-        // 眼睛微微眯起
-        SetParameter("ParamEyeLOpen", 1f - eased * 0.2f);
-        SetParameter("ParamEyeROpen", 1f - eased * 0.2f);
-
-        // 身体微侧（害羞扭捏）
-        float sway = Mathf.Sin(p * 2.5f) * eased * 3f;
-        SetParameter("ParamBodyAngleX", sway);
-        SetParameter("ParamBodyAngleZ", sway * 0.5f);
-
-        // 嘴巴微张（欲言又止）
-        SetParameter("ParamMouthForm", eased * 0.3f);
-
-        if (t >= 1f) ResetIdleAction(true);
-    }
-
-    /// <summary>
-    /// 动作11: 困惑 🤔
-    /// 歪头+皱眉+眯眼+嘴巴微张 — 像小狗听不懂时歪头那样
-    /// 权重为 0，不自发触发，仅当 AI 回复困惑内容时由 AutoChat 强制调用
-    /// </summary>
-    private void UpdateConfuse()
-    {
-        float p = _complexActionPhase;
-        float duration = CONFUSE_DURATION;
-
-        float t = Mathf.Clamp01(p / duration);
-        float eased = Mathf.Sin(t * Mathf.PI);
-
-        // 歪头（经典困惑姿势）
-        SetParameter("ParamAngleZ", eased * CONFUSE_TILT);
-
-        // 头微微偏
-        SetParameter("ParamAngleX", eased * CONFUSE_HEAD_SIDE);
-
-        // 皱眉（压低眉毛）
-        SetParameter("ParamBrowRY", eased * CONFUSE_BROW);
-        SetParameter("ParamBrowLY", eased * CONFUSE_BROW);
-
-        // 微微眯眼（困惑地打量）
-        SetParameter("ParamEyeLOpen", 1f - eased * CONFUSE_EYE_SQUINT);
-        SetParameter("ParamEyeROpen", 1f - eased * CONFUSE_EYE_SQUINT);
-
-        // 嘴巴微张
-        SetParameter("ParamMouthForm", eased * CONFUSE_MOUTH);
-
-        // 身体微侧
-        SetParameter("ParamBodyAngleZ", eased * CONFUSE_BODY_SIDE);
-
-        if (t >= 1f) ResetIdleAction(true);
-    }
 
     /// <summary>
     /// 法阵显现 ✨
@@ -2647,8 +2396,6 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
     }
 
-    #endregion
-
     /// <summary>设置 / 延长 AI 控制锁（AI 控制期间空闲动画不覆盖参数）</summary>
     /// <param name="duration">锁定时长（秒），默认 AI_CONTROL_DURATION</param>
     public void SetAiControlLock(float duration = AI_CONTROL_DURATION)
@@ -2800,63 +2547,7 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             return _idleScheduler.PickNextAction(timeOfDay, isRaining, isSnowing);
         }
 
-        // 降级：旧加权逻辑
-        return PickWeightedIdleActionLegacy();
-    }
-
-    /// <summary>旧加权选取（无调度器时降级使用）</summary>
-    private int PickWeightedIdleActionLegacy()
-    {
-        // 从基值复制，然后根据昼夜/天气调节
-        int[] w = new int[] { 5, 5, 3, 4, 3, 4, 2, 3, 0 };
-
-        bool isNight = (_timeController != null && _timeController.isNight);
-        bool isSleepy = (_timeController != null && _timeController.isSleepyTime);
-        if (isNight)
-        {
-            w[3] = Mathf.Max(1, w[3] - 1);  // 动作4 星辉
-            w[5] = w[5] + 1;                // 动作6 委屈/困
-        }
-        if (isSleepy)
-        {
-            w[5] = w[5] + 2;                // 动作6 更想睡
-            w[0] = w[0] + 1;                // 动作1 歪头（没精神歪着）
-        }
-
-        if (_timeController != null && _timeController.weatherFetched)
-        {
-            var wt = _timeController.weather;
-            if (wt == TimeWeatherController.WeatherType.Rain ||
-                wt == TimeWeatherController.WeatherType.Drizzle ||
-                wt == TimeWeatherController.WeatherType.Thunder)
-            {
-                w[5] = w[5] + 1;            // 动作6 委屈（下雨天不开心）
-            }
-            else if (wt == TimeWeatherController.WeatherType.Clear ||
-                     wt == TimeWeatherController.WeatherType.Cloudy)
-            {
-                w[3] = w[3] + 1;            // 动作4 星辉
-            }
-            else if (wt == TimeWeatherController.WeatherType.Snow)
-            {
-                w[2] = w[2] + 1;            // 动作3 挑眉（好奇看雪）
-                w[5] = w[5] + 1;            // 动作6 委屈（冷）
-            }
-        }
-
-        int totalWeight = 0;
-        for (int i = 0; i < w.Length; i++)
-            totalWeight += w[i];
-
-        int roll = Random.Range(0, totalWeight);
-        int cumulative = 0;
-        for (int i = 0; i < w.Length; i++)
-        {
-            cumulative += w[i];
-            if (roll < cumulative)
-                return i + 1; // 动作编号从 1 开始
-        }
-        return 1; // fallback
+        return 0;
     }
 
     /// <summary>
@@ -4116,5 +3807,8 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         var r = (Live2DRenderer)cmd.context;
         Debug.Log($"[RenderCtx] 可用动作: {r.GetAvailableActions()}");
     }
+
+    // ===== 视觉验证 =====
+    // ★ MenuItem 已移入 Editor/SelfTrainingManager.cs，确保可靠注册
 #endif
 }

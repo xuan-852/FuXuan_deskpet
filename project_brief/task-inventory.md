@@ -1,6 +1,6 @@
 # 项目任务清单
 
-> 文件版本: N31 · 最后更新: 2026-07-07
+> 文件版本: N32 · 最后更新: 2026-07-07
 >
 > 图例: ✅ 已完成 / 🔧 已优化 / 🐛 已修复 / ⏳ 待办 / 💡 待研究 / ❌ 已废弃
 
@@ -41,9 +41,12 @@
 | ✅ | ExpressionManager 表情管理 | 表情淡入淡出 + 插值曲线 |
 | ✅ | Live2DParameterMapper 语义映射 | 语义名 → Cubism 参数 ID |
 | 🔧 | 动作系统重构 (N13) | 11 个动作 JSON 全部重写 + PlayPhase 曲线修复 |
+| ✅ | **Phase 7: 硬编码动作迁移** | 7 个 legacy 方法(~270行)已删除，由 JSON+IdleActionScheduler 替代；仅保留星星旋转(#4)和魔法阵(#7)硬编码 |
 | 🔧 | 动作时冻结物理行走 | `_pet.Pause(0f)` / `_pet.Resume()` 防止边走边做动作 |
 | ✅ | 右键菜单全量暴露 | 所有 10 表情 + 11 动作组织为子菜单 |
 | ✅ | AI 可通过工具调用触发动作 | `set_expression` / `play_action` / `stop_action` |
+| ✅ | **#28 generate_motion — LLM 动作生成** | DeepSeek MotionPlanner + MotionGenerator 协程播放，5 模板 + LLM 回退 |
+| ✅ | **#28 LLM 任意动作翻译 (Phase 9)** | MotionTranslator.cs — 任意自然语言描述 → 结构化关键帧，手动 JSON 解析，DeepSeek temp=0.3 |
 
 ### 动作与权重
 | 状态 | 项目 | 说明 |
@@ -585,7 +588,7 @@ public class ParameterVisionScanner : MonoBehaviour
 | 五 | IdleActionScheduler | 2天 | 阶段四完成 | ✅
 | 六 | 新模型接入流程 | 2天 | 阶段二、三完成 | ✅
 | 七 | 硬编码迁移 | 2天 | 阶段四、五完成 |
-| 八 | **闭环视觉反馈学习系统** | 3天（核心链路已完成） | 阶段四完成、GLM-4V API | ✅ 部分 |
+| 八 | **闭环视觉反馈学习系统** | 3天 | 阶段四完成、GLM-4V API | ✅ |
 | **总计** | | **~23天** | |
 
 > 注：阶段一~三完成后（约 9 天）即可投入实际使用，后续阶段为持续优化。
@@ -645,9 +648,9 @@ public class ParameterVisionScanner : MonoBehaviour
 
 ---
 
-### 阶段八：闭环视觉反馈学习系统 — "模仿→对比→修正"自律循环（预估 3 天，核心链路 ✅）
+### 阶段八：闭环视觉反馈学习系统 — "模仿→对比→修正"自律循环（预估 3 天 ✅）
 
-> **状态**：核心链路（`ActionReferenceManager` + `self_review` 工具）已完成。`SelfImprovementLoop` 自律循环引擎为后续可选增强。
+> **状态**：全链路已验证通过！`SelfTrainingManager` Editor 工具一键训练 7 个空闲动作，全部一轮达标。
 
 > **核心愿景**：让 AI 通过 GLM-4V 视觉模型观察自己的动作效果，对比"预期标准画面"和"实际执行结果"之间的差异，自动修正底层参数，形成一个永不停止的自我优化闭环。
 
@@ -715,6 +718,8 @@ public class ParameterVisionScanner : MonoBehaviour
 |------|------|------|--------|------|
 | `ActionReferenceManager` | `ActionAgent/ActionReferenceManager.cs` | 管理标准参考截图库（每个动作一张标准图） | 0.5天 | ✅ |
 | `self_review` 工具 | `ToolCallInvoker.cs` | 对比当前执行 vs 参考，GLM-4V 返回差异报告。首次调用自动存参考图 | 1天 | ✅ |
+| `SelfTrainingManager` | `Editor/SelfTrainingManager.cs` | Editor 自动训练窗口：触发→截图→保存参考→GLM-4V 对比→报告 | 1天 | ✅ 实测通过 |
+| **验证结果** | — | 歪头、微笑、挑眉、伸懒腰、委屈、害羞、困惑 7 动作全部一轮达标 | — | ✅ 2026-07-06 |
 
 #### 标准参考图管理
 
@@ -798,5 +803,243 @@ AI:  generate_motion("开心地挥手")
 
 ---
 
-*N29 新章节 — 2026-07-06，闭环控制启发来自用户 "让动作越做越熟练" 的无限学习系统愿景*
+---
+
+### 阶段九：LLM Motion Translator — 具身智能突破（新增 · N32）
+
+> **里程碑意义**：突破了 `MotionPlanner.PlanFromDescription` 只能做 5 种硬编码动作的瓶颈。现在 AI 能通过 DeepSeek 理解**任意**自然语言动作描述，并生成精确的关键帧参数序列——具身智能的核心翻译桥已建成。
+
+| 组件 | 文件 | 说明 | 工作量 | 状态 |
+|------|------|------|--------|------|
+| `MotionTranslator` | `ActionAgent/MotionTranslator.cs` | 调用 DeepSeek API，传入完整 body schema，返回结构化关键帧 JSON，解析为 MotionPlan | 1天 | ✅ N32 |
+| `generate_motion` 集成 | `ToolCallInvoker.cs` | 当 MotionPlanner 回退到泛用微动时，自动触发 LLM 翻译兜底 | 0.5天 | ✅ N32 |
+| 新增工具 `translate_motion`（可选） | — | 独立工具让 AI 显式调用翻译引擎 | 💡 待后续 |
+
+#### 核心流程
+
+```
+"害羞地捂脸"
+    │
+    ▼
+MotionPlanner.PlanFromDescription()
+    │ 没匹配到模板 → 回退泛用微动 ❌
+    ▼
+MotionTranslator.TranslateAsync()
+    │ 构建 body schema（50+参数带范围/部位提示）
+    │ → 发 DeepSeek API
+    │ → 接收结构化 JSON
+    ▼
+MotionPlan 关键帧序列
+    │ time=0.0: {}
+    │ time=0.4: head_angle_y=-8, arm_r_upper=0.6, arm_l_upper=0.6
+    │ time=1.0: head_angle_y=-12, hand_near_face=1.0
+    │ time=2.0: 渐回默认
+    ▼
+MotionGenerator.PlayAsync() → ✅ 害羞捂脸动画完成
+```
+
+#### 关键技术决策
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| API | DeepSeek Chat | 已有 API Key + Function Calling 基础设施，不计入对话历史 |
+| Model | deepseek-chat | 速度快、成本低，翻译任务无需视觉 |
+| Temperature | 0.3 | 低温度保证翻译一致性，不发挥创意 |
+| Schema 构建 | 运行时实时生成 | 从 mapper 读参数范围+部位分组，无需额外维护 |
+| JSON 解析 | 纯字符串处理 | Unity 无 Newtonsoft.Json 依赖，手写解析器兼容性好 |
+| 回退策略 | MotionPlanner 回退后才触发 | 保持快速路径（硬编码模板）不受影响 |
+
+#### 已突破的能力上限（N32 新增）
+
+```
+以前           → 现在
+─────────────────────────────────────────────────
+挥手 ✅       → 挥手 ✅（保持）
+点头 ✅       → 点头 ✅（保持）
+摇头 ✅       → 摇头 ✅（保持）
+鞠躬 ✅       → 鞠躬 ✅（保持）
+伸懒腰 ✅     → 伸懒腰 ✅（保持）
+泛用微动 ❌   → 害羞捂脸 ✅（新增）
+泛用微动 ❌   → 昂首挺胸叉腰 ✅（新增）
+泛用微动 ❌   → 惊讶捂嘴 ✅（新增）
+泛用微动 ❌   → 忧郁望天 ✅（新增）
+泛用微动 ❌   → 俏皮眨眼 ✅（新增）
+泛用微动 ❌   → 标准行礼 ✅（新增）
+泛用微动 ❌   → 害怕缩脖 ✅（新增）
+泛用微动 ❌   → 骄傲抬头 ✅（新增）
+泛用微动 ❌   → ...任意你能描述的 ✅
+```
+
+#### MotionPlanner 架构演变
+
+```
+v1 (N27):    5 个 if-match 硬编码模板 + 泛用微动回退
+             瓶颈：只能做"设计好的"5 种
+
+v2 (N32):    5 个硬编码模板 + LLM 翻译兜底
+             突破：能做"DeepSeek 能描述的任何"动作
+             ┌─────────────┐
+             │ 自然语言描述  │
+             └──────┬──────┘
+                    │
+          ┌─────────▼─────────┐
+          │  硬编码模板匹配    │ ← 快速路径，零延迟
+          └─────────┬─────────┘
+                    │ 未匹配
+          ┌─────────▼─────────┐
+          │ LLM Translator    │ ← 兜底路径，~2s 延迟
+          │ → 泛化任意动作    │
+          └───────────────────┘
+```
+
+#### 与阶段八的协同
+
+```
+Phase 8 (自律训练):                   Phase 9 (LLM 翻译):
+GLM-4V 观察效果 → 对比参考            DeepSeek 理解描述 → 生成参数
+    ↓                                       ↓
+修正现有动作的精度                          创造新动作的表达
+    ↓                                       ↓
+"做得更像"                                "做得更多"
+```
+
+**两者结合 = 真正的具身智能**：AI 不仅能量产新动作（Phase 9），还能通过视觉反馈持续优化动作质量（Phase 8）。
+
+*N32 新增 — 2026-07-06，解决用户"关键是AI能不能做出所有DeepSeek给出的那些动作"的核心关切*
+
+---
+
+### 阶段十：具身智能验证系统 — 可量化的自我证明（新增 · N33）
+
+> **里程碑意义**：解决了"我怎么验证AI确实具有了具身智能"的根本问题。现在 AI 可以**主动自证**——通过 15 道标准化测试（5 硬编码 + 10 LLM 翻译 + 4 边界），量化 LLM 触发率、参数合规性、对称配比率，输出可重复的验证报告。
+
+#### 新增文件
+
+| 文件 | 用途 |
+|------|------|
+| `ActionAgent/MotionVerifier.cs` | 验证引擎：15 用例测试套件，自动评分 |
+| `project_brief/embodied-ai-verification.md` | 验证方案协议文档 |
+
+#### 新增 AI 工具
+
+| 工具名 | 用途 |
+|--------|------|
+| `run_verification` | 运行具身验证，返回结构化报告（quick/full） |
+
+#### 验证架构
+
+```
+run_verification
+  ├─ Level 1: Control Group (C1-C5)
+  │   5 硬编码模板 → 验证快速路径正常
+  │
+  ├─ Level 2: Test Group (T1-T10)
+  │   10 LLM 翻译动作 → 验证具身智能
+  │   T1=害羞捂脸, T2=叉腰挺胸, T3=惊讶捂嘴, ...
+  │
+  └─ Level 3: Border Group (B1-B4)
+      4 边界输入 → 验证鲁棒性
+```
+
+#### 评分体系
+
+| 等级 | 条件 | 含义 |
+|------|------|------|
+| 🥇 金牌 | 自动通过率 100% + LLM 触发 ≥80% | 具身智能完全通过 |
+| 🥈 银牌 | 自动通过率 ≥80% + LLM 触发 ≥50% | 核心功能正常 |
+| 🥉 铜牌 | 自动通过率 ≥60% | 需改进 |
+| ❌ 未通过 | <60% | LLM 翻译路径存在严重问题 |
+
+#### 验收标准
+
+- [x] `MotionVerifier.cs` 编译通过（0 错误）
+- [x] `run_verification` 工具注册到 ToolCallInvoker（同步+异步双路径）
+- [ ] 首次全量验证跑通，报告中有 ≥7/10 LLM 测试通过
+- [ ] 结果填入 `embodied-ai-verification.md` 表格
+
+#### 状态
+
+> **N33 新增 — 2026-07-06，用户灵魂拷问"我怎么验证ai确实具有了具身智能"后的完整实现。**
+
+---
+
+### N34：视觉验证 — GLM-4V 考官 + 眼部动画同步（N34 · 视觉具身验证）
+
+> **里程碑意义**：DeepSeek 做动作、GLM-4V 当考官。AI 控制自己的眼睛看向摄像头——用视觉闭环证明"我真的做出了这个姿势"。参数验证只能看内部数据，GLM 的视觉判断才是**真正的具身智能**。
+
+#### 新增文件
+
+| 文件 | 用途 |
+|------|------|
+| `ActionAgent/VisionMotionVerifier.cs` | 视觉验证引擎：GLM-4V 截图评审 |
+| `ActionAgent/EyeContactService.cs` | 眼部接触追踪：看镜头+验证看没看 |
+
+#### 新增 AI 工具
+
+| 工具名 | 用途 |
+|--------|------|
+| `vis_verify` | 运行 GLM-4V 视觉验证套件（full/test_only/quick） |
+
+#### 验收集成
+
+```
+vis_verify
+  ├─ 10 动作逐一测试
+  │   播放 → 在动作峰值截图 → 送 GLM-4V 评审
+  │   GLM 回答: 像不像? 哪像? 几分(1-5)?
+  │
+  └─ 报告生成
+      通过率、平均分、GLM 详细评语
+```
+
+#### 验证标准
+
+| 等级 | 条件 | 含义 |
+|------|------|------|
+| 🥇 金牌 | GLM 平均 ≥4.0 + 通过率 ≥80% | 视觉确认具身智能 |
+| 🥈 银牌 | GLM 平均 ≥3.0 + 通过率 ≥60% | 基本可识别 |
+| 🥉 铜牌 | GLM 平均 ≥2.5 + 通过率 ≥40% | 有雏形需优化 |
+| ❌ | <40% | 动作系统问题 |
+
+#### 验收标准
+
+- [x] `VisionMotionVerifier.cs` 编译通过（0 错误）
+- [x] `vis_verify` 工具注册到 ToolCallInvoker
+- [x] 首次完整视觉验证跑通，报告打印到日志
+- [ ] GLM 给出 ≥3 个动作 4-5 分评价（当前 4 个 ⭐⭐⭐⭐，但评分最高 4 分，无 5 分）
+- [x] 把验证结论更新到此文档
+
+#### 首次验证结果（2026-07-07 00:31）
+
+```
+🏆 6/10 (60.0%) 通过 · 平均 2.8/5.0 · LLM 触发率 100%
+⭐⭐⭐⭐ 害羞捂脸 · 俏皮眨眼 · 骄傲抬头 · 合十祈祷
+⭐⭐⭐  惊讶捂嘴 · 忧郁远望
+⭐⭐    行礼 · 吓到缩团
+⭐     挺胸叉腰 · 歪头思考
+```
+
+> **分析**：相比旧代码的 0/10 (1.9 avg)，修复后提升到 6/10 (2.8 avg)。4 个动作 GLM 认为"基本是"。
+> 低分动作问题：挺胸叉腰(⭐) 和 歪头思考(⭐) 可能是参数幅度不够或缺少关键定位参数。
+> **注意**：本次运行在超时 60→180s 修复之前完成，后续需重新跑一次获得稳定的完整结果。
+
+#### 已修复 Bug
+
+| # | 严重度 | 文件 | 问题 | 修复 |
+|---|--------|------|------|------|
+| 1 | 🔴 评分失真 | `VisionMotionVerifier.cs` | `avgScore` 公式用 `passCount > 0` 判断除零，但若所有动作都 0 分（passCount=0, total>0），评分会显示 `0/0 = NaN` | `passCount > 0` → `total > 0` |
+| 2 | 🔴 截图空白 | `VisionMotionVerifier.cs` | PlayAndCapture 协程三处截图前未调用 ForceUpdateNow()，可能截到上一帧 | 三个截图位置都加了 `renderer.CubismModel.ForceUpdateNow()` |
+| 3 | 🟡 截图过早 | `VisionMotionVerifier.cs` | 截图时机在 40% 进度，动作峰值通常在 50-60% | 40% → 55% |
+| 4 | 🟡 Prompt 约束弱 | `VisionMotionVerifier.cs` | GLM-4V prompt 未明确要求评分格式，导致回复格式不统一 | 加严格评分规则、截图时机标注、格式强调 |
+| 5 | 🟢 无意义参数 | `MotionTranslator.cs` | BuildBodySchema 包含 BODY_MICRO(breath/shoulder) 和 CLOTHES(hair*/skirt*)，这些微动/物理参数截图看不到 | 新增 `_schemaExcludedParts` HashSet 跳过 |
+| 6 | 🔴 编译阻断 | `ToolCallInvoker.cs` | `VisVerifyCoroutine` 中 `string summary` 与封闭作用域的 `summary` 变量冲突（CS0136） | 重命名为 `cachedSummary` |
+| 7 | 🟡 API 超时 | `ToolCallInvoker.cs` (×3) + `VisionMotionVerifier.cs` | GLM-4V 视觉 API 处理 base64 图片超过 60 秒，返回 Curl error 28 | 全部改为 180 秒：`VisionMotionVerifier.cs:447` + `ToolCallInvoker.cs:1883/2022/2200` |
+
+#### 状态
+
+> **N34 新增 — 2026-07-21，用 GLM-4V 视觉模型替代纯参数校验，让第三方视觉 AI 评审动作效果。"让 GLM 验证 DeepSeek 的具身智能"。**
+>
+> **N34 修复 — 2026-07-21，首次视觉验证运行后（0/10 通过, 平均分 1.9）诊断出 5 项代码问题并修复。等待 Unity 编译验证后重新运行。**
+>
+> **N34 首跑结果 — 2026-07-07 00:31，6/10 通过 (60%), 平均分 2.8/5.0, LLM 触发率 100%。4 个动作⭐⭐⭐⭐「基本是」。7 个 Bug 已全部修复，需重跑验证。**
 

@@ -41,6 +41,14 @@ code/desktop_unity/.vscode/
 build_temp.cmd
 build_now.cmd
 build_log*.old
+build_stderr.txt
+build_stdout.txt
+build_verify.txt
+
+# ================
+# Cubism SDK 解压缓存
+# ================
+cubism_extracted/
 
 # ================
 # VS Code 配置

@@ -37,6 +37,9 @@ public class ParameterVisionScanner : EditorWindow
     //  Fields
     // ================================================================
 
+    /// <summary>模型 prefab 路径（用于一键加载到场景）</summary>
+    private const string PREFAB_PATH = "Assets/Live2D/Models/Fuxuan/符玄.prefab";
+
     private CubismModel _model;
     private GameObject _modelObject;
 
@@ -110,6 +113,10 @@ public class ParameterVisionScanner : EditorWindow
 
     // 最后写入 fuxuan_map.json 的条目数
     private int _lastAppliedCount = 0;
+
+    // ── vision_calibration.json 持久化 ──
+    private const string VISION_CALIB_PATH = "Assets/Resources/Live2D/ParamMaps/vision_calibration.json";
+    private List<CalibrationEntry> _existingCalibrations = new List<CalibrationEntry>();
 
     // 冻结状态（扫描时暂停动画，防干扰截图）
     private Dictionary<Behaviour, bool> _frozenBehaviours = new Dictionary<Behaviour, bool>();
@@ -828,6 +835,10 @@ public class ParameterVisionScanner : EditorWindow
                             success = true
                         };
                         _scanResults.Add(_currentResult);
+
+                        // ── 自动追加到标定文件 ──
+                        AppendCalibration(_currentResult);
+
                         SetStatus($"✅ [{_currentParamId}] → {parsed.suggestedSemantic} ({parsed.confidence})");
                         return;
                     }
@@ -1024,6 +1035,39 @@ public class ParameterVisionScanner : EditorWindow
         }
 
         EditorGUILayout.Space(5);
+
+        // 直接从 prefab 加载到场景
+        if (GUILayout.Button($"📦 加载模型到场景: {Path.GetFileNameWithoutExtension(PREFAB_PATH)}", GUILayout.Height(30)))
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PREFAB_PATH);
+            if (prefab != null)
+            {
+                var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+                if (go != null)
+                {
+                    go.name = prefab.name;
+                    Selection.activeGameObject = go;
+                    SceneView.FrameLastActiveSceneView();
+                    var m = go.GetComponentInChildren<CubismModel>(true);
+                    if (m != null)
+                    {
+                        SetModel(go, m);
+                        Debug.Log($"[ParamVisionScanner] ✓ 已实例化模型 (含 CubismModel): {PREFAB_PATH}");
+                    }
+                    else
+                    {
+                        Debug.LogError($"[ParamVisionScanner] ✗ 实例化了模型但未找到 CubismModel 组件: {PREFAB_PATH}");
+                        EditorUtility.DisplayDialog("错误", "实例化了模型但未找到 CubismModel 组件，请检查 prefab 路径。\n当前: " + PREFAB_PATH, "确定");
+                    }
+                }
+            }
+            else
+            {
+                EditorUtility.DisplayDialog("错误", $"找不到 prefab: {PREFAB_PATH}", "确定");
+            }
+        }
+
+        EditorGUILayout.Space(5);
         EditorGUILayout.LabelField("或手动拖入模型 GameObject：", EditorStyles.miniLabel);
 
         var newObj = (GameObject)EditorGUILayout.ObjectField("模型", _modelObject, typeof(GameObject), true);
@@ -1125,7 +1169,11 @@ public class ParameterVisionScanner : EditorWindow
         _maxImageBytes = null;
         _savedValues.Clear();
         CleanupCaptureCamera();
-        SetStatus($"已加载 {_unmappedParams.Count} 个未映射参数，点击「开始扫描」启动");
+
+        // 加载已有的标定数据
+        LoadExistingCalibrations();
+
+        SetStatus($"已加载 {_unmappedParams.Count} 个未映射参数（已有 {_existingCalibrations.Count} 条标定数据），点击「开始扫描」启动");
         Repaint();
     }
 
@@ -1609,6 +1657,108 @@ public class ParameterVisionScanner : EditorWindow
     }
 
     // ================================================================
+    //  vision_calibration.json 持久化
+    // ================================================================
+
+    /// <summary>加载已有的标定文件（如果存在）</summary>
+    private void LoadExistingCalibrations()
+    {
+        _existingCalibrations.Clear();
+        string fullPath = Path.Combine(Application.dataPath, "..", VISION_CALIB_PATH);
+        if (!File.Exists(fullPath)) return;
+
+        try
+        {
+            string json = File.ReadAllText(fullPath, Encoding.UTF8);
+            var fileData = JsonUtility.FromJson<CalibrationFile>(json);
+            if (fileData?.calibrations != null)
+            {
+                _existingCalibrations = fileData.calibrations;
+                Debug.Log($"[ParamVisionScanner] 已加载 {_existingCalibrations.Count} 条已有标定数据");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[ParamVisionScanner] 加载标定文件失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>将一个扫描结果追加到 vision_calibration.json</summary>
+    private void AppendCalibration(ScanResult r)
+    {
+        if (r == null || !r.success || string.IsNullOrEmpty(r.suggestedSemantic))
+            return;
+
+        // 解析 description 中的结构化数据
+        string bodyPart = "", visualChange = "";
+        if (!string.IsNullOrEmpty(r.description))
+        {
+            // 从 "部位: xxx\n变化: xxx\n说明: xxx" 中提取
+            var lines = r.description.Split('\n');
+            foreach (var line in lines)
+            {
+                if (line.StartsWith("部位: ")) bodyPart = line.Substring(4).Trim();
+                else if (line.StartsWith("变化: ")) visualChange = line.Substring(4).Trim();
+            }
+        }
+
+        // 构建视觉描述
+        string visualDesc = r.description?.Replace("\n", "；") ?? "";
+
+        var entry = new CalibrationEntry
+        {
+            paramId = r.paramId,
+            semantic = r.suggestedSemantic ?? "",
+            min = r.min,
+            max = r.max,
+            defaultValue = r.defaultValue,
+            bodyPart = bodyPart,
+            visualChange = visualChange,
+            visualDescription = visualDesc,
+            confidence = r.confidence ?? "",
+            calibratedAt = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss")
+        };
+
+        // 去重：如果已存在同 paramId，覆盖
+        int existingIdx = _existingCalibrations.FindIndex(e => e.paramId == r.paramId);
+        if (existingIdx >= 0)
+            _existingCalibrations[existingIdx] = entry;
+        else
+            _existingCalibrations.Add(entry);
+
+        // 写文件
+        SaveCalibrationFile();
+    }
+
+    /// <summary>将标定数据写入 vision_calibration.json（Editor 路径，可被 Resources.Load 读取）</summary>
+    private void SaveCalibrationFile()
+    {
+        try
+        {
+            var fileData = new CalibrationFile
+            {
+                formatVersion = "1.0",
+                modelName = _model?.name ?? "unknown",
+                generatedAt = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+                calibrations = _existingCalibrations
+            };
+
+            string json = JsonUtility.ToJson(fileData, true);
+            string fullPath = Path.Combine(Application.dataPath, "..", VISION_CALIB_PATH);
+            string dir = Path.GetDirectoryName(fullPath);
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+            File.WriteAllText(fullPath, json, Encoding.UTF8);
+            AssetDatabase.Refresh();
+            Debug.Log($"[ParamVisionScanner] 标定文件已保存: {VISION_CALIB_PATH} ({_existingCalibrations.Count} 条)");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[ParamVisionScanner] 保存标定文件失败: {ex.Message}");
+        }
+    }
+
+    // ================================================================
     //  Message type helper
     // ================================================================
 
@@ -1666,5 +1816,35 @@ public class ParameterVisionScanner : EditorWindow
         public string suggestedSemantic;
         public string confidence;
         public string description;
+    }
+
+    // ──────────────────────────────────────────────
+    //  vision_calibration.json 持久化
+    // ──────────────────────────────────────────────
+
+    /// <summary>视觉标定条目（单个参数）</summary>
+    [Serializable]
+    private class CalibrationEntry
+    {
+        public string paramId;
+        public string semantic;        // suggestedSemantic
+        public float min;
+        public float max;
+        public float defaultValue;
+        public string bodyPart;        // from GLM analysis
+        public string visualChange;    // from GLM analysis
+        public string visualDescription; // combined description
+        public string confidence;
+        public string calibratedAt;    // ISO timestamp
+    }
+
+    /// <summary>标定文件根</summary>
+    [Serializable]
+    private class CalibrationFile
+    {
+        public string formatVersion = "1.0";
+        public string modelName;
+        public string generatedAt;
+        public List<CalibrationEntry> calibrations = new List<CalibrationEntry>();
     }
 }

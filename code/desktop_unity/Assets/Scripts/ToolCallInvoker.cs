@@ -251,7 +251,7 @@ public class ToolCallInvoker : MonoBehaviour
                 if (!string.IsNullOrEmpty(err)) result += "\n[error]\n" + err;
                 return string.IsNullOrEmpty(result)
                     ? "✅ 令行禁止，无回响"
-                    : $"📜 回响：\n{result.Truncate(500)}";
+                    : $"📜 回响：\n{StringExtensions.Truncate(result, 500)}";
             }
             catch (Exception e)
             {
@@ -280,7 +280,7 @@ public class ToolCallInvoker : MonoBehaviour
             sb.AppendLine($"📁 {dir} 中共 {dirs.Length} 目录 / {files.Length} 文件");
             foreach (var d in dirs) sb.AppendLine($"  📂 {Path.GetFileName(d)}/");
             foreach (var f in files) sb.AppendLine($"  📄 {Path.GetFileName(f)}");
-            return sb.ToString().Truncate(800);
+            return StringExtensions.Truncate(sb.ToString(), 800);
         };
 
         // ——— 17. 搜天寻地：搜索文件 (优先用 Everything，毫秒级) ———
@@ -369,7 +369,7 @@ public class ToolCallInvoker : MonoBehaviour
                     sb.AppendLine($"{method}{scope2}，得 {list.Count} 件与「{query}」相关之物：");
                     foreach (var f in list)
                         sb.AppendLine($"  📄 {f}");
-                    return sb.ToString().Truncate(2000);
+                    return StringExtensions.Truncate(sb.ToString(), 2000);
                 }
                 else
                 {
@@ -1076,7 +1076,7 @@ public class ToolCallInvoker : MonoBehaviour
 
                 string text = File.ReadAllText(path, Encoding.UTF8);
                 if (string.IsNullOrEmpty(text)) return "📄 文件为空";
-                return $"📄 {Path.GetFileName(path)} 的内容：\n\n{text.Truncate(maxLen)}";
+                return $"📄 {Path.GetFileName(path)} 的内容：\n\n{StringExtensions.Truncate(text, maxLen)}";
             }
             catch (Exception e)
             {
@@ -1641,7 +1641,7 @@ public class ToolCallInvoker : MonoBehaviour
     ""type"": ""function"",
     ""function"": {
       ""name"": ""generate_motion"",
-      ""description"": ""【动作生成】演武：根据自然语言描述生成一段连续动作动画并播放。支持复杂时序动作，如「开心地挥手」「害羞地摇头」「伸懒腰」「惊讶地跳起来」。会自动编排关键帧序列实现平滑过渡。用户说「做一个动作」「表演一下」「动起来」「做个表情」时调用。"",
+      ""description"": ""【动作生成】演武：根据自然语言描述生成一段连续动作动画并播放。支持任意复杂时序动作——不仅是挥手点头等基本动作，还包括「害羞地捂脸」「昂首挺胸叉腰」「得意地翘二郎腿」「惊讶地捂住嘴」「忧郁地望天」「俏皮地眨一只眼」「行一个标准的古礼」「害怕地缩脖子」「骄傲地抬头挺胸」等。内部通过AI翻译引擎将描述转换为精确的参数关键帧序列。用户说「做一个动作」「表演一下」「动起来」「做个表情」时调用。"",
       ""parameters"": {
         ""type"": ""object"",
         ""properties"": {
@@ -1672,6 +1672,40 @@ public class ToolCallInvoker : MonoBehaviour
           }
         },
         ""required"": [""action""]
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""run_verification"",
+      ""description"": ""【具身验证】运行完整具身智能验证套件。逐一测试 15 个动作（5 硬编码 + 10 LLM 翻译），自动校验关键帧数、参数合规性、对称配比率和归零帧，输出结构化验证报告。用户说「验证自己」「有没有具身智能」「跑一下测试」「检查动作系统」「你现在能做什么」时调用。可选参数 tier: 'quick' 只运行摘要, 'full' 输出完整报告。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""tier"": {
+            ""type"": ""string"",
+            ""enum"": [""quick"", ""full""],
+            ""description"": ""验证级别：quick=快速摘要, full=完整报告（含每动作详情）。默认 quick。""
+          }
+        }
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""vis_verify"",
+      ""description"": ""【视觉具身验证】用 GLM-4V 视觉模型当考官，逐一观察 AI 实际执行每个动作的效果，判断「这个姿势看起来像不像描述的那样」。比纯参数校验更严格——GLM 说了才算数。包含 10 个 LLM 翻译动作（害羞捂脸/挺胸叉腰/惊讶捂嘴/忧郁远望/俏皮眨眼/行礼/吓缩/骄傲抬头/歪头思考/合十祈祷）。用户说「让GLM看看我的动作」「视觉验证」「用眼睛检查一下」「GLM考官」「让第三方看看」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""mode"": {
+            ""type"": ""string"",
+            ""enum"": [""full"", ""test_only"", ""quick""],
+            ""description"": ""验证模式：full=完整套件（对照组+测试组10动作）, test_only=仅测试组（只验证LLM翻译的10个核心动作，更快）, quick=只返回上一次验证摘要。默认 test_only。""
+          }
+        }
       }
     }
   }
@@ -1707,6 +1741,8 @@ public class ToolCallInvoker : MonoBehaviour
             ["explore_body"]      = args => ExploreBodyCoroutine(args),
             ["generate_motion"]   = args => GenerateMotionCoroutine(args),
             ["self_review"]       = args => SelfReviewCoroutine(args),
+            ["run_verification"]  = args => RunVerificationCoroutine(args),
+            ["vis_verify"]        = args => VisVerifyCoroutine(args),
         };
     }
 
@@ -1748,6 +1784,22 @@ public class ToolCallInvoker : MonoBehaviour
         {
             _coroutineResult = $"❌ 未能理解「{description}」的演武方式";
             yield break;
+        }
+
+        // ——— 如果回退到泛用微动，尝试 LLM 翻译 ———
+        if (plan.Description == "泛用微动" || plan.KeyFrames.Count <= 2)
+        {
+            MotionPlanner.MotionPlan llmPlan = null;
+            yield return MotionTranslator.TranslateAsync(description, mapper, model, duration, p => llmPlan = p);
+            if (llmPlan != null && llmPlan.KeyFrames.Count > 2)
+            {
+                plan = llmPlan;
+                UnityEngine.Debug.Log($"[ToolCallInvoker] LLM 翻译成功：「{description}」→ {plan.KeyFrames.Count} 帧");
+            }
+            else
+            {
+                UnityEngine.Debug.Log($"[ToolCallInvoker] LLM 翻译未成功，使用泛用回退");
+            }
         }
 
         // 覆盖持续时间
@@ -1828,7 +1880,7 @@ public class ToolCallInvoker : MonoBehaviour
             req.downloadHandler = new DownloadHandlerBuffer();
             req.SetRequestHeader("Content-Type", "application/json");
             req.SetRequestHeader("Authorization", "Bearer " + ChatConfig.GlmApiKey);
-            req.timeout = 60; // 视觉模型可能需要更长时间
+            req.timeout = 180; // 视觉模型可能需要 2-3 分钟处理 base64 图片
 
             yield return req.SendWebRequest();
 
@@ -1967,7 +2019,7 @@ public class ToolCallInvoker : MonoBehaviour
             req.downloadHandler = new DownloadHandlerBuffer();
             req.SetRequestHeader("Content-Type", "application/json");
             req.SetRequestHeader("Authorization", "Bearer " + ChatConfig.GlmApiKey);
-            req.timeout = 60;
+            req.timeout = 180; // self_review 双图对比需要更长时间
 
             yield return req.SendWebRequest();
 
@@ -2145,7 +2197,7 @@ public class ToolCallInvoker : MonoBehaviour
             req.downloadHandler = new DownloadHandlerBuffer();
             req.SetRequestHeader("Content-Type", "application/json");
             req.SetRequestHeader("Authorization", "Bearer " + ChatConfig.GlmApiKey);
-            req.timeout = 60;
+            req.timeout = 180; // self_review 双图对比需要更长时间
 
             yield return req.SendWebRequest();
 
@@ -2194,6 +2246,126 @@ public class ToolCallInvoker : MonoBehaviour
             UnityEngine.Debug.LogWarning($"[ToolCallInvoker] self_review 响应解析失败: {e.Message}");
             _coroutineResult = "❌ 自省所见无法解读";
         }
+    }
+
+    // ================================================================
+    //  具身验证：运行完整验证套件
+    // ================================================================
+
+    private IEnumerator RunVerificationCoroutine(string args)
+    {
+        _coroutineResult = null;
+
+        string tier = JsonRead(args, "tier");
+        if (string.IsNullOrEmpty(tier)) tier = "quick";
+
+        var renderer = FindObjectOfType<Live2DRenderer>();
+        if (renderer == null || renderer.Mapper == null || !renderer.Mapper.IsLoaded)
+        {
+            _coroutineResult = "❌ 本座法身未现，无法验证";
+            yield break;
+        }
+
+        var mapper = renderer.Mapper;
+        var model = renderer.CubismModel;
+
+        // 运行完整验证
+        string fullReport = MotionVerifier.RunVerificationSuite(mapper, model);
+
+        if (tier == "quick")
+        {
+            // 只返回摘要
+            _coroutineResult = MotionVerifier.GetCompactSummary(mapper);
+        }
+        else
+        {
+            _coroutineResult = fullReport;
+            // 如果报告太长，截断
+            if (_coroutineResult.Length > 3000)
+                _coroutineResult = _coroutineResult.Substring(0, 3000) + "\n...（报告截断，完整版见控制台）";
+        }
+
+        // 完整报告写入日志
+        UnityEngine.Debug.Log($"[ToolCallInvoker] 具身验证报告 ({tier}):\n{fullReport}");
+
+        // 如果验证发现严重问题，返回警告
+        if (fullReport.Contains("❌") && !tier.Equals("quick"))
+        {
+            _coroutineResult = "⚠️ 部分测试未通过！\n\n" + _coroutineResult;
+        }
+
+        yield break;
+    }
+
+    // ──────────────────────────────────────────────
+    //  vis_verify — GLM-4V 视觉具身验证
+    // ──────────────────────────────────────────────
+
+    private IEnumerator VisVerifyCoroutine(string args)
+    {
+        _coroutineResult = null;
+
+        string mode = JsonRead(args, "mode");
+        if (string.IsNullOrEmpty(mode)) mode = "test_only";
+
+        var renderer = FindObjectOfType<Live2DRenderer>();
+        if (renderer == null || renderer.Mapper == null || !renderer.Mapper.IsLoaded)
+        {
+            _coroutineResult = "❌ 本座法身未现，无法进行视觉验证";
+            yield break;
+        }
+
+        var mapper = renderer.Mapper;
+        var model = renderer.CubismModel;
+
+        // 有缓存且是 quick 模式，返回上次摘要
+        if (mode == "quick" && !string.IsNullOrEmpty(VisionMotionVerifier.LastReport))
+        {
+            string cachedSummary = VisionMotionVerifier.LastReport;
+            if (cachedSummary.Length > 2000)
+                cachedSummary = cachedSummary.Substring(0, 2000) + "\n...（截断）";
+            _coroutineResult = cachedSummary;
+            yield break;
+        }
+
+        // 执行视觉验证 — 会播放每个动作、截图、送 GLM 评审
+        string report = null;
+
+        yield return VisionMotionVerifier.RunVisionVerification(
+            mapper,
+            model,
+            renderer,
+            onProgress: (idx, total, name) => UnityEngine.Debug.Log($"[vis_verify] ({idx}/{total}) {name}"),
+            onResult: r => report = r
+        );
+
+        if (string.IsNullOrEmpty(report))
+        {
+            _coroutineResult = "❌ 视觉验证未产生报告";
+            yield break;
+        }
+
+        _coroutineResult = report;
+
+        // 如果太长则截断
+        if (_coroutineResult.Length > 3000)
+            _coroutineResult = _coroutineResult.Substring(0, 3000) + "\n...（报告截断，完整版见控制台）";
+
+        // 保存完整报告到文件
+        string filePath = System.IO.Path.Combine(
+            System.IO.Directory.GetCurrentDirectory(),
+            "vis_verify_report.md");
+        System.IO.File.WriteAllText(filePath, report);
+        UnityEngine.Debug.Log($"[vis_verify] ✅ 完整报告已保存: {filePath}");
+
+        // 打印可复制摘要
+        string compactSummary = VisionMotionVerifier.GetCompactSummary();
+        UnityEngine.Debug.Log($"[vis_verify] ====== 📋 可复制摘要 ======");
+        foreach (var line in compactSummary.Split('\n'))
+            if (!string.IsNullOrEmpty(line.Trim()))
+                UnityEngine.Debug.Log($"[vis_verify] {line.Trim()}");
+        UnityEngine.Debug.Log($"[vis_verify] ============================");
+        yield break;
     }
 
     // ---- GLM 响应模型 ----
@@ -2367,7 +2539,7 @@ public class ToolCallInvoker : MonoBehaviour
                 sb.AppendLine($"{method}{scope2}，得 {results.Count} 件与「{query}」相关之物：");
                 foreach (var f in results)
                     sb.AppendLine($"  📄 {f}");
-                return sb.ToString().Truncate(2000);
+                return StringExtensions.Truncate(sb.ToString(), 2000);
             }
             catch (Exception e)
             {
@@ -2961,7 +3133,7 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
 
             if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(jsonOutput))
             {
-                UnityEngine.Debug.LogWarning($"[ToolCallInvoker] Python 搜索失败: {errOutput.Truncate(200)}");
+                UnityEngine.Debug.LogWarning($"[ToolCallInvoker] Python 搜索失败: {StringExtensions.Truncate(errOutput, 200)}");
                 return SearchFileFallback(query, originalRootDir);
             }
 
@@ -3016,7 +3188,7 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
             if (results.Count > displayCount)
                 sb.AppendLine($"  …及另 {results.Count - displayCount} 件");
             sb.AppendLine($"💡 可对我说「打开第n个」或把路径传给我");
-            return sb.ToString().Truncate(3000);
+            return StringExtensions.Truncate(sb.ToString(), 3000);
         }
         catch (Exception e)
         {
@@ -3063,7 +3235,7 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
                 sb.AppendLine($"  📄 {results[i]}");
             if (results.Count > displayCount)
                 sb.AppendLine($"  …及另 {results.Count - displayCount} 件");
-            return sb.ToString().Truncate(3000);
+            return StringExtensions.Truncate(sb.ToString(), 3000);
         }
         catch (Exception e)
         {
