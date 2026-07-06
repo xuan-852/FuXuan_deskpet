@@ -571,7 +571,15 @@ public class ToolCallInvoker : MonoBehaviour
             return "✅ 已归元，恢复常态";
         };
 
-        // ——— 28 (C). 内观自省：AI 分析参数变化效果
+        // ——— 28. 演武心经：查看闭环修为统计 ———
+        _executors["inspect_motion_memory"] = args =>
+        {
+            var mm = MotionMemoryManager.Instance;
+            if (mm == null) return "❌ 演武心经未载入";
+            return mm.GetStatistics();
+        };
+
+        // ——— 29 (C). 内观自省：AI 分析参数变化效果
         // 注意：完整版 (截图 + GLM-4V 视觉分析) 在 _coroutineExecutors 中以协程运行。
         // 同步版作为轻量备选，实时输出当前参数状态快照，无需网络。
         _executors["explore_body"] = args =>
@@ -1708,6 +1716,17 @@ public class ToolCallInvoker : MonoBehaviour
         }
       }
     }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""inspect_motion_memory"",
+      ""description"": ""【演武心经】查看本座的闭环修为统计——已掌握哪些动作、最佳评分、尝试次数、退步预警。返回结构化统计报告。用户问「你学了什么」「记忆」「你的动作记忆」「你记住了哪些动作」「修为」「演武心经」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {}
+      }
+    }
   }
 ]";
     }
@@ -1813,7 +1832,178 @@ public class ToolCallInvoker : MonoBehaviour
         var generator = new MotionGenerator(mapper, model);
         yield return generator.PlayAsync(plan);
 
-        _coroutineResult = $"✅ 演武完成：「{plan.Description}」，持续 {plan.TotalDuration:F1} 秒，共 {plan.KeyFrames.Count} 个关键帧";
+        // 基础结果
+        string baseResult = $"✅ 演武完成：「{plan.Description}」，持续 {plan.TotalDuration:F1} 秒，共 {plan.KeyFrames.Count} 个关键帧";
+
+        // ——— ★ 闭环自评：播放完毕后自动截图 + GLM-4V 评价 ———
+        string review = "";
+        // 等一帧让模型渲染稳定
+        yield return null;
+        byte[] snapshot = renderer.CaptureModelSnapshot();
+        if (snapshot != null && snapshot.Length > 50)
+        {
+            string dataUrl = "data:image/png;base64," + Convert.ToBase64String(snapshot);
+            yield return EvaluateMotionWithGlm(description, dataUrl, r => review = r);
+        }
+
+        if (!string.IsNullOrEmpty(review))
+        {
+            _coroutineResult = baseResult + "\n\n👁️ 自评反馈：\n" + review;
+            // ★ 自动将自评结果写入 PetMemory（闭环学习）
+            WriteMotionReviewToMemory(description, review, plan.KeyFrames.Count, plan.TotalDuration);
+        }
+        else
+        {
+            _coroutineResult = baseResult + "\n\nℹ️ 自评暂不可用（GLM-4V 视觉评审未响应），下次演武时自动重试。";
+        }
+    }
+
+    /// <summary>将 GLM-4V 自评结果写入 MotionMemoryManager（闭环强化/覆盖引擎）</summary>
+    private void WriteMotionReviewToMemory(string description, string review, int frameCount, float duration)
+    {
+        var mm = MotionMemoryManager.Instance;
+        if (mm == null) return;
+
+        // 从评语中提取打分 【X/5】
+        int score = ExtractScoreFromReview(review);
+
+        // 构建参数快照
+        string snapshot = $"{frameCount}帧/{duration:F1}s";
+
+        bool isNewBest = mm.UpdateScore(description, score, review, snapshot);
+
+        string badge = isNewBest ? "🏆" : "📝";
+        UnityEngine.Debug.Log($"[ToolCallInvoker] {badge} 闭环学习: 「{description}」→ {score}/5" +
+            (isNewBest ? " ★ 新纪录！" : ""));
+    }
+
+    /// <summary>从 GLM-4V 评语中提取打分（格式：【X/5】）</summary>
+    private static int ExtractScoreFromReview(string review)
+    {
+        if (string.IsNullOrEmpty(review)) return 0;
+        // 匹配 【X/5】 格式
+        var match = System.Text.RegularExpressions.Regex.Match(review, @"【(\d+)/5】");
+        if (match.Success && int.TryParse(match.Groups[1].Value, out int score))
+        {
+            return Mathf.Clamp(score, 1, 5);
+        }
+        // 备选：打分：【X/5】
+        match = System.Text.RegularExpressions.Regex.Match(review, @"打分[：:].*?(\d+)/5");
+        if (match.Success && int.TryParse(match.Groups[1].Value, out score))
+        {
+            return Mathf.Clamp(score, 1, 5);
+        }
+        return 0; // 无法提取
+    }
+
+    // ================================================================
+    //  ★ 闭环自评：GLM-4V 视觉评价单次动作质量
+    // ================================================================
+
+    /// <summary>对刚播放完的动作截图，送 GLM-4V 评价质量，结果通过回调返回</summary>
+    private IEnumerator EvaluateMotionWithGlm(string description, string imageDataUrl, System.Action<string> onResult)
+    {
+        string prompt = "你是一名动作评审专家。下面给你一张桌面宠物（符玄/玄机）的动作截图。\n\n"
+            + "AI 被要求做出这个动作：**「" + description + "」**\n\n"
+            + "请仔细观察截图，这张截图是在动作播放完毕后抓取的，你应该能看到该动作的最终姿态。\n\n"
+            + "回答：\n\n"
+            + "1. **这个姿势像不像「" + description + "」？** （是/基本是/不太像/完全不像）\n"
+            + "2. **你从哪里看出来？**（指出画面中哪些部位/角度让你做此判断）\n"
+            + "3. **如果不像，你觉得更像什么动作？**\n"
+            + "4. **给这个动作的执行质量打分（1~5分）：**\n"
+            + "   5分 = 完美还原，一看就是「" + description + "」\n"
+            + "   4分 = 基本到位，有轻微偏差\n"
+            + "   3分 = 有点意思但不够准确\n"
+            + "   2分 = 只有一点点关联\n"
+            + "   1分 = 完全不像\n\n"
+            + "=== 严格评分规则 ===\n"
+            + "- 5分：动作特征非常明显，非此动作不可能误解\n"
+            + "- 4分：主要动作特征到位，但有一两个细节不完美\n"
+            + "- 3分：能看到一些设计意图，但整体不够清楚\n"
+            + "- 2分：需要仔细看才能勉强联想到目标动作\n"
+            + "- 1分：看不出在做什么，或看起来像完全不同的动作\n\n"
+            + "=== 回复格式（严格按此格式） ===\n"
+            + "判断：【是/基本是/不太像/完全不像】\n"
+            + "理由：...\n"
+            + "更像什么：...\n"
+            + "打分：【X/5】← 注意 X 是 1~5 的数字，不要有空格\n"
+            + "改进建议：...";
+
+        string jsonBody = "{";
+        jsonBody += "\"model\":\"" + EscapeJsonStr(ChatConfig.GlmVisionModel) + "\",";
+        jsonBody += "\"messages\":[{";
+        jsonBody += "\"role\":\"user\",";
+        jsonBody += "\"content\":[";
+        jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJsonStr(prompt) + "\"},";
+        jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJsonStr(imageDataUrl) + "\"}}";
+        jsonBody += "]}],";
+        jsonBody += "\"request_id\":\"" + Guid.NewGuid().ToString("N") + "\"";
+        jsonBody += "}";
+
+        string fullUrl = ChatConfig.GlmApiBaseUrl.TrimEnd('/') + "/chat/completions";
+        string responseText = null;
+
+        using (UnityWebRequest req = new UnityWebRequest(fullUrl, "POST"))
+        {
+            byte[] bodyBytes = Encoding.UTF8.GetBytes(jsonBody);
+            req.uploadHandler = new UploadHandlerRaw(bodyBytes);
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("Authorization", "Bearer " + ChatConfig.GlmApiKey);
+            req.timeout = 180; // GLM-4V 视觉处理 base64 图片可能需要 2-3 分钟
+
+            yield return req.SendWebRequest();
+
+            if (req.result == UnityWebRequest.Result.Success)
+            {
+                responseText = req.downloadHandler.text;
+            }
+            else
+            {
+                string errBody = req.downloadHandler?.text ?? "";
+                string errMsg = req.error;
+                if (!string.IsNullOrEmpty(errBody) && errBody.Contains("\"message\""))
+                {
+                    try
+                    {
+                        var errObj = JsonUtility.FromJson<GlmErrorResponse>(errBody);
+                        if (errObj != null && !string.IsNullOrEmpty(errObj.error.message))
+                            errMsg = errObj.error.message;
+                    }
+                    catch { }
+                }
+                UnityEngine.Debug.LogWarning($"[ToolCallInvoker] GLM-4V 自评请求失败：{errMsg}");
+                onResult?.Invoke("");
+                yield break;
+            }
+        }
+
+        string result = "";
+        try
+        {
+            var resp = JsonUtility.FromJson<GlmVisionResponse>(responseText);
+            if (resp != null && resp.choices != null && resp.choices.Length > 0
+                && resp.choices[0].message != null)
+            {
+                result = resp.choices[0].message.content.Trim();
+                UnityEngine.Debug.Log($"[ToolCallInvoker] GLM-4V 自评：「{description}」→ {result.Substring(0, Mathf.Min(result.Length, 100))}");
+            }
+            else
+            {
+                // 尝试解析错误
+                var errResp = JsonUtility.FromJson<GlmErrorResponse>(responseText);
+                if (errResp?.error != null)
+                    UnityEngine.Debug.LogWarning($"[ToolCallInvoker] GLM-4V 返回错误：{errResp.error.message}");
+                result = "";
+            }
+        }
+        catch (System.Exception ex)
+        {
+            UnityEngine.Debug.LogWarning($"[ToolCallInvoker] GLM-4V 自评 JSON 解析失败：{ex.Message}");
+            result = "";
+        }
+
+        onResult?.Invoke(result);
     }
 
     // ================================================================

@@ -1,103 +1,329 @@
-# Desktop Pet — 符玄桌面宠物
+# 符玄桌面宠物 — Fu Xuan Desktop Pet
 
-![Unity](https://img.shields.io/badge/Unity-2022.3.62_LTS-000000?logo=unity)
-![Live2D](https://img.shields.io/badge/Live2D-Cubism_5--r.4-FF6B9D)
-![C#](https://img.shields.io/badge/C%23-512BD4?logo=csharp)
-![DeepSeek](https://img.shields.io/badge/DeepSeek-Function_Calling-4F46E5)
-![Platform](https://img.shields.io/badge/Platform-Windows_10%2F11-00A4EF?logo=windows)
+<div align="center">
 
-将 **崩坏：星穹铁道 — 符玄** 作为 Live2D 桌面宠物，在 Windows 桌面上陪伴你。
+![版本](https://img.shields.io/badge/版本-N32d-blue)
+![引擎](https://img.shields.io/badge/引擎-Tuanjie%202022.3.62t7-purple)
+![平台](https://img.shields.io/badge/平台-Windows%2064位-green)
+![Live2D](https://img.shields.io/badge/Live2D-Cubism%205--r.4-orange)
+![AI](https://img.shields.io/badge/AI-DeepSeek%20Chat%20%7C%20GLM--4V-red)
 
-利用 Unity 透明窗口 + Live2D Cubism SDK 渲染，结合物理模拟、交互反馈、昼夜/天气响应、AI 对话、微信小程序数据打通，营造生动的桌面伙伴体验。
+</div>
 
----
+## 📖 项目简介
 
-## ✨ 功能一览
+**符玄桌面宠物** 是一个基于 Unity（团结引擎）和 Live2D Cubism SDK 构建的 Windows 桌面宠物应用。角色为《崩坏：星穹铁道》中的 **符玄**（仙舟「罗浮」太卜司之首），拥有完整的 AI 对话、表情动作、天气感知、日程管理等能力。
 
-### 🎮 交互
-- **拖拽移动** — 按住任意位置拖拽，角色会挣扎划水 + 衣服/头发物理摆动
-- **分区点击反馈** — 点击头部/身体/腿部有不同反应（歪头戳脸/害羞捂胸/踢腿）
-- **右键菜单** — 设置、动作、聊天、便签四标签面板
-- **AI 对话** — 底部输入框 + DeepSeek Function Calling，可调用 28+ 工具
-- **文件搜索** — 集成 Everything 实现毫秒级全盘文件搜索，AI 可直接「帮我找文件」
-- **小程序数据互通** — AI 可查询微信小程序服务端的考试安排、课程表、成绩、学业概览
-- **AI 操控角色** — 对话指令即可切换面部表情、播放动作动画、停止动作
-- **点击穿透** — 鼠标在宠物上可交互，在宠物外直接穿透到桌面，无需拖拽"激活"
-- **开机自启** — 系统托盘一键设置开机自启
+> 项目迭代至 N32d 版本，历经多次架构重构和功能增强。
 
-### 🎭 动画
-- **自然待机** — Perlin 噪声驱动的呼吸、身体微晃、眼球微动
-- **11 种空闲动作** — 歪头卖萌、微笑眯眼、挑眉、星辉环绕、伸懒腰、爱心眨眼、数钱、委屈、法阵展开、害羞黑脸、困惑歪头
-- **走路动画** — 横版走路 + 身体颠簸 + 无缝空闲过渡
-- **平滑转身** — 方向切换时 scale.x 用 Lerp 渐变，避免 180° 瞬间翻转（TURN_SPEED=10, ≈0.15s）
-- **走路犯困表情** — 走路时随机触发眼皮渐沉 + 低头，夜晚/深夜更频繁
-- **眨眼** — 自动随机眨眼
-- **鼠标跟随** — 眼球平滑追踪鼠标位置
-- **FPS 自适应** — 性能低时自动降低动画频率
+## ✨ 核心功能
 
-### 🌤 时间/天气响应
-- **昼夜感知** — 读取系统时间，夜晚眼皮微垂、犯困动作增多
-- **天气响应** — 通过 wttr.in API 获取当地天气：
-  - ☀️ 晴/多云 → 自然微笑
-  - 🌧 阴雨/雷雨 → 委屈表情 + 皱眉
-  - ❄️ 下雪 → 好奇张嘴睁大眼
-- **待机气泡** — 无交互后头顶冒泡，内容根据时间/天气变化（共 90+ 条符玄风格台词）
-- **气泡古风装饰** — 紫色云纹角饰（左上+右下）+ 独立呼吸闪烁星点，全部代码生成无额外贴图
+### 🎨 渲染系统
+- **Live2D 模型渲染** — Cubism SDK 5-r.4，高精度面部表情与物理模拟
+- **DWM 透明窗口** — 使用 `DwmExtendFrameIntoClientArea` 实现无缝桌面融合，无绿边
+- **Perlin 噪声驱动** — 呼吸、身体微晃、头部微动、眼球转动，自然不机械
+- **3D 模型骨架** — 预留 `Model3DRenderer` + `Animator`，待后续启用
 
-### 🤖 AI 聊天
-- **DeepSeek API** — 集成 DeepSeek Chat + Function Calling，最多 5 轮工具调用循环
-- **28+ 工具** — 打开网页、搜索、搜文件（Everything 毫秒级）、截图、调音量、记便签、查天气、查成绩、查课表、查考试、学业概览、切换表情、播放动作等
-- **协程异步执行** — 5 个网络 IO/后台工具（学业查询 + 文件搜索）通过 Unity 协程异步执行，不阻塞主线程
-- **Everything 文件搜索** — AI 可通过「帮我找文件」调用 `search_files` 工具，优先使用 Everything CLI（es.exe）实现全盘毫秒级搜索，未安装时自动回退递归搜索
-- **小程序数据互通** — 连接微信课表小程序服务端，实时查询学业数据
-- **AI 操控角色** — 直接说"换个开心表情""伸个懒腰"，AI 自动调用表情/动作工具
-- **自动闲聊** — 无操作一段时间后角色主动搭话
-- **句子队列** — 长回复逐句显示，打字机效果
-- **优先级气泡** — AI 回复高优显示，不被闲话问候覆盖
+### 🤖 AI 对话系统
+- **DeepSeek Chat API** — 完整 Function Calling 支持
+- **27+ 法术工具** — 符玄可以用「法阵术式」操控电脑：
+  - 🔭 **观星术**（打开网页/搜索信息）
+  - 📷 **摄形术**（截取屏幕 + GLM-4V 视觉分析）
+  - 🎵 **调音术**（调节音量/静音）
+  - 🔒 **封印术**（锁屏/关机/重启）
+  - 📢 **传音术**（桌面通知/剪贴板读写）
+  - 🔍 **洞观术**（系统信息/Everything 毫秒级文件搜索）
+  - 🚀 **开阵术**（启动应用/打开文件）
+  - 📋 **卜算记事簿**（提醒管理）
+  - 📚 **卜算传讯**（查询课表/成绩/考试）
+  - 🎭 **演武术式**（播放表情/动作/生成新动作）
+- **多轮工具调用** — 最多 5 轮回环，支持链式操作
+- **句子队列逐句显示** — 长回复打字机效果
+- **自动闲聊** — 无操作一段时间后主动搭话
+- **底部输入栏** — Windows 搜索风格简洁输入
 
-### 📋 便签提醒
-- **增删改查** — 本地 JSON 持久化，支持每日/工作日/每周重复
-- **到期提醒** — 头顶气泡 + Windows Toast 通知
-- **手机推送** — 通过 Server酱³ 推送到手机 App
-- **AI 驱动** — 聊天时直接说"提醒我下午3点买菜"，AI 自动调用工具
-- **服务端同步** — 小程序服务端统一维护提醒队列
+### 🏃 物理与交互
+- **桌面物理引擎** — 重力、碰撞、地面检测、弹跳衰减
+- **任意位置拖拽** — 拖拽 + 抛掷物理
+- **拖拽挣扎动画** — 双臂划水 + 双腿交替 + 扭动 + 慌张表情
+- **分区点击反馈** — 头部（摸头眯眼）/ 身体（戳胸惊讶）/ 腿部（害羞踢腿）
+- **鼠标眼睛跟随** — 眼球平滑追踪鼠标位置
+- **屏幕边缘碰撞反弹** — 撞墙动画 + 反弹物理
 
-### 🔎 文件搜索（Everything 集成）
-- **毫秒级全盘搜索** — 集成 Everything CLI（es.exe），AI 说「帮我找文件」时毫秒级返回结果
-- **自动检测** — 启动时自动搜索 Program Files、LocalAppData 及 PATH 中的 es.exe
-- **智能回退** — 未安装 Everything 时自动切换到递归目录搜索
-- **路径限定** — 支持指定搜索根目录，缩小搜索范围
-- **最多 200 结果** — 防结果过多，必要时可缩小查询词
+### 🎭 动作系统
+- **11 种空闲动作** — JSON 配置驱动（歪头/微笑/挑眉/星辉/伸懒腰/委屈/法阵/害羞/困惑等）
+- **走路动画** — 侧面转体 + 步态摆臂 + 呼吸加深
+- **犯困表情** — 夜间/深夜低头、眼皮渐沉、微张嘴
+- **天气表情联动** — 晴→微笑 / 雨→委屈 / 雪→好奇
+- **LLM 动作生成** — `MotionTranslator` 将自然语言描述翻译为 Live2D 关键帧序列
+- **闭环自评** — `VisionMotionVerifier` 调用 GLM-4V 视觉模型评估动作质量，自动优化
 
-### 🏃 物理
-- **CubismPhysics** — 衣服/头发/裙子/配饰自然物理摆动
-- **直接驱动** — 拖拽时帧间速度实时输入物理系统，裙子/法盘/头发惯性跟随
-- **头发驱动** — 20 个输出参数全部物理绕过，实现飘逸效果
+### 🧠 记忆与感知
+- **「法眼」活动追踪** — 轮询前台窗口，按分类（编程/游戏/学习/浏览等）累计时长
+- **分层长期记忆** — 核心事实始终保留 + Top-N 重要记忆 + 近期琐事
+- **反思反射** — 重要性积分累计达阈值时触发 LLM 提炼洞察
+- **多窗口环境感知** — 扫描所有可见窗口
+- **浏览器标签深度感知** — 通过 UI Automation 读取标签页标题
 
-### 🖥 技术特性
-- **透明窗口** — Win32 API（DWM DwmExtendFrameIntoClientArea）实现 Unity 窗口穿透 + 镂空，无绿边
-- **点击穿透** — 每帧动态管理 WS_EX_TRANSPARENT，宠物内交互、宠物外穿透
-- **系统托盘** — Shell_NotifyIcon 最小化到通知区域，支持开机自启
-- **底部输入栏** — 内置 AI 聊天输入框 + Windows 搜索风格
-- **调试窗口** — 实时调参面板（FPS/CPU/内存监控）
-- **编码优化** — 默认 GBK 编码兼容中文
-- **性能监控** — FPS/CPU/内存实时监控，低帧率自动调节
+### 🌤️ 时间与天气
+- **昼夜感知** — 自动检测系统时间，isNight/isSleepyTime
+- **双天气源** — wttr.in（无需 Key）或 和风天气（需注册）
+- **AI 天气语录** — DeepSeek 生成符玄风格的天气台词
+- **待机气泡联动** — 时间/天气特化文案
 
----
+### 📋 便签与提醒
+- **本地 JSON 持久化** — 增删改查
+- **重复规则** — 每日/工作日/每周
+- **到期气泡提醒** + Windows Toast 通知
+- **Server酱³ 手机推送**
+- **服务端同步** — 与课表小程序联动
+- **AI 创建便签** — 对话中说"提醒我…"即可
 
-## 📂 目录结构
+### 🖥️ 窗口系统
+- **DWM 透明窗口** — 纯黑 (0,0,0,0) 背景 + 玻璃层扩展
+- **点击穿透** — 宠物外点击穿透到桌面，宠物内正常交互
+- **多显示器支持** — 虚拟桌面全覆盖
+- **睡眠唤醒恢复** — 时间间隙检测 + 延迟重建 DWM
+- **DWM 崩溃安全模式** — 连续崩溃跳过重建
+- **系统托盘** — 左键隐藏/显示 + 右键菜单（开机自启/退出）
+
+### ⚡ 性能优化
+- **智能性能监控** — FPS 自适应降档/升档（High 60fps / Normal 40fps / Low 20fps）
+- **RenderTexture 分辨率缩放** — 性能不足时自动降低
+- **系统内存监控** — 85% 预警 GC，93% 紧急降质保命
+- **崩溃日志捕获** — 自动记录 + 超限截断
+
+## 🏗️ 项目结构
 
 ```
 Desktop_per_pro/
-├── code/desktop unity/
-│   ├── Assets/
-│   │   ├── Scripts/              ← C# 脚本（完整）
-│   │   │   ├── DesktopPet.cs         # 主控制器
-│   │   │   ├── Live2DRenderer.cs     # Live2D 渲染 + 动画 + 物理驱动
-│   │   │   ├── DragHandler.cs        # 拖拽/点击交互
-│   │   │   ├── TimeWeatherController.cs  # 昼夜/天气
-│   │   │   ├── ChatBubble.cs         # 头顶气泡（含优先级系统）
-│   │   │   ├── ChatManager.cs        # AI 对话 + Function Calling + 协程工具调度
+├── build.ps1                    # 标准构建脚本
+├── CHANGELOG.md                 # 版本更新日志
+├── README.md                    # 本文件
+├── Build/                       # 构建输出目录
+│   └── DesktopPet.exe           # 可执行文件
+├── code/
+│   └── desktop_unity/           # Unity 项目根目录
+│       ├── Assets/
+│       │   ├── Scripts/         # 核心 C# 脚本
+│       │   │   ├── DesktopPet.cs           # 物理引擎与地面状态机
+│       │   │   ├── Live2DRenderer.cs       # Live2D 渲染（~2500行核心）
+│       │   │   ├── WindowOverlay.cs        # DWM 透明窗口
+│       │   │   ├── DragHandler.cs          # 拖拽与抛掷
+│       │   │   ├── ChatManager.cs          # DeepSeek AI 对话
+│       │   │   ├── ToolCallInvoker.cs      # 27+ 法术工具
+│       │   │   ├── ChatBubble.cs           # 古风聊天气泡（OnGUI）
+│       │   │   ├── ContextMenu.cs          # 右键菜单
+│       │   │   ├── BottomInputBar.cs       # 底部输入栏
+│       │   │   ├── AutoChat.cs             # 自动问候与交互事件
+│       │   │   ├── IdleChatGenerator.cs    # 闲话/问候动态生成
+│       │   │   ├── TimeWeatherController.cs # 时间与天气
+│       │   │   ├── ActivityTracker.cs      # 法眼活动追踪
+│       │   │   ├── PetMemory.cs            # 分层长期记忆
+│       │   │   ├── PetConfig.cs            # 配置持久化
+│       │   │   ├── ReminderManager.cs      # 便签提醒
+│       │   │   ├── ServerPollService.cs    # 服务端轮询
+│       │   │   ├── PerformanceMonitor.cs   # 性能自适应
+│       │   │   ├── SystemTrayManager.cs    # 系统托盘
+│       │   │   ├── HybridRenderer.cs       # Live2D/3D 混合管理
+│       │   │   ├── Model3DRenderer.cs      # 3D 模型渲染（预留）
+│       │   │   ├── ApiClient.cs            # 共享 HTTP 客户端
+│       │   │   ├── BrowserTabReader.cs     # UIA 浏览器标签读取
+│       │   │   ├── DebugWindow.cs          # 调试调参面板
+│       │   │   ├── IPetRenderer.cs         # 渲染器接口
+│       │   │   └── Live2DFramework/        # LLM 动作系统
+│       │   │       ├── ActionAgent/        # 动作代理核心
+│       │   │       │   ├── MotionTranslator.cs    # LLM 动作翻译
+│       │   │       │   ├── MotionGenerator.cs     # 动作播放器
+│       │   │       │   ├── MotionPlanner.cs       # 动作规划器
+│       │   │       │   ├── MotionVerifier.cs      # 动作验证器
+│       │   │       │   ├── VisionMotionVerifier.cs # GLM-4V 视觉验证
+│       │   │       │   ├── MotionMemoryManager.cs  # 动作记忆
+│       │   │       │   ├── IdleActionScheduler.cs  # 空闲动作调度
+│       │   │       │   └── SafetyValidator.cs      # 安全验证
+│       │   │       ├── ActionPresets/      # 动作预设
+│       │   │       ├── Live2DParameterMapper.cs    # 参数语义映射
+│       │   │       └── ParameterKnowledgeProvider.cs # 参数知识注入
+│       │   ├── Editor/
+│       │   │   └── BuildScript.cs          # 自动化构建脚本
+│       │   ├── Resources/
+│       │   │   └── SystemPrompt.txt        # 符玄角色设定
+│       │   ├── Animations/                # 3D 模型动画
+│       │   ├── Models/                    # 3D FBX 模型
+│       │   ├── Prefabs/                   # Prefab 预制体
+│       │   └── StreamingAssets/           # Live2D 模型文件
+│       └── ProjectSettings/               # Unity 项目设置
+├── file/符玄/                             # Live2D 模型源文件
+├── project_brief/                         # 项目文档
+├── record/                                # 开发记录
+└── tools/                                 # 工具脚本
+```
+
+## 🔧 环境要求
+
+| 依赖 | 版本/路径 |
+|------|-----------|
+| Unity 引擎 | Tuanjie 2022.3.62t7（`D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe`）|
+| Live2D SDK | CubismSdkForUnity-5-r.4 |
+| DeepSeek API Key | 环境变量 `DEEPSEEK_API_KEY` |
+| GLM API Key（可选） | 环境变量 `GLM_API_KEY`（视觉分析用） |
+| 和风天气 Key（可选） | 环境变量 `QWEATHER_API_KEY` |
+| 操作系统 | Windows 10/11 64位 |
+
+## 🚀 快速开始
+
+### 1. 配置 API Key
+
+设置系统环境变量（用户变量即可）：
+
+```powershell
+# DeepSeek（必需 — AI 对话）
+DEEPSEEK_API_KEY=sk-your-key-here
+
+# 智谱 GLM（可选 — 截图视觉分析、动作自评）
+GLM_API_KEY=your-glm-key-here
+
+# 和风天气（可选 — 更准确的天气数据）
+QWEATHER_API_KEY=your-qweather-key-here
+```
+
+> 设置后需重启电脑或重新登录使变量生效。
+
+### 2. 构建
+
+```powershell
+# 完整构建
+.\build.ps1
+
+# 仅验证编译（不输出可执行文件）
+.\build.ps1 -Quick
+```
+
+### 3. 运行
+
+```powershell
+.\Build\DesktopPet.exe
+```
+
+## 🏗️ 架构概览
+
+### 核心架构图
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Windows 桌面                          │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │          DWM 透明窗口 (WS_EX_LAYERED)              │  │
+│  │  ┌──────────────────────────────────────────────┐  │  │
+│  │  │  DesktopPet (物理引擎 + 状态机)                │  │  │
+│  │  │  ├── 重力/碰撞/地面检测                        │  │  │
+│  │  │  ├── 地面任务状态机 (行走/停止/边缘)            │  │  │
+│  │  │  └── 崩溃日志/内存监控                         │  │  │
+│  │  │                                                │  │  │
+│  │  │  +── DragHandler (拖拽+抛掷)                    │  │  │
+│  │  │  +── HybridRenderer (渲染调度)                  │  │  │
+│  │  │  │   ├── Live2DRenderer (Cubism SDK)           │  │  │
+│  │  │  │   │   ├── Perlin 噪声微动                   │  │  │
+│  │  │  │   │   ├── 眨眼/呼吸/表情                    │  │  │
+│  │  │  │   │   ├── 走路/拖拽/点击动画                │  │  │
+│  │  │  │   │   ├── 空闲动作 (JSON 调度器)            │  │  │
+│  │  │  │   │   ├── 法阵/星辉 (硬编码)               │  │  │
+│  │  │  │   │   └── LLM 动作生成器                   │  │  │
+│  │  │  │   └── Model3DRenderer (预留)               │  │  │
+│  │  │  │                                                │  │  │
+│  │  │  +── AI 系统                                     │  │  │
+│  │  │  │   ├── ChatManager (DeepSeek API)              │  │  │
+│  │  │  │   │   ├── Function Calling (27+ 工具)         │  │  │
+│  │  │  │   │   ├── 多轮工具回环 (≤5)                  │  │  │
+│  │  │  │   │   └── 句子队列逐句显示                    │  │  │
+│  │  │  │   ├── ToolCallInvoker (法术工具执行)          │  │  │
+│  │  │  │   ├── IdleChatGenerator (闲话生成)            │  │  │
+│  │  │  │   └── SystemPrompt.txt (角色设定注入)         │  │  │
+│  │  │  │                                                │  │  │
+│  │  │  +── 感知系统                                    │  │  │
+│  │  │  │   ├── ActivityTracker (法眼)                  │  │  │
+│  │  │  │   ├── BrowserTabReader (浏览器标签)           │  │  │
+│  │  │  │   ├── PetMemory (忆境·长期记忆)              │  │  │
+│  │  │  │   └── TimeWeatherController (天象)            │  │  │
+│  │  │  │                                                │  │  │
+│  │  │  +── 服务系统                                    │  │  │
+│  │  │  │   ├── ServerPollService (课表轮询)            │  │  │
+│  │  │  │   ├── ReminderManager (卜算记事簿)            │  │  │
+│  │  │  │   └── PerformanceMonitor (性能自适应)         │  │  │
+│  │  │  │                                                │  │  │
+│  │  │  +── UI 层                                       │  │  │
+│  │  │      ├── ChatBubble (OnGUI 气泡)                 │  │  │
+│  │  │      ├── ContextMenu (右键菜单)                  │  │  │
+│  │  │      ├── BottomInputBar (底部输入栏)             │  │  │
+│  │  │      ├── SystemTrayManager (托盘)                │  │  │
+│  │  │      └── DebugWindow (调试面板)                  │  │  │
+│  │  └──────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 数据流
+
+```
+用户操作 (点击/拖拽/说话)
+    │
+    ▼
+DragHandler / BottomInputBar
+    │
+    ├──▶ DesktopPet (物理更新) ──▶ HybridRenderer ──▶ Live2DRenderer
+    │
+    └──▶ ChatManager (AI 对话)
+              │
+              ├──▶ ToolCallInvoker (执行法术)
+              │       ├── 打开网页/搜索
+              │       ├── 截图 + GLM-4V 分析
+              │       ├── 系统控制 (音量/锁屏/关机)
+              │       ├── 文件搜索 (Everything)
+              │       ├── 便签管理
+              │       ├── 课表查询
+              │       └── 动作/表情播放
+              │
+              └──▶ 回复文本 ──▶ ChatBubble (逐句显示)
+```
+
+## 📜 版本历史
+
+详见 [CHANGELOG.md](CHANGELOG.md)
+
+| 版本 | 日期 | 主要变更 |
+|------|------|---------|
+| N32d | 2026-07-07 | ACTION_PATTERNS 升级 + SPECIAL PATTERNS 修复 + 闭环自评 |
+| N18  | 2026-06-22 | 已完成任务独立视图 + 系统总内存监控 |
+| N17  | 2026-06-22 | 提醒去重 + 服务器推送去重 |
+| N16  | 2026-06-20 | Everything 毫秒级文件搜索 |
+| N15  | 2026-06-20 | 修复逐句显示 bug |
+| N14  | 2026-06-20 | 课表小程序数据打通 + 3 个学业查询工具 |
+| N13  | 2026-06-20 | 服务端推送轮询 + Server酱³ | 
+| N12  | 2026-06-19 | 性能监控 + 开机自启 |
+| N11  | 2026-06-18 | 优先级气泡系统 + AI 回复稳定 |
+| N10  | 2026-06-18 | 点击穿透 + 右键菜单 + 多轮工具调用 |
+| v0.9 | 2026-06-18 | DWM 玻璃层透明 + 底部输入栏 |
+| v0.8 | 2026-06-17 | 头发/裙子直接物理驱动 + 分区点击 + 挣扎动画 |
+| v0.7 | 2026-06-17 | 修复物理覆盖 + 执行顺序修正 |
+| v0.6 | 2026-06-13 | LaTeX 文档 + 右键菜单 + 动作锁定 |
+| v0.5 | — | 动作锁定 + 走路淡入 |
+| v0.4 | — | 右键菜单 + 权重编辑 |
+| v0.3 | — | 10 种空闲动作 + 加权随机 |
+| v0.2 | — | PNG 渲染 + API Key 从环境变量读取 |
+
+## 🤝 许可证
+
+本项目为个人学习与娱乐用途，角色「符玄」版权属于 miHoYo / HoYoverse。
+
+## 📝 致谢
+
+- [Live2D Cubism SDK](https://www.live2d.com/sdk/about/cubism/)
+- [DeepSeek API](https://platform.deepseek.com/)
+- [智谱 GLM API](https://open.bigmodel.cn/)
+- [和风天气](https://www.qweather.com/)
+- [wttr.in](https://wttr.in/)
+- [Server酱³](https://sc3.ft07.com/)
+- [Everything](https://www.voidtools.com/)
 │   │   │   ├── ChatConfig.cs         # API Key + 端点集中配置（环境变量读取）
 │   │   │   ├── ApiClient.cs          # 共享 HTTP/JSON 客户端（PostRequest + 解析工具）
 │   │   │   ├── IdleChatGenerator.cs  # 自动闲聊（重构后使用 ApiClient）

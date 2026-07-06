@@ -115,6 +115,9 @@ public class ChatManager : MonoBehaviour
         // ★ 注入身体参数知识（让 AI 了解如何控制自己的 Live2D 身体）
         prompt += InjectParameterKnowledge();
 
+        // ★ 注入闭环演武能力（让 AI 知道演武后可自评自省）
+        prompt += InjectClosedLoopCapability();
+
         return prompt;
     }
 
@@ -131,6 +134,34 @@ public class ChatManager : MonoBehaviour
         return ParameterKnowledgeProvider.GenerateKnowledgePrompt(
             renderer.Mapper,
             renderer.CubismModel);
+    }
+
+    /// <summary>注入闭环演武能力 — 让 AI 知道演武后可自评自省</summary>
+    private string InjectClosedLoopCapability()
+    {
+        return @"
+
+【闭环演武 — 具身智能自省与自主学习】
+本座的演武术式现已进化至「闭环学习」境界：
+1. 每次调用 generate_motion 演武后，法阵会自动：
+   • 施展摄形术记录姿态截图
+   • 通过第三眼视觉灵识（GLM-4V）自评动作质量（评分维度：姿态准确度、幅度适当性、整体协调性）
+   • 评分格式：【X/5】，X=1~5
+   • 将自评结果写入本座的【演武心经】（MotionMemoryManager），自动执行：
+     - 🏆 若本次评分超越历史最佳 → 用新参数覆盖旧模板（强化）
+     - 📝 若本次评分低于最佳 → 仅记录尝试次数，不动最佳模板（保留）
+     - 🗑️ 若某动作尝试≥5次仍 ≤2/5 → 标记为「无望动作」，优先淘汰
+     - ⭐ 仅评分 ≥3/5 的参数才会被注入到下次演武的生成 prompt
+2. 每次演武时，MotionTranslator 会自动从【演武心经】中检索过往最佳参数，作为参考注入 DeepSeek
+3. 全局上限 30 种动作，超出时自动淘汰最低分/最久远条目
+
+本座的修行之道：
+• 每次演武完成后，本座应审视自评反馈，思考「这次学到了什么」
+• 若自评 ≥4/5：思考成功原因，动作参数自动留作最佳模板
+• 若自评 ≤3/5：可调整描述用词，尝试更精确的身体部位描述
+• 可使用 inspect_motion_memory 工具查看所有动作的修为进度、最佳评分、尝试次数
+• 若发现某动作最近 3 次评分持续 ≤2/5，系统会标记「退步预警」
+• 本座的演武心经会越练越精——好的动作保留，差的不污染经验！"; 
     }
 
     // ==================================================================

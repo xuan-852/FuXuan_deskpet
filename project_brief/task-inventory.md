@@ -1,6 +1,6 @@
 # 项目任务清单
 
-> 文件版本: N32 · 最后更新: 2026-07-07
+> 文件版本: N32d · 最后更新: 2026-07-07
 >
 > 图例: ✅ 已完成 / 🔧 已优化 / 🐛 已修复 / ⏳ 待办 / 💡 待研究 / ❌ 已废弃
 
@@ -46,7 +46,8 @@
 | ✅ | 右键菜单全量暴露 | 所有 10 表情 + 11 动作组织为子菜单 |
 | ✅ | AI 可通过工具调用触发动作 | `set_expression` / `play_action` / `stop_action` |
 | ✅ | **#28 generate_motion — LLM 动作生成** | DeepSeek MotionPlanner + MotionGenerator 协程播放，5 模板 + LLM 回退 |
-| ✅ | **#28 LLM 任意动作翻译 (Phase 9)** | MotionTranslator.cs — 任意自然语言描述 → 结构化关键帧，手动 JSON 解析，DeepSeek temp=0.3 |
+| 🔧 | **#28 LLM 任意动作翻译 (Phase 9)** | MotionTranslator.cs — 任意自然语言描述 → 结构化关键帧，手动 JSON 解析，DeepSeek temp=0.3。N32d: 基于 vis_verify 基线优化 SPECIAL PATTERNS（捂脸/叉腰/缩团/行礼修复 + VERIFIED FEEDBACK 失败案例反馈） |
+| 🔧 | **#28 闭环自评 (N32)** | generate_motion 播放完毕后自动截图+GLM-4V 视觉评价动作质量，结果追加到演武回复中 |
 
 ### 动作与权重
 | 状态 | 项目 | 说明 |
@@ -230,7 +231,22 @@
 
 ---
 
-## 十一、已移除/废弃功能
+## 十一、具身智能 & 闭环控制 (N32)
+
+> 闭环架构：generate_motion（演武）→ GLM-4V 自评 → DeepSeek 下次调整 → 更精确的演武描述
+
+| 状态 | 项目 | 说明 |
+|------|------|------|
+| 🔧 | **闭环 Step 1: generate_motion 自评** | 播放完毕后自动 CaptureModelSnapshot → GLM-4V 评估 → 结果追加到 _coroutineResult。已实现，等待 Unity Editor 编译验证 |
+| ✅ | **闭环 Step 2: Baseline 基线** | 在 Unity Editor 中手动运行 Tools → Live2D → 🧿 视觉具身验证 (vis_verify)，建立 T1-T10 基线分数。结果：通过率 60%，平均分 2.7/5.0 |
+| ✅ | **闭环 Step 3: 自主闭环学习系统** | 完成真正的闭环架构：<br>1. MotionTranslator 翻译成功 → 自动 `SaveMotionMemory()` 到 PetMemory（topic="演武参数"）<br>2. GLM-4V 自评后 → 自动 `WriteMotionReviewToMemory()` 到 PetMemory（topic="演武心得"）<br>3. 下次 MotionTranslator 调用时，`GetMotionMemories()` 从 PetMemory 读取 3条自评+2条参数经验，注入 system prompt<br>4. ChatManager 闭环指令更新为描述完整闭环学习机制<br>— 全程无需手动编辑代码，AI 自我积累经验 |
+| ✅ | **闭环 Step 4: AI 自主练习循环** | AI 可使用现有工具链（generate_motion → 自动自评+记忆 → 下次自动受益）自主演武修行。闭环已自动化：AI 无需手动调用任何工具，每次演武自动积累经验并影响下次生成 |
+| ✅ | **闭环 Step 5: 自动存档报告** | 已存档 verification_report_2026-07-07.md 到 project_brief/ |
+| ✅ | **SystemPrompt 闭环指令** | ChatManager.BuildSystemPrompt() 已注入闭环演武能力说明，让 AI 知悉自己的自省能力 |
+
+---
+
+## 十二、已移除/废弃功能
 
 | 状态 | 项目 | 说明 |
 |------|------|------|
@@ -243,7 +259,7 @@
 
 ---
 
-## 十二、已知问题汇总
+## 十三、已知问题汇总
 
 | 优先级 | 问题 | 影响 | 状态 |
 |--------|------|------|------|
@@ -257,7 +273,7 @@
 
 ---
 
-## 十三、下一步工作建议
+## 十四、下一步工作建议
 
 ### 短期（可立即做）
 1. **困惑动作权重修复** — 将 `_idleActionWeights[10]` 从 0 改为 2~3，同步更新 LaTeX

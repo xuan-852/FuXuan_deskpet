@@ -68,6 +68,9 @@ public static class MotionTranslator
         // ——— 1. 构建 body schema 字符串 ———
         string bodySchema = BuildBodySchema(mapper);
 
+        // ——— 1b. 注入运动记忆（自主闭环学习）———
+        string motionMemories = GetMotionMemories();
+
         // ——— 2. 构建 System Prompt ———
         string systemPrompt =
             "You are a 3D character animation designer for a Live2D desktop pet (a cute anime girl). " +
@@ -95,6 +98,8 @@ public static class MotionTranslator
             "  - Covering_face/捂脸: arm_right_upper=0.8~1.0, arm_left_upper=0.8~1.0, hand_near_face=1.0, head_angle_y=-8~-12\n" +
             "  - Surprise/惊讶: head_angle_y=8~15, eye_l_open=0.9~1.0, eye_r_open=0.9~1.0, mouth_open_y=0.5~0.8\n" +
             "  - Cowering/缩团: head_angle_y=-15~-25, arm_right_upper=0.1~0.2, arm_left_upper=0.1~0.2 (arms tucked in)\n\n" +
+
+            (string.IsNullOrEmpty(motionMemories) ? "" : motionMemories + "\n\n") +
 
             "Output format (JSON ONLY):\n" +
             "{\n" +
@@ -149,6 +154,8 @@ public static class MotionTranslator
                 if (plan != null && plan.KeyFrames.Count > 0)
                 {
                     Debug.Log($"[MotionTranslator] ✅ 翻译成功：「{description}」→ {plan.KeyFrames.Count} 帧, {plan.TotalDuration:F1}s");
+                    // ★ 自动保存运动经验到记忆（闭环学习）
+                    SaveMotionMemory(description, plan);
                     onResult(plan);
                 }
                 else
@@ -760,6 +767,49 @@ public static class MotionTranslator
                 .Replace("\n", "\\n")
                 .Replace("\r", "\\r")
                 .Replace("\t", "\\t");
+    }
+
+    // ──────────────────────────────────────────────
+    //  闭环学习: 运动记忆读写
+    // ──────────────────────────────────────────────
+
+    /// <summary>从 MotionMemoryManager 读取最佳演武经验，注入 system prompt 供 AI 参考</summary>
+    private static string GetMotionMemories()
+    {
+        var mm = MotionMemoryManager.Instance;
+        if (mm == null) return "";
+
+        string memories = mm.GetFormattedMemories();
+        if (!string.IsNullOrEmpty(memories))
+        {
+            UnityEngine.Debug.Log($"[MotionTranslator] 📖 注入 {memories.Split('\n').Length} 行运动记忆到 prompt");
+        }
+        return memories;
+    }
+
+    /// <summary>成功翻译动作后，自动保存参数快照到 MotionMemoryManager（闭环学习写回）</summary>
+    private static void SaveMotionMemory(string description, MotionPlanner.MotionPlan plan)
+    {
+        var mm = MotionMemoryManager.Instance;
+        if (mm == null) return;
+
+        // 提取中间帧的关键参数作为快照
+        string snapshot = "";
+        if (plan.KeyFrames.Count > 0)
+        {
+            int midIdx = Mathf.Clamp(plan.KeyFrames.Count / 2, 0, plan.KeyFrames.Count - 1);
+            var midKf = plan.KeyFrames[midIdx];
+            if (midKf.Values.Count > 0)
+            {
+                var topParams = midKf.Values
+                    .OrderByDescending(kv => Math.Abs(kv.Value))
+                    .Take(5)
+                    .Select(kv => $"{kv.Key}={kv.Value:F2}");
+                snapshot = string.Join(", ", topParams);
+            }
+        }
+
+        mm.RecordMotion(description, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
     }
 }
 
