@@ -4,6 +4,7 @@ using Live2D.Cubism.Framework.Physics;
 using Live2D.Cubism.Framework.Raycasting;
 using Live2D.Cubism.Rendering;
 using Live2D.Cubism.Framework.Json;
+using Live2DFramework.ActionAgent;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -310,15 +311,15 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     // 呼吸
     private float _breathPhase = 0f;
 
-    // 随机小动作（站立时触发）
-    private float _idleActionTime = 0f;
-    private float _idleActionInterval = 8f;
-    private int _currentIdleAction = 0; // 0=无, 1=歪头, 2=微笑, 3=挑眉, 4=星辉, 5=伸懒腰, 6=委屈, 7=法阵, 8=害羞, 9=困惑
-    // 各动作权重（对应动作 1-9），值越大出现概率越高
-    private readonly int[] _idleActionWeights = new int[] { 5, 5, 3, 4, 3, 4, 2, 3, 0 };
-    // 复合动作相位（用于多参数协同插值）
+    // ★ 阶段五：JSON 驱动的空闲动作调度器
+    private IdleActionScheduler _idleScheduler;
+    // 复合动作相位（用于特殊硬编码动作，如法阵/星辉）
     private float _complexActionPhase = 0f;
-    // 动作结束后的冷却时间（防动作无限重播）
+    // 向后兼容：当前动作 ID（兼作"是否有动作"标志）
+    private int _currentIdleAction = 0; // 0=无, 1-9 对应各动作
+    // 向后兼容：动作计时
+    private float _idleActionTime = 0f;
+    // 向后兼容：冷却计时（scheduler 内部自己管理，此字段保留仅用于特殊动作冷却）
     private float _idleActionCooldown = 0f;
 
     // 法阵斜飞物理飘动 — Spring-Damper 状态
@@ -350,6 +351,12 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     private bool _actionLocked = false;
     public event System.Action OnForcedActionFinished;
 
+    // ===== AI 控制锁：AI 工具控制参数时空闲动画不覆盖 =====
+    private bool _aiControlLocked = false;              // AI 正在控制参数
+    private float _aiControlTimer = 0f;                  // 剩余锁定秒数
+    private const float AI_CONTROL_DURATION = 5f;        // 默认锁定时长
+    private const float AI_CONTROL_EXTEND  = 3f;         // 每次新指令延长
+
     // ===== Live2DParameterMapper + 新动作系统 =====
     private Live2DParameterMapper _mapper;
     public Live2DActionController ActionController { get; private set; }
@@ -362,6 +369,21 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (_overlayRT == null || !_overlayRT.IsCreated()) return null;
         try
         {
+            // 强制叠加相机立即渲染到 RT，确保 ReadPixels 读到最新帧
+            if (_overlayCamera != null)
+            {
+#if UNITY_EDITOR
+                // Editor 下模型在 Layer 0（Default），叠加相机默认只渲染 Layer 31
+                // 临时设为 -1（Everything）以确保能捕获到模型画面
+                int savedMask = _overlayCamera.cullingMask;
+                _overlayCamera.cullingMask = -1;
+                _overlayCamera.Render();
+                _overlayCamera.cullingMask = savedMask;
+#else
+                _overlayCamera.Render();
+#endif
+            }
+
             RenderTexture prev = RenderTexture.active;
             RenderTexture.active = _overlayRT;
             var tex = new Texture2D(_overlayRT.width, _overlayRT.height, TextureFormat.RGB24, false);
@@ -570,10 +592,8 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
                 Debug.Log($"[Live2DRenderer] CubismRenderController.enabled={renderController.enabled}");
             }
 
-            // 编辑器下不创建叠加相机（主相机直接可见）
-#if !UNITY_EDITOR
+            // 编辑器下也创建叠加相机（供 VisualActionTester 截图用）
             SetupOverlayRendering();
-#endif
 
             // ★ 初始化参数映射器 + 新动作系统
             InitActionSystem();
@@ -827,6 +847,17 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         // ★ 更新新动作系统（表情淡入淡出）
         ActionController?.Update(Time.deltaTime);
+
+        // ★ AI 控制锁自动过期
+        if (_aiControlLocked)
+        {
+            _aiControlTimer -= Time.deltaTime;
+            if (_aiControlTimer <= 0f)
+            {
+                _aiControlLocked = false;
+                Debug.Log("[Live2DRenderer] 🤖 AI 控制锁过期，空闲动画恢复");
+            }
+        }
 
         // 累积噪声时间
         _noiseTimeX += Time.deltaTime * 0.6f;
@@ -1414,65 +1445,69 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         float breath = (Mathf.PerlinNoise(_breathPhase, 0f) - 0.5f) * BREATH_AMPLITUDE;
         SetParameter("ParamBreath", breath);
 
-        // === 身体晃动（为物理提供输入，幅度轻微不显眼）===
-        float swayX = (Mathf.PerlinNoise(_noiseTimeX, 1f) - 0.5f) * BODY_SWAY_X;
-        float swayY = (Mathf.PerlinNoise(_noiseTimeX, 2f) - 0.5f) * BODY_SWAY_Y;
-        float swayZ = (Mathf.PerlinNoise(_noiseTimeX, 3f) - 0.5f) * BODY_SWAY_Z;
-        SetParameter("ParamBodyAngleX", swayX);
-        SetParameter("ParamBodyAngleY", swayY);
-        SetParameter("ParamBodyAngleZ", swayZ);
-
-        // === 头部微动 ===
-        float headX = (Mathf.PerlinNoise(_noiseTimeX, 4f) - 0.5f) * HEAD_X;
-        float headY = (Mathf.PerlinNoise(_noiseTimeX, 5f) - 0.5f) * HEAD_Y;
-        SetParameter("ParamAngleX", headX);
-        SetParameter("ParamAngleY", headY);
-
-        // === 眼球 — 鼠标跟随覆盖由 LateUpdate 末尾统一处理 ===
-        // 默认 Perlin 噪声自然微动（如无鼠标目标）
-        float eyeX = (Mathf.PerlinNoise(_noiseTimeY, 6f) - 0.5f) * EYE_X;
-        float eyeY = (Mathf.PerlinNoise(_noiseTimeY, 7f) - 0.5f) * EYE_Y;
-        SetParameter("ParamEyeBallX", eyeX);
-        SetParameter("ParamEyeBallY", eyeY);
-
-        // === 昼夜/天气基调表情 ===
-        if (_timeController != null)
+        // ★ AI控制锁 / 强制动作锁：跳过 Perlin 噪声 + 天气表情，不覆盖 AI/动作设置的参数
+        if (!_aiControlLocked && !_actionLocked)
         {
-            float nightDroop = 0f;
-            if (_timeController.isSleepyTime) nightDroop = 0.15f;       // 22~5点：眼皮微垂
-            else if (_timeController.isNight) nightDroop = 0.07f;       // 18~22点：轻微
-            if (nightDroop > 0f && !_isBlinking)
-            {
-                SetParameter("ParamEyeLOpen", Mathf.Lerp(1f, 0.7f, nightDroop));
-                SetParameter("ParamEyeROpen", Mathf.Lerp(1f, 0.7f, nightDroop));
-            }
+            // === 身体晃动（为物理提供输入，幅度轻微不显眼）===
+            float swayX = (Mathf.PerlinNoise(_noiseTimeX, 1f) - 0.5f) * BODY_SWAY_X;
+            float swayY = (Mathf.PerlinNoise(_noiseTimeX, 2f) - 0.5f) * BODY_SWAY_Y;
+            float swayZ = (Mathf.PerlinNoise(_noiseTimeX, 3f) - 0.5f) * BODY_SWAY_Z;
+            SetParameter("ParamBodyAngleX", swayX);
+            SetParameter("ParamBodyAngleY", swayY);
+            SetParameter("ParamBodyAngleZ", swayZ);
 
-            // 天气基调
-            if (_timeController.weatherFetched)
+            // === 头部微动 ===
+            float headX = (Mathf.PerlinNoise(_noiseTimeX, 4f) - 0.5f) * HEAD_X;
+            float headY = (Mathf.PerlinNoise(_noiseTimeX, 5f) - 0.5f) * HEAD_Y;
+            SetParameter("ParamAngleX", headX);
+            SetParameter("ParamAngleY", headY);
+
+            // === 眼球 — 鼠标跟随覆盖由 LateUpdate 末尾统一处理 ===
+            // 默认 Perlin 噪声自然微动（如无鼠标目标）
+            float eyeX = (Mathf.PerlinNoise(_noiseTimeY, 6f) - 0.5f) * EYE_X;
+            float eyeY = (Mathf.PerlinNoise(_noiseTimeY, 7f) - 0.5f) * EYE_Y;
+            SetParameter("ParamEyeBallX", eyeX);
+            SetParameter("ParamEyeBallY", eyeY);
+
+            // === 昼夜/天气基调表情 ===
+            if (_timeController != null)
             {
-                var wt = _timeController.weather;
-                if (wt == TimeWeatherController.WeatherType.Rain ||
-                    wt == TimeWeatherController.WeatherType.Drizzle ||
-                    wt == TimeWeatherController.WeatherType.Thunder ||
-                    wt == TimeWeatherController.WeatherType.Overcast)
+                float nightDroop = 0f;
+                if (_timeController.isSleepyTime) nightDroop = 0.15f;       // 22~5点：眼皮微垂
+                else if (_timeController.isNight) nightDroop = 0.07f;       // 18~22点：轻微
+                if (nightDroop > 0f && !_isBlinking)
                 {
-                    // 阴雨 → 轻度委屈：眉毛微抬 + 嘴巴微嘟
-                    SetParameter("ParamBrowRY", Mathf.Lerp(0f, 4f, 0.3f));
-                    SetParameter("ParamBrowLY", Mathf.Lerp(0f, 4f, 0.3f));
-                    SetParameter("ParamMouthForm", Mathf.Lerp(0f, 0.2f, 0.3f));
+                    SetParameter("ParamEyeLOpen", Mathf.Lerp(1f, 0.7f, nightDroop));
+                    SetParameter("ParamEyeROpen", Mathf.Lerp(1f, 0.7f, nightDroop));
                 }
-                else if (wt == TimeWeatherController.WeatherType.Clear ||
-                         wt == TimeWeatherController.WeatherType.Cloudy)
+
+                // 天气基调
+                if (_timeController.weatherFetched)
                 {
-                    // 晴/多云 → 自然微笑
-                    SetParameter("ParamMouthForm", Mathf.Lerp(0f, 0.2f, 0.2f));
-                }
-                else if (wt == TimeWeatherController.WeatherType.Snow)
-                {
-                    // 下雪 → 微微张嘴（好奇）
-                    SetParameter("ParamMouthOpenY", Mathf.Lerp(0f, 0.4f, 0.2f));
-                    SetParameter("ParamEyeLOpen", Mathf.Lerp(1f, 1.2f, 0.15f));
-                    SetParameter("ParamEyeROpen", Mathf.Lerp(1f, 1.2f, 0.15f));
+                    var wt = _timeController.weather;
+                    if (wt == TimeWeatherController.WeatherType.Rain ||
+                        wt == TimeWeatherController.WeatherType.Drizzle ||
+                        wt == TimeWeatherController.WeatherType.Thunder ||
+                        wt == TimeWeatherController.WeatherType.Overcast)
+                    {
+                        // 阴雨 → 轻度委屈：眉毛微抬 + 嘴巴微嘟
+                        SetParameter("ParamBrowRY", Mathf.Lerp(0f, 4f, 0.3f));
+                        SetParameter("ParamBrowLY", Mathf.Lerp(0f, 4f, 0.3f));
+                        SetParameter("ParamMouthForm", Mathf.Lerp(0f, 0.2f, 0.3f));
+                    }
+                    else if (wt == TimeWeatherController.WeatherType.Clear ||
+                             wt == TimeWeatherController.WeatherType.Cloudy)
+                    {
+                        // 晴/多云 → 自然微笑
+                        SetParameter("ParamMouthForm", Mathf.Lerp(0f, 0.2f, 0.2f));
+                    }
+                    else if (wt == TimeWeatherController.WeatherType.Snow)
+                    {
+                        // 下雪 → 微微张嘴（好奇）
+                        SetParameter("ParamMouthOpenY", Mathf.Lerp(0f, 0.4f, 0.2f));
+                        SetParameter("ParamEyeLOpen", Mathf.Lerp(1f, 1.2f, 0.15f));
+                        SetParameter("ParamEyeROpen", Mathf.Lerp(1f, 1.2f, 0.15f));
+                    }
                 }
             }
         }
@@ -1489,22 +1524,30 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         SetParameter("Param70", 1f);  // 光点L1
         SetParameter("Param71", 1f);  // 光点L2
 
-        // === 空闲动作：加权随机选取（权重越高越容易出现）===
-        // 动作: 1=歪头, 2=微笑, 3=挑眉, 4=星辉, 5=伸懒腰, 6=委屈, 7=法阵, 8=害羞
+        // === 空闲动作：JSON 调度器驱动（阶段五）===
+        // 动作: 1=歪头, 2=微笑, 3=挑眉, 4=星辉, 5=伸懒腰, 6=委屈, 7=法阵, 8=害羞, 9=困惑
+        // ★ 特殊动作（4=星辉, 7=法阵）仍用硬编码方法，其余由调度器 JSON 驱动
 
-        // ★ 暂停时（菜单打开），不播新动作
         bool isPaused = (_pet != null && _pet.isPaused);
 
-        // 动作冷却衰减
+        // 调度器冷却管理
+        if (_idleScheduler != null)
+            _idleScheduler.UpdateCooldowns(Time.deltaTime);
+
+        // 向后兼容：特殊动作冷却
         if (_idleActionCooldown > 0f) _idleActionCooldown -= Time.deltaTime;
 
-        // 当前动作结束后，加权随机选取下一个（走路/动作锁定时不触发，需冷却）
-        if (_currentIdleAction == 0 && !isPaused && !_actionLocked && _idleActionCooldown <= 0f)
+        // 空闲且可播新动作
+        if (_currentIdleAction == 0 && !isPaused && !_actionLocked && !_aiControlLocked)
         {
-            _currentIdleAction = PickWeightedIdleAction();
-            _idleActionTime = 0f;
-            _complexActionPhase = 0f;
-            Debug.Log($"[Live2DRenderer] ▶ 动作 #{_currentIdleAction}");
+            int picked = PickNextIdleAction();
+            if (picked > 0)
+            {
+                _currentIdleAction = picked;
+                _idleActionTime = 0f;
+                _complexActionPhase = 0f;
+                Debug.Log($"[Live2DRenderer] ▶ 动作 #{_currentIdleAction}");
+            }
         }
 
         if (_currentIdleAction > 0)
@@ -1514,15 +1557,38 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
             switch (_currentIdleAction)
             {
-                case 1: UpdateIdleTilt(); break;
-                case 2: UpdateIdleSmile(); break;
-                case 3: UpdateIdleBrow(); break;
                 case 4: UpdateStarSpin(); break;
-                case 5: UpdateStretch(); break;
-                case 6: UpdateCry(); break;
                 case 7: UpdateMagicCircle(); break;
-                case 8: UpdateBlush(); break;
-                case 9: UpdateConfuse(); break;
+                default:
+                    // 非特殊动作 → JSON 调度器驱动
+                    if (_idleScheduler != null && _idleScheduler.CurrentState.isActive)
+                    {
+                        bool completed = _idleScheduler.UpdatePhase(Time.deltaTime);
+                        var targets = _idleScheduler.GetCurrentTargets();
+                        if (targets != null)
+                        {
+                            foreach (var kvp in targets)
+                                SetParameter(kvp.Key, kvp.Value);
+                        }
+                        if (completed)
+                            ResetIdleAction(true);
+                    }
+                    else
+                    {
+                        // 降级：无调度器时用旧逻辑
+                        switch (_currentIdleAction)
+                        {
+                            case 1: UpdateIdleTilt(); break;
+                            case 2: UpdateIdleSmile(); break;
+                            case 3: UpdateIdleBrow(); break;
+                            case 5: UpdateStretch(); break;
+                            case 6: UpdateCry(); break;
+                            case 8: UpdateBlush(); break;
+                            case 9: UpdateConfuse(); break;
+                            default: ResetIdleAction(true); break;
+                        }
+                    }
+                    break;
             }
         }
     }
@@ -2451,6 +2517,10 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             return;
         }
 
+        // ★ 重置调度器（如果是调度器驱动的动作）
+        if (_idleScheduler != null && _idleScheduler.CurrentState.isActive)
+            _idleScheduler.ResetCurrentAction();
+
         // ★ 恢复 OverrideFlag，让 CubismRenderController 重新控制 MultiplyColor
         //    ForceRefreshModelAfterFade() 设了 OverrideFlag=true 防止法阵期间覆盖，
         //    动作结束后必须恢复，否则表情/预设再也无法改变 ArtMesh 颜色 → 眼白发白。
@@ -2579,9 +2649,31 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     #endregion
 
-    /// <summary>
-    /// 强制播放指定空闲动作（被右键菜单调用）
-    /// </summary>
+    /// <summary>设置 / 延长 AI 控制锁（AI 控制期间空闲动画不覆盖参数）</summary>
+    /// <param name="duration">锁定时长（秒），默认 AI_CONTROL_DURATION</param>
+    public void SetAiControlLock(float duration = AI_CONTROL_DURATION)
+    {
+        _aiControlLocked = true;
+        _aiControlTimer = Mathf.Max(_aiControlTimer, duration);
+        Debug.Log($"[Live2DRenderer] 🤖 AI 控制锁激活，持续 {_aiControlTimer:F1}s");
+
+        // ★ 清空闲动作残留，防止 AI 设置时旧空闲动作还在写参数
+        if (_currentIdleAction != 0)
+        {
+            ResetIdleAction(true);
+        }
+    }
+
+    /// <summary>强制释放 AI 控制锁</summary>
+    public void ReleaseAiControlLock()
+    {
+        if (!_aiControlLocked) return;
+        _aiControlLocked = false;
+        _aiControlTimer = 0f;
+        Debug.Log("[Live2DRenderer] 🤖 AI 控制锁提前释放");
+    }
+
+    /// <summary>强制播放指定空闲动作（被右键菜单调用）</summary>
     public void ForceIdleAction(int actionId)
     {
         if (!_loaded || _cubismModel == null) return;
@@ -2589,6 +2681,12 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         _currentIdleAction = actionId;
         _idleActionTime = 0f;
         _complexActionPhase = 0f;
+
+        // ★ 非特殊动作 → 委托给调度器
+        if (actionId != 4 && actionId != 7 && _idleScheduler != null)
+        {
+            _idleScheduler.ForceAction(actionId);
+        }
 
         // ★ 法阵（actionId=7）：初始化弹簧飘动状态，确保 Perlin+Spring 在第一帧生效
         if (actionId == 7)
@@ -2685,15 +2783,33 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     }
 
     /// <summary>
-    /// 按权重随机选取一个空闲动作（1-11），受时间/天气调节
+    /// 按权重随机选取下一个空闲动作（阶段五：委托给 IdleActionScheduler）
     /// </summary>
-    private int PickWeightedIdleAction()
+    private int PickNextIdleAction()
+    {
+        if (_idleScheduler != null)
+        {
+            float timeOfDay = (_timeController != null) ? (float)_timeController.hour : 12f;
+            bool isRaining = (_timeController != null && _timeController.weatherFetched &&
+                (_timeController.weather == TimeWeatherController.WeatherType.Rain ||
+                 _timeController.weather == TimeWeatherController.WeatherType.Drizzle ||
+                 _timeController.weather == TimeWeatherController.WeatherType.Thunder));
+            bool isSnowing = (_timeController != null && _timeController.weatherFetched &&
+                _timeController.weather == TimeWeatherController.WeatherType.Snow);
+
+            return _idleScheduler.PickNextAction(timeOfDay, isRaining, isSnowing);
+        }
+
+        // 降级：旧加权逻辑
+        return PickWeightedIdleActionLegacy();
+    }
+
+    /// <summary>旧加权选取（无调度器时降级使用）</summary>
+    private int PickWeightedIdleActionLegacy()
     {
         // 从基值复制，然后根据昼夜/天气调节
-        int[] w = new int[_idleActionWeights.Length];
-        for (int i = 0; i < w.Length; i++) w[i] = _idleActionWeights[i];
+        int[] w = new int[] { 5, 5, 3, 4, 3, 4, 2, 3, 0 };
 
-        // ★ 夜间/犯困时段 → 活跃动作减少，犯困/委屈增加
         bool isNight = (_timeController != null && _timeController.isNight);
         bool isSleepy = (_timeController != null && _timeController.isSleepyTime);
         if (isNight)
@@ -2707,7 +2823,6 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             w[0] = w[0] + 1;                // 动作1 歪头（没精神歪着）
         }
 
-        // ★ 天气调节
         if (_timeController != null && _timeController.weatherFetched)
         {
             var wt = _timeController.weather;
@@ -3016,6 +3131,32 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         ActionController.LoadAllPresets();
 
         Debug.Log($"[Live2DRenderer] 动作控制器已就绪，表情={ActionController.Expressions.AvailableExpressions.Count}个，动作={ActionController.Actions.AvailableActions.Count}个");
+
+        // ★ 阶段五：初始化空闲动作调度器
+        _idleScheduler = new IdleActionScheduler();
+
+        // 从 Resources 加载 idle_actions.json
+        TextAsset idleAsset = Resources.Load<TextAsset>("Live2D/IdleActions/idle_actions");
+        if (idleAsset != null)
+        {
+            _idleScheduler.LoadConfig(idleAsset.text);
+            Debug.Log("[Live2DRenderer] 空闲动作调度器已加载");
+        }
+        else
+        {
+            Debug.LogWarning("[Live2DRenderer] Resources 中未找到 idle_actions.json，尝试从文件系统加载");
+            string idlePath = System.IO.Path.Combine(Application.dataPath,
+                "Scripts/Live2DFramework/ActionAgent/idle_actions.json");
+            if (System.IO.File.Exists(idlePath))
+            {
+                _idleScheduler.LoadConfig(System.IO.File.ReadAllText(idlePath));
+            }
+            else
+            {
+                Debug.LogError("[Live2DRenderer] 找不到 idle_actions.json！空闲动作将降级为旧逻辑");
+                _idleScheduler = null;
+            }
+        }
     }
 
     // ================================================================

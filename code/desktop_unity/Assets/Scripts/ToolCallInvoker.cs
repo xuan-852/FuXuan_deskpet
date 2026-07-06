@@ -571,8 +571,80 @@ public class ToolCallInvoker : MonoBehaviour
             return "✅ 已归元，恢复常态";
         };
 
-        // ——— 28 (C). 内观自省：AI 分析参数变化效果（异步执行） ———
-        _executors["explore_body"] = args => "⏳ 本座正在内观自省，请稍候……";
+        // ——— 28 (C). 内观自省：AI 分析参数变化效果
+        // 注意：完整版 (截图 + GLM-4V 视觉分析) 在 _coroutineExecutors 中以协程运行。
+        // 同步版作为轻量备选，实时输出当前参数状态快照，无需网络。
+        _executors["explore_body"] = args =>
+        {
+            var renderer = FindObjectOfType<Live2DRenderer>();
+            if (renderer == null || renderer.Mapper == null || renderer.CubismModel == null)
+                return "❌ 本座法身未现";
+
+            var mapper = renderer.Mapper;
+            var model = renderer.CubismModel;
+            var lines = new List<string>
+            {
+                $"🧘 本座当前状态 ({DateTime.Now:HH:mm:ss})："
+            };
+
+            // 按 body part 分组输出参数状态
+            var partOrder = new[] { "head", "eye", "brow", "mouth", "body", "arm", "hand", "leg", "shoulder", "hair", "skirt", "special", "camera", "breath" };
+            var partLabels = new Dictionary<string, string>
+            {
+                ["head"] = "头部", ["eye"] = "眼睛", ["brow"] = "眉毛", ["mouth"] = "嘴",
+                ["body"] = "身体", ["arm"] = "手臂", ["hand"] = "手", ["leg"] = "腿",
+                ["shoulder"] = "肩膀", ["hair"] = "头发", ["skirt"] = "裙子",
+                ["special"] = "特殊", ["camera"] = "镜头", ["breath"] = "呼吸"
+            };
+
+            // 从映射数据获取 bodyPart 标注
+            var entryPartMap = new Dictionary<string, string>();
+            var mapAsset = Resources.Load<TextAsset>("Live2D/ParamMaps/fuxuan_map");
+            if (mapAsset != null)
+            {
+                try
+                {
+                    var mapObj = UnityEngine.JsonUtility.FromJson<FuxuanMapData>(mapAsset.text);
+                    if (mapObj?.entries != null)
+                        foreach (var e in mapObj.entries)
+                            if (!string.IsNullOrEmpty(e.part))
+                                entryPartMap[e.s] = e.part;
+                }
+                catch { /* fallback: part unknown */ }
+            }
+
+            // 按 part 分组收集
+            var byPart = new Dictionary<string, List<string>>();
+            foreach (var semantic in mapper.SemanticToId.Keys)
+            {
+                if (!mapper.TryGetRange(semantic, out var range)) continue;
+                float current = mapper.Get(semantic);
+                float normalized = Mathf.Abs(current - range.Default) / Mathf.Max(range.Max - range.Min, 0.001f);
+                string activeMark = normalized > 0.05f ? " ⚡" : "";
+                string part = entryPartMap.TryGetValue(semantic, out var p) ? p : "other";
+                if (!byPart.ContainsKey(part)) byPart[part] = new List<string>();
+                byPart[part].Add($"  {semantic}={current:F2}[{range.Min:F0}~{range.Max:F0}]{activeMark}");
+            }
+
+            foreach (var part in partOrder)
+            {
+                if (!byPart.TryGetValue(part, out var plist)) continue;
+                string label = partLabels.TryGetValue(part, out var lb) ? lb : part;
+                lines.Add($"\n■ {label} ({plist.Count})");
+                lines.AddRange(plist);
+            }
+
+            // 其他未分类参数
+            if (byPart.TryGetValue("other", out var others))
+            {
+                lines.Add($"\n■ 其他 ({others.Count})");
+                lines.AddRange(others);
+            }
+
+            string result = string.Join("\n", lines);
+            if (result.Length > 1500) result = result.Substring(0, 1500) + "\n...（截断，完整版请使用异步内观）";
+            return result;
+        };
 
         // ——— 29. 御形：精确控制身体参数（同步设置） ———
         _executors["control_body"] = args =>
@@ -581,6 +653,9 @@ public class ToolCallInvoker : MonoBehaviour
             if (renderer == null || renderer.Mapper == null) return "❌ 本座法身未现";
 
             var mapper = renderer.Mapper;
+
+            // 设置 AI 控制锁（空闲动画不再覆盖参数）
+            renderer.SetAiControlLock();
 
             // 解析 expression 参数（可选）
             string expression = JsonRead(args, "expression");
@@ -1582,6 +1657,23 @@ public class ToolCallInvoker : MonoBehaviour
         ""required"": [""description""]
       }
     }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""self_review"",
+      ""description"": ""【自省闭环】自省：对比当前动作执行效果与标准参考图，返回详细的差异分析报告。首次调用某动作时会自动保存当前状态作为参考标准；之后调用同一动作名时，会截取当前模型截图并发给GLM-4V视觉模型做逐区域对比，指出需要修正的参数和方向。用于自我练习、动作完善。用户说「我做得对吗」「自省」「检查动作」「做得怎么样」「练习」「对比」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""action"": {
+            ""type"": ""string"",
+            ""description"": ""动作名称，用于匹配参考图。如「wave」「happy_smile」「bow」「stretch」「nod」「shake_head」。首次调用会保存当前状态为此动作的标准参考。""
+          }
+        },
+        ""required"": [""action""]
+      }
+    }
   }
 ]";
     }
@@ -1614,6 +1706,7 @@ public class ToolCallInvoker : MonoBehaviour
             ["search_file"]       = args => RunAsyncTool(() => Task.Run(() => SearchFileByPython(JsonRead(args, "query"), JsonRead(args, "root")))),
             ["explore_body"]      = args => ExploreBodyCoroutine(args),
             ["generate_motion"]   = args => GenerateMotionCoroutine(args),
+            ["self_review"]       = args => SelfReviewCoroutine(args),
         };
     }
 
@@ -1660,6 +1753,9 @@ public class ToolCallInvoker : MonoBehaviour
         // 覆盖持续时间
         if (duration > 0.5f)
             plan.TotalDuration = duration;
+
+        // ★ 设置 AI 控制锁，防止空闲动画覆盖运动参数（锁定时长=动作时长+1秒缓冲）
+        renderer.SetAiControlLock(plan.TotalDuration + 1f);
 
         // 创建 MotionGenerator 并播放
         var generator = new MotionGenerator(mapper, model);
@@ -1922,6 +2018,184 @@ public class ToolCallInvoker : MonoBehaviour
         }
     }
 
+    // ================================================================
+    //  自省：对比当前执行与标准参考图，返回差异报告
+    // ================================================================
+
+    private IEnumerator SelfReviewCoroutine(string args)
+    {
+        _coroutineResult = null;
+
+        string actionName = JsonRead(args, "action");
+        if (string.IsNullOrEmpty(actionName))
+        {
+            // 试试用 description 字段
+            actionName = JsonRead(args, "description");
+        }
+        if (string.IsNullOrEmpty(actionName))
+        {
+            _coroutineResult = "❌ 请指定要自省的动作名称，如 {\"action\": \"wave\"}";
+            yield break;
+        }
+
+        // ——— 1. 截当前模型快照 ———
+        var renderer = FindObjectOfType<Live2DRenderer>();
+        if (renderer == null)
+        {
+            _coroutineResult = "❌ 本座法身未现";
+            yield break;
+        }
+
+        byte[] currentPng = renderer.CaptureModelSnapshot();
+        if (currentPng == null || currentPng.Length < 50)
+        {
+            _coroutineResult = "❌ 摄形失败";
+            yield break;
+        }
+        string currentDataUrl = "data:image/png;base64," + Convert.ToBase64String(currentPng);
+
+        // ——— 2. 查参考图 ———
+        bool hasRef = ActionReferenceManager.HasReference(actionName);
+
+        if (!hasRef)
+        {
+            // 无参考图 → 保存当前为参考
+            ActionReferenceManager.SaveReference(actionName, currentPng);
+            _coroutineResult = $"📸 「{actionName}」的参考标准图已保存。下次执行此动作时，本座就能对比差异、修正完善了。";
+            yield break;
+        }
+
+        string refDataUrl = ActionReferenceManager.LoadReferenceAsDataUrl(actionName);
+        if (refDataUrl == null)
+        {
+            _coroutineResult = "❌ 参考图加载失败";
+            yield break;
+        }
+
+        // ——— 3. 读取当前参数状态（给 GLM 参考） ———
+        var mapper = renderer.Mapper;
+        var model = renderer.CubismModel;
+        string paramSnapshot = "";
+        if (mapper != null && model != null)
+        {
+            var activeLines = new List<string>();
+            foreach (var kv in mapper.SemanticToId)
+            {
+                string semantic = kv.Key;
+                string paramId = kv.Value;
+                if (!mapper.TryGetRange(semantic, out var range)) continue;
+                float current = mapper.Get(semantic);
+                float normalized = Mathf.Abs(current - range.Default) / Mathf.Max(range.Max - range.Min, 0.01f);
+                if (normalized > 0.05f)
+                {
+                    activeLines.Add($"• {semantic} ({paramId}) = {current:F2}  范围[{range.Min:F1}, {range.Max:F1}] 默认{range.Default:F2}");
+                }
+            }
+            paramSnapshot = string.Join("\n", activeLines.Take(40));
+            if (string.IsNullOrEmpty(paramSnapshot))
+                paramSnapshot = "（所有参数均在默认值附近）";
+        }
+
+        // ——— 4. 构建 GLM 对比 Prompt ———
+        string prompt =
+            "你是一名严格的动作质量评审员，正在评估桌面宠物（符玄/玄机）的动作执行质量。\n\n"
+            + "下面给你两张图：\n"
+            + "【参考图】— 此动作「" + actionName + "」的标准执行效果\n"
+            + "【实际图】— 当前 AI 执行的效果\n\n"
+            + "请逐项对比分析，从以下维度指出**所有可观测到的差异**：\n\n"
+            + "1. **头部**：是否同角度？左右转/上下俯仰/歪头程度有无差异？\n"
+            + "2. **视线与眼睛**：眼珠方向、眼睛睁开度、笑纹有无不同？\n"
+            + "3. **嘴巴**：张嘴程度、嘴角形态（微笑/撇嘴/中性）是否一致？\n"
+            + "4. **眉毛**：高低、角度有无差异？\n"
+            + "5. **手/手臂**：位置、高度、旋转角度是否匹配？\n"
+            + "6. **身体**：倾斜角度、朝向是否一致？\n"
+            + "7. **整体姿态**：有没有任何姿势/氛围上的细微差异？\n\n"
+            + "当前激活参数（供参考）：\n" + paramSnapshot + "\n\n"
+            + "=== 回复格式要求 ===\n"
+            + "先用一段话总结：动作是「基本一致」「有轻微偏差」「偏差较大」「完全不匹配」。\n"
+            + "然后对每个有差异的部位，按以下格式给出修正建议：\n\n"
+            + "###修正建议###\n"
+            + "• [部位名]：当前估计值 → 建议值（如「右臂高度：偏低 → 抬升 10°」）\n"
+            + "• [参数名]：调整方向（如「arm_right_upper：当前 0.3 → 建议 0.6」）\n\n"
+            + "如果无明显差异，只需输出「✅ 动作完美达标，无需修正」。\n"
+            + "如果偏差很大，先指出最明显的 3 个差异点，再列出全部修正建议。";
+
+        // ——— 5. 发送 GLM 视觉请求（双图对比） ———
+        string requestId = Guid.NewGuid().ToString("N");
+        string jsonBody = "{";
+        jsonBody += "\"model\":\"" + EscapeJsonStr(ChatConfig.GlmVisionModel) + "\",";
+        jsonBody += "\"messages\":[{";
+        jsonBody += "\"role\":\"user\",";
+        jsonBody += "\"content\":[";
+        jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJsonStr(prompt) + "\"},";
+        jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJsonStr(refDataUrl) + "\"}},";
+        jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJsonStr(currentDataUrl) + "\"}}";
+        jsonBody += "]";
+        jsonBody += "}],";
+        jsonBody += "\"request_id\":\"" + requestId + "\"";
+        jsonBody += "}";
+
+        string fullUrl = ChatConfig.GlmApiBaseUrl.TrimEnd('/') + "/chat/completions";
+        string responseText = null;
+
+        using (UnityWebRequest req = new UnityWebRequest(fullUrl, "POST"))
+        {
+            byte[] bodyBytes = Encoding.UTF8.GetBytes(jsonBody);
+            req.uploadHandler = new UploadHandlerRaw(bodyBytes);
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("Authorization", "Bearer " + ChatConfig.GlmApiKey);
+            req.timeout = 60;
+
+            yield return req.SendWebRequest();
+
+            if (req.result == UnityWebRequest.Result.Success)
+            {
+                responseText = req.downloadHandler.text;
+            }
+            else
+            {
+                string errBody = req.downloadHandler?.text ?? "";
+                string errMsg = req.error;
+                if (!string.IsNullOrEmpty(errBody) && errBody.Contains("\"message\""))
+                {
+                    try
+                    {
+                        var errObj = UnityEngine.JsonUtility.FromJson<GlmErrorResponse>(errBody);
+                        if (errObj != null && !string.IsNullOrEmpty(errObj.error.message))
+                            errMsg = errObj.error.message;
+                    }
+                    catch { }
+                }
+                UnityEngine.Debug.LogWarning($"[ToolCallInvoker] self_review 对比分析失败: {errMsg}");
+                _coroutineResult = "❌ 自省受阻：" + errMsg;
+                yield break;
+            }
+        }
+
+        // ——— 6. 解析结果 ———
+        try
+        {
+            var resp = UnityEngine.JsonUtility.FromJson<GlmVisionResponse>(responseText);
+            if (resp != null && resp.choices != null && resp.choices.Length > 0
+                && resp.choices[0].message != null)
+            {
+                string analysis = resp.choices[0].message.content;
+                if (!string.IsNullOrEmpty(analysis))
+                {
+                    _coroutineResult = "🔍 自省对比「" + actionName + "」：\n" + analysis.Trim();
+                    yield break;
+                }
+            }
+            _coroutineResult = "❌ 自省所见无法解读（API 返回格式异常）";
+        }
+        catch (Exception e)
+        {
+            UnityEngine.Debug.LogWarning($"[ToolCallInvoker] self_review 响应解析失败: {e.Message}");
+            _coroutineResult = "❌ 自省所见无法解读";
+        }
+    }
+
     // ---- GLM 响应模型 ----
 
     [System.Serializable]
@@ -1952,6 +2226,22 @@ public class ToolCallInvoker : MonoBehaviour
     private class GlmErrorDetail
     {
         public string message;
+    }
+
+    // ---- fuxuan_map.json 反序列化（用于同步版 explore_body 的部位分组） ----
+
+    [System.Serializable]
+    private class FuxuanMapData
+    {
+        public FuxuanMapEntry[] entries;
+    }
+
+    [System.Serializable]
+    private class FuxuanMapEntry
+    {
+        public string s;     // semantic
+        public string p;     // paramId
+        public string part;  // bodyPart
     }
 
     /// <summary>JSON 字符串转义（仅用于手拼 JSON 时的值）</summary>

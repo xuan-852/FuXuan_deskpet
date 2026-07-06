@@ -363,6 +363,9 @@ public class DesktopPet : MonoBehaviour
         }
 
         // ---- 单例互斥锁：防止 Build and Run 产生多个实例 ----
+        // ★ 注意: Editor 下跳过互斥锁检查，因为命名 Mutex 在域重载后不释放，
+        //   会导致第二次 Play 时误判"已有实例"而退出 Play Mode。
+#if !UNITY_EDITOR
         try
         {
             bool createdNew;
@@ -372,15 +375,7 @@ public class DesktopPet : MonoBehaviour
             {
                 // 已有实例在运行 → 把现有窗口唤起到前台后退出
                 Debug.LogWarning("[DesktopPet] 检测到已有实例在运行，唤醒既有窗口并退出");
-
-                if (!Application.isEditor)
-                {
-                    // 直接退出，让用户手动切换到已有窗口即可
-                    System.Environment.Exit(0);
-                }
-#if UNITY_EDITOR
-                UnityEditor.EditorApplication.isPlaying = false;
-#endif
+                System.Environment.Exit(0);
                 return;
             }
         }
@@ -402,6 +397,7 @@ public class DesktopPet : MonoBehaviour
         {
             Debug.LogWarning($"[DesktopPet] 互斥锁创建失败（通常无害）: {ex.Message}");
         }
+#endif
 
         // 防重复：如果已经有一个 DesktopPet 了，这个自毁
         DesktopPet[] all = FindObjectsOfType<DesktopPet>();

@@ -1,0 +1,161 @@
+{
+  "formatVersion": "1.0",
+  "actions": [
+    {
+      "id": 1,
+      "name": "tilt",
+      "displayName": "歪头",
+      "weight": 5,
+      "cooldown": 8,
+      "phases": [
+        {"duration": 1.0, "curve": "easeOut", "targets": {"ParamAngleZ": 8}},
+        {"duration": 1.0, "curve": "easeIn",  "targets": {"ParamAngleZ": 0}}
+      ],
+      "description": "往一侧歪头卖萌"
+    },
+    {
+      "id": 2,
+      "name": "smile",
+      "displayName": "微笑",
+      "weight": 5,
+      "cooldown": 8,
+      "phases": [
+        {"duration": 1.0, "curve": "easeOut", "targets": {"ParamEyeLSmile": 0.6, "ParamEyeRSmile": 0.6, "ParamMouthForm": 0.4}},
+        {"duration": 1.0, "curve": "easeIn",  "targets": {"ParamEyeLSmile": 0, "ParamEyeRSmile": 0, "ParamMouthForm": 0}}
+      ],
+      "description": "眯眼微笑"
+    },
+    {
+      "id": 3,
+      "name": "brow",
+      "displayName": "挑眉",
+      "weight": 3,
+      "cooldown": 10,
+      "phases": [
+        {"duration": 1.0, "curve": "easeOut", "targets": {"ParamBrowRY": 6, "ParamBrowLY": 6}},
+        {"duration": 1.0, "curve": "easeIn",  "targets": {"ParamBrowRY": 0, "ParamBrowLY": 0}}
+      ],
+      "description": "眉毛微动"
+    },
+    {
+      "id": 4,
+      "name": "star_spin",
+      "displayName": "星辉",
+      "weight": 4,
+      "cooldown": 120,
+      "special": "hardcoded_star_spin",
+      "description": "星辉环绕——五阶段硬编码（星现→伸手→触摸→满盈→归位）"
+    },
+    {
+      "id": 5,
+      "name": "stretch",
+      "displayName": "伸懒腰",
+      "weight": 3,
+      "cooldown": 45,
+      "phases": [
+        {"duration": 0.8, "curve": "easeOut", "targets": {
+          "Param31": 4, "Param32": 3, "Param33": 5, "Param94": 10, "Param97": 3,
+          "Param95": 0.8, "Param117": 0.5, "Param98": 0.6, "Param100": 0.6,
+          "Param116": 0.4, "Param120": 0.8, "Param108": 0.8, "Param119": 0.8,
+          "Param93": 1, "Param118": 0.6,
+          "ParamBodyAngleX": -5, "ParamBodyAngleZ": 3,
+          "ParamAngleX": -8,
+          "ParamEyeLOpen": 0.6, "ParamEyeROpen": 0.6,
+          "ParamMouthForm": 0.6, "ParamBreath": 0.5
+        }},
+        {"duration": 2.9, "curve": "hold", "targets": {}},
+        {"duration": 0.8, "curve": "easeIn", "targets": {
+          "Param31": 0, "Param32": 0, "Param33": 0, "Param94": 0, "Param97": 0,
+          "Param95": 0, "Param117": 0, "Param98": 0, "Param100": 0,
+          "Param116": 0, "Param120": 0, "Param108": 0, "Param119": 0,
+          "Param93": 0, "Param118": 0,
+          "ParamBodyAngleX": 0, "ParamBodyAngleZ": 0,
+          "ParamAngleX": 0,
+          "ParamEyeLOpen": 1, "ParamEyeROpen": 1,
+          "ParamMouthForm": 0, "ParamBreath": 0
+        }}
+      ],
+      "description": "右手举高 + 身体后仰 + 眯眼张嘴"
+    },
+    {
+      "id": 6,
+      "name": "cry",
+      "displayName": "委屈",
+      "weight": 4,
+      "cooldown": 30,
+      "phases": [
+        {"duration": 1.0, "curve": "easeOut", "targets": {
+          "Param130": 1, "ParamAngleY": 6,
+          "ParamBrowRY": 5, "ParamBrowLY": 5,
+          "ParamEyeLOpen": 1.15, "ParamEyeROpen": 1.15
+        }},
+        {"duration": 1.5, "curve": "smooth", "targets": {
+          "Param130": 1, "ParamAngleY": 6,
+          "ParamBrowRY": 5, "ParamBrowLY": 5,
+          "ParamEyeLOpen": 1.15, "ParamEyeROpen": 1.15
+        }},
+        {"duration": 1.0, "curve": "easeIn", "targets": {
+          "Param130": 0, "ParamAngleY": 0,
+          "ParamBrowRY": 0, "ParamBrowLY": 0,
+          "ParamEyeLOpen": 1, "ParamEyeROpen": 1
+        }}
+      ],
+      "description": "泪眼汪汪 + 低头 + 八字眉 + 嘴巴微颤"
+    },
+    {
+      "id": 7,
+      "name": "magic_circle",
+      "displayName": "法阵",
+      "weight": 2,
+      "cooldown": 60,
+      "special": "hardcoded_magic_circle",
+      "description": "法阵显现——五阶段硬编码（起势→剑指朝天→指尖凝光→扩散→消散）"
+    },
+    {
+      "id": 8,
+      "name": "blush",
+      "displayName": "害羞",
+      "weight": 3,
+      "cooldown": 30,
+      "phases": [
+        {"duration": 0.8, "curve": "easeOut", "targets": {
+          "Param101": 1, "ParamAngleY": 4, "ParamAngleZ": -8,
+          "ParamEyeLSmile": 0.5, "ParamEyeRSmile": 0.5,
+          "ParamEyeLOpen": 0.8, "ParamEyeROpen": 0.8,
+          "ParamMouthForm": 0.3
+        }},
+        {"duration": 1.9, "curve": "smooth", "targets": {}},
+        {"duration": 0.8, "curve": "easeIn", "targets": {
+          "Param101": 0, "ParamAngleY": 0, "ParamAngleZ": 0,
+          "ParamEyeLSmile": 0, "ParamEyeRSmile": 0,
+          "ParamEyeLOpen": 1, "ParamEyeROpen": 1,
+          "ParamMouthForm": 0
+        }}
+      ],
+      "description": "脸黑 + 眼神躲闪 + 低头害羞微笑"
+    },
+    {
+      "id": 9,
+      "name": "confuse",
+      "displayName": "困惑",
+      "weight": 0,
+      "cooldown": 15,
+      "phases": [
+        {"duration": 0.8, "curve": "easeOut", "targets": {
+          "ParamAngleZ": 15, "ParamAngleX": -5,
+          "ParamBrowRY": -3, "ParamBrowLY": -3,
+          "ParamEyeLOpen": 0.85, "ParamEyeROpen": 0.85,
+          "ParamMouthForm": 0.2, "ParamBodyAngleZ": 3
+        }},
+        {"duration": 1.4, "curve": "hold", "targets": {}},
+        {"duration": 0.8, "curve": "easeIn", "targets": {
+          "ParamAngleZ": 0, "ParamAngleX": 0,
+          "ParamBrowRY": 0, "ParamBrowLY": 0,
+          "ParamEyeLOpen": 1, "ParamEyeROpen": 1,
+          "ParamMouthForm": 0, "ParamBodyAngleZ": 0
+        }}
+      ],
+      "description": "歪头 + 皱眉 + 眯眼（权重 0，不自发触发）"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # 项目任务清单
 
-> 文件版本: N29 · 最后更新: 2026-07-06
+> 文件版本: N31 · 最后更新: 2026-07-07
 >
 > 图例: ✅ 已完成 / 🔧 已优化 / 🐛 已修复 / ⏳ 待办 / 💡 待研究 / ❌ 已废弃
 
@@ -19,7 +19,8 @@
 | ✅ | 调试偏移通道 | 运行时实时叠加参数偏移 |
 | 🔧 | 模型加载双保险 | AssetDatabase → Resources 降级加载 |
 | ✅ | 参数范围自动打印 | 启动时日志输出所有参数范围 |
-| ⏳ | **待机气泡时间/天气联动** | ✅ 已完成（见交互系统） |
+| ✅ | **待机气泡时间/天气联动** | ✅ 已完成（见交互系统） |
+| ✅ | **KNOW_PATTERNS 单源化** | 提取到 `KnownParameterPatterns.cs` 共享静态类 |
 
 ### 3D 渲染 (Model3DRenderer.cs)
 | 状态 | 项目 | 说明 |
@@ -304,11 +305,11 @@
 | 组件 | 文件 | 说明 | 工作量 |
 |------|------|------|--------|
 | `ModelBodySchema` 数据结构 | `Live2DFramework/ModelBodySchema.cs` | 参数定义/分组/关联关系的结构化数据模型 | 0.5天 |
-| `RuntimeModelAnalyzer` | `Live2DFramework/RuntimeModelAnalyzer.cs` | 运行时自动分析模型所有参数，无需 Editor，输出 schema | 1天 |
-| `ParameterRelationDetector` | `Live2DFramework/ParameterRelationDetector.cs` | 自动检测参数间关联（左右联动/互斥/从属） | 1天 |
-| `fuxuan_map.json` 升级 v2 | `ParamMaps/fuxuan_map.json` | 增加 bodyPart/constraints/relations 字段 | 0.5天 |
-| `Live2DModelAnalyzer` 增强 | 修改现有文件 | KNOWN_PATTERNS 扩展覆盖更多语义 | 0.5天 |
-| 现有 `Live2DRenderer.cs` 硬编码参数常量梳理 | 修改现有文件 | 标记所有待迁移的硬编码动画段 | 0.5天 |
+| `RuntimeModelAnalyzer` | `Live2DFramework/RuntimeModelAnalyzer.cs` | 运行时自动分析模型所有参数，无需 Editor，输出 schema | 1天 | ✅ |
+| `ParameterRelationDetector` | `Live2DFramework/ParameterRelationDetector.cs` | 自动检测参数间关联（左右联动/互斥/从属） | 1天 | ✅ |
+| `fuxuan_map.json` 升级 v2 | `ParamMaps/fuxuan_map.json` | 增加 bodyPart/constraints/relations 字段 | 0.5天 | ✅ |
+| `Live2DModelAnalyzer` 增强 | 共享 `KnownParameterPatterns.cs` | KNOWN_PATTERNS ~100条目（扩展 arm/hand/finger/hair/skirt/special/camera） | 0.5天 | ✅ |
+| 现有 `Live2DRenderer.cs` 硬编码参数常量梳理 | 修改现有文件 | 标记所有待迁移的硬编码动画段 | 0.5天 | ⏳ |
 
 #### 关键数据结构 `ModelBodySchema`
 
@@ -476,9 +477,9 @@ public class ParameterVisionScanner : MonoBehaviour
 
 | 组件 | 文件 | 说明 | 工作量 |
 |------|------|------|--------|
-| `IdleActionScheduler` | `Live2DFramework/ActionAgent/IdleActionScheduler.cs` | JSON 数据驱动的空闲动作调度 | 1天 |
-| 空闲动作 JSON 定义 | `Resources/Live2D/IdleActions/` | 所有空闲动作的 JSON 配置 | 0.5天 |
-| 集成到 LateUpdate | 修改 `Live2DRenderer.cs` | 替换 switch-case 调用 | 0.5天 |
+| `IdleActionScheduler` | `Live2DFramework/ActionAgent/IdleActionScheduler.cs` | JSON 数据驱动的空闲动作调度 | 1天 | ✅ |
+| 空闲动作 JSON 定义 | `Resources/Live2D/IdleActions/idle_actions.json` | 所有 9 个空闲动作的 JSON 配置 | 0.5天 | ✅ |
+| 集成到 LateUpdate | 修改 `Live2DRenderer.cs` | 替换 switch-case 调用（特殊动作 4/7 保留硬编码） | 0.5天 | ✅ |
 
 #### 空闲动作 JSON 格式示例
 
@@ -509,6 +510,15 @@ public class ParameterVisionScanner : MonoBehaviour
 ### 阶段六：新模型接入流程（预估 2 天）
 
 **全流程**：从拿到新模型到 AI 能完全控制它。
+
+| 组件 | 文件 | 说明 | 工作量 | 状态 |
+|------|------|------|--------|------|
+| fuxuan_map.json 同步 | `ParamMaps/fuxuan_map.json` | 两副本差异化，覆盖同步 | 0.25天 | ✅ |
+| KNOWN_PATTERNS 单源化 | `Live2DFramework/KnownParameterPatterns.cs` | 提取到共享静态类（新增文件），两 Analyzer 引用同一来源 | 0.5天 | ✅ |
+| explore_body 同步实现 | `ToolCallInvoker.cs` | 占位符→真实参数快照（读 JSON + 分组 + 活动标记） | 0.5天 | ✅ |
+| 参数知识库注入 | `ParameterKnowledgeProvider.cs` + `ChatManager.cs` | AI 可通过 system prompt 理解全身参数 | 0.25天 | ✅ |
+| `control_body` / `generate_motion` 工具 | `ToolCallInvoker.cs` | AI 精确控制参数 + 描述式生成动作 | 0.5天 | ✅ |
+| 文档更新 | `task-inventory.md` | 标记 Phase 6 完成状态 | 0.25天 | ✅ |
 
 ```
 拿到新模型文件夹
@@ -572,10 +582,10 @@ public class ParameterVisionScanner : MonoBehaviour
 | 二 | GLM-4V 视觉辅助验证 | 3天 | 阶段一完成 |
 | 三 | 参数知识库 | 2天 | 阶段一完成 | ✅
 | 四 | ActionAgent 动作代理 | 5天 | 阶段二、三完成 | ✅
-| 五 | IdleActionScheduler | 2天 | 阶段四完成 |
-| 六 | 新模型接入流程 | 2天 | 阶段二、三完成 |
+| 五 | IdleActionScheduler | 2天 | 阶段四完成 | ✅
+| 六 | 新模型接入流程 | 2天 | 阶段二、三完成 | ✅
 | 七 | 硬编码迁移 | 2天 | 阶段四、五完成 |
-| 八 | **闭环视觉反馈学习系统** | 3天 | 阶段四完成、GLM-4V API |
+| 八 | **闭环视觉反馈学习系统** | 3天（核心链路已完成） | 阶段四完成、GLM-4V API | ✅ 部分 |
 | **总计** | | **~23天** | |
 
 > 注：阶段一~三完成后（约 9 天）即可投入实际使用，后续阶段为持续优化。
@@ -635,7 +645,9 @@ public class ParameterVisionScanner : MonoBehaviour
 
 ---
 
-### 阶段八：闭环视觉反馈学习系统 — "模仿→对比→修正"自律循环（预估 3 天）
+### 阶段八：闭环视觉反馈学习系统 — "模仿→对比→修正"自律循环（预估 3 天，核心链路 ✅）
+
+> **状态**：核心链路（`ActionReferenceManager` + `self_review` 工具）已完成。`SelfImprovementLoop` 自律循环引擎为后续可选增强。
 
 > **核心愿景**：让 AI 通过 GLM-4V 视觉模型观察自己的动作效果，对比"预期标准画面"和"实际执行结果"之间的差异，自动修正底层参数，形成一个永不停止的自我优化闭环。
 
@@ -699,12 +711,10 @@ public class ParameterVisionScanner : MonoBehaviour
 
 #### 关键里程碑
 
-| 组件 | 文件 | 说明 | 工作量 |
-|------|------|------|--------|
-| `ActionReferenceManager` | `ActionAgent/ActionReferenceManager.cs` | 管理标准参考截图库（每个动作一张标准图） | 0.5天 |
-| `VisualFeedbackComparator` | `ActionAgent/VisualFeedbackComparator.cs` | 封装 GLM-4V 对比逻辑：截图→发送→解析差异报告 | 1天 |
-| `SelfImprovementLoop` | `ActionAgent/SelfImprovementLoop.cs` | 自律循环引擎：评估→修正→再评估，直到满意或达到上限 | 1天 |
-| `update_standard_ref` 工具 | 修改 `ToolCallInvoker.cs` | AI 可更新某动作的标准参考图 | 0.5天 |
+| 组件 | 文件 | 说明 | 工作量 | 状态 |
+|------|------|------|--------|------|
+| `ActionReferenceManager` | `ActionAgent/ActionReferenceManager.cs` | 管理标准参考截图库（每个动作一张标准图） | 0.5天 | ✅ |
+| `self_review` 工具 | `ToolCallInvoker.cs` | 对比当前执行 vs 参考，GLM-4V 返回差异报告。首次调用自动存参考图 | 1天 | ✅ |
 
 #### 标准参考图管理
 
@@ -738,31 +748,44 @@ public class ParameterVisionScanner : MonoBehaviour
 - 修正方向（增大/减小）
 ```
 
-#### 自律循环算法
+#### self_review 工具的工作流
 
 ```
-SelfImprovement(actionName, maxIterations=3):
-  1. refImage = LoadReference(actionName)
-  2. if refImage == null: SaveCurrentAsReference(); return "已保存标准"
-  
-  3. for i = 1 to maxIterations:
-     a. actualImage = TakeScreenshot()
-     b. diffReport = GLM4V_Compare(refImage, actualImage)
-     c. if diffReport == "无明显差异" → return "完美达成 ✓"
-     d. corrections = ParseDiffReport(diffReport)
-     e. foreach correction in corrections:
-          control_body(correction.params)
-     f. WaitForModelUpdate()
-  
-  4. return "已尝试 {maxIterations} 轮修正，剩余差异: ..."
+self_review("wave"):
+  1. 截当前模型快照 (CaptureModelSnapshot)
+  2. 查 ActionRefs/wave.png 是否存在
+     ├ 不存在 → 保存当前为参考，返回"标准已保存"
+     └ 存在   → 继续
+  3. 加载参考图 → base64
+  4. 构建双图对比 Prompt → 发 GLM-4V
+  5. 解析差异报告 → 返回给 AI
+     AI 根据报告调用 control_body 修正参数
+     → 再调 self_review 验证效果
+     → 循环 N 轮直至满意
+```
+
+AI 驱动自律循环示例：
+
+```
+用户: "练习挥手，直到做标准"
+AI:  generate_motion("开心地挥手")
+     → self_review("wave")
+     → 报告：右臂偏低，头歪不够
+     → control_body({"arm_right_upper": 0.4, "head_tilt": 0.3})
+     → self_review("wave")
+     → 报告：基本一致，微调即可
+     → control_body({"eye_smile": 0.7})
+     → self_review("wave")
+     → 报告：完美达标 ✓
+     → "挥手已练习到位！"
 ```
 
 #### 与现有系统集成
 
-- `ToolCallInvoker` 新增工具 `self_improve` — "练习一个动作直到做好"
-- `ActionPresetPlayer` 执行完成后自动触发一次自我评估（可选）
-- `MotionGenerator` 播放完动作后挂载回调 → 触发 `VisualFeedbackComparator`
-- IdleActionScheduler 可选择性地启用"日常练习模式"——空闲时自动练习生疏动作
+- `ToolCallInvoker` 新增工具 `self_review` — "对比当前与标准，返回差异分析" ✅
+- `ActionPresetPlayer` 执行完成后自动触发一次自我评估（可选）💡
+- `MotionGenerator` 播放完动作后挂载回调 → 触发 `self_review`（可选）💡
+- IdleActionScheduler 可选择性地启用"日常练习模式"——空闲时自动练习生疏动作 💡
 
 #### 预期效果
 
