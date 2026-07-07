@@ -11,6 +11,14 @@ public class BuildScript
     /// </summary>
     public static void BuildDesktopPet()
     {
+        // ★ 清除 Bee DAG 缓存，防止增量构建的 MonoScript 序列化损坏
+        string beeDir = "Library/Bee";
+        if (Directory.Exists(beeDir))
+        {
+            Debug.Log("[BuildScript] 清理 Bee 缓存（防止 DAG 增量损坏）");
+            Directory.Delete(beeDir, true);
+        }
+
         // ★ 用硬编码绝对路径
         string buildDir = @"D:\Unity\projects\Desktop_per_pro\Build";
         string buildPath = Path.Combine(buildDir, "DesktopPet.exe");
