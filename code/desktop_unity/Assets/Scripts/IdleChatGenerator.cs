@@ -158,7 +158,7 @@ public class IdleChatGenerator : MonoBehaviour
 
         string jsonBody = BuildSimpleRequestBody(sysPrompt, userPrompt);
         yield return StartCoroutine(
-            ApiClient.PostRequest(apiUrl, ApiKey, jsonBody, 15,
+            ApiClient.PostRequest(apiUrl, ApiKey, jsonBody, 30,
                 json => HandleIdleBatchResponse(json),
                 err => { Debug.LogWarning($"[IdleChatGenerator] ⚠️ {err}"); _isIdleGenerating = false; }));
     }
@@ -265,7 +265,7 @@ public class IdleChatGenerator : MonoBehaviour
 
         string jsonBody = BuildSimpleRequestBody(sysPrompt, userPrompt);
         yield return StartCoroutine(
-            ApiClient.PostRequest(apiUrl, ApiKey, jsonBody, 15,
+            ApiClient.PostRequest(apiUrl, ApiKey, jsonBody, 30,
                 json => HandleGreetingResponse(json),
                 err => { Debug.LogWarning($"[IdleChatGenerator] ⚠️ {err}"); _isGreetingGenerating = false; }));
     }

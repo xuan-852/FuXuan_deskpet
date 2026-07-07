@@ -207,7 +207,7 @@ public class ChatManager : MonoBehaviour
 
     // ---- 请求看门狗：防止 API 卡死永久锁住 _isWaiting ----
     private float _requestStartTime = 0f;
-    private const float REQUEST_TIMEOUT = 60f; // 60 秒无响应视为卡死
+    private const float REQUEST_TIMEOUT = 100f; // 100 秒无响应视为卡死（HTTP 超时 90s + 余量）
 
     // ---- 消息队列：等待时输入不会丢 ----
     private Queue<(string text, System.Action onUpdate)> _messageQueue
@@ -378,7 +378,10 @@ public class ChatManager : MonoBehaviour
                 string result;
                 if (toolInvoker && toolInvoker.IsCoroutineTool(call.name))
                 {
+                    // ★ 协程工具执行期间暂停看门狗（vis_verify 等可能跑数分钟）
+                    _requestStartTime = 0f; // 0→跳过看门狗
                     yield return StartCoroutine(toolInvoker.ExecuteCoroutine(call.name, call.arguments));
+                    _requestStartTime = Time.time; // 重置计时，从协程返回开始算
                     result = toolInvoker.GetCoroutineResult();
                 }
                 else
@@ -531,7 +534,7 @@ public class ChatManager : MonoBehaviour
     private IEnumerator PostRequest(string jsonBody, System.Action<string> onResult)
     {
         yield return StartCoroutine(
-            ApiClient.PostRequest(apiUrl, apiKey, jsonBody, 30,
+            ApiClient.PostRequest(apiUrl, apiKey, jsonBody, 90,
                 json => onResult(json),
                 err => {
                     _lastError = err;
@@ -899,7 +902,7 @@ public class ChatManager : MonoBehaviour
             + ApiClient.EscapeJson(prompt) + "\"}],\"stream\":false}";
 
         yield return StartCoroutine(
-            ApiClient.PostRequest(apiUrl, apiKey, jsonBody, 15,
+            ApiClient.PostRequest(apiUrl, apiKey, jsonBody, 30,
                 json => reply = json,
                 err => { }));
 
