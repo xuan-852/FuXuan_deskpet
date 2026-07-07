@@ -119,6 +119,14 @@ public class ChatManager : MonoBehaviour
         // ★ 注入闭环演武能力（让 AI 知道演武后可自评自省）
         prompt += InjectClosedLoopCapability();
 
+        // ★ 注入演武心经经验（过往最佳动作参数参考）
+        if (MotionMemoryManager.Instance != null)
+        {
+            string motionMemories = MotionMemoryManager.Instance.GetFormattedMemories();
+            if (!string.IsNullOrEmpty(motionMemories))
+                prompt += "\n" + motionMemories;
+        }
+
         return prompt;
     }
 

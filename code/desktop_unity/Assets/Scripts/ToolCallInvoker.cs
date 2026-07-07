@@ -1687,7 +1687,7 @@ public class ToolCallInvoker : MonoBehaviour
     ""type"": ""function"",
     ""function"": {
       ""name"": ""run_verification"",
-      ""description"": ""【验阵校验】快速校验本座法阵的基础动作模板是否正常。逐一测试 5 个硬编码动作（挥手/点头/摇头/鞠躬/伸懒腰），只校验参数是否在范围内。注意：这不是真正的具身智能验证，它只检查模板不报错而已。用户说「检查模板」「验阵」「测试基础动作」时调用。"",
+      ""description"": ""【验阵校验·已废弃】快速校验 5 个硬编码模板（挥手/点头/摇头/鞠躬/伸懒腰）的参数范围。注意：此工具仅检查模板参数是否在范围内，不像 vis_verify 那样让 GLM-4V 考官实际观察 AI 执行效果。已被 vis_verify 取代！如果已经执行过 vis_verify，无需再调此工具。"",
       ""parameters"": {
         ""type"": ""object"",
         ""properties"": {
@@ -2541,12 +2541,41 @@ public class ToolCallInvoker : MonoBehaviour
         if (_coroutineResult.Length > 3000)
             _coroutineResult = _coroutineResult.Substring(0, 3000) + "\n...（报告截断，完整版见控制台）";
 
+        // ★ 附注：告诉 AI 不需要再调 run_verification（验阵校验仅检查模板不报错，与本视觉验证无关）
+        _coroutineResult += "\n\n---\n✅ 视觉验证已完成，无需再调用「验阵校验」（run_verification），本座法阵已经过 GLM 考官检验。";
+
         // 保存完整报告到文件
         string filePath = System.IO.Path.Combine(
             System.IO.Directory.GetCurrentDirectory(),
             "vis_verify_report.md");
         System.IO.File.WriteAllText(filePath, report);
         UnityEngine.Debug.Log($"[vis_verify] ✅ 完整报告已保存: {filePath}");
+
+        // ★ 自动将 vis_verify 结果写入 MotionMemoryManager（闭环强化学习）
+        var mm = MotionMemoryManager.Instance;
+        if (mm != null)
+        {
+            var results = VisionMotionVerifier.LastResults;
+            if (results != null)
+            {
+                foreach (var r in results)
+                {
+                    if (r.Score > 0 && !string.IsNullOrEmpty(r.ChineseName))
+                    {
+                        string snapshot = $"{r.KeyFrameCount}帧/vis_verify";
+                        bool isNewBest = mm.UpdateScore(r.ChineseName, r.Score, r.GlmJudgment ?? "", snapshot);
+                        string badge = isNewBest ? "🏆" : "📝";
+                        UnityEngine.Debug.Log($"[vis_verify] {badge} 闭环学习: 「{r.ChineseName}」→ {r.Score}/5" +
+                            (isNewBest ? " ★ 新纪录！" : ""));
+                    }
+                }
+                UnityEngine.Debug.Log($"[vis_verify] ✅ 已将 {results.Count} 条 vis_verify 结果写入演武心经");
+            }
+        }
+        else
+        {
+            UnityEngine.Debug.LogWarning("[vis_verify] ⚠ MotionMemoryManager 未就绪，无法写入闭环学习结果");
+        }
 
         // 打印可复制摘要
         string compactSummary = VisionMotionVerifier.GetCompactSummary();

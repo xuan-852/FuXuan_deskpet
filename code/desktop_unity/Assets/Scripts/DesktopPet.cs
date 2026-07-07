@@ -441,6 +441,13 @@ public class DesktopPet : MonoBehaviour
         // 性能档位变化 → 同步刷新渲染分辨率
         _perfMonitor.OnTierChanged += OnPerformanceTierChanged;
 
+        // ---- 自动挂载演武心经（MotionMemoryManager）----
+        if (MotionMemoryManager.Instance == null)
+        {
+            gameObject.AddComponent<MotionMemoryManager>();
+            Debug.Log("[DesktopPet] 自动挂载了 MotionMemoryManager（演武心经）组件");
+        }
+
         QualitySettings.vSyncCount = 0;
 #if !UNITY_EDITOR
         Debug.Log($"[DesktopPet] 启动性能监控，当前档位: {_perfMonitor.currentTier}");

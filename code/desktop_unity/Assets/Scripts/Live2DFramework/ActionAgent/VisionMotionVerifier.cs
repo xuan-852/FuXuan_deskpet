@@ -29,6 +29,9 @@ public static class VisionMotionVerifier
     /// <summary>上次运行的原始结果列表</summary>
     private static List<VisionTestResult> _lastResults;
 
+    /// <summary>获取上次运行的原始结果列表（供闭环学习写入 MotionMemoryManager）</summary>
+    public static List<VisionTestResult> LastResults => _lastResults;
+
     /// <summary>清除运行中结果，准备新一轮验证</summary>
     public static void ClearInProgress()
     {
