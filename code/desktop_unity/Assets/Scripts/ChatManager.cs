@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Live2D.Cubism.Core;
 
 /// <summary>
@@ -333,9 +334,11 @@ public class ChatManager : MonoBehaviour
             // ——— 如果 AI 有文字回复 ———
             if (!string.IsNullOrEmpty(content))
             {
-                _lastReply = content;
-                OnNewReply?.Invoke(content);
-                StartSentenceQueue(content);
+                // ★ 剥离内嵌动作标记并执行
+                string cleanContent = StripAndExecuteActions(content);
+                _lastReply = cleanContent;
+                OnNewReply?.Invoke(cleanContent);
+                StartSentenceQueue(cleanContent);
             }
 
             // ——— 如果没有 tool_call，结束 ———
@@ -919,6 +922,129 @@ public class ChatManager : MonoBehaviour
         }
 
         Debug.Log($"[ChatManager] 🧠 记忆反思完成，产生 {lines.Length} 条洞察");
+    }
+
+    // ==================================================================
+    //  ★ 内嵌动作标记解析 — 「言出法随」
+    // ==================================================================
+
+    /// <summary>
+    /// 剥离 AI 回复中的内嵌动作/表情标记，同步执行对应的 Live2D 动作。
+    /// 这样 AI 可以在话语中自然夹带动作，气泡只显示纯净对话。
+    ///
+    /// 支持的标记格式：
+    ///   【表情:开心】    → PlayExpression("happy")
+    ///   【动作:伸懒腰】   → PlayAction("stretch")
+    ///   （自然动作描述）  → 尝试匹配已知动作/表情，未知则忽略
+    /// </summary>
+    private string StripAndExecuteActions(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+
+        var renderer = FindObjectOfType<Live2DRenderer>();
+        if (renderer == null) return text;
+
+        string result = text;
+
+        // 1) 【表情:xxx】— 精确表情标记
+        result = Regex.Replace(result, @"【表情[:：]([^】]+)】", match =>
+        {
+            string expName = match.Groups[1].Value.Trim();
+            string mapped = MapExpName(expName);
+            renderer.PlayExpression(mapped);
+            Debug.Log($"[ChatManager] 🎭 言出法随·表情: {expName} → {mapped}");
+            return ""; // 从文本中移除
+        });
+
+        // 2) 【动作:xxx】— 精确动作标记
+        result = Regex.Replace(result, @"【动作[:：]([^】]+)】", match =>
+        {
+            string actName = match.Groups[1].Value.Trim();
+            string mapped = MapActionName(actName);
+            renderer.ForceAction("act:" + mapped);
+            Debug.Log($"[ChatManager] 🏃 言出法随·动作: {actName} → {mapped}");
+            return "";
+        });
+
+        // 3) （自然描述）— 自动匹配已知表情/动作名
+        result = Regex.Replace(result, @"（([^）]+)）", match =>
+        {
+            string desc = match.Groups[1].Value.Trim();
+            string mapped = TryMatchKnown(desc);
+            if (mapped != null)
+            {
+                if (mapped.StartsWith("exp:"))
+                {
+                    renderer.PlayExpression(mapped.Substring(4));
+                    Debug.Log($"[ChatManager] 🎭 言出法随·自然表情: {desc} → {mapped}");
+                }
+                else
+                {
+                    renderer.ForceAction("act:" + mapped);
+                    Debug.Log($"[ChatManager] 🏃 言出法随·自然动作: {desc} → {mapped}");
+                }
+            }
+            return ""; // 无论如何都从文本中移除
+        });
+
+        return result.Trim();
+    }
+
+    /// <summary>中文/模糊表情名 → 标准英文名</summary>
+    private static string MapExpName(string cn)
+    {
+        switch (cn)
+        {
+            case "开心": case "高兴": case "微笑": case "笑": return "happy";
+            case "伤心": case "悲伤": case "难过": case "哭": return "sad";
+            case "生气": case "愤怒": case "怒": return "angry";
+            case "惊讶": case "吃惊": case "震惊": case "吓": return "surprise";
+            case "困": case "困倦": case "疲劳": case "累": return "sleepy";
+            case "害羞": case "羞涩": case "脸红": return "blush";
+            case "困惑": case "疑惑": case "迷茫": case "不解": return "confused";
+            case "爱": case "爱心": case "喜欢": case "心动": return "love";
+            case "哭腔": case "泪目": case "含泪": return "tear";
+            case "平静": case "无表情": case "默认": return "neutral";
+            default: return cn; // 原样传给 PlayExpression
+        }
+    }
+
+    /// <summary>中文/模糊动作名 → 标准英文名</summary>
+    private static string MapActionName(string cn)
+    {
+        switch (cn)
+        {
+            case "伸懒腰": case "舒展": case "懒腰": return "stretch";
+            case "哭": case "捂脸哭": case "掩面": return "cry";
+            case "困惑": case "歪头": case "歪头困惑": return "confuse";
+            case "比心": case "爱心": case "心": return "heart_eyes";
+            case "数钱": case "财迷": case "算账": return "money";
+            case "捧脸": case "捧脸羞": case "害羞捧脸": return "blush";
+            case "法阵": case "画阵": case "绘制法阵": case "施法": return "magic_circle";
+            default: return cn;
+        }
+    }
+
+    /// <summary>尝试将自然语言描述匹配到已知表达式或动作</summary>
+    private static string TryMatchKnown(string desc)
+    {
+        // 先查表情
+        string exp = MapExpName(desc);
+        if (exp != desc) return "exp:" + exp;
+
+        // 再查动作
+        string act = MapActionName(desc);
+        if (act != desc) return act;
+
+        // 模糊关键词匹配
+        if (desc.Contains("微笑") || desc.Contains("笑")) return "exp:happy";
+        if (desc.Contains("怒") || desc.Contains("气")) return "exp:angry";
+        if (desc.Contains("惊") || desc.Contains("吓")) return "exp:surprise";
+        if (desc.Contains("羞") || desc.Contains("脸红")) return "exp:blush";
+        if (desc.Contains("困") || desc.Contains("哈欠")) return "exp:sleepy";
+        if (desc.Contains("哭") || desc.Contains("泪")) return "exp:sad";
+
+        return null; // 未匹配
     }
 
     // ==================================================================
