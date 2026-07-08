@@ -353,7 +353,11 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             DestroyImmediate(tex);
             return bytes;
         }
-        catch { return null; }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[Live2DRenderer] CaptureModelSnapshot 异常: {e.Message}");
+            return null;
+        }
     }
 
     // =====

@@ -144,13 +144,26 @@ public class AutoChat : MonoBehaviour
         {
             // 第一句：计算总时长 = (total-1)句间隔 + 最终阅读时间
             // 这样计时器从第一句就开始走，不会被后续句子刷新
-            float totalDuration = (total - 1) * _chat.sentenceInterval + aiReplyDuration;
+            float totalDuration;
+            if (total == int.MaxValue || total <= 1)
+            {
+                // 流式模式 total 未知，或只有一句：先用 aiReplyDuration 保底
+                // 后续句子到达时会通过 ExtendDuration 修正
+                totalDuration = aiReplyDuration;
+            }
+            else
+            {
+                totalDuration = (total - 1) * _chat.sentenceInterval + aiReplyDuration;
+            }
             _bubble.ShowMessage("🌸 " + sentence, totalDuration, ChatBubble.MsgPriority.High);
         }
         else
         {
             // 后续句子：只更新文字，不碰计时器
             _bubble.UpdateText("🌸 " + sentence);
+            // 流式模式下 total 此时已经是真实值了，修正气泡计时
+            float remaining = (total - 1 - idx) * _chat.sentenceInterval + aiReplyDuration;
+            _bubble.ExtendDuration(remaining);
         }
     }
 

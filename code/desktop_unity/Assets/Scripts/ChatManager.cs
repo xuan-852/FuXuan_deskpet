@@ -227,6 +227,11 @@ public class ChatManager : MonoBehaviour
     private float _sentenceTimer = 0f;
     private bool _isSentenceAnimating = false;
     private string _fullReplyText = "";
+
+    // ---- 流式句子积累（每轮 tool loop 重置）----
+    private StringBuilder _streamBuf = new StringBuilder();
+    private int _streamLastSplit = 0;
+    private bool _streamCompleted = false;
     public float sentenceInterval = 2.5f;
 
     public bool IsWaiting => _isWaiting;
@@ -322,74 +327,98 @@ public class ChatManager : MonoBehaviour
         for (int round = 0; round <= MAX_TOOL_ROUNDS; round++)
         {
             string jsonBody = BuildRequestBody();
-            string responseJson = null;
+            bool hadError = false;
+            string fullContent = "";
+            string toolCallsJson = null;
 
-            // ——— 发送请求 ———
-            yield return StartCoroutine(PostRequest(jsonBody, j => responseJson = j));
-            if (responseJson == null)
+            // ——— 重置流式积累器 ———
+            _streamBuf.Clear();
+            _streamLastSplit = 0;
+            _streamCompleted = false;
+            _sentenceList.Clear();
+            _sentenceIdx = -1;
+            _isSentenceAnimating = false;
+            _fullReplyText = "";
+
+            bool finished = false;
+
+            // ——— 流式发送 ———
+            yield return StartCoroutine(
+                ApiClient.StreamRequest(apiUrl, apiKey, jsonBody, 90,
+
+                    // onContentDelta: 每个 token 到达
+                    delta =>
+                    {
+                        ProcessStreamContent(delta);
+                    },
+
+                    // onFinish: 流结束
+                    (content, calls) =>
+                    {
+                        fullContent = content ?? "";
+                        toolCallsJson = calls;
+                        _streamCompleted = true;
+                        finished = true;
+                    },
+
+                    // onError
+                    err =>
+                    {
+                        _lastError = err;
+                        hadError = true;
+                        _streamCompleted = true;
+                        finished = true;
+                    }));
+
+            if (!finished) _streamCompleted = true; // 超时保护
+
+            // ——— 刷新剩余缓冲区 ———
+            FlushStreamBuffer();
+
+            if (hadError)
             {
                 Debug.LogError($"[ChatManager] ❌ API 请求失败 (round={round}): {_lastError}");
                 OnRequestError?.Invoke($"❌ 法阵术式失败: {_lastError}");
-                yield break; // 出错
+                yield break;
             }
 
-            // ——— 提取 tool_calls 和 content ———
-            string content = ExtractContent(responseJson);
-            string callsJson = ExtractToolCalls(responseJson);
-
-            bool hasToolCalls = !string.IsNullOrEmpty(callsJson) && callsJson != "[]";
-
-            // ——— 如果 AI 有文字回复 ———
-            if (!string.IsNullOrEmpty(content))
-            {
-                // ★ 剥离内嵌动作标记并执行
-                string cleanContent = StripAndExecuteActions(content);
-                _lastReply = cleanContent;
-                OnNewReply?.Invoke(cleanContent);
-                StartSentenceQueue(cleanContent);
-            }
+            // ——— 提取 tool_calls ——
+            bool hasToolCalls = !string.IsNullOrEmpty(toolCallsJson) && toolCallsJson != "[]";
 
             // ——— 如果没有 tool_call，结束 ———
             if (!hasToolCalls)
             {
-                // 纯文字回复也要记入历史（不含 tool_calls）
-                if (!string.IsNullOrEmpty(content))
+                if (!string.IsNullOrEmpty(fullContent))
                 {
-                    _history.Add(new Entry { role = "assistant", content = content });
+                    _history.Add(new Entry { role = "assistant", content = fullContent });
                 }
-                // ——— 自动记录对话内容到长期记忆 ———
-                RecordConversationMemory(content);
+                RecordConversationMemory(fullContent);
                 yield break;
             }
 
-            // ——— AI 发了 tool_calls，将完整 assistant 消息（含 tool_calls）记入历史 ———
-            var assistantEntry = new Entry
+            // ——— 有 tool_call：将 assistant 消息记入历史 ———
+            _history.Add(new Entry
             {
                 role = "assistant",
-                content = content ?? "",
-                toolCallsJson = callsJson
-            };
-            _history.Add(assistantEntry);
+                content = fullContent ?? "",
+                toolCallsJson = toolCallsJson
+            });
 
             // ——— 解析并执行工具 ———
-            var calls = ParseToolCalls(callsJson);
-            _lastReply = content ?? "[施法中……]";
+            var calls = ParseToolCalls(toolCallsJson);
+            _lastReply = fullContent ?? "[施法中……]";
 
             foreach (var call in calls)
             {
-                // 通知外界
                 OnToolCalled?.Invoke(call.name);
-
                 Debug.Log($"[ChatManager] ⚡ 施法: {call.name}({call.arguments})");
 
-                // 执行（协程工具异步，其余同步）
                 string result;
                 if (toolInvoker && toolInvoker.IsCoroutineTool(call.name))
                 {
-                    // ★ 协程工具执行期间暂停看门狗（vis_verify 等可能跑数分钟）
-                    _requestStartTime = 0f; // 0→跳过看门狗
+                    _requestStartTime = 0f;
                     yield return StartCoroutine(toolInvoker.ExecuteCoroutine(call.name, call.arguments));
-                    _requestStartTime = Time.time; // 重置计时，从协程返回开始算
+                    _requestStartTime = Time.time;
                     result = toolInvoker.GetCoroutineResult();
                 }
                 else
@@ -400,13 +429,9 @@ public class ChatManager : MonoBehaviour
                 }
 
                 Debug.Log($"[ChatManager] 📜 结果: {result}");
-
                 OnToolResult?.Invoke(call.name, result);
-
-                // ——— 自动记录长期记忆（有意义的交互）———
                 RecordMemoryForTool(call.name, call.arguments, result);
 
-                // 加入历史（tool 角色的回复）
                 _history.Add(new Entry
                 {
                     role = "tool",
@@ -415,7 +440,7 @@ public class ChatManager : MonoBehaviour
                     name = call.name
                 });
             }
-            // 继续下一轮（让 AI 根据 tool 结果生成最终回复）
+            // 继续下一轮
         }
 
         // 超过最大轮次
@@ -500,6 +525,74 @@ public class ChatManager : MonoBehaviour
         for (int i = 0; i < arr.Length; i++)
             if (arr[i] == c) return true;
         return false;
+    }
+
+    // ==================================================================
+    //  流式句子处理 — 边收 token 边检测句子边界
+    // ==================================================================
+
+    /// <summary>SSE 每个 delta 到达时调用</summary>
+    private void ProcessStreamContent(string delta)
+    {
+        _streamBuf.Append(delta);
+        ExtractSentencesFromBuffer();
+    }
+
+    /// <summary>流结束时刷新剩余内容</summary>
+    private void FlushStreamBuffer()
+    {
+        if (_streamLastSplit >= _streamBuf.Length) return;
+        string remaining = _streamBuf.ToString(_streamLastSplit, _streamBuf.Length - _streamLastSplit);
+        if (!string.IsNullOrWhiteSpace(remaining))
+            AddStreamSentence(remaining.Trim());
+    }
+
+    private static readonly char[] _sentenceSeps = new[] { '。', '！', '？', '.', '!', '?', '\n' };
+
+    /// <summary>从积累缓冲区中提取完整句子</summary>
+    private void ExtractSentencesFromBuffer()
+    {
+        string buf = _streamBuf.ToString();
+        for (int i = _streamLastSplit; i < buf.Length; i++)
+        {
+            if (ContainsAny(_sentenceSeps, buf[i]))
+            {
+                int len = i - _streamLastSplit + 1;
+                string rawSentence = buf.Substring(_streamLastSplit, len).Trim();
+                _streamLastSplit = i + 1;
+                if (!string.IsNullOrEmpty(rawSentence))
+                    AddStreamSentence(rawSentence);
+            }
+        }
+    }
+
+    /// <summary>将一条完整句子加入队列并触发显示</summary>
+    private void AddStreamSentence(string rawSentence)
+    {
+        // ★ 剥离内嵌动作标记并执行
+        string cleanSentence = StripAndExecuteActions(rawSentence);
+        if (string.IsNullOrEmpty(cleanSentence) && StripAndExecuteActions(rawSentence) == "")
+            cleanSentence = rawSentence; // 如果纯动作标记，保留原文（可能为空时忽略）
+
+        if (string.IsNullOrWhiteSpace(cleanSentence)) return;
+
+        _fullReplyText += cleanSentence;
+
+        // 更新 _lastReply（累积）
+        _lastReply = _fullReplyText;
+
+        _sentenceList.Add(cleanSentence);
+
+        // ★ 第一句立即显示，不等 2.5s 动画
+        if (_sentenceList.Count == 1)
+        {
+            _isSentenceAnimating = true;
+            _sentenceIdx = 0;
+            _sentenceTimer = 0f;
+            CurrentSentence = cleanSentence;
+            SentenceVersionId++;
+            OnSentenceChanged?.Invoke(cleanSentence, 0, int.MaxValue); // total=未知，动画层自己处理
+        }
     }
 
     /// <summary>收到完整回复后启动逐句队列</summary>
@@ -617,7 +710,7 @@ public class ChatManager : MonoBehaviour
             sb.Append(toolInvoker.GetToolsJson());
         }
 
-        sb.Append(",\"stream\":false}");
+        sb.Append(",\"stream\":true}");
         return sb.ToString();
     }
 

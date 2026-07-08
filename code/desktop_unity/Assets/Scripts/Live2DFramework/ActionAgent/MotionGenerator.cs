@@ -93,8 +93,8 @@ public class MotionGenerator
     //  核心协程
     // ──────────────────────────────────────────────
 
-    /// <summary>播放动作计划（协程）</summary>
-    public IEnumerator PlayAsync(MotionPlanner.MotionPlan plan)
+    /// <summary>播放动作计划（协程），支持进度回调</summary>
+    public IEnumerator PlayAsync(MotionPlanner.MotionPlan plan, System.Action<float> onProgress = null)
     {
         if (_mapper == null || plan == null || plan.KeyFrames.Count == 0)
         {
@@ -195,6 +195,8 @@ public class MotionGenerator
             }
 
             Progress = Mathf.Clamp01(elapsed / totalDuration);
+            // ★ 进度回调（用于峰值截图等外部监控）
+            onProgress?.Invoke(Progress);
             yield return null;
             elapsed += Time.deltaTime;
         }

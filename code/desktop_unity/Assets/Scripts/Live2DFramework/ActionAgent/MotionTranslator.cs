@@ -91,13 +91,28 @@ public static class MotionTranslator
             "    Small/subtle movements (10-30% range) will be INVISIBLE to the visual judge.\n" +
             "    Use the FULL RANGE of head_angle (15-25°), body rotation, arm raises, etc.\n\n" +
 
-            "SPECIAL PATTERNS for common pose types:\n" +
-            "  - Hands_on_hips/叉腰: arm_right_upper=0.7~0.8 + arm_right_lower=0.15~0.25, arm_l_upper=0.7~0.8 + arm_l_lower=0.15~0.25\n" +
-            "  - Bowing/行礼: body_angle_x=15~25 (deep bow), arm_right_lower=0.5~0.7 + arm_left_lower=0.5~0.7 (swing arms down)\n" +
+            "IMPORTANT PARAMETER RANGE NOTES:\n" +
+            "  - Arm parameters (arm_*) are ANGLE values in degrees with range [-30~30]. " +
+            "    0 = neutral/resting, 15~25 = clearly visible raised arm, 30 = max.\n" +
+            "    DO NOT use values like 0.7 for arm_* — that's only 0.7 degrees and invisible!\n" +
+            "  - Eye/head/body angle parameters are also in degrees.\n" +
+            "  - Normalized parameters (eye_*_open, mouth_open_y, hand_layer_*, etc.) use [0~1] range.\n\n" +
+
+            "SPECIAL PATTERNS for common pose types (use DEGREES for angle params, normalized for [0~1] params):\n" +
+            "  - Hands_on_hips/叉腰: arm_right_upper=15~25, arm_left_upper=15~25, " +
+            "arm_right_lower=-15~-25, arm_left_lower=-15~-25 (arms out + elbows bent)\n" +
+            "  - Bowing/行礼: body_angle_y=-15~-25 (lean forward), " +
+            "arm_right_lower=-15~-25 + arm_left_lower=-15~-25 (arms swing down)\n" +
             "  - Head_tilt_thinking/歪头思考: head_angle_z=15~25 (large tilt!), eye_ball_y=-0.5~-0.7 (eyes looking up)\n" +
-            "  - Covering_face/捂脸: arm_right_upper=0.8~1.0, arm_left_upper=0.8~1.0, hand_near_face=1.0, head_angle_y=-8~-12\n" +
-            "  - Surprise/惊讶: head_angle_y=8~15, eye_l_open=0.9~1.0, eye_r_open=0.9~1.0, mouth_open_y=0.5~0.8\n" +
-            "  - Cowering/缩团: head_angle_y=-15~-25, arm_right_upper=0.1~0.2, arm_left_upper=0.1~0.2 (arms tucked in)\n\n" +
+            "  - Covering_face/捂脸: arm_right_upper=20~30, arm_left_upper=20~30, " +
+            "arm_right_rotation=20~30 (bring hands toward face), " +
+            "arm_right_reach=0.5~0.8, head_angle_y=-8~-15 (look down)\n" +
+            "  - Surprise/惊讶捂嘴: head_angle_y=8~15, eye_l_open=0.9~1.0, eye_r_open=0.9~1.0, " +
+            "mouth_open_y=0.5~0.8, arm_right_upper=20~30, arm_left_upper=20~30\n" +
+            "  - Cowering/缩团: head_angle_y=-15~-25 (chin down), " +
+            "arm_right_upper=-15~-25, arm_left_upper=-15~-25 (pull arms in/down), " +
+            "arm_right_lower=-15~-25, arm_left_lower=-15~-25, " +
+            "body_angle_y=15~25 (lean back)\n\n" +
 
             (string.IsNullOrEmpty(motionMemories) ? "" : motionMemories + "\n\n") +
 

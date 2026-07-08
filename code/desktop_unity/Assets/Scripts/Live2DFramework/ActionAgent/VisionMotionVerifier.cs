@@ -306,8 +306,10 @@ public static class VisionMotionVerifier
                         renderer.CubismModel.ForceUpdateNow();
                     byte[] png = renderer.CaptureModelSnapshot();
                     if (png != null && png.Length > 50)
+                    {
                         onCaptured?.Invoke("data:image/png;base64," + Convert.ToBase64String(png));
-                    captured = true;
+                        captured = true;
+                    }
                 }
                 break;
             }
@@ -337,8 +339,10 @@ public static class VisionMotionVerifier
                         renderer.CubismModel.ForceUpdateNow();
                     byte[] png = renderer.CaptureModelSnapshot();
                     if (png != null && png.Length > 50)
+                    {
                         onCaptured?.Invoke("data:image/png;base64," + Convert.ToBase64String(png));
-                    captured = true;
+                        captured = true;
+                    }
                 }
             }
 

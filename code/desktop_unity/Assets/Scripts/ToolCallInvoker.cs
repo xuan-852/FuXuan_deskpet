@@ -1828,21 +1828,36 @@ public class ToolCallInvoker : MonoBehaviour
         // ★ 设置 AI 控制锁，防止空闲动画覆盖运动参数（锁定时长=动作时长+1秒缓冲）
         renderer.SetAiControlLock(plan.TotalDuration + 1f);
 
-        // 创建 MotionGenerator 并播放
+        // 创建 MotionGenerator 并播放（带进度回调，在动作峰值时截图）
         var generator = new MotionGenerator(mapper, model);
-        yield return generator.PlayAsync(plan);
+        byte[] peakSnapshot = null;
+
+        // ★ 在 60% 进度（动作峰值附近）时截取快照用于 GLM-4V 自评
+        yield return generator.PlayAsync(plan, progress =>
+        {
+            if (peakSnapshot == null && progress >= 0.60f)
+            {
+                // ★ 强制 Cubism 更新管线，确保网格变形反映当前参数值
+                model.ForceUpdateNow();
+                peakSnapshot = renderer.CaptureModelSnapshot();
+            }
+        });
+
+        // 如果峰值截图没成功，fallback 到播放完毕后截取
+        if (peakSnapshot == null || peakSnapshot.Length <= 50)
+        {
+            yield return null;
+            peakSnapshot = renderer.CaptureModelSnapshot();
+        }
 
         // 基础结果
         string baseResult = $"✅ 演武完成：「{plan.Description}」，持续 {plan.TotalDuration:F1} 秒，共 {plan.KeyFrames.Count} 个关键帧";
 
-        // ——— ★ 闭环自评：播放完毕后自动截图 + GLM-4V 评价 ———
+        // ——— ★ 闭环自评：用峰值截图送 GLM-4V 评价 ———
         string review = "";
-        // 等一帧让模型渲染稳定
-        yield return null;
-        byte[] snapshot = renderer.CaptureModelSnapshot();
-        if (snapshot != null && snapshot.Length > 50)
+        if (peakSnapshot != null && peakSnapshot.Length > 50)
         {
-            string dataUrl = "data:image/png;base64," + Convert.ToBase64String(snapshot);
+            string dataUrl = "data:image/png;base64," + Convert.ToBase64String(peakSnapshot);
             yield return EvaluateMotionWithGlm(description, dataUrl, r => review = r);
         }
 
@@ -1905,7 +1920,7 @@ public class ToolCallInvoker : MonoBehaviour
     {
         string prompt = "你是一名动作评审专家。下面给你一张桌面宠物（符玄/玄机）的动作截图。\n\n"
             + "AI 被要求做出这个动作：**「" + description + "」**\n\n"
-            + "请仔细观察截图，这张截图是在动作播放完毕后抓取的，你应该能看到该动作的最终姿态。\n\n"
+            + "请仔细观察截图，这张截图是在动作播放到峰值时刻（约60%进度）抓取的，你应该能看到该动作最明显的姿态。\n\n"
             + "回答：\n\n"
             + "1. **这个姿势像不像「" + description + "」？** （是/基本是/不太像/完全不像）\n"
             + "2. **你从哪里看出来？**（指出画面中哪些部位/角度让你做此判断）\n"
@@ -1922,6 +1937,11 @@ public class ToolCallInvoker : MonoBehaviour
             + "- 3分：能看到一些设计意图，但整体不够清楚\n"
             + "- 2分：需要仔细看才能勉强联想到目标动作\n"
             + "- 1分：看不出在做什么，或看起来像完全不同的动作\n\n"
+            + "=== 重要提示 ===\n"
+            + "- 请特别关注**手臂位置**（是否抬起/外摆/前伸）、**头部角度**（低头/抬头/歪头）、**身体倾斜**\n"
+            + "- 如果是遮脸动作，请检查手臂是否到达脸部附近区域\n"
+            + "- 如果是叉腰动作，请检查手臂是否向外张开并弯曲\n"
+            + "- 如果是缩团动作，请检查手臂是否向内收拢、身体是否蜷缩\n\n"
             + "=== 回复格式（严格按此格式） ===\n"
             + "判断：【是/基本是/不太像/完全不像】\n"
             + "理由：...\n"
