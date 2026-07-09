@@ -344,6 +344,8 @@ public class BallPanel : MonoBehaviour
 
     // ==================== 报告面板 ====================
 
+    private string _lastReportText = "";
+
     private void DrawReportPanel()
     {
         GUILayout.Label("📊 演武心经 · 修为报告", _sectionStyle);
@@ -351,9 +353,17 @@ public class BallPanel : MonoBehaviour
 
         GUILayout.BeginHorizontal();
         GUILayout.FlexibleSpace();
-        if (GUILayout.Button("🔄 刷新", _buttonStyle, GUILayout.Width(80), GUILayout.Height(22)))
+        if (GUILayout.Button("🔄 刷新", _buttonStyle, GUILayout.Width(70), GUILayout.Height(22)))
         {
             // 下次绘制自动取最新
+        }
+        if (GUILayout.Button("📋 复制", _buttonStyle, GUILayout.Width(70), GUILayout.Height(22)))
+        {
+            if (!string.IsNullOrEmpty(_lastReportText))
+            {
+                GUIUtility.systemCopyBuffer = _lastReportText;
+                Debug.Log("[BallPanel] 报告已复制到剪贴板");
+            }
         }
         GUILayout.FlexibleSpace();
         GUILayout.EndHorizontal();
@@ -375,6 +385,9 @@ public class BallPanel : MonoBehaviour
 
         if (string.IsNullOrEmpty(report))
             report = "📭 暂无演武记录\n让符玄执行动作后再来查看吧~";
+
+        // 保存最新报告文本（供复制按钮使用）
+        _lastReportText = report;
 
         _reportScrollPos = GUILayout.BeginScrollView(_reportScrollPos, false, true,
             GUILayout.Width(_panelWidth), GUILayout.Height(_panelHeight - 140));
