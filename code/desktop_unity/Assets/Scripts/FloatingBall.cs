@@ -6,7 +6,7 @@ using UnityEngine;
 /// 功能：
 /// - 桌面常驻悬浮球，可拖拽 reposition
 /// - 点击悬浮球展开辐射菜单，子项围绕圆形排列
-/// - 子项：设置 / 报告 / 便签 → 点击打开 ContextMenu 对应标签
+/// - 子项：设置 / 报告 / 便签 → 点击直接打开对应的 BallPanel
 /// - 点击辐射菜单外区域或右键关闭菜单
 ///
 /// 点击穿透集成：
@@ -27,7 +27,11 @@ public class FloatingBall : MonoBehaviour
 
     // 菜单项定义
     private readonly string[] _itemLabels = { "⚙ 设置", "📊 报告", "📋 便签" };
-    private readonly int[] _itemTabs = { 0, 4, 3 };  // 对应 ContextMenu Tab enum 值: 设置=0, 报告=4(新增), 便签=3
+    private readonly BallPanel.PanelType[] _itemPanelTypes = {
+        BallPanel.PanelType.Settings,
+        BallPanel.PanelType.Report,
+        BallPanel.PanelType.Reminders
+    };
 
     // ==================== 运行时状态 ====================
     private Vector2 _ballPos;           // 球中心屏幕坐标（左上角原点）
@@ -38,7 +42,7 @@ public class FloatingBall : MonoBehaviour
     private Vector2 _dragOffset;
 
     private DesktopPet _pet;
-    private ContextMenu _contextMenu;
+    private BallPanel _ballPanel;
 
     // 拖拽/点击区分阈值
     private const float CLICK_THRESHOLD = 8f;
@@ -103,7 +107,12 @@ public class FloatingBall : MonoBehaviour
     void Start()
     {
         _pet = GetComponent<DesktopPet>();
-        _contextMenu = GetComponent<ContextMenu>();
+        _ballPanel = GetComponent<BallPanel>();
+        if (_ballPanel == null)
+        {
+            _ballPanel = gameObject.AddComponent<BallPanel>();
+            Debug.Log("[FloatingBall] 自动添加了 BallPanel 组件");
+        }
 
         // 默认位置：右下角
         _ballPos = new Vector2(Screen.width - ballMarginX, Screen.height - ballMarginY);
@@ -145,8 +154,8 @@ public class FloatingBall : MonoBehaviour
 
     void Update()
     {
-        // 如果 ContextMenu 已打开，关闭辐射菜单
-        if (_contextMenu != null && _contextMenu.IsOpen)
+        // 如果 BallPanel 已打开，关闭辐射菜单
+        if (_ballPanel != null && _ballPanel.IsOpen)
         {
             if (_isMenuOpen) _isMenuOpen = false;
         }
@@ -164,6 +173,19 @@ public class FloatingBall : MonoBehaviour
 
         // ★ 用最低 GUI.depth 确保悬浮球绘制在最上层（depth 越低越后绘制）
         GUI.depth = -10;
+
+        // ★ 如果 BallPanel 已打开，只绘制不处理事件（避免消耗 BallPanel 所需的事件）
+        if (_ballPanel != null && _ballPanel.IsOpen)
+        {
+            // 确保菜单关闭
+            if (_isMenuOpen) _isMenuOpen = false;
+            _isDragPending = false;
+            _isDragging = false;
+
+            // 只绘制悬浮球
+            DrawBall();
+            return;
+        }
 
         // ===== 1. 处理鼠标事件 =====
         Event e = Event.current;
@@ -343,15 +365,18 @@ public class FloatingBall : MonoBehaviour
     private void OnItemClicked(int index)
     {
         _isMenuOpen = false;
+        // ★ 清除拖拽状态，防止后续 MouseUp 误触发切换菜单
+        _isDragPending = false;
+        _isDragging = false;
 
-        // 根据点击项打开 ContextMenu 对应标签
-        if (_contextMenu != null)
+        // 直接打开 BallPanel 对应面板
+        if (_ballPanel != null && index >= 0 && index < _itemPanelTypes.Length)
         {
-            int tab = _itemTabs[index];
-            Vector2 menuPos = new Vector2(_ballPos.x - 150f, _ballPos.y - menuRadius - itemRadius - 120f);
-            menuPos.x = Mathf.Clamp(menuPos.x, 10, Screen.width - 310);
-            menuPos.y = Mathf.Clamp(menuPos.y, 10, Screen.height - 430);
-            _contextMenu.OpenToTab(menuPos, tab);
+            BallPanel.PanelType type = _itemPanelTypes[index];
+            Vector2 panelPos = new Vector2(_ballPos.x - 140f, _ballPos.y - menuRadius - itemRadius - 100f);
+            panelPos.x = Mathf.Clamp(panelPos.x, 10, Screen.width - 290);
+            panelPos.y = Mathf.Clamp(panelPos.y, 10, Screen.height - 390);
+            _ballPanel.ShowPanel(type, panelPos);
         }
     }
 

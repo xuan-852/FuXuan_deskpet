@@ -70,8 +70,8 @@ public class DragHandler : MonoBehaviour
     [System.NonSerialized]
     public float lastInteractionTime = 0f;
 
-    // 右键菜单
-    private ContextMenu _contextMenu;
+    // BallPanel 引用（悬浮球子面板）
+    private BallPanel _ballPanel;
 
     // 鼠标在宠物范围内的状态（每帧更新）
     private bool _mouseOverPet = false;
@@ -82,8 +82,8 @@ public class DragHandler : MonoBehaviour
     // 悬浮球引用
     private FloatingBall _floatingBall;
 
-    // 菜单打开状态追踪（用于关闭后强制重算穿透）
-    private bool _lastFrameMenuOpen = false;
+    // 面板打开状态追踪（用于关闭后强制重算穿透）
+    private bool _lastFramePanelOpen = false;
 
     private void Start()
     {
@@ -92,17 +92,9 @@ public class DragHandler : MonoBehaviour
         if (_window == null)
             _window = FindObjectOfType<WindowOverlay>();
         _renderer = GetComponent<IPetRenderer>();
-        _contextMenu = GetComponent<ContextMenu>();
-        if (_contextMenu == null)
-        {
-            _contextMenu = FindObjectOfType<ContextMenu>();
-            if (_contextMenu == null)
-            {
-                // 自动挂载 ContextMenu（新脚本，防止用户忘记手动添加）
-                _contextMenu = gameObject.AddComponent<ContextMenu>();
-                Debug.Log("[DragHandler] 自动挂载 ContextMenu 组件");
-            }
-        }
+
+        _ballPanel = GetComponent<BallPanel>();
+        if (_ballPanel == null) _ballPanel = FindObjectOfType<BallPanel>();
 
         // BottomInputBar 可能稍后才添加，Start 中找一次
         RefreshBottomBar();
@@ -114,32 +106,22 @@ public class DragHandler : MonoBehaviour
 
     private void Update()
     {
-        // ========== 0. 菜单打开时：菜单自己的点击穿透管理 ==========
-        // ★优先处理，不依赖 UpdateClickThrough（避免菜单打开后被 WS_EX_TRANSPARENT 吞掉输入）
-        if (_contextMenu != null && _contextMenu.IsOpen)
+        // ★ 动态刷新 BallPanel / FloatingBall 引用（可能在 Start 之后才被添加）
+        if (_ballPanel == null)
         {
-            _lastFrameMenuOpen = true;
-            Vector2 mousePos = GetMousePos();
-            bool overMenu = _contextMenu.IsMouseOverMenu(mousePos);
-            _window?.SetClickThrough(!overMenu);   // 菜单区域内可点击，区域外穿透
-            _mouseOverPet = false; // 重置，确保关闭后重建穿透状态
-
-            // ★ 右键点击时关闭菜单
-            if (Input.GetMouseButtonDown(1))
-            {
-                _contextMenu.Close();
-                // 关闭后不 return，让本帧正常处理
-            }
-            else
-            {
-                return; // 菜单打开且无右键时不处理拖拽
-            }
+            _ballPanel = GetComponent<BallPanel>() ?? FindObjectOfType<BallPanel>();
+            if (_ballPanel != null)
+                Debug.Log("[DragHandler] 延迟获取 BallPanel 引用成功");
+        }
+        if (_floatingBall == null)
+        {
+            _floatingBall = GetComponent<FloatingBall>() ?? FindObjectOfType<FloatingBall>();
         }
 
         // ========== 0b. 悬浮球辐射菜单打开时 ==========
         if (_floatingBall != null && _floatingBall.IsMenuOpen)
         {
-            _lastFrameMenuOpen = true;
+            _lastFramePanelOpen = true;
             Vector2 mousePos = GetMousePos();
             bool overBallArea = _floatingBall.IsPointInInteractiveArea(mousePos);
             _window?.SetClickThrough(!overBallArea);
@@ -156,49 +138,51 @@ public class DragHandler : MonoBehaviour
             }
         }
 
-        // ========== 菜单关闭检测：前一帧还开着，这帧关了 ==========
-        // ★ 强制重置穿透缓存，下一帧 UpdateClickThrough 根据鼠标位置重新设穿透
-        if (_lastFrameMenuOpen)
+        // ========== 0c. BallPanel 子面板打开时 ==========
+        if (_ballPanel != null && _ballPanel.IsOpen)
         {
-            _lastFrameMenuOpen = false;
+            _lastFramePanelOpen = true;
+            Vector2 mousePos = GetMousePos();
+            bool overPanel = _ballPanel.IsMouseOverPanel(mousePos);
+            _window?.SetClickThrough(!overPanel);
             _mouseOverPet = false;
-            // 立刻关穿透让桌面恢复点击（如果鼠标不在宠物上）
-            bool overPet = IsPointInPet(GetMousePos());
-            _window?.SetClickThrough(!overPet);
-            Debug.Log($"[DragHandler] 菜单关闭，强制重置穿透: overPet={overPet}");
-        }
 
-        // ========== 1. 每帧更新点击穿透（★必须在输入检测之前，否则右键被 WS_EX_TRANSPARENT 吞掉）==========
-        UpdateClickThrough();
-
-        // ========== 2. 右键菜单 ==========
-        if (Input.GetMouseButtonDown(1))
-        {
-            // ★ 悬浮球菜单打开时，右键关闭它，不打开 ContextMenu
-            if (_floatingBall != null && _floatingBall.IsMenuOpen)
+            // 右键关闭面板
+            if (Input.GetMouseButtonDown(1))
             {
-                // FloatingBall 的 OnGUI 已处理关闭，我们只需确保不打开 ContextMenu
+                _ballPanel.Close();
             }
             else
             {
-                Vector2 mousePos = GetMousePos();
-                if (IsPointInPet(mousePos))
-                {
-                    if (_contextMenu != null)
-                    {
-                        _contextMenu.Open(mousePos);
-                        // 打开后立即管理穿透，不等下一帧
-                        bool overMenu = _contextMenu.IsMouseOverMenu(mousePos);
-                        _window?.SetClickThrough(!overMenu);
-                        _mouseOverPet = false;
-                        return;
-                    }
-                }
-                else
-                {
-                    if (_contextMenu != null) _contextMenu.Close();
-                }
+                return; // 不处理拖拽
             }
+        }
+
+        // ========== 面板关闭检测：前一帧还开着，这帧关了 ==========
+        if (_lastFramePanelOpen)
+        {
+            _lastFramePanelOpen = false;
+            _mouseOverPet = false;
+            bool overPet = IsPointInPet(GetMousePos());
+            _window?.SetClickThrough(!overPet);
+            Debug.Log($"[DragHandler] 面板关闭，强制重置穿透: overPet={overPet}");
+        }
+
+        // ========== 1. 每帧更新点击穿透 ==========
+        UpdateClickThrough();
+
+        // ========== 2. 右键：关闭 BallPanel / 悬浮球菜单 ==========
+        if (Input.GetMouseButtonDown(1))
+        {
+            if (_ballPanel != null && _ballPanel.IsOpen)
+            {
+                _ballPanel.Close();
+            }
+            else if (_floatingBall != null && _floatingBall.IsMenuOpen)
+            {
+                // FloatingBall 的 OnGUI 已处理关闭
+            }
+            // ★ 不再打开旧 ContextMenu
         }
 
         if (_pet.isPaused)
@@ -309,7 +293,7 @@ public class DragHandler : MonoBehaviour
         if (_renderer == null || _pet == null) return;
 
         // 菜单打开或暂停时不跟随
-        if (_contextMenu != null && _contextMenu.IsOpen) { _renderer.SetEyeTarget(null, null); return; }
+        if (_ballPanel != null && _ballPanel.IsOpen) { _renderer.SetEyeTarget(null, null); return; }
         if (_pet.isPaused) { _renderer.SetEyeTarget(null, null); return; }
         if (_pet.isDragging) { _renderer.SetEyeTarget(null, null); return; }
 
@@ -382,7 +366,11 @@ public class DragHandler : MonoBehaviour
         bool overBall = _floatingBall != null
             && _floatingBall.IsPointInInteractiveArea(mousePos);
 
-        bool needInput = overPet || overBar || overBall;
+        // ★ BallPanel 区域也接收点击
+        bool overPanel = _ballPanel != null
+            && _ballPanel.IsMouseOverPanel(mousePos);
+
+        bool needInput = overPet || overBar || overBall || overPanel;
 
         if (needInput != _mouseOverPet)
         {
