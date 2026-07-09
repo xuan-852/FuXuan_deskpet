@@ -17,15 +17,15 @@ public class ContextMenu : MonoBehaviour
     private ReminderManager _reminders;
 
     // ===== 标签系统 =====
-    private enum Tab { 设置, 动作, 聊天, 便签 }
+    private enum Tab { 设置, 动作, 聊天, 便签, 报告 }
     private Tab _currentTab = Tab.设置;
-    private string[] _tabNames = { "⚙ 设置", "▶ 动作", "💬 聊天", "📋 便签" };
+    private string[] _tabNames = { "⚙ 设置", "▶ 动作", "💬 聊天", "📋 便签", "📊 报告" };
 
     // ===== 菜单状态 =====
     private bool _isOpen = false;
     private Rect _menuRect;
     private float _menuWidth = 300f;
-    private float _menuHeight = 420f;
+    private float _menuHeight = 450f;  // 增高一点给报告标签
     private Vector2 _scrollPos = Vector2.zero;
     // 拖动
     private bool _isDragging = false;
@@ -217,6 +217,29 @@ public class ContextMenu : MonoBehaviour
         _menuRect = new Rect(x, y, _menuWidth, _menuHeight);
     }
 
+    /// <summary>打开菜单并定位到指定标签（供 FloatingBall 调用）</summary>
+    public void OpenToTab(Vector2 pos, int tabIndex)
+    {
+        _isOpen = true;
+        _currentTab = (Tab)tabIndex;
+        _scrollPos = Vector2.zero;
+        _lastSentenceVersion = -1;
+
+        if (_pet != null)
+        {
+            _pet.ForceStop();
+            _pet.isPaused = true;
+        }
+
+        _wLeftEdge = _pet.taskWeightMoveLeftEdge;
+        _wRightEdge = _pet.taskWeightMoveRightEdge;
+        _wLeftTime = _pet.taskWeightMoveLeftTime;
+        _wRightTime = _pet.taskWeightMoveRightTime;
+        _wStop = _pet.taskWeightStopTime;
+
+        _menuRect = new Rect(pos.x, pos.y, _menuWidth, _menuHeight);
+    }
+
     public void Close()
     {
         _isOpen = false;
@@ -338,6 +361,7 @@ public class ContextMenu : MonoBehaviour
             case Tab.动作: DrawActionsTab(); break;
             case Tab.聊天: DrawChatTab(); break;
             case Tab.便签: DrawRemindersTab(); break;
+            case Tab.报告: DrawReportTab(); break;
         }
 
         GUILayout.EndScrollView();
@@ -869,6 +893,67 @@ public class ContextMenu : MonoBehaviour
             _pet.isPaused = false;
             _pet.Resume();
         }
+    }
+
+    #endregion
+
+    #region 标签页: 报告
+
+    private Vector2 _reportScrollPos = Vector2.zero;
+
+    private void DrawReportTab()
+    {
+        GUILayout.Label("📊 演武心经 · 修为报告", _sectionStyle);
+        GUILayout.Space(2);
+
+        // 刷新按钮
+        GUILayout.BeginHorizontal();
+        GUILayout.FlexibleSpace();
+        if (GUILayout.Button("🔄 刷新统计", _buttonStyle, GUILayout.Width(100), GUILayout.Height(22)))
+        {
+            // 不做特殊操作，下次绘制时自动从 GetStatistics() 获取最新
+        }
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+        GUILayout.Space(4);
+
+        // 获取 MotionMemoryManager 统计
+        string report = "";
+        try
+        {
+            var mm = MotionMemoryManager.Instance;
+            if (mm != null)
+                report = mm.GetStatistics();
+            else
+                report = "⚠ MotionMemoryManager 未初始化";
+        }
+        catch (System.Exception ex)
+        {
+            report = $"⚠ 读取报告异常: {ex.Message}";
+        }
+
+        if (string.IsNullOrEmpty(report))
+            report = "📭 暂无演武记录\n让符玄执行动作后再来查看吧~";
+
+        _reportScrollPos = GUILayout.BeginScrollView(_reportScrollPos, false, true,
+            GUILayout.Height(_menuHeight - 170));
+
+        var reportStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 11,
+            normal = { textColor = new Color(0.8f, 0.8f, 0.9f) },
+            wordWrap = true,
+            richText = true,
+            padding = new RectOffset(8, 8, 4, 4)
+        };
+
+        GUILayout.Label(report, reportStyle);
+
+        GUILayout.EndScrollView();
+
+        GUILayout.Space(4);
+        GUILayout.Label("💡 每次演武后 AI 会自评并记录，分数越高下次越倾向使用", 
+            new GUIStyle { normal = { textColor = new Color(0.5f, 0.5f, 0.6f) }, fontSize = 10, wordWrap = true });
     }
 
     #endregion

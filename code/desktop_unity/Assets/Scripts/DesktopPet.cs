@@ -531,6 +531,13 @@ public class DesktopPet : MonoBehaviour
             Debug.Log("[DesktopPet] 自动添加了 ServerPollService 组件");
         }
 
+        // 自动确保 FloatingBall 存在（悬浮球 + 辐射菜单）
+        if (GetComponent<FloatingBall>() == null)
+        {
+            gameObject.AddComponent<FloatingBall>();
+            Debug.Log("[DesktopPet] 自动添加了 FloatingBall 组件");
+        }
+
         // 获取渲染器引用：优先使用 HybridRenderer
         var hybrid = GetComponent<HybridRenderer>();
         if (hybrid != null)

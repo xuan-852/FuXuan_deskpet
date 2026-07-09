@@ -79,6 +79,9 @@ public class DragHandler : MonoBehaviour
     // 底部输入栏引用
     private BottomInputBar _bottomBar;
 
+    // 悬浮球引用
+    private FloatingBall _floatingBall;
+
     // 菜单打开状态追踪（用于关闭后强制重算穿透）
     private bool _lastFrameMenuOpen = false;
 
@@ -103,6 +106,10 @@ public class DragHandler : MonoBehaviour
 
         // BottomInputBar 可能稍后才添加，Start 中找一次
         RefreshBottomBar();
+
+        // 获取 FloatingBall 引用
+        _floatingBall = GetComponent<FloatingBall>();
+        if (_floatingBall == null) _floatingBall = FindObjectOfType<FloatingBall>();
     }
 
     private void Update()
@@ -129,6 +136,26 @@ public class DragHandler : MonoBehaviour
             }
         }
 
+        // ========== 0b. 悬浮球辐射菜单打开时 ==========
+        if (_floatingBall != null && _floatingBall.IsMenuOpen)
+        {
+            _lastFrameMenuOpen = true;
+            Vector2 mousePos = GetMousePos();
+            bool overBallArea = _floatingBall.IsPointInInteractiveArea(mousePos);
+            _window?.SetClickThrough(!overBallArea);
+            _mouseOverPet = false;
+
+            // 右键关闭
+            if (Input.GetMouseButtonDown(1))
+            {
+                // FloatingBall 的 OnGUI 自己处理关闭，我们不干预
+            }
+            else
+            {
+                return; // 不处理拖拽
+            }
+        }
+
         // ========== 菜单关闭检测：前一帧还开着，这帧关了 ==========
         // ★ 强制重置穿透缓存，下一帧 UpdateClickThrough 根据鼠标位置重新设穿透
         if (_lastFrameMenuOpen)
@@ -147,22 +174,30 @@ public class DragHandler : MonoBehaviour
         // ========== 2. 右键菜单 ==========
         if (Input.GetMouseButtonDown(1))
         {
-            Vector2 mousePos = GetMousePos();
-            if (IsPointInPet(mousePos))
+            // ★ 悬浮球菜单打开时，右键关闭它，不打开 ContextMenu
+            if (_floatingBall != null && _floatingBall.IsMenuOpen)
             {
-                if (_contextMenu != null)
-                {
-                    _contextMenu.Open(mousePos);
-                    // 打开后立即管理穿透，不等下一帧
-                    bool overMenu = _contextMenu.IsMouseOverMenu(mousePos);
-                    _window?.SetClickThrough(!overMenu);
-                    _mouseOverPet = false;
-                    return;
-                }
+                // FloatingBall 的 OnGUI 已处理关闭，我们只需确保不打开 ContextMenu
             }
             else
             {
-                if (_contextMenu != null) _contextMenu.Close();
+                Vector2 mousePos = GetMousePos();
+                if (IsPointInPet(mousePos))
+                {
+                    if (_contextMenu != null)
+                    {
+                        _contextMenu.Open(mousePos);
+                        // 打开后立即管理穿透，不等下一帧
+                        bool overMenu = _contextMenu.IsMouseOverMenu(mousePos);
+                        _window?.SetClickThrough(!overMenu);
+                        _mouseOverPet = false;
+                        return;
+                    }
+                }
+                else
+                {
+                    if (_contextMenu != null) _contextMenu.Close();
+                }
             }
         }
 
@@ -343,11 +378,15 @@ public class DragHandler : MonoBehaviour
             && mousePos.y >= _bottomBar.BarTop
             && mousePos.y <= _bottomBar.BarBottom;
 
-        bool needInput = overPet || overBar;
+        // ★ 悬浮球 / 辐射菜单区域也接收点击
+        bool overBall = _floatingBall != null
+            && _floatingBall.IsPointInInteractiveArea(mousePos);
+
+        bool needInput = overPet || overBar || overBall;
 
         if (needInput != _mouseOverPet)
         {
-            UnityEngine.Debug.Log($"[DragHandler] 穿透状态变更: mouseOverPet={_mouseOverPet}→{needInput}, mouse=({mousePos.x},{mousePos.y}), pet=({_pet.petX},{_pet.petY},{_pet.petWidth},{_pet.petHeight})");
+            UnityEngine.Debug.Log($"[DragHandler] 穿透状态变更: mouseOverPet={_mouseOverPet}→{needInput}, mouse=({mousePos.x},{mousePos.y}), pet=({_pet.petX},{_pet.petY},{_pet.petWidth},{_pet.petHeight}), ball={overBall}");
             _mouseOverPet = needInput;
             _window.SetClickThrough(!needInput);
         }
