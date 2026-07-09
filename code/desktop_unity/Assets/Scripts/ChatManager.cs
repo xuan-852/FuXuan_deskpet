@@ -687,8 +687,8 @@ public class ChatManager : MonoBehaviour
             }
 
             sb.Append(",\"content\":");
-            // ★ DeepSeek API 要求：assistant 带 tool_calls 且无文字时 content 必须为 null
-            if (e.role == "assistant" && !string.IsNullOrEmpty(e.toolCallsJson) && string.IsNullOrEmpty(e.content))
+            // ★ DeepSeek API 要求：assistant 带 tool_calls 时 content 必须为 null
+            if (e.role == "assistant" && !string.IsNullOrEmpty(e.toolCallsJson))
             {
                 sb.Append("null");
             }

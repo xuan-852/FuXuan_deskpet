@@ -327,11 +327,27 @@ public static class ApiClient
 
                 if (delta.toolCallId != null)
                 {
-                    toolCallAcc.Add(new ToolCallAccumulator
+                    // DeepSeek 可能分别发 id delta 和 name delta
+                    // 只在同时有 id+非空 name 时才创建新累加器
+                    if (!string.IsNullOrEmpty(delta.toolName))
                     {
-                        id = delta.toolCallId,
-                        name = delta.toolName ?? ""
-                    });
+                        toolCallAcc.Add(new ToolCallAccumulator
+                        {
+                            id = delta.toolCallId,
+                            name = delta.toolName
+                        });
+                    }
+                    // 如果只有 id 没 name（空字符串也算无 name），说明 name 在后面独立 delta 中
+                    // 创建占位累加器，后面由 name 分支更新
+                    else if (toolCallAcc.Count == 0 || toolCallAcc[toolCallAcc.Count - 1].id != delta.toolCallId)
+                    {
+                        toolCallAcc.Add(new ToolCallAccumulator
+                        {
+                            id = delta.toolCallId,
+                            name = ""
+                        });
+                    }
+                    // arguments 片段
                     if (delta.toolArgsPart != null && toolCallAcc.Count > 0)
                         toolCallAcc[toolCallAcc.Count - 1].args.Append(delta.toolArgsPart);
                 }
@@ -341,7 +357,9 @@ public static class ApiClient
                 }
                 else if (delta.toolName != null && toolCallAcc.Count > 0)
                 {
-                    toolCallAcc[toolCallAcc.Count - 1].name = delta.toolName;
+                    var last = toolCallAcc[toolCallAcc.Count - 1];
+                    if (string.IsNullOrEmpty(last.name))
+                        last.name = delta.toolName;
                 }
             }
         }
@@ -441,10 +459,14 @@ public static class ApiClient
 
         var sb = new StringBuilder();
         sb.Append('[');
+        bool first = true;
         for (int i = 0; i < acc.Count; i++)
         {
-            if (i > 0) sb.Append(',');
             var t = acc[i];
+            // 跳过空名累加器（占位后 name 从未被更新）
+            if (string.IsNullOrEmpty(t.name)) continue;
+            if (!first) sb.Append(',');
+            first = false;
             sb.Append("{\"id\":\"");
             sb.Append(EscapeJson(t.id));
             sb.Append("\",\"type\":\"function\",\"function\":{\"name\":\"");
@@ -454,6 +476,7 @@ public static class ApiClient
             sb.Append("\"}}");
         }
         sb.Append(']');
-        return sb.ToString();
+        string result = sb.ToString();
+        return result == "[]" ? null : result;
     }
 }
