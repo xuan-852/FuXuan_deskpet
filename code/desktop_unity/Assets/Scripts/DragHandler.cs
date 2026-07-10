@@ -79,8 +79,8 @@ public class DragHandler : MonoBehaviour
     // 底部输入栏引用
     private BottomInputBar _bottomBar;
 
-    // 悬浮球引用
-    private FloatingBall _floatingBall;
+    // 右面板引用
+    private RightPanel _rightPanel;
 
     // 面板打开状态追踪（用于关闭后强制重算穿透）
     private bool _lastFramePanelOpen = false;
@@ -99,46 +99,40 @@ public class DragHandler : MonoBehaviour
         // BottomInputBar 可能稍后才添加，Start 中找一次
         RefreshBottomBar();
 
-        // 获取 FloatingBall 引用
-        _floatingBall = GetComponent<FloatingBall>();
-        if (_floatingBall == null) _floatingBall = FindObjectOfType<FloatingBall>();
+        // 获取 RightPanel 引用
+        _rightPanel = GetComponent<RightPanel>();
+        if (_rightPanel == null) _rightPanel = FindObjectOfType<RightPanel>();
     }
 
     private void Update()
     {
-        // ★ 动态刷新 BallPanel / FloatingBall 引用（可能在 Start 之后才被添加）
+        // ★ 动态刷新 BallPanel / RightPanel 引用（可能在 Start 之后才被添加）
         if (_ballPanel == null)
         {
             _ballPanel = GetComponent<BallPanel>() ?? FindObjectOfType<BallPanel>();
             if (_ballPanel != null)
                 Debug.Log("[DragHandler] 延迟获取 BallPanel 引用成功");
         }
-        if (_floatingBall == null)
+        if (_rightPanel == null)
         {
-            _floatingBall = GetComponent<FloatingBall>() ?? FindObjectOfType<FloatingBall>();
+            _rightPanel = GetComponent<RightPanel>() ?? FindObjectOfType<RightPanel>();
         }
 
-        // ========== 0b. 悬浮球辐射菜单打开时 ==========
-        if (_floatingBall != null && _floatingBall.IsMenuOpen)
+        // ========== 0a. RightPanel 展开时 ==========
+        if (_rightPanel != null)
         {
-            _lastFramePanelOpen = true;
             Vector2 mousePos = GetMousePos();
-            bool overBallArea = _floatingBall.IsPointInInteractiveArea(mousePos);
-            _window?.SetClickThrough(!overBallArea);
-            _mouseOverPet = false;
-
-            // 右键关闭
-            if (Input.GetMouseButtonDown(1))
+            bool overRightPanel = _rightPanel.IsPointInInteractiveArea(mousePos);
+            if (overRightPanel)
             {
-                // FloatingBall 的 OnGUI 自己处理关闭，我们不干预
-            }
-            else
-            {
-                return; // 不处理拖拽
+                _lastFramePanelOpen = true;
+                _window?.SetClickThrough(false); // 关穿透，让 Unity 接收点击
+                _mouseOverPet = false;
+                // 不 return，让拖拽/点击等继续
             }
         }
 
-        // ========== 0c. BallPanel 子面板打开时 ==========
+        // ========== 0b. BallPanel 子面板打开时 ==========
         if (_ballPanel != null && _ballPanel.IsOpen)
         {
             _lastFramePanelOpen = true;
@@ -178,11 +172,7 @@ public class DragHandler : MonoBehaviour
             {
                 _ballPanel.Close();
             }
-            else if (_floatingBall != null && _floatingBall.IsMenuOpen)
-            {
-                // FloatingBall 的 OnGUI 已处理关闭
-            }
-            // ★ 不再打开旧 ContextMenu
+                // ★ 不再打开旧 ContextMenu
         }
 
         if (_pet.isPaused)
@@ -362,19 +352,19 @@ public class DragHandler : MonoBehaviour
             && mousePos.y >= _bottomBar.BarTop
             && mousePos.y <= _bottomBar.BarBottom;
 
-        // ★ 悬浮球 / 辐射菜单区域也接收点击
-        bool overBall = _floatingBall != null
-            && _floatingBall.IsPointInInteractiveArea(mousePos);
-
         // ★ BallPanel 区域也接收点击
         bool overPanel = _ballPanel != null
             && _ballPanel.IsMouseOverPanel(mousePos);
 
-        bool needInput = overPet || overBar || overBall || overPanel;
+        // ★ RightPanel 区域也接收点击
+        bool overRightPanel = _rightPanel != null
+            && _rightPanel.IsPointInInteractiveArea(mousePos);
+
+        bool needInput = overPet || overBar || overPanel || overRightPanel;
 
         if (needInput != _mouseOverPet)
         {
-            UnityEngine.Debug.Log($"[DragHandler] 穿透状态变更: mouseOverPet={_mouseOverPet}→{needInput}, mouse=({mousePos.x},{mousePos.y}), pet=({_pet.petX},{_pet.petY},{_pet.petWidth},{_pet.petHeight}), ball={overBall}");
+            UnityEngine.Debug.Log($"[DragHandler] 穿透状态变更: mouseOverPet={_mouseOverPet}→{needInput}, mouse=({mousePos.x},{mousePos.y}), pet=({_pet.petX},{_pet.petY},{_pet.petWidth},{_pet.petHeight})");
             _mouseOverPet = needInput;
             _window.SetClickThrough(!needInput);
         }

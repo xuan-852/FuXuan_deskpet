@@ -503,12 +503,16 @@ public class DesktopPet : MonoBehaviour
             Debug.Log("[DesktopPet] 自动添加了 HybridRenderer 组件");
         }
 
-        // 自动确保底部输入栏存在
-        if (GetComponent<BottomInputBar>() == null)
+        // 自动确保右侧面板存在（取代旧的底部输入栏）
+        if (GetComponent<RightPanel>() == null)
         {
-            gameObject.AddComponent<BottomInputBar>();
-            Debug.Log("[DesktopPet] 自动添加了 BottomInputBar 组件");
+            gameObject.AddComponent<RightPanel>();
+            Debug.Log("[DesktopPet] 自动添加了 RightPanel 组件");
         }
+
+        // 旧底部输入栏禁用：保留组件但禁用，不自动添加新实例
+        var oldBar = GetComponent<BottomInputBar>();
+        if (oldBar != null) oldBar.enabled = false;
 
         // 自动确保 TimeWeatherController 存在
         if (GetComponent<TimeWeatherController>() == null)
@@ -531,11 +535,11 @@ public class DesktopPet : MonoBehaviour
             Debug.Log("[DesktopPet] 自动添加了 ServerPollService 组件");
         }
 
-        // 自动确保 FloatingBall 存在（悬浮球 + 辐射菜单）
-        if (GetComponent<FloatingBall>() == null)
+        // 自动确保 BallPanel 存在（右侧面板的工具子面板）
+        if (GetComponent<BallPanel>() == null)
         {
-            gameObject.AddComponent<FloatingBall>();
-            Debug.Log("[DesktopPet] 自动添加了 FloatingBall 组件");
+            gameObject.AddComponent<BallPanel>();
+            Debug.Log("[DesktopPet] 自动添加了 BallPanel 组件");
         }
 
         // 自动确保 ChatManager 存在（AI 对话核心）
