@@ -192,6 +192,8 @@ public class ChatManager : MonoBehaviour
     //  事件
     // ==================================================================
 
+    /// <summary>AI 开始处理请求时触发（用于显示"思考中…"状态）</summary>
+    public System.Action OnRequestStarted;
     /// <summary>收到 AI 文字回复时触发</summary>
     public System.Action<string> OnNewReply;
     /// <summary>执行了工具调用时触发（参数 = 工具名）</summary>
@@ -215,7 +217,10 @@ public class ChatManager : MonoBehaviour
 
     // ---- 请求看门狗：防止 API 卡死永久锁住 _isWaiting ----
     private float _requestStartTime = 0f;
-    private const float REQUEST_TIMEOUT = 100f; // 100 秒无响应视为卡死（HTTP 超时 90s + 余量）
+    private const float REQUEST_TIMEOUT = 600f; // 600 秒（10分钟）总超时，覆盖多轮工具链（含 GLM-4V 180s）
+
+    // ---- 中止标志：看门狗超时时通知协程尽快退出 ----
+    private bool _abortRequested = false;
 
     // ---- 消息队列：等待时输入不会丢 ----
     private Queue<(string text, System.Action onUpdate)> _messageQueue
@@ -285,8 +290,13 @@ public class ChatManager : MonoBehaviour
         _isWaiting = true;
         _lastReply = "";
         _lastError = "";
+        _abortRequested = false; // 重置中止标志，允许新的请求
         _requestStartTime = Time.time; // 启动看门狗计时
         _onUpdate = onUpdate;
+
+        // 触发"AI 开始处理"事件（悬浮球显示"思考中…"）
+        OnRequestStarted?.Invoke();
+
         StartCoroutine(SendRequestCoroutine());
     }
 
@@ -392,6 +402,9 @@ public class ChatManager : MonoBehaviour
                 {
                     _history.Add(new Entry { role = "assistant", content = fullContent });
                 }
+                _lastReply = fullContent ?? "";
+                OnNewReply?.Invoke(_lastReply);
+                StartSentenceQueue(_lastReply);
                 RecordConversationMemory(fullContent);
                 yield break;
             }
@@ -416,9 +429,10 @@ public class ChatManager : MonoBehaviour
                 string result;
                 if (toolInvoker && toolInvoker.IsCoroutineTool(call.name))
                 {
-                    _requestStartTime = 0f;
+                    // ★ 看门狗全程有效（不归零 _requestStartTime），卡死时自动超时
                     yield return StartCoroutine(toolInvoker.ExecuteCoroutine(call.name, call.arguments));
-                    _requestStartTime = Time.time;
+                    // 如果超时标志被设置，立即终止整个循环
+                    if (_abortRequested) yield break;
                     result = toolInvoker.GetCoroutineResult();
                 }
                 else
@@ -450,19 +464,17 @@ public class ChatManager : MonoBehaviour
         StartSentenceQueue(_lastReply);
     }
 
-    // ==================================================================
-    //  句子队列（逐句显示）
-    // ==================================================================
-
     void Update()
     {
-        // ——— 请求看门狗：如果 _isWaiting 超过 60 秒无响应，强制释放 ———
+        // ——— 请求看门狗：如果 _isWaiting 超过总超时时间，强制释放 ———
         if (_isWaiting && _requestStartTime > 0f && Time.time - _requestStartTime > REQUEST_TIMEOUT)
         {
-            Debug.LogWarning($"[ChatManager] ⏰ 请求超时 ({REQUEST_TIMEOUT}s)，强制释放 _isWaiting");
-            string errMsg = $"⏰ 法阵响应超时（>{REQUEST_TIMEOUT}秒），请检查网络或 API 状态";
+            Debug.LogWarning($"[ChatManager] ⏰ 请求总超时 ({REQUEST_TIMEOUT}s)，强制释放 _isWaiting");
+            string errMsg = $"⏰ 术式施放过久（>{REQUEST_TIMEOUT}秒），本座已收阵。请检查网络或 API 状态";
             _lastError = errMsg;
             OnRequestError?.Invoke(errMsg);
+            // ★ 设置中止标志，通知正在执行协程工具的 DoToolLoop 立即退出
+            _abortRequested = true;
             _isWaiting = false;
             _requestStartTime = 0f;
             _onUpdate?.Invoke();

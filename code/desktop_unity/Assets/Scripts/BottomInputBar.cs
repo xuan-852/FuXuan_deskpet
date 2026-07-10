@@ -7,19 +7,19 @@ using UnityEngine;
 /// </summary>
 public class BottomInputBar : MonoBehaviour
 {
-    // ===== 固定坐标（测试最优值） =====
-    private const float BAR_LEFT = 265f;
-    private const float BAR_RIGHT = 635f;
-    private const float BAR_TOP = 1528f;
-    private const float BAR_BOTTOM = 1600f;
+    // ===== 动态坐标（基于屏幕尺寸自动适配） =====
+    [Header("输入栏尺寸")]
+    public float barWidth = 370f;        // 输入栏宽度
+    public float barHeight = 72f;        // 输入栏高度
+    public float barBottomMargin = 0f;   // 距屏幕底部边距（旧版 BAR_TOP=1528 对应底部贴边）
 
-    // 便捷访问
-    public float BarLeft => BAR_LEFT;
-    public float BarRight => BAR_RIGHT;
-    public float BarTop => BAR_TOP;
-    public float BarBottom => BAR_BOTTOM;
-    private float BarW => BarRight - BarLeft;
-    private float BarH => BarBottom - BarTop;
+    // 动态计算屏幕位置
+    public float BarLeft => (Screen.width - barWidth) / 2f;
+    public float BarRight => BarLeft + barWidth;
+    public float BarTop => Screen.height - barHeight - barBottomMargin;
+    public float BarBottom => Screen.height - barBottomMargin;
+    private float BarW => barWidth;
+    private float BarH => barHeight;
 
     // ===== 内部状态 =====
     private ChatManager _chat;
@@ -49,7 +49,7 @@ public class BottomInputBar : MonoBehaviour
     {
         RefreshChatRef();
         _started = true;
-        Debug.Log($"[BottomInputBar] 搜索栏已就绪 | left={BAR_LEFT:F0} right={BAR_RIGHT:F0} top={BAR_TOP:F0} bottom={BAR_BOTTOM:F0}");
+        Debug.Log($"[BottomInputBar] 搜索栏已就绪 | left={BarLeft:F0} right={BarRight:F0} top={BarTop:F0} bottom={BarBottom:F0}");
     }
 
     /// <summary>查找 ChatManager 引用</summary>

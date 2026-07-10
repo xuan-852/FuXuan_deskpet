@@ -538,6 +538,34 @@ public class DesktopPet : MonoBehaviour
             Debug.Log("[DesktopPet] 自动添加了 FloatingBall 组件");
         }
 
+        // 自动确保 ChatManager 存在（AI 对话核心）
+        if (GetComponent<ChatManager>() == null)
+        {
+            gameObject.AddComponent<ChatManager>();
+            Debug.Log("[DesktopPet] 自动添加了 ChatManager 组件");
+        }
+
+        // 自动确保 ToolCallInvoker 存在（符玄法阵 — 工具调用执行器）
+        if (GetComponent<ToolCallInvoker>() == null)
+        {
+            gameObject.AddComponent<ToolCallInvoker>();
+            Debug.Log("[DesktopPet] 自动添加了 ToolCallInvoker 组件");
+        }
+
+        // 将 ToolCallInvoker 注入 ChatManager
+        var chat = GetComponent<ChatManager>();
+        if (chat != null && chat.toolInvoker == null)
+        {
+            chat.toolInvoker = GetComponent<ToolCallInvoker>();
+        }
+
+        // 自动确保 AutoChat 存在（AI 回复气泡 + 定时问候 + 互动事件）
+        if (GetComponent<AutoChat>() == null)
+        {
+            gameObject.AddComponent<AutoChat>();
+            Debug.Log("[DesktopPet] 自动添加了 AutoChat 组件");
+        }
+
         // 获取渲染器引用：优先使用 HybridRenderer
         var hybrid = GetComponent<HybridRenderer>();
         if (hybrid != null)
