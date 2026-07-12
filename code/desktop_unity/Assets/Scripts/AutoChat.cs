@@ -227,8 +227,16 @@ public class AutoChat : MonoBehaviour
                       || System.DateTime.Now.DayOfWeek == System.DayOfWeek.Sunday;
 
         string timeKey;
-        if (isWeekend && hour >= 8 && hour <= 22)
-            timeKey = "周末";
+        if (isWeekend && hour >= 8 && hour < 12)
+            timeKey = "周末上午";
+        else if (isWeekend && hour >= 12 && hour < 14)
+            timeKey = "周末中午";
+        else if (isWeekend && hour >= 14 && hour < 17)
+            timeKey = "周末下午";
+        else if (isWeekend && hour >= 17 && hour < 19)
+            timeKey = "周末傍晚";
+        else if (isWeekend && hour >= 19 && hour < 23)
+            timeKey = "周末夜晚";
         else if (hour >= 5 && hour < 8)
             timeKey = "清晨";
         else if (hour >= 8 && hour < 12)
@@ -244,9 +252,7 @@ public class AutoChat : MonoBehaviour
         else
             timeKey = "深夜";
 
-        string context = isWeekend && hour >= 8 && hour <= 22
-            ? "周末，休息日"
-            : $"{timeKey}（{hour}点钟）";
+        string context = $"{timeKey}（{hour}点钟）";
 
         // 用 IdleChatGenerator 动态生成
         return _idleGen.GetGreeting(context);

@@ -260,7 +260,7 @@ public class IdleChatGenerator : MonoBehaviour
 
         string userPrompt = string.Format(
             "请生成3句不同的日常问候，每句不超过30字，结合{0}的特点。" +
-            "用 ||| 分隔，不要序号。例如：晨光正好，今日宜出门走走~ ||| 看你精神不错，很好。",
+            "用 ||| 分隔，不要序号。例如：看你精神不错，今日定有好事~ ||| 嗯？你来了，正好陪本座说说话。",
             context);
 
         string jsonBody = BuildSimpleRequestBody(sysPrompt, userPrompt);

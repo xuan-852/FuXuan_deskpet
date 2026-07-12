@@ -16,9 +16,9 @@ public class PetConfig : MonoBehaviour
         public string model = "deepseek-chat";
 
         // ===== 天气 =====
-        public int weatherSource = 1;          // 0=WttrIn, 1=QWeather
+        public int weatherSource = 0;          // 0=WttrIn, 1=QWeather
         public float weatherUpdateInterval = 300f;
-        public string cityCode = "";
+        public string cityCode = "Nanjing";
         public int debugHourOverride = -1;
 
         // ===== 地面任务权重 =====

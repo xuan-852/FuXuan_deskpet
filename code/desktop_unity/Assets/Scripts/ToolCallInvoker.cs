@@ -750,8 +750,11 @@ public class ToolCallInvoker : MonoBehaviour
                 TimeWeatherController.WeatherType.Fog      => "🌫 雾",
                 _ => "未知"
             };
-            string source = tc.weatherSource == TimeWeatherController.WeatherSource.QWeather ? "和风天机" : "wttr.in天眼";
-            return $"🌤️ 本座以{source}观天之象：\n• 天气：{wtName}\n• 气温：{tc.temperatureC:F0}°C";
+            string windInfo = tc.windSpeedKmh > 0
+                ? $"{tc.windDirection}{tc.windSpeedKmh}km/h"
+                : "无风";
+            string city = string.IsNullOrEmpty(tc.cityCode) ? "本地" : tc.cityCode;
+            return $"🌤️ 本座以{tc.weatherSourceLabel}观天之象（{city}）：\n• 天气：{wtName}\n• 气温：{tc.temperatureC:F0}°C\n• 风力：{windInfo}\n• 湿度：{tc.humidityPercent}%\n• 气压：{tc.pressureHpa}hPa";
         };
 
         // ——— 29. 搜天彻地：全盘搜索任意文件（支持中文/特殊字符） ———

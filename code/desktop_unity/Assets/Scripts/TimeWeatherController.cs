@@ -16,12 +16,12 @@ public class TimeWeatherController : MonoBehaviour
 {
     [Header("天气更新")]
     [Tooltip("天气数据源：WttrIn=自动IP定位（无需Key），QWeather=和风天气（需注册Key）")]
-    public WeatherSource weatherSource = WeatherSource.QWeather;
+    public WeatherSource weatherSource = WeatherSource.WttrIn;
     [Tooltip("天气轮询间隔（秒），0=不查询天气")]
     public float weatherUpdateInterval = 300f; // 5分钟
 
     [Tooltip("城市代码（用于 wttr.in），空=自动IP定位")]
-    public string cityCode = "";
+    public string cityCode = "Nanjing";
 
     // 和风天气 Key — 从 ChatConfig 读取环境变量
     public string qWeatherKey => ChatConfig.QWeatherApiKey;
@@ -53,6 +53,10 @@ public class TimeWeatherController : MonoBehaviour
 
     [System.NonSerialized] public WeatherType weather = WeatherType.Unknown;
     [System.NonSerialized] public float temperatureC = 20f;   // 默认室温
+    [System.NonSerialized] public int windSpeedKmh = 0;       // 风速 km/h
+    [System.NonSerialized] public string windDirection = "";  // 风向箭头符号（←↑→↓等）
+    [System.NonSerialized] public int humidityPercent = 50;   // 湿度 %
+    [System.NonSerialized] public int pressureHpa = 1013;     // 气压 hPa
     [System.NonSerialized] public bool weatherFetched = false; // 是否成功获取过
 
     [Header("AI 天气语录")]
@@ -73,6 +77,7 @@ public class TimeWeatherController : MonoBehaviour
     private float _weatherTimer = 0f;
     private bool _isFetching = false;
     private WeatherType _lastFetchedWeather = WeatherType.Unknown; // 检测天气变化
+    [System.NonSerialized] public string weatherSourceLabel = "wttr.in天眼"; // 实际使用的数据源（供 ToolCallInvoker 报告）
 
     private void Start()
     {
@@ -134,11 +139,15 @@ public class TimeWeatherController : MonoBehaviour
 
         if (weatherSource == WeatherSource.QWeather && !string.IsNullOrEmpty(qWeatherKey))
         {
+            weatherSourceLabel = "和风天机";
             Debug.Log($"[TimeWeather] 和风天气 Key 长度: {qWeatherKey?.Length ?? 0}");
             yield return StartCoroutine(FetchQWeather());
         }
         else
+        {
+            weatherSourceLabel = "wttr.in天眼";
             yield return StartCoroutine(FetchWttrIn());
+        }
 
         _isFetching = false;
     }
@@ -147,8 +156,8 @@ public class TimeWeatherController : MonoBehaviour
     private IEnumerator FetchWttrIn()
     {
         string url = string.IsNullOrEmpty(cityCode)
-            ? "https://wttr.in/?format=%C+%t"
-            : $"https://wttr.in/{cityCode}?format=%C+%t";
+            ? "https://wttr.in/?format=%C+%t+%w+%h+%p+%P"
+            : $"https://wttr.in/{cityCode}?format=%C+%t+%w+%h+%p+%P";
 
         using (UnityWebRequest req = UnityWebRequest.Get(url))
         {
@@ -240,47 +249,104 @@ public class TimeWeatherController : MonoBehaviour
 
     /// <summary>
     /// 解析 wttr.in 返回的天气字符串
-    /// 格式如: "Clear +20°C" 或 "Light rain +15°C"
+    /// 格式: "Light Rain Shower, Mist +27°C ←29km/h 100% 0.4mm 988hPa"
+    ///       天气描述 +温度 风向风速 湿度 降水量 气压
     /// </summary>
     private void ParseWttrIn(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return;
 
-        // 解析温度
+        // ——— 拆分字段 ———
+        // 格式固定：天气描述 +温度 风向风速 湿度% 降水量 气压hPa
+        // 先按空格分割，但天气描述本身可能含空格，所以从后往前解析
+        string[] parts = raw.Trim().Split(' ');
+        if (parts.Length < 3) return;
+
+        // 从尾部解析已知格式字段
+        int pressureIdx = -1;
+        int precipIdx = -1;
+        int humidityIdx = -1;
+        int windIdx = -1;
+        int tempIdx = -1;
+
+        for (int i = parts.Length - 1; i >= 0; i--)
+        {
+            string p = parts[i];
+            if (p.EndsWith("hPa") && pressureIdx < 0)
+                pressureIdx = i;
+            else if (p.EndsWith("mm") && precipIdx < 0)
+                precipIdx = i;
+            else if (p.EndsWith("%") && humidityIdx < 0)
+                humidityIdx = i;
+            else if ((p.Contains("km/h") || p.Contains("km" )) && windIdx < 0)
+                windIdx = i;
+            else if (p.Contains("°C") && tempIdx < 0)
+                tempIdx = i;
+        }
+
+        // ——— 解析温度 ———
         try
         {
-            int plusIdx = raw.IndexOf('+');
-            int minusIdx = raw.IndexOf('-', 1); // 跳过开头的负号检测
-            int degIdx = raw.IndexOf('°');
-            if (degIdx > 0)
+            if (tempIdx >= 0)
             {
-                // 找温度起始位置
-                int tempStart = -1;
-                for (int i = degIdx - 1; i >= 0; i--)
-                {
-                    if (char.IsDigit(raw[i]) || raw[i] == '+' || raw[i] == '-')
-                    {
-                        if (raw[i] == '+' || raw[i] == '-')
-                        {
-                            tempStart = i;
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        tempStart = i + 1;
-                        break;
-                    }
-                }
-                if (tempStart >= 0 && int.TryParse(raw.Substring(tempStart, degIdx - tempStart), out int temp))
-                {
+                string tStr = parts[tempIdx].Replace("°C", "").Replace("+", "");
+                if (int.TryParse(tStr, out int temp))
                     temperatureC = temp;
-                }
             }
         }
         catch { }
 
-        // 解析天气类型
+        // ——— 解析风速和风向 ———
+        try
+        {
+            if (windIdx >= 0)
+            {
+                string wStr = parts[windIdx];
+                // 提取风向箭头（第一个非数字/字母的字符）
+                int dirEnd = 0;
+                for (int i = 0; i < wStr.Length; i++)
+                {
+                    if (char.IsLetter(wStr[i]) || char.IsDigit(wStr[i]))
+                    { dirEnd = i; break; }
+                }
+                if (dirEnd > 0)
+                    windDirection = wStr.Substring(0, dirEnd);
+                else
+                    windDirection = "";
+
+                // 提取风速数值
+                var kmMatch = System.Text.RegularExpressions.Regex.Match(wStr, @"(\d+)km");
+                if (kmMatch.Success)
+                    windSpeedKmh = int.Parse(kmMatch.Groups[1].Value);
+            }
+        }
+        catch { }
+
+        // ——— 解析湿度 ———
+        try
+        {
+            if (humidityIdx >= 0)
+            {
+                string hStr = parts[humidityIdx].Replace("%", "");
+                if (int.TryParse(hStr, out int h))
+                    humidityPercent = h;
+            }
+        }
+        catch { }
+
+        // ——— 解析气压 ———
+        try
+        {
+            if (pressureIdx >= 0)
+            {
+                string pStr = parts[pressureIdx].Replace("hPa", "");
+                if (int.TryParse(pStr, out int p))
+                    pressureHpa = p;
+            }
+        }
+        catch { }
+
+        // ——— 解析天气类型 ———
         string lower = raw.ToLowerInvariant();
         if (lower.Contains("thunder") || lower.Contains(" storm"))
             weather = WeatherType.Thunder;
@@ -375,6 +441,17 @@ public class TimeWeatherController : MonoBehaviour
                           temp < 25f ? "舒适" :
                           temp < 30f ? "偏暖" : "炎热";
 
+        string windDesc = windSpeedKmh switch
+        {
+            0 => "无风",
+            < 10 => "微风",
+            < 25 => "清风",
+            < 40 => "大风",
+            < 60 => "狂风",
+            _ => "暴风"
+        };
+        string lowPressure = pressureHpa < 1000 ? "气压较低（可能有风雨变化）" : "";
+
         string systemPrompt = $@"你是符玄，仙舟「罗浮」太卜司之首。
 说话古风文雅、带卜算色彩，自称为「本座」。
 请为今日的天气写{aiLineCount}句不同的感慨，每句 10~25 字，要求：
@@ -383,7 +460,10 @@ public class TimeWeatherController : MonoBehaviour
 - 每句独立成行，用 | 分隔
 - 不要序号，不要多余文字
 - 结合气温感受：{tempDesc}（{temp:F0}°C）
-- 天气：{weatherDesc}";
+- 天气：{weatherDesc}
+- 风力：{windDesc}（{windSpeedKmh}km/h {windDirection}）
+- 湿度：{humidityPercent}%
+- 气压：{pressureHpa}hPa {lowPressure}";
 
         string url = aiApiUrl.TrimEnd('/') + "/v1/chat/completions";
         string jsonBody = $"{{\"model\":\"{EscapeJson(aiModel)}\",\"messages\":[{{\"role\":\"system\",\"content\":\"{EscapeJson(systemPrompt)}\"}}],\"max_tokens\":300,\"temperature\":0.9}}";

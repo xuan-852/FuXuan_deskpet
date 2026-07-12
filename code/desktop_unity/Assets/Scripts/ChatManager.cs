@@ -402,9 +402,9 @@ public class ChatManager : MonoBehaviour
                 {
                     _history.Add(new Entry { role = "assistant", content = fullContent });
                 }
-                _lastReply = fullContent ?? "";
+                _lastReply = _fullReplyText;
                 OnNewReply?.Invoke(_lastReply);
-                StartSentenceQueue(_lastReply);
+                // ℹ️ 不调 StartSentenceQueue：流式路径 AddStreamSentence 已经显示了内容
                 RecordConversationMemory(fullContent);
                 yield break;
             }
@@ -610,15 +610,20 @@ public class ChatManager : MonoBehaviour
     /// <summary>收到完整回复后启动逐句队列</summary>
     private void StartSentenceQueue(string fullText)
     {
-        _fullReplyText = fullText;
-        _sentenceList = SplitSentences(fullText);
+        // ★ 剥离内嵌动作/表情标记，气泡只显示纯净对话
+        string cleanText = StripAndExecuteActions(fullText);
+        if (string.IsNullOrEmpty(cleanText))
+            cleanText = fullText;
+
+        _fullReplyText = cleanText;
+        _sentenceList = SplitSentences(cleanText);
         SentenceVersionId++; // 标记新回复
 
         if (_sentenceList.Count <= 1)
         {
             _isSentenceAnimating = false;
-            CurrentSentence = fullText;
-            OnSentenceChanged?.Invoke(fullText, 0, 1);
+            CurrentSentence = cleanText;
+            OnSentenceChanged?.Invoke(cleanText, 0, 1);
         }
         else
         {
