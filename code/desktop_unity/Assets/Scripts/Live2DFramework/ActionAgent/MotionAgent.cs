@@ -885,21 +885,8 @@ public class MotionAgent : MonoBehaviour
 
     private IEnumerator ExecuteMotion(string target, float intensity, float duration)
     {
-        // 映射动作名到中文描述
-        string cnDescription = target switch
-        {
-            "wave" => "开心地挥手",
-            "nod" => "轻轻点头",
-            "shake_head" => "摇头",
-            "bow" => "行礼鞠躬",
-            "stretch" => "伸懒腰舒展身体",
-            "think" => "歪头思考",
-            "cover_face" => "害羞地捂脸",
-            "hands_on_hips" => "叉腰挺胸",
-            "tilt_head" => "歪头",
-            "prayer" => "合十祈祷",
-            _ => target,
-        };
+        // 用 MotionMemoryManager 统一映射（与 GetFailurePenalty 共享）
+        string cnDescription = MotionMemoryManager.GetChineseName(target);
 
         // 通过 MotionTranslator 生成并播放
         if (_mapper != null && _model != null)
@@ -927,6 +914,12 @@ public class MotionAgent : MonoBehaviour
                     }
                 });
 
+                // ★ 闭环学习-写入演武心经：记录本次动作参数快照
+                string snapshot = BuildParamSnapshot(plan);
+                var mm = MotionMemoryManager.Instance;
+                if (mm != null)
+                    mm.RecordMotion(cnDescription, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
+
                 // 播放完毕 → 双模型交叉验证
                 if (capturedPng != null && _dualValidator != null)
                 {
@@ -942,12 +935,24 @@ public class MotionAgent : MonoBehaviour
                         Debug.Log($"[MotionAgent] ✅ 双镜鉴通过: 「{fullDesc}」均分={avgScore}/5");
                         _actionSuccessCount.TryGetValue(cnDescription, out int oldS);
                         _actionSuccessCount[cnDescription] = oldS + 1;
+
+                        // ★ 闭环学习-写入评分：双镜鉴通过 → UpdateScore（均分为可信评分）
+                        if (mm != null && avgScore > 0)
+                            mm.UpdateScore(cnDescription, avgScore, $"双镜鉴均分{avgScore}/5", snapshot);
                     }
                     else
                     {
                         Debug.Log($"[MotionAgent] ⚠️ 双镜鉴未通过: 「{fullDesc}」 GLM={sGlm} Qwen={sQwen}");
                         _actionFailCount.TryGetValue(cnDescription, out int oldF);
                         _actionFailCount[cnDescription] = oldF + 1;
+
+                        // ★ 闭环学习-写入低分：双镜鉴未通过 → 取两者中较低分
+                        if (mm != null)
+                        {
+                            int failScore = Mathf.Min(sGlm, sQwen);
+                            if (failScore > 0)
+                                mm.UpdateScore(cnDescription, failScore, $"双镜鉴未通过 GLM={sGlm} Qwen={sQwen}", snapshot);
+                        }
                     }
                     _totalActionsSinceReport++;
                 }
@@ -980,6 +985,12 @@ public class MotionAgent : MonoBehaviour
                     }
                 });
 
+                // ★ 闭环学习-写入演武心经：记录复合动作参数快照
+                string snapshot = BuildParamSnapshot(plan);
+                var mm = MotionMemoryManager.Instance;
+                if (mm != null)
+                    mm.RecordMotion(description, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
+
                 // 双模型交叉验证
                 if (capturedPng != null && _dualValidator != null)
                 {
@@ -995,12 +1006,24 @@ public class MotionAgent : MonoBehaviour
                         Debug.Log($"[MotionAgent] ✅ 双镜鉴通过(combo): 「{description}」均分={avgScore}/5");
                         _actionSuccessCount.TryGetValue(description, out int oldS);
                         _actionSuccessCount[description] = oldS + 1;
+
+                        // ★ 闭环学习-写入评分
+                        if (mm != null && avgScore > 0)
+                            mm.UpdateScore(description, avgScore, $"双镜鉴均分{avgScore}/5", snapshot);
                     }
                     else
                     {
                         Debug.Log($"[MotionAgent] ⚠️ 双镜鉴未通过(combo): 「{description}」 GLM={sGlm} Qwen={sQwen}");
                         _actionFailCount.TryGetValue(description, out int oldF);
                         _actionFailCount[description] = oldF + 1;
+
+                        // ★ 闭环学习-写入低分
+                        if (mm != null)
+                        {
+                            int failScore = Mathf.Min(sGlm, sQwen);
+                            if (failScore > 0)
+                                mm.UpdateScore(description, failScore, $"双镜鉴未通过 GLM={sGlm} Qwen={sQwen}", snapshot);
+                        }
                     }
                     _totalActionsSinceReport++;
                 }
@@ -1015,6 +1038,20 @@ public class MotionAgent : MonoBehaviour
     // ==================================================================
     //  工具方法
     // ==================================================================
+
+    /// <summary>从 MotionPlan 提取关键参数快照（供闭环学习写入 MotionMemoryManager）</summary>
+    private static string BuildParamSnapshot(MotionPlanner.MotionPlan plan)
+    {
+        if (plan == null || plan.KeyFrames.Count == 0) return "";
+        int midIdx = Mathf.Clamp(plan.KeyFrames.Count / 2, 0, plan.KeyFrames.Count - 1);
+        var midKf = plan.KeyFrames[midIdx];
+        if (midKf.Values.Count == 0) return "";
+        var topParams = midKf.Values
+            .OrderByDescending(kv => Math.Abs(kv.Value))
+            .Take(5)
+            .Select(kv => $"{kv.Key}={kv.Value:F2}");
+        return string.Join(", ", topParams);
+    }
 
     private void RecordAction(MotionDecision decision)
     {
