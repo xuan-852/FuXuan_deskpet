@@ -116,6 +116,7 @@ public class MotionMemoryManager : MonoBehaviour
     {
         var entry = GetOrCreateEntry(actionName);
         entry.lastParamSnapshot = paramSnapshot;
+        entry.bestParamJson = paramSnapshot;  // 确保 GetInjectableEntries 能读到参数
         entry.keyframeCount = keyframeCount;
         entry.totalDuration = duration;
         entry.timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
@@ -277,16 +278,17 @@ public class MotionMemoryManager : MonoBehaviour
     {
         return actionName switch
         {
-            "wave" => "开心地挥手",
+            "wave" => "开心挥手",
             "nod" => "轻轻点头",
             "shake_head" => "摇头",
-            "bow" => "行礼鞠躬",
+            "bow" => "行礼",
             "stretch" => "伸懒腰舒展身体",
             "think" => "歪头思考",
-            "cover_face" => "害羞地捂脸",
-            "hands_on_hips" => "叉腰挺胸",
+            "cover_face" => "害羞捂脸",
+            "hands_on_hips" => "挺胸叉腰",
             "tilt_head" => "歪头",
             "prayer" => "合十祈祷",
+            "proud_lift_head" => "骄傲抬头",
             _ => actionName, // combo actions 已经是中文
         };
     }

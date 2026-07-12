@@ -198,8 +198,8 @@ public static class MotionPlanner
             for (int i = 0; i < times.Length; i++)
             {
                 var kf = new KeyFrame { Time = times[i], Curve = InterpolationType.Smooth };
-                kf.Values["arm_r_upper"] = armValues[i];
-                kf.Values["arm_r_lower"] = armValues[i] * 0.5f;
+                kf.Values["arm_right_upper"] = armValues[i];
+                kf.Values["arm_right_lower"] = armValues[i] * 0.5f;
                 kf.Values["eye_l_smile"] = Mathf.Lerp(0f, 0.5f, armValues[i]);
                 kf.Values["eye_r_smile"] = Mathf.Lerp(0f, 0.5f, armValues[i]);
                 plan.KeyFrames.Add(kf);
@@ -259,22 +259,22 @@ public static class MotionPlanner
         {
             var plan = new MotionPlan { TotalDuration = 4f, Description = "伸懒腰", Looping = false };
             plan.KeyFrames.Add(new KeyFrame { Time = 0.5f, Curve = InterpolationType.EaseOut, Values = {
-                {"arm_r_upper", 1f}, {"arm_l_upper", 1f},
-                {"arm_r_lower", 0.3f}, {"arm_l_lower", 0.3f},
+                {"arm_right_upper", 1f}, {"arm_left_upper", 1f},
+                {"arm_right_lower", 0.3f}, {"arm_left_lower", 0.3f},
                 {"head_angle_y", 5f}, {"mouth_open_y", 0.2f}
             } });
             plan.KeyFrames.Add(new KeyFrame { Time = 2f, Curve = InterpolationType.Hold, Values = {
-                {"arm_r_upper", 1f}, {"arm_l_upper", 1f},
-                {"arm_r_lower", 0.3f}, {"arm_l_lower", 0.3f},
+                {"arm_right_upper", 1f}, {"arm_left_upper", 1f},
+                {"arm_right_lower", 0.3f}, {"arm_left_lower", 0.3f},
                 {"head_angle_y", 5f}, {"mouth_open_y", 0.2f}
             } });
             plan.KeyFrames.Add(new KeyFrame { Time = 3.5f, Curve = InterpolationType.EaseIn, Values = {
-                {"arm_r_upper", 0f}, {"arm_l_upper", 0f},
-                {"arm_r_lower", 0f}, {"arm_l_lower", 0f},
+                {"arm_right_upper", 0f}, {"arm_left_upper", 0f},
+                {"arm_right_lower", 0f}, {"arm_left_lower", 0f},
                 {"head_angle_y", 0f}, {"mouth_open_y", 0f}
             } });
             plan.KeyFrames.Add(new KeyFrame { Time = 4f, Curve = InterpolationType.Smooth, Values = {
-                {"arm_r_upper", 0f}, {"arm_l_upper", 0f}
+                {"arm_right_upper", 0f}, {"arm_left_upper", 0f}
             } });
             return plan;
         }
