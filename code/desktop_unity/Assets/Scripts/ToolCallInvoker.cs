@@ -1867,7 +1867,16 @@ public class ToolCallInvoker : MonoBehaviour
         if (!string.IsNullOrEmpty(review))
         {
             _coroutineResult = baseResult + "\n\n👁️ 自评反馈：\n" + review;
-            // ★ 自动将自评结果写入 PetMemory（闭环学习）
+
+            // ★ 闭环学习-写入演武心经：先用 RecordMotion 保存参数快照
+            var mm = MotionMemoryManager.Instance;
+            if (mm != null && plan != null)
+            {
+                string snapshot = ExtractPlanSnapshot(plan);
+                mm.RecordMotion(description, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
+            }
+
+            // ★ 自动将自评结果写入 MotionMemoryManager（闭环强化/覆盖引擎）
             WriteMotionReviewToMemory(description, review, plan.KeyFrames.Count, plan.TotalDuration);
         }
         else
@@ -1884,6 +1893,7 @@ public class ToolCallInvoker : MonoBehaviour
 
         // 从评语中提取打分 【X/5】
         int score = ExtractScoreFromReview(review);
+        if (score <= 0) return;
 
         // 构建参数快照
         string snapshot = $"{frameCount}帧/{duration:F1}s";
@@ -1893,6 +1903,20 @@ public class ToolCallInvoker : MonoBehaviour
         string badge = isNewBest ? "🏆" : "📝";
         UnityEngine.Debug.Log($"[ToolCallInvoker] {badge} 闭环学习: 「{description}」→ {score}/5" +
             (isNewBest ? " ★ 新纪录！" : ""));
+    }
+
+    /// <summary>从 MotionPlan 提取关键参数快照（供闭环学习写入 MotionMemoryManager）</summary>
+    private static string ExtractPlanSnapshot(MotionPlanner.MotionPlan plan)
+    {
+        if (plan == null || plan.KeyFrames.Count == 0) return "";
+        int midIdx = Mathf.Clamp(plan.KeyFrames.Count / 2, 0, plan.KeyFrames.Count - 1);
+        var midKf = plan.KeyFrames[midIdx];
+        if (midKf.Values.Count == 0) return "";
+        var topParams = midKf.Values
+            .OrderByDescending(kv => Math.Abs(kv.Value))
+            .Take(5)
+            .Select(kv => $"{kv.Key}={kv.Value:F2}");
+        return string.Join(", ", topParams);
     }
 
     /// <summary>从 GLM-4V 评语中提取打分（格式：【X/5】）</summary>

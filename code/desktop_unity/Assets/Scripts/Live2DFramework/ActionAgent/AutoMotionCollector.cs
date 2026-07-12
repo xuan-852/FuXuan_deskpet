@@ -9,15 +9,10 @@ using UnityEngine.Networking;
 /// <summary>
 /// 符玄「演武录」— 自主动作采集与评分引擎
 ///
-/// 自动增强 MotionMemoryManager 的数据飞轮：
-/// 1. 监听 MotionAgent 的每次动作执行
-/// 2. 在动作峰值时刻（~50%进度）截取模型截图
-/// 3. 调用 GLM-4V 视觉模型评分 (1-5)
-/// 4. 存入 MotionMemoryManager
-///
-/// 这样 MotionAgent 的每次自主动作都会自动变成训练数据，
-/// 无需 ChatManager 介入即可持续进化 MotionMemory。
+/// ⚠️ 已废弃：功能已被 MotionAgent.ExecuteMotion + DualModelValidator 替代。
+///    保留代码以防参考，不再使用。
 /// </summary>
+[Obsolete("已由 MotionAgent.ExecuteMotion + DualModelValidator 替代")]
 public class AutoMotionCollector : MonoBehaviour
 {
     [Header("采集配置")]

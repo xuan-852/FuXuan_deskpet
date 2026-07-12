@@ -169,8 +169,6 @@ public static class MotionTranslator
                 if (plan != null && plan.KeyFrames.Count > 0)
                 {
                     Debug.Log($"[MotionTranslator] ✅ 翻译成功：「{description}」→ {plan.KeyFrames.Count} 帧, {plan.TotalDuration:F1}s");
-                    // ★ 自动保存运动经验到记忆（闭环学习）
-                    SaveMotionMemory(description, plan);
                     onResult(plan);
                 }
                 else

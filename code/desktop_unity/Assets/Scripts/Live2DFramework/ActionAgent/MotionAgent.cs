@@ -524,7 +524,16 @@ public class MotionAgent : MonoBehaviour
         // 4. 密度级别
         parts.Add($"决策密度: {CurrentDensity}");
 
-        // 5. 最近动作历史（去重）
+        // 5. 演武心经（过往经验统计）
+        var mm = MotionMemoryManager.Instance;
+        if (mm != null)
+        {
+            string report = mm.GetPipelineReport();
+            if (!string.IsNullOrEmpty(report))
+                parts.Add(report);
+        }
+
+        // 6. 最近动作历史（去重）
         if (_recentActions.Count > 0)
         {
             parts.Add($"最近动作: {string.Join(", ", _recentActions.TakeLast(5))}");
@@ -570,12 +579,25 @@ public class MotionAgent : MonoBehaviour
 
     private IEnumerator DecideWithLLM(string context, Action<MotionDecision> onResult)
     {
+        // 拼接演武心经经验
+        string mmMemories = "";
+        var mm = MotionMemoryManager.Instance;
+        if (mm != null)
+        {
+            string formatted = mm.GetFormattedMemories();
+            if (!string.IsNullOrEmpty(formatted))
+                mmMemories = $"\n过往演武经验:\n{formatted}\n";
+            string negative = mm.GetFormattedNegativeExamples();
+            if (!string.IsNullOrEmpty(negative))
+                mmMemories += $"\n需避免的失败案例:\n{negative}\n";
+        }
+
         string systemPrompt =
             "你是一个桌面宠物「符玄」的自主动作决策引擎。你的任务是根据当前上下文，创作最合适的动作。\n\n" +
             "规则:\n" +
             "1. 动作(motion): target 写任意中文动作描述，由下流引擎翻译为Live2D参数序列。\n" +
             "   示例: \"害羞地扭捏捂脸\", \"叉腰昂头哼一声\", \"伸懒腰打个哈欠\", \"歪头疑惑地眨眨眼\", " +
-            "\"双手合十闭眼祈祷\", \"低头玩弄衣角\", \"惊弓之鸟般跳起来又镇定\", \"赌气背过身去又悄悄回头\"\n" +
+            "\"双手合十闭眼祈祷\", \"低头玩弄衣角\"\n" +
             "2. 表情(expression): target 写情绪名。happy_smile(开心微笑), sad_pout(委屈嘟嘴), " +
             "angry_frown(皱眉), surprised(惊讶), sleepy(犯困), blush(害羞), loving(含情脉脉), proud(骄傲)\n" +
             "3. 复合(combo): target 写更复杂的连续动作描述（表情+动作组合、多阶段动作）\n" +
@@ -587,7 +609,9 @@ public class MotionAgent : MonoBehaviour
             "- 用户活跃 → 选择不打扰的小动作或保持安静\n" +
             "- intensity 控制幅度: 0.3轻柔, 0.5适中, 0.7夸张, 0.9很夸张\n" +
             "- duration 2~6秒，combo可到8秒\n" +
-            "- 不要重复最近做过的动作\n\n" +
+            "- 不要重复最近做过的动作\n" +
+            "- 参考过往演武经验，优先选择已掌握的高分动作，避免表现不佳的动作\n\n" +
+            mmMemories +
             "输出格式(JSON ONLY, 不要markdown):\n" +
             "{\"action\":\"motion\", \"target\":\"害羞地扭捏捂脸\", \"intensity\":0.6, \"duration\":3.5, \"reason\":\"被主人盯着看了好一会\"}";
 
@@ -960,6 +984,13 @@ public class MotionAgent : MonoBehaviour
             else
             {
                 _skippedCount++;
+                // 翻译失败 → 记录负反馈（避免下次再选同一动作）
+                var mmFail = MotionMemoryManager.Instance;
+                if (mmFail != null && !string.IsNullOrEmpty(fullDesc))
+                {
+                    mmFail.RecordNegativeExample(fullDesc, "", 1,
+                        $"MotionTranslator 无法将「{fullDesc}」翻译为参数序列");
+                }
             }
         }
     }

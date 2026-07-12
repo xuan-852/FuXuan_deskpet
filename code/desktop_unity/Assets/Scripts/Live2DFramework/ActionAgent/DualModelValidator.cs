@@ -174,19 +174,9 @@ public class DualModelValidator : MonoBehaviour
         float dur = plan?.TotalDuration ?? 0f;
         LogValidation(description, glmScore, qwenScore, avgScore, isConsensus, glmReview, qwenReview, dur, kfCount);
 
-        // ── Consensus → 写入 MotionMemoryManager ──
-        if (isConsensus && _memoryManager != null)
-        {
-            // 从 plan 中提取中间帧参数快照
-            string paramSnapshot = ExtractParamSnapshot(plan);
-            _memoryManager.RecordMotion(description, paramSnapshot, kfCount, dur);
-            // 用平均分作为最终评分
-            _memoryManager.UpdateScore(description, avgScore,
-                $"GLM={glmScore}/5, Qwen={qwenScore}/5 | {glmReview}",
-                paramSnapshot);
-        }
+        // ── Consensus → 由调用方（MotionAgent/ ToolCallInvoker）写入 MotionMemoryManager ──
         // ── Disagreement / 低分 → 记录负反馈 ──
-        else if (_memoryManager != null && plan != null)
+        if (_memoryManager != null && plan != null && !isConsensus)
         {
             // 只要两模型中至少有一个给了低分(≤2)，就记录为负反馈例子
             int lowestScore = Mathf.Min(
