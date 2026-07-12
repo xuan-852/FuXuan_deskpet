@@ -36,7 +36,7 @@ public class MotionAgent : MonoBehaviour
     public bool enabled = true;
 
     [Tooltip("决策间隔（秒），根据密度级别自动调整")]
-    public float baseInterval = 8f;
+    public float baseInterval = 5f;
 
     [Header("◈ 本地 LLM 配置")]
     [Tooltip("本地模型名")]
@@ -67,6 +67,10 @@ public class MotionAgent : MonoBehaviour
 
     [Tooltip("每次动作后的最小等待秒数")]
     public float minCooldownAfterAction = 2f;
+
+    [Header("◈ 测试模式")]
+    [Tooltip("测试模式：强制 High 密度 + 关闭睡眠检测，用于数据积累")]
+    public bool testMode = true;
 
     // ==================================================================
     //  运行时状态
@@ -111,6 +115,70 @@ public class MotionAgent : MonoBehaviour
 
     /// <summary>密度级别调整冷却</summary>
     private float _densityChangeCooldown = 0f;
+
+    // ══════════════════════════════════════════════════════════════
+    //  失败追踪 & 报告
+    // ══════════════════════════════════════════════════════════════
+
+    /// <summary>动作失败计数（actionName → 失败次数）</summary>
+    private readonly Dictionary<string, int> _actionFailCount = new Dictionary<string, int>();
+
+    /// <summary>动作成功计数</summary>
+    private readonly Dictionary<string, int> _actionSuccessCount = new Dictionary<string, int>();
+
+    /// <summary>验证跳过计数（plan==null）</summary>
+    private int _skippedCount = 0;
+
+    /// <summary>自上次报告后的总动作数</summary>
+    private int _totalActionsSinceReport = 0;
+
+    /// <summary>报告周期（每 N 个决策动作输出一次报告到日志）</summary>
+    private const int REPORT_INTERVAL = 30;
+
+    /// <summary>获取全链路运行报告</summary>
+    public string GetPipelineReport()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("╔══════════════════════════════════════╗");
+        sb.AppendLine("║  符玄「分神化身」— MotionAgent 报告  ║");
+        sb.AppendLine("╚══════════════════════════════════════╝");
+        sb.AppendLine();
+
+        int totalAttempts = _actionFailCount.Values.Sum() + _actionSuccessCount.Values.Sum() + _skippedCount;
+        sb.AppendLine("📊 运行概览");
+        sb.AppendLine($"▸ 密度级别: {CurrentDensity}");
+        sb.AppendLine($"▸ 回退模式: {(_isInFallbackMode ? "✅ 概率回退" : "🔶 LLM 决策")}");
+        sb.AppendLine($"▸ 总动作尝试: {totalAttempts}");
+        sb.AppendLine($"▸ 成功验证: {_actionSuccessCount.Values.Sum()}");
+        sb.AppendLine($"▸ 验证失败: {_actionFailCount.Values.Sum()}");
+        sb.AppendLine($"▸ 跳过(翻译失败): {_skippedCount}");
+
+        // 失败最多的动作
+        var topFailures = _actionFailCount.Where(kv => kv.Value > 0)
+            .OrderByDescending(kv => kv.Value).Take(8).ToList();
+        if (topFailures.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("⛔ 高频失败动作 (验证未通过)");
+            foreach (var kv in topFailures)
+            {
+                int success = _actionSuccessCount.TryGetValue(kv.Key, out int s) ? s : 0;
+                float rate = (kv.Value + success) > 0
+                    ? (float)success / (kv.Value + success) * 100f : 0f;
+                sb.AppendLine($"  {(kv.Value > 5 ? "🔴" : "🟡")} 「{kv.Key}」 失败={kv.Value} 成功={success} 通过率={rate:F0}%");
+            }
+        }
+
+        // 融合 MotionMemoryManager 报告
+        var mm = MotionMemoryManager.Instance;
+        if (mm != null)
+        {
+            sb.AppendLine();
+            sb.Append(mm.GetPipelineReport());
+        }
+
+        return sb.ToString();
+    }
 
     // ==================================================================
     //  Unity 生命周期
@@ -221,6 +289,17 @@ public class MotionAgent : MonoBehaviour
 
     private void UpdateDensityLevel()
     {
+        // ★ 测试模式：强制 High 密度
+        if (testMode)
+        {
+            if (CurrentDensity != DensityLevel.High)
+            {
+                CurrentDensity = DensityLevel.High;
+                UnityEngine.Debug.Log("[MotionAgent] 🧪 测试模式: 密度强制 High");
+            }
+            return;
+        }
+
         if (_densityChangeCooldown > 0f)
         {
             _densityChangeCooldown -= Time.deltaTime;
@@ -274,6 +353,8 @@ public class MotionAgent : MonoBehaviour
 
     private bool IsSleepTime()
     {
+        // 测试模式：不进入睡眠
+        if (testMode) return false;
         // 调试：跳过睡眠检查以触发双镜鉴验证
         return false;
         //int hour = DateTime.Now.Hour;
@@ -370,6 +451,14 @@ public class MotionAgent : MonoBehaviour
             }
 
             IsDeciding = false;
+
+            // ◈ 定期输出全链路报告到日志
+            _totalActionsSinceReport++;
+            if (_totalActionsSinceReport >= REPORT_INTERVAL)
+            {
+                _totalActionsSinceReport = 0;
+                Debug.Log($"[MotionAgent] 📋 定期全链路报告（每{REPORT_INTERVAL}次）\n{GetPipelineReport()}");
+            }
         }
     }
 
@@ -565,17 +654,17 @@ public class MotionAgent : MonoBehaviour
         // 根据情绪计算各动作权重
         var candidates = new List<(string action, string target, float weight, float duration)>();
 
-        // —— 表情 ——
+        // —— 表情（降低权重，重点验证动作而非表情）——
         float exprWeight = mood switch
         {
-            "happy" => 0.30f,
-            "sad" => 0.25f,
-            "angry" => 0.20f,
-            "excited" => 0.35f,
-            "content" => 0.25f,
-            "sleepy" => 0.40f,
-            "affectionate" => 0.35f,
-            _ => 0.20f,
+            "happy" => 0.15f,
+            "sad" => 0.15f,
+            "angry" => 0.12f,
+            "excited" => 0.15f,
+            "content" => 0.15f,
+            "sleepy" => 0.20f,
+            "affectionate" => 0.15f,
+            _ => 0.12f,
         };
 
         string exprTarget = mood switch
@@ -592,33 +681,30 @@ public class MotionAgent : MonoBehaviour
 
         candidates.Add(("expression", exprTarget, exprWeight, 2.5f));
 
-        // —— 动作 ——
-        if (idleFactor > 0.5f && UnityEngine.Random.value < 0.3f)
-        {
-            // 长时间空闲 → 温和吸引注意
-            string[] gentleActions = { "wave", "tilt_head", "stretch", "blush" };
-            var ga = gentleActions[UnityEngine.Random.Range(0, gentleActions.Length)];
-            candidates.Add(("motion", ga, 0.25f, 3f));
-        }
-        else if (mood == "excited" || mood == "happy")
-        {
-            candidates.Add(("motion", "wave", 0.20f, 3f));
-            candidates.Add(("motion", "hands_on_hips", 0.15f, 4f));
-        }
-        else if (mood == "sleepy" || mood == "sad")
-        {
-            candidates.Add(("motion", "stretch", 0.15f, 4f));
-            candidates.Add(("motion", "think", 0.15f, 3f));
-        }
-        else
-        {
-            candidates.Add(("motion", "tilt_head", 0.12f, 2.5f));
-            candidates.Add(("motion", "nod", 0.10f, 2f));
-            candidates.Add(("combo", "低头微笑", 0.10f, 3f));
-        }
+        // —— 动作（大幅提高权重 + 增加复杂动作）——
+        // 无论情绪如何，优先出动作积累数据
+        candidates.Add(("motion", "wave", 0.18f, 3f));
+        candidates.Add(("motion", "hands_on_hips", 0.16f, 4f));
+        candidates.Add(("motion", "cover_face", 0.16f, 3.5f));
+        candidates.Add(("motion", "bow", 0.14f, 3f));
+        candidates.Add(("motion", "think", 0.14f, 3f));
+        candidates.Add(("motion", "stretch", 0.12f, 4f));
+        candidates.Add(("motion", "tilt_head", 0.12f, 2.5f));
+        candidates.Add(("motion", "nod", 0.10f, 2f));
 
-        // —— idle ——
-        candidates.Add(("idle", "", 0.30f, 0f));
+        // —— 复合复杂动作（LLM 翻译生成，最值得验证）——
+        candidates.Add(("combo", "害羞地扭捏捂脸", 0.18f, 4f));
+        candidates.Add(("combo", "叉腰昂头哼一声", 0.16f, 3.5f));
+        candidates.Add(("combo", "伸懒腰打个哈欠", 0.14f, 4f));
+        candidates.Add(("combo", "歪头疑惑地眨眨眼", 0.14f, 3f));
+        candidates.Add(("combo", "双手合十闭眼祈祷", 0.12f, 4f));
+        candidates.Add(("combo", "低头玩弄衣角", 0.12f, 3.5f));
+        candidates.Add(("combo", "惊喜地跳起来拍手", 0.14f, 4f));
+        candidates.Add(("combo", "赌气背过身去又悄悄回头", 0.12f, 5f));
+        candidates.Add(("combo", "轻轻行礼问候", 0.12f, 3f));
+
+        // —— idle（大幅降低，减少发呆）——
+        candidates.Add(("idle", "", 0.10f, 0f));
 
         // 去重：最近做过的动作降权
         for (int i = 0; i < candidates.Count; i++)
@@ -627,6 +713,34 @@ public class MotionAgent : MonoBehaviour
             if (c.action != "idle" && _recentActions.Contains(c.action + ":" + c.target))
             {
                 candidates[i] = (c.action, c.target, c.weight * 0.3f, c.duration);
+            }
+        }
+
+        // ★ 负反馈失败惩罚：低分动作动态降权（对接 MotionMemoryManager）
+        var mm = MotionMemoryManager.Instance;
+        if (mm != null)
+        {
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                var c = candidates[i];
+                if (c.action == "idle" || c.action == "expression") continue;
+
+                // ① L2D 物理不可能动作 → 完全阻止
+                if (MotionMemoryManager.PhysicallyImpossibleActions.Contains(c.target))
+                {
+                    candidates[i] = (c.action, c.target, 0f, c.duration);
+                    UnityEngine.Debug.Log($"[MotionAgent] 🚫 L2D 无法表现「{c.target}」，已禁止");
+                    continue;
+                }
+
+                // ② 负反馈降权
+                float penalty = mm.GetFailurePenalty(c.target);
+                if (penalty < 1.0f)
+                {
+                    float oldWeight = candidates[i].weight;
+                    candidates[i] = (c.action, c.target, oldWeight * penalty, c.duration);
+                    UnityEngine.Debug.Log($"[MotionAgent] ⛔ 失败惩罚「{c.target}」: {oldWeight:F2} → {oldWeight * penalty:F2} (乘数={penalty})");
+                }
             }
         }
 
@@ -644,7 +758,7 @@ public class MotionAgent : MonoBehaviour
                 {
                     action = c.action,
                     target = c.target,
-                    intensity = 0.4f + UnityEngine.Random.value * 0.3f,
+                    intensity = 0.5f + UnityEngine.Random.value * 0.3f,
                     duration = c.duration,
                     reason = $"情绪{mood}, 空闲{ (Time.time - _lastInteractionTime):F0}s"
                 };
@@ -826,12 +940,21 @@ public class MotionAgent : MonoBehaviour
                     if (consensus)
                     {
                         Debug.Log($"[MotionAgent] ✅ 双镜鉴通过: 「{fullDesc}」均分={avgScore}/5");
+                        _actionSuccessCount.TryGetValue(cnDescription, out int oldS);
+                        _actionSuccessCount[cnDescription] = oldS + 1;
                     }
                     else
                     {
                         Debug.Log($"[MotionAgent] ⚠️ 双镜鉴未通过: 「{fullDesc}」 GLM={sGlm} Qwen={sQwen}");
+                        _actionFailCount.TryGetValue(cnDescription, out int oldF);
+                        _actionFailCount[cnDescription] = oldF + 1;
                     }
+                    _totalActionsSinceReport++;
                 }
+            }
+            else
+            {
+                _skippedCount++;
             }
         }
     }
@@ -868,10 +991,23 @@ public class MotionAgent : MonoBehaviour
                         (c, avg, g, q, rg, rq) => { consensus = c; avgScore = avg; sGlm = g; sQwen = q; rGlm = rg; rQwen = rq; });
 
                     if (consensus)
+                    {
                         Debug.Log($"[MotionAgent] ✅ 双镜鉴通过(combo): 「{description}」均分={avgScore}/5");
+                        _actionSuccessCount.TryGetValue(description, out int oldS);
+                        _actionSuccessCount[description] = oldS + 1;
+                    }
                     else
+                    {
                         Debug.Log($"[MotionAgent] ⚠️ 双镜鉴未通过(combo): 「{description}」 GLM={sGlm} Qwen={sQwen}");
+                        _actionFailCount.TryGetValue(description, out int oldF);
+                        _actionFailCount[description] = oldF + 1;
+                    }
+                    _totalActionsSinceReport++;
                 }
+            }
+            else
+            {
+                _skippedCount++;
             }
         }
     }

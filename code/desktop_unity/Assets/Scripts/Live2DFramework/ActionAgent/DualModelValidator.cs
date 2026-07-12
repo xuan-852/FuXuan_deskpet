@@ -9,16 +9,19 @@ using UnityEngine;
 using UnityEngine.Networking;
 
 /// <summary>
-/// 符玄「双镜鉴」— 双模型交叉动作评分验证器
+/// 符玄「镜鉴」— 单模型动作评分验证器
 ///
-/// 使用两个不同厂商的多模态视觉 AI 对同一动作截图独立评分：
-///   模型A: GLM-4.6V (智谱)   — 已有 API Key
-///   模型B: Qwen3-VL-Flash (阿里通义千问) — 需配置 QWEN_VL_API_KEY 环境变量
+/// 使用 GLM-4V (智谱) 对动作截图进行视觉评分：
+///   模型A: GLM-4.6V (智谱) — 主力评分模型
+///   模型B: Qwen-VL-Plus (阿里通义千问) — 仅记日志供参考，不参与共识裁决
 ///
 /// 评分协议：
-///   - 两个模型各自打出 1-5 分
-///   - 两者都 ≥ 3 且分差 ≤ 1 → CONSENSUS，记入 MotionMemoryManager
-///   - 否则 → DISAGREEMENT，仅记入验证日志，不写入记忆
+///   - GLM-4V 打出 1-5 分
+///   - ≥ passThreshold(3) → CONSENSUS，记入 MotionMemoryManager
+///   - 否则 → 记入验证日志，触发负反馈
+///
+/// 注：Qwen-VL-Plus 实测无视觉区分度（始终打 1~2 分），
+///     因此保留调用仅用于日志对比，不阻断共识。
 ///
 /// 验证日志: Application.persistentDataPath/validation_log.json
 /// </summary>
@@ -30,11 +33,11 @@ public class DualModelValidator : MonoBehaviour
     [Tooltip("最大允许分差，超过此值视为 disagreement")]
     public int maxScoreDiff = 1;
 
-    [Header("Qwen-VL 配置")]
+    [Header("Qwen-VL 配置（仅参考日志，不参与裁决）")]
     [Tooltip("Qwen-VL API 基础地址（DashScope OpenAI 兼容接口）")]
     public string qwenApiBaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
     [Tooltip("Qwen-VL 模型名")]
-    public string qwenModel = "qwen3-vl-flash";
+    public string qwenModel = "qwen-vl-plus";
 
     // ==================================================================
     //  运行时
@@ -152,24 +155,17 @@ public class DualModelValidator : MonoBehaviour
         bool isConsensus = false;
         int avgScore = 0;
 
-        if (glmScore > 0 && qwenScore > 0)
+        // ── 单模型裁决：仅以 GLM-4V 评分为准 ──
+        // Qwen-VL-Plus 实测无视觉区分度（始终打 1~2 分），
+        // 因此仍调用并记日志供参考，但不参与共识阻断。
+        if (glmScore >= passThreshold)
         {
-            int diff = Mathf.Abs(glmScore - qwenScore);
-            if (glmScore >= passThreshold && qwenScore >= passThreshold && diff <= maxScoreDiff)
-            {
-                isConsensus = true;
-                avgScore = Mathf.RoundToInt((glmScore + qwenScore) / 2f);
-            }
-        }
-        else if (glmScore > 0 && qwenScore == 0)
-        {
-            // Qwen 不可用时退化为单模型
-            isConsensus = glmScore >= passThreshold;
+            isConsensus = true;
             avgScore = glmScore;
         }
-        else if (qwenScore > 0 && glmScore == 0)
+        else if (qwenScore >= passThreshold && glmScore == 0)
         {
-            isConsensus = qwenScore >= passThreshold;
+            isConsensus = true;
             avgScore = qwenScore;
         }
 
@@ -188,6 +184,21 @@ public class DualModelValidator : MonoBehaviour
             _memoryManager.UpdateScore(description, avgScore,
                 $"GLM={glmScore}/5, Qwen={qwenScore}/5 | {glmReview}",
                 paramSnapshot);
+        }
+        // ── Disagreement / 低分 → 记录负反馈 ──
+        else if (_memoryManager != null && plan != null)
+        {
+            // 只要两模型中至少有一个给了低分(≤2)，就记录为负反馈例子
+            int lowestScore = Mathf.Min(
+                glmScore > 0 ? glmScore : int.MaxValue,
+                qwenScore > 0 ? qwenScore : int.MaxValue
+            );
+            if (lowestScore <= _memoryManager.negativeThreshold)
+            {
+                string paramSnapshot = ExtractParamSnapshot(plan);
+                string review = $"GLM={glmScore}/5: {Truncate(glmReview, 100)} | Qwen={qwenScore}/5: {Truncate(qwenReview, 100)}";
+                _memoryManager.RecordNegativeExample(description, paramSnapshot, lowestScore, review);
+            }
         }
 
         onResult?.Invoke(isConsensus, avgScore, glmScore, qwenScore, glmReview, qwenReview);
