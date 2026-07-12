@@ -563,6 +563,27 @@ public class DesktopPet : MonoBehaviour
             chat.toolInvoker = GetComponent<ToolCallInvoker>();
         }
 
+        // ★ MotionAgent：常驻自主动作决策（本地 LLM 驱动）
+        if (GetComponent<MotionAgent>() == null)
+        {
+            gameObject.AddComponent<MotionAgent>();
+            Debug.Log("[DesktopPet] 自动添加了 MotionAgent（分神化身）组件");
+        }
+
+        // ★ AutoMotionCollector：自主动作采集与 GLM-4V 评分
+        if (GetComponent<AutoMotionCollector>() == null)
+        {
+            gameObject.AddComponent<AutoMotionCollector>();
+            Debug.Log("[DesktopPet] 自动添加了 AutoMotionCollector（演武录）组件");
+        }
+
+        // ★ DualModelValidator：双模型交叉验证器（GLM-4V + Qwen-VL）
+        if (GetComponent<DualModelValidator>() == null)
+        {
+            gameObject.AddComponent<DualModelValidator>();
+            Debug.Log("[DesktopPet] 自动添加了 DualModelValidator（双镜鉴）组件");
+        }
+
         // 自动确保 AutoChat 存在（AI 回复气泡 + 定时问候 + 互动事件）
         if (GetComponent<AutoChat>() == null)
         {

@@ -22,8 +22,8 @@ public class BallPanel : MonoBehaviour
     // ==================== 运行时状态 ====================
     private PanelType _currentPanel = PanelType.None;
     private Rect _panelRect;
-    private float _panelWidth = 280f;
-    private float _panelHeight = 380f;
+    private float _panelWidth = 420f;
+    private float _panelHeight = 580f;
 
     // 拖拽
     private bool _isDragging = false;
@@ -100,56 +100,56 @@ public class BallPanel : MonoBehaviour
         {
             normal = { textColor = new Color(0.9f, 0.6f, 0.8f), background = _sectionBg },
             fontStyle = FontStyle.Bold,
-            fontSize = 13,
+            fontSize = 18,
             alignment = TextAnchor.MiddleCenter,
-            padding = new RectOffset(0, 0, 5, 5)
+            padding = new RectOffset(0, 0, 8, 8)
         };
 
         _sectionStyle = new GUIStyle
         {
             normal = { textColor = new Color(0.7f, 0.7f, 0.8f), background = _sectionBg },
             fontStyle = FontStyle.Bold,
-            fontSize = 11,
-            padding = new RectOffset(6, 0, 4, 4)
+            fontSize = 15,
+            padding = new RectOffset(10, 0, 6, 6)
         };
 
         _labelStyle = new GUIStyle
         {
             normal = { textColor = Color.white },
-            fontSize = 11,
+            fontSize = 15,
             alignment = TextAnchor.MiddleLeft,
-            padding = new RectOffset(6, 0, 2, 2)
+            padding = new RectOffset(10, 0, 4, 4)
         };
 
         _buttonStyle = new GUIStyle(GUI.skin.button)
         {
             normal = { textColor = Color.white, background = _btnBg },
             hover = { background = MakeTex(1, 1, new Color(0.35f, 0.35f, 0.4f)) },
-            fontSize = 11,
+            fontSize = 15,
             alignment = TextAnchor.MiddleCenter,
-            padding = new RectOffset(6, 6, 4, 4)
+            padding = new RectOffset(10, 10, 6, 6)
         };
 
         _smallButtonStyle = new GUIStyle(_buttonStyle)
         {
-            fontSize = 12,
+            fontSize = 16,
             fontStyle = FontStyle.Bold,
             padding = new RectOffset(6, 6, 0, 0),
-            fixedWidth = 24,
-            fixedHeight = 22
+            fixedWidth = 32,
+            fixedHeight = 30
         };
 
         _closeButtonStyle = new GUIStyle(_buttonStyle)
         {
             normal = { textColor = new Color(1f, 0.4f, 0.4f), background = _btnSmallBg },
-            fontSize = 11,
+            fontSize = 15,
             alignment = TextAnchor.MiddleCenter
         };
 
         _textFieldStyle = new GUIStyle(GUI.skin.textField)
         {
             normal = { textColor = Color.white, background = _inputBg },
-            fontSize = 11,
+            fontSize = 15,
             padding = new RectOffset(4, 4, 3, 3)
         };
     }
@@ -236,7 +236,7 @@ public class BallPanel : MonoBehaviour
         GUILayout.FlexibleSpace();
         GUILayout.BeginHorizontal();
         GUILayout.FlexibleSpace();
-        if (GUILayout.Button("✕ 关闭", _closeButtonStyle, GUILayout.Width(80), GUILayout.Height(24)))
+        if (GUILayout.Button("✕ 关闭", _closeButtonStyle, GUILayout.Width(120), GUILayout.Height(36)))
             Close();
         GUILayout.FlexibleSpace();
         GUILayout.EndHorizontal();
@@ -248,7 +248,7 @@ public class BallPanel : MonoBehaviour
     {
         if (!IsOpen) return;
 
-        Rect titleBar = new Rect(_panelRect.x, _panelRect.y, _panelRect.width, 28);
+        Rect titleBar = new Rect(_panelRect.x, _panelRect.y, _panelRect.width, 40);
         _titleHovered = titleBar.Contains(e.mousePosition);
 
         if (e.type == EventType.MouseDown && _titleHovered)
@@ -277,7 +277,7 @@ public class BallPanel : MonoBehaviour
     private void DrawSettingsPanel()
     {
         _settingsScrollPos = GUILayout.BeginScrollView(_settingsScrollPos, false, true,
-            GUILayout.Width(_panelWidth), GUILayout.Height(_panelHeight - 70));
+            GUILayout.Width(_panelWidth), GUILayout.Height(_panelHeight - 90));
 
         GUILayout.Label("⚙ 任务权重", _sectionStyle);
         GUILayout.Space(2);
@@ -290,7 +290,7 @@ public class BallPanel : MonoBehaviour
 
         GUILayout.Space(4);
 
-        if (GUILayout.Button("✓ 应用权重", _buttonStyle, GUILayout.Height(26)))
+        if (GUILayout.Button("✓ 应用权重", _buttonStyle, GUILayout.Height(34)))
             ApplyWeights();
 
         GUILayout.Space(6);
@@ -300,19 +300,19 @@ public class BallPanel : MonoBehaviour
         GUILayout.Space(2);
 
         GUILayout.BeginHorizontal();
-        if (GUILayout.Button("好动", _buttonStyle, GUILayout.Height(24)))
+        if (GUILayout.Button("好动", _buttonStyle, GUILayout.Height(32)))
         {
             _wLeftEdge = 3; _wRightEdge = 3;
             _wLeftTime = 3; _wRightTime = 3; _wStop = 1;
             ApplyWeights();
         }
-        if (GUILayout.Button("均衡", _buttonStyle, GUILayout.Height(24)))
+        if (GUILayout.Button("均衡", _buttonStyle, GUILayout.Height(32)))
         {
             _wLeftEdge = 2; _wRightEdge = 2;
             _wLeftTime = 2; _wRightTime = 2; _wStop = 2;
             ApplyWeights();
         }
-        if (GUILayout.Button("安静", _buttonStyle, GUILayout.Height(24)))
+        if (GUILayout.Button("安静", _buttonStyle, GUILayout.Height(32)))
         {
             _wLeftEdge = 1; _wRightEdge = 1;
             _wLeftTime = 1; _wRightTime = 1; _wStop = 6;
@@ -324,7 +324,7 @@ public class BallPanel : MonoBehaviour
         GUILayout.Label("💾 持久化", _sectionStyle);
         GUILayout.Space(2);
 
-        if (GUILayout.Button("💿 保存配置（天机簿）", _buttonStyle, GUILayout.Height(26)))
+        if (GUILayout.Button("💿 保存配置（天机簿）", _buttonStyle, GUILayout.Height(34)))
         {
             if (PetConfig.Instance != null)
             {
@@ -333,7 +333,7 @@ public class BallPanel : MonoBehaviour
             }
         }
 
-        if (GUILayout.Button("🗑 清空忆境", _buttonStyle, GUILayout.Height(26)))
+        if (GUILayout.Button("🗑 清空忆境", _buttonStyle, GUILayout.Height(34)))
         {
             if (PetMemory.Instance != null)
                 PetMemory.Instance.ClearMemories();
@@ -353,11 +353,11 @@ public class BallPanel : MonoBehaviour
 
         GUILayout.BeginHorizontal();
         GUILayout.FlexibleSpace();
-        if (GUILayout.Button("🔄 刷新", _buttonStyle, GUILayout.Width(70), GUILayout.Height(22)))
+        if (GUILayout.Button("🔄 刷新", _buttonStyle, GUILayout.Width(90), GUILayout.Height(32)))
         {
             // 下次绘制自动取最新
         }
-        if (GUILayout.Button("📋 复制", _buttonStyle, GUILayout.Width(70), GUILayout.Height(22)))
+        if (GUILayout.Button("📋 复制", _buttonStyle, GUILayout.Width(90), GUILayout.Height(32)))
         {
             if (!string.IsNullOrEmpty(_lastReportText))
             {
@@ -390,11 +390,11 @@ public class BallPanel : MonoBehaviour
         _lastReportText = report;
 
         _reportScrollPos = GUILayout.BeginScrollView(_reportScrollPos, false, true,
-            GUILayout.Width(_panelWidth), GUILayout.Height(_panelHeight - 140));
+            GUILayout.Width(_panelWidth), GUILayout.Height(_panelHeight - 180));
 
         var reportStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 11,
+            fontSize = 15,
             normal = { textColor = new Color(0.8f, 0.8f, 0.9f) },
             wordWrap = true,
             richText = true,
@@ -406,7 +406,7 @@ public class BallPanel : MonoBehaviour
 
         GUILayout.Space(4);
         GUILayout.Label("💡 每次演武后 AI 会自评并记录，分数越高下次越倾向使用",
-            new GUIStyle { normal = { textColor = new Color(0.5f, 0.5f, 0.6f) }, fontSize = 10, wordWrap = true });
+            new GUIStyle { normal = { textColor = new Color(0.5f, 0.5f, 0.6f) }, fontSize = 13, wordWrap = true });
     }
 
     // ==================== 便签面板 ====================
@@ -426,18 +426,18 @@ public class BallPanel : MonoBehaviour
 
         // 操作行
         GUILayout.BeginHorizontal();
-        if (GUILayout.Button("✚ 新建", _buttonStyle, GUILayout.Height(24)))
+        if (GUILayout.Button("✚ 新建", _buttonStyle, GUILayout.Height(32)))
         {
             _showAddReminder = !_showAddReminder;
             if (!_showAddReminder) { _newReminderText = ""; _newReminderTime = ""; }
         }
-        if (GUILayout.Button("🔄 刷新", _buttonStyle, GUILayout.Height(24)))
+        if (GUILayout.Button("🔄 刷新", _buttonStyle, GUILayout.Height(32)))
         {
             _reminderStatusMsg = $"已刷新，{pendingCount} 项待办";
             _reminderStatusColor = Color.green;
         }
         string toggleLabel = _showDoneReminders ? "⏳ 看待办" : "✅ 已完成";
-        if (GUILayout.Button(toggleLabel, _buttonStyle, GUILayout.Height(24)))
+        if (GUILayout.Button(toggleLabel, _buttonStyle, GUILayout.Height(32)))
         {
             _showDoneReminders = !_showDoneReminders;
             _reminderScrollPos = Vector2.zero;
@@ -451,15 +451,15 @@ public class BallPanel : MonoBehaviour
             GUILayout.Space(2);
 
             GUILayout.Label("内容：", _labelStyle);
-            _newReminderText = GUILayout.TextField(_newReminderText, _textFieldStyle, GUILayout.Height(22));
+            _newReminderText = GUILayout.TextField(_newReminderText, _textFieldStyle, GUILayout.Height(30));
 
             GUILayout.Space(2);
             GUILayout.Label("时间 (可选 yyyy-MM-dd HH:mm)：", _labelStyle);
-            _newReminderTime = GUILayout.TextField(_newReminderTime, _textFieldStyle, GUILayout.Height(22));
+            _newReminderTime = GUILayout.TextField(_newReminderTime, _textFieldStyle, GUILayout.Height(30));
 
             GUILayout.Space(2);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("✓ 添加", _buttonStyle, GUILayout.Height(24)))
+            if (GUILayout.Button("✓ 添加", _buttonStyle, GUILayout.Height(32)))
             {
                 if (!string.IsNullOrEmpty(_newReminderText))
                 {
@@ -489,7 +489,7 @@ public class BallPanel : MonoBehaviour
                     _reminderStatusColor = Color.red;
                 }
             }
-            if (GUILayout.Button("✕", _closeButtonStyle, GUILayout.Width(50), GUILayout.Height(24)))
+            if (GUILayout.Button("✕", _closeButtonStyle, GUILayout.Width(50), GUILayout.Height(32)))
             {
                 _showAddReminder = false;
                 _newReminderText = "";
@@ -529,7 +529,7 @@ public class BallPanel : MonoBehaviour
         else
         {
             _reminderScrollPos = GUILayout.BeginScrollView(_reminderScrollPos, false, true,
-                GUILayout.Width(_panelWidth), GUILayout.Height(_panelHeight - 200));
+                GUILayout.Width(_panelWidth), GUILayout.Height(_panelHeight - 280));
 
             foreach (var r in list)
             {
@@ -571,13 +571,13 @@ public class BallPanel : MonoBehaviour
                 var itemStyle = new GUIStyle(_labelStyle)
                 {
                     normal = { textColor = r.done ? new Color(0.5f, 0.5f, 0.5f) : Color.white },
-                    fontSize = 11,
+                    fontSize = 15,
                     wordWrap = true,
                     stretchWidth = true
                 };
                 GUILayout.Label(displayText, itemStyle);
 
-                if (GUILayout.Button("✕", _closeButtonStyle, GUILayout.Width(22), GUILayout.Height(20)))
+                if (GUILayout.Button("✕", _closeButtonStyle, GUILayout.Width(30), GUILayout.Height(28)))
                 {
                     _reminders.DeleteReminder(r.id);
                     _reminderStatusMsg = $"🗑️ 已删除「{r.text}」";
@@ -597,7 +597,7 @@ public class BallPanel : MonoBehaviour
     private void DrawWeightRow(string label, ref int value, int min, int max)
     {
         GUILayout.BeginHorizontal();
-        GUILayout.Label(label, _labelStyle, GUILayout.Width(130));
+        GUILayout.Label(label, _labelStyle, GUILayout.Width(180));
 
         if (GUILayout.Button("-", _smallButtonStyle))
             value = Mathf.Max(min, value - 1);
@@ -606,7 +606,7 @@ public class BallPanel : MonoBehaviour
         GUIStyle valStyle = new GUIStyle(_labelStyle)
         {
             alignment = TextAnchor.MiddleCenter,
-            fixedWidth = 30
+            fixedWidth = 36
         };
         GUILayout.Label(valStr, valStyle);
 

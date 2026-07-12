@@ -31,6 +31,11 @@ public class PetConfig : MonoBehaviour
         // ===== 初始位置 =====
         public int startX = 50;
         public int startY = -1;
+
+        // ===== MotionAgent（分神化身）配置 =====
+        public bool motionAgentEnabled = true;
+        public string localModel = "qwen2.5:0.5b";
+        public string localApiUrl = "http://127.0.0.1:11434/v1";
     }
 
     [Header("当前配置（保存后持久化）")]
@@ -125,6 +130,15 @@ public class PetConfig : MonoBehaviour
             pet.startY = data.startY;
         }
 
+        // MotionAgent
+        var agent = FindObjectOfType<MotionAgent>();
+        if (agent != null)
+        {
+            agent.enabled = data.motionAgentEnabled;
+            agent.localModel = data.localModel;
+            agent.localApiUrl = data.localApiUrl;
+        }
+
         Debug.Log("[PetConfig] 已应用全部配置");
     }
 
@@ -157,6 +171,14 @@ public class PetConfig : MonoBehaviour
             data.weightStop = pet.taskWeightStopTime;
             data.startX = pet.startX;
             data.startY = pet.startY;
+        }
+
+        var agent = FindObjectOfType<MotionAgent>();
+        if (agent != null)
+        {
+            data.motionAgentEnabled = agent.enabled;
+            data.localModel = agent.localModel;
+            data.localApiUrl = agent.localApiUrl;
         }
     }
 }

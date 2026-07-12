@@ -202,7 +202,7 @@ public class RightPanel : MonoBehaviour
                 var tool = _tools[i];
                 if (tool.panelType.HasValue && _ballPanel != null)
                 {
-                    Vector2 panelPos = new Vector2(px - 290f, 60f);
+                    Vector2 panelPos = new Vector2(px - 440f, 40f);
                     _ballPanel.ShowPanel(tool.panelType.Value, panelPos);
                 }
                 else if (tool.label == "聊天")
