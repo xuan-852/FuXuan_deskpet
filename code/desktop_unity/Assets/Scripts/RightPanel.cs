@@ -1,13 +1,18 @@
 using UnityEngine;
 
 /// <summary>
-/// 右侧多功能面板 — Windows 11 Widgets 风格
+/// 右侧多功能面板 — 符玄·太卜司主题
+///
+/// 设计语言：
+/// - 紫灰渐变背景（太卜司星象风格）
+/// - 顶部 "太卜司" 标识 + 实时时间
+/// - 紫光按钮 + 装饰细线分割
+/// - 底部法阵纹样点缀
 ///
 /// 功能：
 /// - 屏幕右边缘窄条触发，按 ~ 键或鼠标划过展开
-/// - 滑出面板含工具图标 + 底部输入框
+/// - 滑出面板含工具按钮 + 底部输入框
 /// - 跨 BallPanel 标签页（设置/便签/报告）保持可见
-/// - 磨砂玻璃风格，不抢占桌面空间
 ///
 /// 状态切换：
 ///   ~ 键 → 切换展开/收起（手动模式，保持状态）
@@ -58,13 +63,27 @@ public class RightPanel : MonoBehaviour
     private GUIStyle _separatorStyle;
     private GUIStyle _placeholderStyle;
     private GUIStyle _hintStyle;         // 按钮悬停提示（极淡）
-    private Texture2D _bgTex;            // 面板背景
+    private GUIStyle _topBarStyle;       // 顶栏文字
+    private GUIStyle _timeStyle;         // 时间文字
+    private GUIStyle _brandStyle;        // 太卜司标识
+    private Texture2D _bgTex;            // 面板背景（渐变替代）
     private Texture2D _inputBgTex;       // 输入框背景
+    private Texture2D _inputHoverBgTex;  // 输入框悬停背景（提亮紫）
     private Texture2D _separatorTex;     // 分隔线
     private Texture2D _whiteTex;         // 白图
     private Texture2D _toolTex;          // 按钮正常背景
     private Texture2D _toolHoverTex;     // 按钮悬停背景
+    private Texture2D _glowTex;          // 按钮发光光晕
+    private Texture2D _accentLineTex;    // 装饰细线（紫）
+    private Texture2D _ornamentTL;       // 左上云纹角饰
+    private Texture2D _ornamentTR;       // 右上云纹角饰
+    private Texture2D _ornamentBR;       // 右下云纹角饰
+    private Texture2D _ornamentBL;       // 左下云纹角饰
     private bool _stylesReady = false;
+
+    // ==================== 装饰状态 ====================
+    private string _timeDisplay = "";
+    private float _timeRefreshTimer = 0f;
 
     // ==================== 触发器窄条 ====================
     /// <summary>右侧触发器区域（鼠标划过展开）</summary>
@@ -182,19 +201,70 @@ public class RightPanel : MonoBehaviour
         Rect bgRect = new Rect(px, py, pw, ph);
         GUI.Box(bgRect, GUIContent.none, _panelStyle);
 
-        // ——— 工具按钮 ——— 全部计算在本地，不依赖成员变量
-        float btnY = 12f;
-        float btnSize = 32f;
-        float btnGap = 4f;
+        // ═══════════════════════════════════════
+        //  顶栏 — 太卜司标识 + 时间
+        // ═══════════════════════════════════════
+        float topDecoY = 8f;
+        float topDecoH = 34f;
+
+        // 左上云纹角饰
+        if (_ornamentTL != null)
+        {
+            GUI.color = new Color(0.55f, 0.40f, 0.85f, 0.50f);
+            GUI.DrawTexture(new Rect(px + 2, py + 2, 28f, 28f), _ornamentTL);
+        }
+        // 右上云纹角饰
+        if (_ornamentTR != null)
+        {
+            GUI.color = new Color(0.55f, 0.40f, 0.85f, 0.50f);
+            GUI.DrawTexture(new Rect(px + pw - 30, py + 2, 28f, 28f), _ornamentTR);
+        }
+
+        // "太卜司" 标识
+        Rect brandRect = new Rect(px, topDecoY - 2f, pw, 20f);
+        GUI.color = Color.white;
+        GUI.Label(brandRect, "太 卜 司", _brandStyle);
+
+        // ——— 更新时钟 ———
+        _timeRefreshTimer += Time.deltaTime;
+        if (_timeRefreshTimer > 1f || string.IsNullOrEmpty(_timeDisplay))
+        {
+            _timeRefreshTimer = 0f;
+            _timeDisplay = System.DateTime.Now.ToString("HH:mm");
+        }
+
+        // 时间显示（金色）
+        Rect timeRect = new Rect(px, topDecoY + 16f, pw, 18f);
+        GUI.Label(timeRect, _timeDisplay, _timeStyle);
+
+        // ——— 紫光分隔线 ———
+        float sep1Y = topDecoY + topDecoH;
+        GUI.Box(new Rect(px + 12f, sep1Y, pw - 24f, 1f), GUIContent.none, _separatorStyle);
+        // 细紫线
+        GUI.Box(new Rect(px + 30f, sep1Y + 2f, pw - 60f, 1f), GUIContent.none, new GUIStyle { normal = { background = MakeTex(1, 1, new Color(0.55f, 0.40f, 0.85f, 0.3f)) } });
+
+        // ═══════════════════════════════════════
+        //  工具按钮
+        // ═══════════════════════════════════════
+        float btnStartY = sep1Y + 10f;
+        float btnSize = 34f;
+        float btnGap = 6f;
         float btnX = px + (pw - btnSize) / 2f;
 
         int localHoveredToolIndex = -1;
         for (int i = 0; i < _tools.Length; i++)
         {
-            float by = btnY + i * (btnSize + btnGap);
+            float by = btnStartY + i * (btnSize + btnGap);
             Rect btnRect = new Rect(btnX, by, btnSize, btnSize);
             bool hover = bgRect.Contains(mp) && btnRect.Contains(mp);
             if (hover) localHoveredToolIndex = i;
+
+            // 悬停光晕
+            if (hover)
+            {
+                Rect glowRect = new Rect(btnX - 7f, by - 7f, btnSize + 14f, btnSize + 14f);
+                GUI.DrawTexture(glowRect, _glowTex);
+            }
 
             GUIStyle style = hover ? _toolBtnHoverStyle : _toolBtnStyle;
             if (GUI.Button(btnRect, new GUIContent(_tools[i].icon, _tools[i].label), style))
@@ -213,15 +283,28 @@ public class RightPanel : MonoBehaviour
             }
         }
 
-        // ——— 按钮下方提示文字（极淡，仅悬停时微光） ———
-        float hintAreaY = btnY + _tools.Length * (btnSize + btnGap) + 4f;
+        // ——— 按钮下方悬停提示 ———
+        float hintAreaY = btnStartY + _tools.Length * (btnSize + btnGap) + 4f;
         if (localHoveredToolIndex >= 0)
         {
             Rect hintRect = new Rect(px + 8f, hintAreaY, pw - 16f, 18f);
             GUI.Label(hintRect, _tools[localHoveredToolIndex].label, _hintStyle);
         }
 
-        // ——— 底部输入框 ———
+        // ═══════════════════════════════════════
+        //  底部区域 — 角落云纹 + 输入框
+        // ═══════════════════════════════════════
+
+        // ——— 底部云纹角饰 ———
+        float ornSize = 32f;
+        float ornMargin = 4f;
+        GUI.color = new Color(0.55f, 0.40f, 0.85f, 0.40f);
+        if (_ornamentBL != null)
+            GUI.DrawTexture(new Rect(px + ornMargin, ph - inputBarHeight - ornSize - 4f, ornSize, ornSize), _ornamentBL);
+        if (_ornamentBR != null)
+            GUI.DrawTexture(new Rect(px + pw - ornSize - ornMargin, ph - inputBarHeight - ornSize - 4f, ornSize, ornSize), _ornamentBR);
+
+        // ——— 输入框 ———
         float inputAreaH = inputBarHeight;
         float inputAreaY = ph - inputAreaH - 8f;
         float inputAreaX = px + 6f;
@@ -229,8 +312,8 @@ public class RightPanel : MonoBehaviour
 
         Rect inputBgRect = new Rect(inputAreaX, inputAreaY, inputAreaW, inputAreaH);
 
-        // 输入框上方的细线分隔
-        GUI.Box(new Rect(inputAreaX, inputAreaY, inputAreaW, 1f), GUIContent.none, _separatorStyle);
+        // 输入框上方的分隔线
+        GUI.Box(new Rect(inputAreaX + 4f, inputAreaY - 2f, inputAreaW - 8f, 1f), GUIContent.none, _separatorStyle);
 
         // 输入框
         GUI.SetNextControlName("rightPanelInput");
@@ -249,6 +332,26 @@ public class RightPanel : MonoBehaviour
                 _chat.SendMessage(msg, null);
         }
 
+        // ——— 自定义悬停描边（不带默认灰色边框） ———
+        Vector2 mousePos2 = Event.current.mousePosition;
+        bool hoveringInput = inputBgRect.Contains(mousePos2);
+        if (hoveringInput || GUI.GetNameOfFocusedControl() == "rightPanelInput")
+        {
+            Color borderColor = hoveringInput
+                ? new Color(0.65f, 0.50f, 0.90f, 0.40f)
+                : new Color(0.70f, 0.55f, 0.92f, 0.60f);
+            GUI.color = borderColor;
+            float bw = inputBgRect.width;
+            float bh = inputBgRect.height;
+            float bx = inputBgRect.x;
+            float by = inputBgRect.y;
+            GUI.DrawTexture(new Rect(bx - 1f, by - 1f, bw + 2f, 1f), _whiteTex);  // 顶
+            GUI.DrawTexture(new Rect(bx - 1f, by + bh, bw + 2f, 1f), _whiteTex);  // 底
+            GUI.DrawTexture(new Rect(bx - 1f, by - 1f, 1f, bh + 2f), _whiteTex);  // 左
+            GUI.DrawTexture(new Rect(bx + bw, by - 1f, 1f, bh + 2f), _whiteTex);  // 右
+            GUI.color = Color.white;
+        }
+
         _inputText = GUI.TextField(inputBgRect, _inputText, _inputStyle);
 
         // 聚焦请求
@@ -261,28 +364,24 @@ public class RightPanel : MonoBehaviour
         // 空输入框提示文字
         if (string.IsNullOrEmpty(_inputText) && GUI.GetNameOfFocusedControl() != "rightPanelInput")
         {
-            GUI.Label(inputBgRect, "输入消息…", _placeholderStyle);
+            GUI.Label(inputBgRect, "向符玄发送消息…", _placeholderStyle);
         }
 
         // ——— 面板内点击 → 防穿透 ———
-        // 注意：不能简单 Event.Use() 全部，否则 GUI.Button/TextField 无法工作。
-        // 只在点击发生在面板背景上且不是按钮/输入框时消费事件。
         if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
         {
             if (bgRect.Contains(mp))
             {
-                // 检查是否点在了按钮或输入框上 — 这些控件自己会处理事件
                 bool onButton = localHoveredToolIndex >= 0;
                 bool onInput = inputBgRect.Contains(mp);
                 if (!onButton && !onInput)
                 {
-                    Event.current.Use(); // 面板内空白区域点击 → 防桌面穿透 + 聚焦输入框
+                    Event.current.Use();
                     _inputFocused = true;
                 }
             }
             else if (_isExpanded)
             {
-                // 面板外任意点击 → 收回（但让事件继续传播给其他 UI）
                 _wantsExpand = false;
             }
         }
@@ -295,44 +394,62 @@ public class RightPanel : MonoBehaviour
         if (_stylesReady) return;
         _stylesReady = true;
 
-        // 面板背景 — 深色半透明磨砂感
-        _bgTex = MakeTex(1, 1, new Color(0.08f, 0.08f, 0.12f, 0.75f));
+        // ═══════════════════════════════════════
+        //  符玄主题配色表
+        // ═══════════════════════════════════════
+        Color cDarkBg     = new Color(0.06f, 0.05f, 0.10f, 0.78f); // 深紫黑底
+        Color cMidBg      = new Color(0.10f, 0.08f, 0.15f, 0.70f); // 中紫底
+        Color cAccent     = new Color(0.55f, 0.40f, 0.85f, 1.0f);  // 符玄紫
+        Color cAccentDim  = new Color(0.40f, 0.28f, 0.65f, 0.6f);  // 暗紫
+        Color cAccentGlow = new Color(0.65f, 0.50f, 0.95f, 0.30f); // 紫光晕
+        Color cTextMain   = new Color(0.92f, 0.90f, 0.96f, 1.0f);  // 主文字白紫
+        Color cTextDim    = new Color(0.60f, 0.55f, 0.70f, 0.6f);  // 淡文字
+        Color cGold       = new Color(0.85f, 0.75f, 0.50f, 1.0f);  // 金色点缀
+
+        // ——— 面板背景 ——— 竖直渐变模拟（左右两半混合）
+        _bgTex = MakeGradientTex(64, 64, cDarkBg, cMidBg, true);
         _panelStyle = new GUIStyle { normal = { background = _bgTex } };
 
-        // 分隔线
-        _separatorTex = MakeTex(1, 1, new Color(1f, 1f, 1f, 0.15f));
+        // ——— 顶部装饰线（紫） ———
+        _accentLineTex = MakeTex(1, 1, cAccent);
+
+        // ——— 分隔线 ———
+        _separatorTex = MakeTex(1, 1, new Color(0.45f, 0.35f, 0.65f, 0.25f));
         _separatorStyle = new GUIStyle { normal = { background = _separatorTex } };
 
-        // 输入框背景 — 比面板亮一个层次
-        _inputBgTex = MakeTex(1, 1, new Color(0.35f, 0.35f, 0.40f, 0.6f));
-        _inputStyle = new GUIStyle(GUI.skin.textField)
+        // ——— 输入框背景 ——— 紫调（不从默认皮肤继承，避免 hover 灰色边框）
+        _inputBgTex = MakeTex(1, 1, new Color(0.22f, 0.16f, 0.35f, 0.75f));
+        _inputHoverBgTex = MakeTex(1, 1, new Color(0.32f, 0.24f, 0.48f, 0.85f));
+        _inputStyle = new GUIStyle
         {
-            normal = { textColor = new Color(0.95f, 0.95f, 1.0f), background = _inputBgTex },
-            focused = { textColor = Color.white, background = _inputBgTex },
-            fontSize = 16,
-            padding = new RectOffset(10, 10, 8, 8),
+            normal = { textColor = cTextMain, background = _inputBgTex },
+            hover = { textColor = cTextMain, background = _inputHoverBgTex },
+            focused = { textColor = Color.white, background = _inputHoverBgTex },
+            fontSize = 15,
+            padding = new RectOffset(12, 12, 8, 8),
             alignment = TextAnchor.MiddleLeft,
             border = new RectOffset(0, 0, 0, 0),
             margin = new RectOffset(0, 0, 0, 0),
             stretchHeight = true
         };
 
-        // 输入框占位提示文字
+        // ——— 输入框占位提示 ——— 淡紫白色
         _placeholderStyle = new GUIStyle
         {
-            normal = { textColor = new Color(0.6f, 0.6f, 0.7f, 0.8f) },
-            fontSize = 16,
-            padding = new RectOffset(10, 10, 8, 8),
+            normal = { textColor = new Color(0.72f, 0.68f, 0.82f, 0.9f) },
+            fontSize = 15,
+            padding = new RectOffset(12, 10, 8, 8),
             alignment = TextAnchor.MiddleLeft
         };
 
-        // 工具按钮 — 可见圆角按钮背景
-        _toolTex = MakeCircleTex(32, new Color(1f, 1f, 1f, 0.12f));
-        _toolHoverTex = MakeCircleTex(32, new Color(0.6f, 0.7f, 1f, 0.25f));
+        // ——— 工具按钮 ——— 紫光主题
+        _toolTex = MakeCircleTex(34, new Color(0.50f, 0.35f, 0.80f, 0.18f));
+        _toolHoverTex = MakeCircleTex(34, new Color(0.60f, 0.45f, 0.90f, 0.40f));
+        _glowTex = MakeCircleTex(48, cAccentGlow);
 
         _toolBtnStyle = new GUIStyle
         {
-            normal = { background = _toolTex, textColor = new Color(0.85f, 0.85f, 0.9f) },
+            normal = { background = _toolTex, textColor = new Color(0.75f, 0.70f, 0.85f) },
             hover = { background = _toolHoverTex, textColor = Color.white },
             alignment = TextAnchor.MiddleCenter,
             fontSize = 18,
@@ -350,15 +467,43 @@ public class RightPanel : MonoBehaviour
             padding = new RectOffset(0, 0, 0, 0)
         };
 
-        // 按钮悬停提示（极淡文字）
+        // ——— 按钮悬停提示 ———
         _hintStyle = new GUIStyle
         {
-            normal = { textColor = new Color(0.6f, 0.6f, 0.7f, 0.35f) },
+            normal = { textColor = new Color(0.55f, 0.50f, 0.70f, 0.5f) },
             fontSize = 12,
             alignment = TextAnchor.UpperLeft
         };
 
-        // 白图（保留供今后扩展使用）
+        // ——— 顶栏 ——— 太卜司标识 + 时间
+        _brandStyle = new GUIStyle
+        {
+            normal = { textColor = cGold },
+            fontSize = 14,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.UpperCenter
+        };
+        _topBarStyle = new GUIStyle
+        {
+            normal = { textColor = cAccent },
+            fontSize = 11,
+            alignment = TextAnchor.UpperCenter
+        };
+        _timeStyle = new GUIStyle
+        {
+            normal = { textColor = new Color(0.85f, 0.80f, 0.92f, 0.85f) },
+            fontSize = 14,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.UpperCenter
+        };
+
+        // ——— 角落云纹角饰（复刻 ChatBubble 风格） ———
+        _ornamentTL = GenCornerOrnament(40, cAccentDim, true);
+        _ornamentTR = GenCornerOrnament(40, cAccentDim, false);
+        _ornamentBR = GenCornerOrnament(40, cAccentDim, false);
+        _ornamentBL = GenCornerOrnament(40, cAccentDim, true);
+
+        // 白图（保留）
         _whiteTex = MakeTex(1, 1, Color.white);
     }
 
@@ -397,15 +542,63 @@ public class RightPanel : MonoBehaviour
         return tex;
     }
 
+    /// <summary>创建竖直渐变纹理</summary>
+    private static Texture2D MakeGradientTex(int w, int h, Color top, Color bottom, bool horizontal = false)
+    {
+        Texture2D tex = new Texture2D(w, h, TextureFormat.ARGB32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        for (int y = 0; y < h; y++)
+        {
+            float t = y / (float)(h - 1);
+            Color c = Color.Lerp(top, bottom, t);
+            for (int x = 0; x < w; x++)
+                tex.SetPixel(x, y, c);
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>创建角落云纹图案（复刻 ChatBubble 风格）</summary>
+    private static Texture2D GenCornerOrnament(int size, Color c, bool topLeft)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.ARGB32, false);
+        Color t = new Color(0, 0, 0, 0);
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float px = topLeft ? x : (size - 1f - x);
+                float py = topLeft ? y : (size - 1f - y);
+                float d = Mathf.Sqrt((px * px + py * py) / (2f * (size - 1f) * (size - 1f)));
+                float angle = Mathf.Atan2(py + 0.01f, px + 0.01f);
+                float spiral = Mathf.Sin(angle * 3f + d * 10f) * 0.5f + 0.5f;
+                float alphaMask = Mathf.Clamp01((1f - d) * 1.8f - 0.5f);
+                float val = Mathf.Pow(spiral * alphaMask, 0.6f);
+                bool draw = val > 0.20f && d < 0.85f;
+                float a = draw ? Mathf.Clamp01(val * 1.5f) * c.a : 0f;
+                tex.SetPixel(x, y, draw ? new Color(c.r, c.g, c.b, a) : t);
+            }
+        }
+        tex.Apply();
+        return tex;
+    }
+
     // ==================== 清理 ====================
 
     void OnDestroy()
     {
         if (_bgTex != null) Destroy(_bgTex);
         if (_inputBgTex != null) Destroy(_inputBgTex);
+        if (_inputHoverBgTex != null) Destroy(_inputHoverBgTex);
         if (_separatorTex != null) Destroy(_separatorTex);
         if (_whiteTex != null) Destroy(_whiteTex);
         if (_toolTex != null) Destroy(_toolTex);
         if (_toolHoverTex != null) Destroy(_toolHoverTex);
+        if (_glowTex != null) Destroy(_glowTex);
+        if (_ornamentTL != null) Destroy(_ornamentTL);
+        if (_ornamentTR != null) Destroy(_ornamentTR);
+        if (_ornamentBR != null) Destroy(_ornamentBR);
+        if (_ornamentBL != null) Destroy(_ornamentBL);
     }
 }
