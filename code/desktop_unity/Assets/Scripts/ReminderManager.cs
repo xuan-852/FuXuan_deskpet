@@ -429,7 +429,10 @@ public class ReminderManager : MonoBehaviour
             if (cleaned > 0)
                 Debug.Log($"[ReminderManager] 加载时兜底清理了 {cleaned} 条过期一次性提醒");
         }
-        catch { }
+        catch
+        {
+            // 清理异常不影响主流程
+        }
     }
 
     private void NotifyDataChanged()
@@ -489,6 +492,9 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
                 $"-NoProfile -Command \"{ps.Replace("\"", "\\\"")}\"")
             { UseShellExecute = false, CreateNoWindow = true });
         }
-        catch { }
+        catch
+        {
+            // 系统通知不可用时（如 Windows 版本不支持），静默忽略
+        }
     }
 }

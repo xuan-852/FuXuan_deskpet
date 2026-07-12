@@ -76,9 +76,6 @@ public class DragHandler : MonoBehaviour
     // 鼠标在宠物范围内的状态（每帧更新）
     private bool _mouseOverPet = false;
 
-    // 底部输入栏引用
-    private BottomInputBar _bottomBar;
-
     // 右面板引用
     private RightPanel _rightPanel;
 
@@ -95,9 +92,6 @@ public class DragHandler : MonoBehaviour
 
         _ballPanel = GetComponent<BallPanel>();
         if (_ballPanel == null) _ballPanel = FindObjectOfType<BallPanel>();
-
-        // BottomInputBar 可能稍后才添加，Start 中找一次
-        RefreshBottomBar();
 
         // 获取 RightPanel 引用
         _rightPanel = GetComponent<RightPanel>();
@@ -317,19 +311,6 @@ public class DragHandler : MonoBehaviour
     }
 
     /// <summary>
-    /// 查找底部输入栏（每次更新前刷新，应对动态添加）
-    /// </summary>
-    private void RefreshBottomBar()
-    {
-        if (_bottomBar != null) return;
-        _bottomBar = GetComponent<BottomInputBar>();
-        if (_bottomBar == null) _bottomBar = FindObjectOfType<BottomInputBar>();
-    }
-
-    /// <summary>
-    /// 每帧根据鼠标位置动态设置点击穿透
-    /// </summary>
-    /// <summary>
     /// 窗口就绪后调用，强制下一帧重算穿透状态（解决启动时序问题）
     /// </summary>
     public void ResetClickState()
@@ -341,16 +322,8 @@ public class DragHandler : MonoBehaviour
     {
         if (_window == null) return;
 
-        RefreshBottomBar(); // ★ 每帧重新确保引用
-
         Vector2 mousePos = GetMousePos();
         bool overPet = IsPointInPet(mousePos);
-        // ★ 底部输入栏也接收点击（打字用）
-        bool overBar = _bottomBar != null
-            && mousePos.x >= _bottomBar.BarLeft
-            && mousePos.x <= _bottomBar.BarRight
-            && mousePos.y >= _bottomBar.BarTop
-            && mousePos.y <= _bottomBar.BarBottom;
 
         // ★ BallPanel 区域也接收点击
         bool overPanel = _ballPanel != null
@@ -360,7 +333,7 @@ public class DragHandler : MonoBehaviour
         bool overRightPanel = _rightPanel != null
             && _rightPanel.IsPointInInteractiveArea(mousePos);
 
-        bool needInput = overPet || overBar || overPanel || overRightPanel;
+        bool needInput = overPet || overPanel || overRightPanel;
 
         if (needInput != _mouseOverPet)
         {

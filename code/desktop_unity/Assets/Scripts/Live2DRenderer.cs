@@ -3625,7 +3625,7 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         SyncOverlayCamera();
 
-        // GUI.depth = 1 → 在 BottomInputBar(depth=0) 之上绘制
+        // GUI.depth = 1 → 在底层 GUI 元素之上绘制
         GUI.depth = 1;
 
         // ★ 全屏绘制 RT — 叠加相机只渲染了 Layer 31（模型），背景透明 (0,0,0,0)

@@ -187,7 +187,10 @@ public class DesktopPet : MonoBehaviour
                 string msg = $"[{DateTime.Now:HH:mm:ss}] {type}: {logString}\n{stackTrace}\n";
                 System.IO.File.AppendAllText(CrashLogPath, msg);
             }
-            catch { }
+            catch
+            {
+                // 崩溃处理器中不能抛异常，否则会覆盖原始崩溃信息
+            }
         }
     }
 
@@ -203,7 +206,10 @@ public class DesktopPet : MonoBehaviour
                 string msg = $"[{DateTime.Now:HH:mm:ss}] MEMORY_HIGH: {memMB}MB\n";
                 System.IO.File.AppendAllText(CrashLogPath, msg);
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"[DesktopPet] 写入崩溃日志失败（无害）: {ex.Message}");
+            }
         }
         if (memMB > MEMORY_WARNING_MB)
         {
@@ -244,7 +250,10 @@ public class DesktopPet : MonoBehaviour
                         string msg = $"[{DateTime.Now:HH:mm:ss}] SYS_MEM_DANGER: {usedPct:F0}% ({availMB}MB left)\n";
                         System.IO.File.AppendAllText(CrashLogPath, msg);
                     }
-                    catch { }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogWarning($"[DesktopPet] 写入内存预警日志失败: {ex.Message}");
+                    }
                     Resources.UnloadUnusedAssets();
                     System.GC.Collect();
                     _sysMemWarnCooldown = 120f; // 每2分钟才报一次
@@ -268,7 +277,10 @@ public class DesktopPet : MonoBehaviour
                 }
             }
         }
-        catch { }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[DesktopPet] CheckSystemMemory 异常（无害）: {ex.Message}");
+        }
     }
 
     /// <summary>清理过期日志文件：crash_log.txt 超1MB截断 + 删除7天前的 build_log*.txt</summary>
@@ -509,10 +521,6 @@ public class DesktopPet : MonoBehaviour
             gameObject.AddComponent<RightPanel>();
             Debug.Log("[DesktopPet] 自动添加了 RightPanel 组件");
         }
-
-        // 旧底部输入栏禁用：保留组件但禁用，不自动添加新实例
-        var oldBar = GetComponent<BottomInputBar>();
-        if (oldBar != null) oldBar.enabled = false;
 
         // 自动确保 TimeWeatherController 存在
         if (GetComponent<TimeWeatherController>() == null)
@@ -1078,7 +1086,10 @@ public class DesktopPet : MonoBehaviour
                     if ((DateTime.Now - suspendTime).TotalSeconds < 30)
                         wasSleep = false; // <30s 可能是临时焦点切换，不是睡眠唤醒
                 }
-                catch { }
+                catch
+                {
+                    // 保存的字符串格式异常，视为睡眠唤醒（安全侧）
+                }
             }
             if (wasSleep)
             {
@@ -1109,8 +1120,8 @@ public class DesktopPet : MonoBehaviour
     {
         if (_instanceMutex != null)
         {
-            try { _instanceMutex.ReleaseMutex(); } catch { }
-            try { _instanceMutex.Dispose(); } catch { }
+            try { _instanceMutex.ReleaseMutex(); } catch { /* 进程退出时 Mutex 可能已被 OS 释放 */ }
+            try { _instanceMutex.Dispose(); } catch { /* 同上 */ }
             _instanceMutex = null;
         }
     }

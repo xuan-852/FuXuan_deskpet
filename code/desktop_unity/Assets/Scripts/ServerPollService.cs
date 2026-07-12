@@ -175,7 +175,10 @@ public class ServerPollService : MonoBehaviour
             {
                 payload = JsonUtility.FromJson<ExamPayload>(msg.payload);
             }
-            catch { }
+            catch
+            {
+                // payload 非 JSON 格式或无有效载荷，视为纯文本消息
+            }
         }
 
         string examKey = payload?.examKey ?? msg.title;

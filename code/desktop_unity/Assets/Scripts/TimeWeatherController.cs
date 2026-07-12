@@ -294,7 +294,10 @@ public class TimeWeatherController : MonoBehaviour
                     temperatureC = temp;
             }
         }
-        catch { }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[Weather] 温度解析异常: {ex.Message}");
+        }
 
         // ——— 解析风速和风向 ———
         try
@@ -320,7 +323,10 @@ public class TimeWeatherController : MonoBehaviour
                     windSpeedKmh = int.Parse(kmMatch.Groups[1].Value);
             }
         }
-        catch { }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[Weather] 风速解析异常: {ex.Message}");
+        }
 
         // ——— 解析湿度 ———
         try
@@ -332,7 +338,10 @@ public class TimeWeatherController : MonoBehaviour
                     humidityPercent = h;
             }
         }
-        catch { }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[Weather] 湿度解析异常: {ex.Message}");
+        }
 
         // ——— 解析气压 ———
         try
@@ -344,7 +353,10 @@ public class TimeWeatherController : MonoBehaviour
                     pressureHpa = p;
             }
         }
-        catch { }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[Weather] 气压解析异常: {ex.Message}");
+        }
 
         // ——— 解析天气类型 ———
         string lower = raw.ToLowerInvariant();

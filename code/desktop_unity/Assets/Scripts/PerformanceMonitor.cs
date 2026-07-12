@@ -251,7 +251,10 @@ public class PerformanceMonitor : MonoBehaviour
                 }
             }
             catch (System.DllNotFoundException) { }
-            catch { }
+            catch
+            {
+                // NVML 初始化失败（非 NVIDIA GPU 或无驱动），跳过 GPU 监控
+            }
         }
         if (!_nvmlInitialized || _nvmlDevice == System.IntPtr.Zero) return -1f;
         // 休眠恢复后冷却期内不查，避免打在失效句柄上导致显卡驱动崩溃
@@ -271,7 +274,10 @@ public class PerformanceMonitor : MonoBehaviour
             _nvmlDevice = System.IntPtr.Zero;
             _nvmlRetryCooldown = 60f;
         }
-        catch { }
+        catch
+        {
+            // NVML P/Invoke 异常（如 AccessViolation），冷却后重试
+        }
         return -1f;
     }
 
