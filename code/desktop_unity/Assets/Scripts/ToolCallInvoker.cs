@@ -1831,57 +1831,51 @@ public class ToolCallInvoker : MonoBehaviour
         // ★ 设置 AI 控制锁，防止空闲动画覆盖运动参数（锁定时长=动作时长+1秒缓冲）
         renderer.SetAiControlLock(plan.TotalDuration + 1f);
 
-        // 创建 MotionGenerator 并播放（带进度回调，在动作峰值时截图）
+        // ── 多帧截图（20%/40%/60%/80% 进度）──
+        var framePngs = new List<byte[]>();
+        var capturePoints = new float[] { 0.20f, 0.40f, 0.60f, 0.80f };
         var generator = new MotionGenerator(mapper, model);
-        byte[] peakSnapshot = null;
-
-        // ★ 在 60% 进度（动作峰值附近）时截取快照用于 GLM-4V 自评
         yield return generator.PlayAsync(plan, progress =>
         {
-            if (peakSnapshot == null && progress >= 0.60f)
+            for (int i = 0; i < capturePoints.Length; i++)
             {
-                // ★ 强制 Cubism 更新管线，确保网格变形反映当前参数值
-                model.ForceUpdateNow();
-                peakSnapshot = renderer.CaptureModelSnapshot();
+                if (i >= framePngs.Count && progress >= capturePoints[i])
+                {
+                    if (progress >= 0.60f)
+                        model.ForceUpdateNow(); // 峰值帧强制更新网格
+                    framePngs.Add(renderer.CaptureModelSnapshot());
+                }
             }
         });
-
-        // 如果峰值截图没成功，fallback 到播放完毕后截取
-        if (peakSnapshot == null || peakSnapshot.Length <= 50)
-        {
-            yield return null;
-            peakSnapshot = renderer.CaptureModelSnapshot();
-        }
 
         // 基础结果
         string baseResult = $"✅ 演武完成：「{plan.Description}」，持续 {plan.TotalDuration:F1} 秒，共 {plan.KeyFrames.Count} 个关键帧";
 
-        // ——— ★ 闭环自评：用峰值截图送 GLM-4V 评价 ———
-        string review = "";
-        if (peakSnapshot != null && peakSnapshot.Length > 50)
+        // ——— ★ 闭环自评：多帧拼图 → GLM-4V 评价 ———
+        var validator = FindObjectOfType<DualModelValidator>();
+        string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
+        if (collageDataUrl != null && validator != null)
         {
-            string dataUrl = "data:image/png;base64," + Convert.ToBase64String(peakSnapshot);
-            yield return EvaluateMotionWithGlm(description, dataUrl, r => review = r);
-        }
+            bool consensus = false;
+            int avgScore = 0, sGlm = 0;
+            string rGlm = "";
+            yield return validator.ValidateAsync(description, collageDataUrl, plan,
+                (c, avg, g, _u1, _u2, rg, _rq) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; });
 
-        if (!string.IsNullOrEmpty(review))
-        {
-            _coroutineResult = baseResult + "\n\n👁️ 自评反馈：\n" + review;
+            _coroutineResult = baseResult + $"\n\n👁️ 自评反馈：{rGlm}";
 
-            // ★ 闭环学习-写入演武心经：先用 RecordMotion 保存参数快照
+            // ★ 闭环学习-写入演武心经
             var mm = MotionMemoryManager.Instance;
-            if (mm != null && plan != null)
+            if (mm != null && plan != null && consensus)
             {
                 string snapshot = ExtractPlanSnapshot(plan);
                 mm.RecordMotion(description, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
+                mm.UpdateScore(description, avgScore, $"多帧镜鉴{sGlm}/5\n{rGlm}", snapshot);
             }
-
-            // ★ 自动将自评结果写入 MotionMemoryManager（闭环强化/覆盖引擎）
-            WriteMotionReviewToMemory(description, review, plan.KeyFrames.Count, plan.TotalDuration);
         }
         else
         {
-            _coroutineResult = baseResult + "\n\nℹ️ 自评暂不可用（GLM-4V 视觉评审未响应），下次演武时自动重试。";
+            _coroutineResult = baseResult + "\n\nℹ️ 自评暂不可用，下次演武时自动重试。";
         }
     }
 

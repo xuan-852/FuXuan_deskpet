@@ -9,19 +9,15 @@ using UnityEngine;
 using UnityEngine.Networking;
 
 /// <summary>
-/// 符玄「镜鉴」— 单模型动作评分验证器
+/// 符玄「镜鉴」— GLM-4V 多帧动作评分验证器
 ///
-/// 使用 GLM-4V (智谱) 对动作截图进行视觉评分：
-///   模型A: GLM-4.6V (智谱) — 主力评分模型
-///   模型B: Qwen-VL-Plus (阿里通义千问) — 仅记日志供参考，不参与共识裁决
+/// 使用 GLM-4V (智谱) 对动作多帧拼图进行视觉评分：
+///   - 动作播放期间在 20%/40%/60%/80% 进度抓取截图
+///   - 合成 2×2 拼图后发给 GLM-4V 评分
+///   - ≥ passThreshold(3) → 可信，记入 MotionMemoryManager UpdateScore
+///   - 否则 → 触发负反馈
 ///
-/// 评分协议：
-///   - GLM-4V 打出 1-5 分
-///   - ≥ passThreshold(3) → CONSENSUS，记入 MotionMemoryManager
-///   - 否则 → 记入验证日志，触发负反馈
-///
-/// 注：Qwen-VL-Plus 实测无视觉区分度（始终打 1~2 分），
-///     因此保留调用仅用于日志对比，不阻断共识。
+/// 注：Qwen-VL-Plus 实测无视觉区分度（始终打 1~2 分），已移除。
 ///
 /// 验证日志: Application.persistentDataPath/validation_log.json
 /// </summary>
@@ -30,14 +26,6 @@ public class DualModelValidator : MonoBehaviour
     [Header("评分阈值")]
     [Tooltip("最低通过分（含），低于此分不写入记忆")]
     public int passThreshold = 3;
-    [Tooltip("最大允许分差，超过此值视为 disagreement")]
-    public int maxScoreDiff = 1;
-
-    [Header("Qwen-VL 配置（仅参考日志，不参与裁决）")]
-    [Tooltip("Qwen-VL API 基础地址（DashScope OpenAI 兼容接口）")]
-    public string qwenApiBaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
-    [Tooltip("Qwen-VL 模型名")]
-    public string qwenModel = "qwen-vl-plus";
 
     // ==================================================================
     //  运行时
@@ -53,11 +41,9 @@ public class DualModelValidator : MonoBehaviour
         public string timestamp;
         public string actionDescription;
         public int scoreGlm;
-        public int scoreQwen;
         public int scoreAvg;
         public bool isConsensus;
         public string reviewGlm;
-        public string reviewQwen;
         public float duration;
         public int keyframeCount;
     }
@@ -107,44 +93,39 @@ public class DualModelValidator : MonoBehaviour
     /// <param name="imageDataUrl">截图 data:image/png;base64,...</param>
     /// <param name="plan">动作计划（用于提取参数信息）</param>
     /// <param name="onResult">回调: (isConsensus, avgScore, glmScore, qwenScore, glmReview, qwenReview)</param>
+    /// <param name="imageDataUrl">多帧拼图截图 data:image/png;base64,...</param>
+    /// <param name="singleScore">GLM 评分（1-5），回调后由调用方处理</param>
+    /// <param name="singleReview">GLM 评语</param>
     public IEnumerator ValidateAsync(
         string description,
         string imageDataUrl,
         MotionPlanner.MotionPlan plan,
-        Action<bool, int, int, int, string, string> onResult)
+        Action<bool, int, int, int, int, string, string> onResult)
     {
         if (string.IsNullOrEmpty(imageDataUrl))
         {
             Debug.LogWarning("[DualModelValidator] 截图为空，跳过验证");
-            onResult(false, 0, 0, 0, "", "");
+            onResult(false, 0, 0, 0, 0, "", "");
             yield break;
         }
 
-        // ── 并发请求两个模型 ──
-        string glmReview = "";
-        string qwenReview = "";
-        int glmScore = 0;
-        int qwenScore = 0;
-        bool glmDone = false;
-        bool qwenDone = false;
+        // ── 单模型：GLM-4V ──
+        string review = "";
+        int score = 0;
+        bool done = false;
 
-        // 并行启动两个协程
-        Coroutine glmCoro = StartCoroutine(CallGlmVision(description, imageDataUrl,
-            (score, review) => { glmScore = score; glmReview = review; glmDone = true; }));
-        Coroutine qwenCoro = StartCoroutine(CallQwenVision(description, imageDataUrl,
-            (score, review) => { qwenScore = score; qwenReview = review; qwenDone = true; }));
+        Coroutine coro = StartCoroutine(CallGlmVision(description, imageDataUrl,
+            (s, r) => { score = s; review = r; done = true; }));
 
-        // 等待两者完成（每帧检查，超时 120s）
-        float timeout = 120f;
+        float timeout = 90f;
         float elapsed = 0f;
-        while (!glmDone || !qwenDone)
+        while (!done)
         {
             if (elapsed >= timeout)
             {
-                Debug.LogWarning("[DualModelValidator] 双模型验证超时");
-                if (!glmDone) StopCoroutine(glmCoro);
-                if (!qwenDone) StopCoroutine(qwenCoro);
-                onResult(false, 0, glmScore, qwenScore, glmReview, qwenReview);
+                Debug.LogWarning("[DualModelValidator] GLM-4V 超时");
+                StopCoroutine(coro);
+                onResult(false, 0, 0, 0, 0, "", "");
                 yield break;
             }
             elapsed += Time.unscaledDeltaTime;
@@ -152,46 +133,23 @@ public class DualModelValidator : MonoBehaviour
         }
 
         // ── 裁决 ──
-        bool isConsensus = false;
-        int avgScore = 0;
-
-        // ── 单模型裁决：仅以 GLM-4V 评分为准 ──
-        // Qwen-VL-Plus 实测无视觉区分度（始终打 1~2 分），
-        // 因此仍调用并记日志供参考，但不参与共识阻断。
-        if (glmScore >= passThreshold)
-        {
-            isConsensus = true;
-            avgScore = glmScore;
-        }
-        else if (qwenScore >= passThreshold && glmScore == 0)
-        {
-            isConsensus = true;
-            avgScore = qwenScore;
-        }
+        bool isConsensus = score >= passThreshold;
+        int avgScore = isConsensus ? score : 0;
 
         // ── 写日志 ──
         int kfCount = plan?.KeyFrames?.Count ?? 0;
         float dur = plan?.TotalDuration ?? 0f;
-        LogValidation(description, glmScore, qwenScore, avgScore, isConsensus, glmReview, qwenReview, dur, kfCount);
+        LogValidation(description, score, avgScore, isConsensus, review, dur, kfCount);
 
-        // ── Consensus → 由调用方（MotionAgent/ ToolCallInvoker）写入 MotionMemoryManager ──
-        // ── Disagreement / 低分 → 记录负反馈 ──
-        if (_memoryManager != null && plan != null && !isConsensus)
+        // ── Consensus → 由调用方写入 MotionMemoryManager ──
+        // ── 低分 → 记录负反馈 ──
+        if (_memoryManager != null && plan != null && !isConsensus && score > 0 && score <= _memoryManager.negativeThreshold)
         {
-            // 只要两模型中至少有一个给了低分(≤2)，就记录为负反馈例子
-            int lowestScore = Mathf.Min(
-                glmScore > 0 ? glmScore : int.MaxValue,
-                qwenScore > 0 ? qwenScore : int.MaxValue
-            );
-            if (lowestScore <= _memoryManager.negativeThreshold)
-            {
-                string paramSnapshot = ExtractParamSnapshot(plan);
-                string review = $"GLM={glmScore}/5: {Truncate(glmReview, 100)} | Qwen={qwenScore}/5: {Truncate(qwenReview, 100)}";
-                _memoryManager.RecordNegativeExample(description, paramSnapshot, lowestScore, review);
-            }
+            string paramSnapshot = ExtractParamSnapshot(plan);
+            _memoryManager.RecordNegativeExample(description, paramSnapshot, score, $"GLM={score}/5: {Truncate(review, 120)}");
         }
 
-        onResult?.Invoke(isConsensus, avgScore, glmScore, qwenScore, glmReview, qwenReview);
+        onResult?.Invoke(isConsensus, avgScore, score, 0, 0, review, "");
     }
 
     // ==================================================================
@@ -253,66 +211,10 @@ public class DualModelValidator : MonoBehaviour
         }
     }
 
-    // ==================================================================
-    //  模型 B: Qwen-VL (DashScope OpenAI 兼容接口)
-    // ==================================================================
 
-    private IEnumerator CallQwenVision(string description, string imageDataUrl,
-        Action<int, string> onResult)
-    {
-        string apiKey = GetQwenApiKey();
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            Debug.LogWarning("[DualModelValidator] Qwen-VL API Key 未配置（设置 QWEN_VL_API_KEY 环境变量）");
-            onResult(0, "Qwen-VL not configured");
-            yield break;
-        }
-
-        string prompt = BuildScorePrompt(description);
-
-        // DashScope OpenAI 兼容格式
-        string jsonBody = "{";
-        jsonBody += "\"model\":\"" + EscapeJson(qwenModel) + "\",";
-        jsonBody += "\"messages\":[{";
-        jsonBody += "\"role\":\"user\",";
-        jsonBody += "\"content\":[";
-        jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJson(prompt) + "\"},";
-        jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(imageDataUrl) + "\"}}";
-        jsonBody += "]}],";
-        jsonBody += "\"temperature\":0.1,";
-        jsonBody += "\"max_tokens\":1024";
-        jsonBody += "}";
-
-        string url = qwenApiBaseUrl.TrimEnd('/') + "/chat/completions";
-
-        using (UnityWebRequest req = new UnityWebRequest(url, "POST"))
-        {
-            byte[] body = Encoding.UTF8.GetBytes(jsonBody);
-            req.uploadHandler = new UploadHandlerRaw(body);
-            req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.SetRequestHeader("Authorization", "Bearer " + apiKey);
-            req.timeout = 90;
-
-            yield return req.SendWebRequest();
-
-            if (req.result == UnityWebRequest.Result.Success)
-            {
-                string response = req.downloadHandler.text;
-                ParseScoreResponse(response, out int score, out string review);
-                onResult(score, review);
-            }
-            else
-            {
-                string errMsg = req.error;
-                Debug.LogWarning($"[DualModelValidator] Qwen-VL 请求失败: {errMsg}");
-                onResult(0, "");
-            }
-        }
-    }
 
     // ==================================================================
-    //  评分 Prompt 工厂 — 两模型用完全相同的评分标准
+    //  评分 Prompt 工厂
     // ==================================================================
 
     private static string BuildScorePrompt(string description)
@@ -474,19 +376,17 @@ public class DualModelValidator : MonoBehaviour
     //  日志
     // ==================================================================
 
-    private void LogValidation(string desc, int sGlm, int sQwen, int sAvg,
-        bool consensus, string rGlm, string rQwen, float dur, int kfCount)
+    private void LogValidation(string desc, int sGlm, int sAvg,
+        bool consensus, string rGlm, float dur, int kfCount)
     {
         var entry = new ValidationEntry
         {
             timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
             actionDescription = desc,
             scoreGlm = sGlm,
-            scoreQwen = sQwen,
             scoreAvg = sAvg,
             isConsensus = consensus,
             reviewGlm = Truncate(rGlm, 120),
-            reviewQwen = Truncate(rQwen, 120),
             duration = dur,
             keyframeCount = kfCount
         };
@@ -494,14 +394,11 @@ public class DualModelValidator : MonoBehaviour
 
         if (consensus)
         {
-            Debug.Log($"[DualModelValidator] ✅ 双镜鉴一致: 「{desc}」 GLM={sGlm} Qwen={sQwen} 均分={sAvg}/5");
+            Debug.Log($"[DualModelValidator] ✅ GLM 鉴通过: 「{desc}」 {sGlm}/5");
         }
         else
         {
-            string detail = sGlm > 0 && sQwen > 0
-                ? $"GLM={sGlm} vs Qwen={sQwen} (分差={Mathf.Abs(sGlm - sQwen)})"
-                : sGlm > 0 ? $"仅GLM={sGlm} (Qwen不可用)" : $"仅Qwen={sQwen} (GLM不可用)";
-            Debug.Log($"[DualModelValidator] ⚠️ 双镜鉴分歧: 「{desc}」 {detail}");
+            Debug.Log($"[DualModelValidator] ⚠️ GLM 鉴低分: 「{desc}」 {sGlm}/5");
         }
 
         SaveLog();
@@ -516,29 +413,27 @@ public class DualModelValidator : MonoBehaviour
         int disagreements = total - consensus;
         float agreeRate = total > 0 ? (float)consensus / total * 100f : 0;
 
-        sb.AppendLine("📊 双镜鉴 — 交叉验证统计");
+        sb.AppendLine("📊 GLM 镜鉴 — 验证统计");
         sb.AppendLine($"▸ 总验证次数: {total}");
-        sb.AppendLine($"▸ 一致(Consensus): {consensus} ({agreeRate:F1}%)");
-        sb.AppendLine($"▸ 分歧(Disagreement): {disagreements}");
+        sb.AppendLine($"▸ 通过(Consensus): {consensus} ({agreeRate:F1}%)");
+        sb.AppendLine($"▸ 低分: {disagreements}");
 
         if (total > 0)
         {
             float avgGlm = (float)_log.entries.Where(e => e.scoreGlm > 0).DefaultIfEmpty().Average(e => e.scoreGlm);
-            float avgQwen = (float)_log.entries.Where(e => e.scoreQwen > 0).DefaultIfEmpty().Average(e => e.scoreQwen);
             sb.AppendLine($"▸ GLM-4V 平均分: {avgGlm:F2}");
-            sb.AppendLine($"▸ Qwen-VL 平均分: {avgQwen:F2}");
 
-            // 最近 5 条分歧
-            var recentDiffs = _log.entries
-                .Where(e => !e.isConsensus && e.scoreGlm > 0 && e.scoreQwen > 0)
+            // 最近 5 条低分
+            var recentFails = _log.entries
+                .Where(e => !e.isConsensus && e.scoreGlm > 0)
                 .TakeLast(5)
                 .ToList();
-            if (recentDiffs.Count > 0)
+            if (recentFails.Count > 0)
             {
-                sb.AppendLine("\n【最近分歧记录】");
-                foreach (var e in recentDiffs)
+                sb.AppendLine("\n【最近低分记录】");
+                foreach (var e in recentFails)
                 {
-                    sb.AppendLine($"  ⚠️ 「{e.actionDescription}」 GLM={e.scoreGlm} Qwen={e.scoreQwen}");
+                    sb.AppendLine($"  ⚠️ 「{e.actionDescription}」 GLM={e.scoreGlm}/5");
                 }
             }
         }
@@ -585,13 +480,47 @@ public class DualModelValidator : MonoBehaviour
     //  辅助
     // ==================================================================
 
-    private static string GetQwenApiKey()
+    /// <summary>
+    /// 将多帧 PNG 合成一张拼图，返回 base64 data URL 供 GLM-4V 视觉评分
+    /// </summary>
+    /// <param name="framePngs">各帧 PNG bytes（最多 4 帧）</param>
+    /// <param name="cols">拼图列数（默认 2，2列×2行）</param>
+    public static string ComposeCollage(List<byte[]> framePngs, int cols = 2)
     {
-        // 优先环境变量，回退到 ChatConfig（兼容）
-        string key = System.Environment.GetEnvironmentVariable("QWEN_VL_API_KEY");
-        if (string.IsNullOrEmpty(key))
-            key = ChatConfig.GlmApiKey; // 回退：如果没配 Qwen Key，尝试用 GLM Key（仅用于演示）
-        return key ?? "";
+        if (framePngs == null || framePngs.Count == 0) return null;
+
+        int count = Mathf.Min(framePngs.Count, 4);
+        cols = Mathf.Min(cols, count);
+        int rows = (count + cols - 1) / cols;
+
+        // 加载第一帧获取帧尺寸
+        var sampleTex = new Texture2D(2, 2);
+        sampleTex.LoadImage(framePngs[0]);
+        int fw = sampleTex.width;
+        int fh = sampleTex.height;
+        UnityEngine.Object.DestroyImmediate(sampleTex);
+
+        // 创建拼图画布
+        int cw = fw * cols;
+        int ch = fh * rows;
+        var canvas = new Texture2D(cw, ch, TextureFormat.RGB24, false);
+
+        for (int i = 0; i < count; i++)
+        {
+            var tex = new Texture2D(2, 2);
+            tex.LoadImage(framePngs[i]);
+            int x = (i % cols) * fw;
+            int y = ch - ((i / cols) + 1) * fh; // 从顶部往下排
+            Color[] pixels = tex.GetPixels(0, 0, fw, fh);
+            canvas.SetPixels(x, y, fw, fh, pixels);
+            UnityEngine.Object.DestroyImmediate(tex);
+        }
+
+        canvas.Apply();
+        byte[] resultPng = canvas.EncodeToPNG();
+        UnityEngine.Object.DestroyImmediate(canvas);
+
+        return "data:image/png;base64," + Convert.ToBase64String(resultPng);
     }
 
     private static string TryExtractGlmError(string body)

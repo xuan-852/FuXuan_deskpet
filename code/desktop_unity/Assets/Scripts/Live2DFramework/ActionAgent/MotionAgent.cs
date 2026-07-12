@@ -927,14 +927,18 @@ public class MotionAgent : MonoBehaviour
 
             if (plan != null)
             {
-                byte[] capturedPng = null;
+                // ── 多帧截图（20%/40%/60%/80% 进度）──
+                var framePngs = new List<byte[]>();
+                var capturePoints = new float[] { 0.20f, 0.40f, 0.60f, 0.80f };
                 var generator = new MotionGenerator(_mapper, _model);
                 yield return generator.PlayAsync(plan, progress =>
                 {
-                    // 动作峰值时刻（~50%进度）截图
-                    if (capturedPng == null && progress >= 0.48f && _renderer != null)
+                    for (int i = 0; i < capturePoints.Length; i++)
                     {
-                        capturedPng = _renderer.CaptureModelSnapshot();
+                        if (i >= framePngs.Count && progress >= capturePoints[i] && _renderer != null)
+                        {
+                            framePngs.Add(_renderer.CaptureModelSnapshot());
+                        }
                     }
                 });
 
@@ -944,39 +948,35 @@ public class MotionAgent : MonoBehaviour
                 if (mm != null)
                     mm.RecordMotion(cnDescription, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
 
-                // 播放完毕 → 双模型交叉验证
-                if (capturedPng != null && _dualValidator != null)
+                // 播放完毕 → 多帧拼图 → GLM-4V 视觉验证
+                string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
+                if (collageDataUrl != null && _dualValidator != null)
                 {
-                    string dataUrl = "data:image/png;base64," + Convert.ToBase64String(capturedPng);
                     bool consensus = false;
-                    int avgScore = 0, sGlm = 0, sQwen = 0;
-                    string rGlm = "", rQwen = "";
-                    yield return _dualValidator.ValidateAsync(fullDesc, dataUrl, plan,
-                        (c, avg, g, q, rg, rq) => { consensus = c; avgScore = avg; sGlm = g; sQwen = q; rGlm = rg; rQwen = rq; });
+                    int avgScore = 0, sGlm = 0;
+                    string rGlm = "";
+                    yield return _dualValidator.ValidateAsync(fullDesc, collageDataUrl, plan,
+                        (c, avg, g, _u1, _u2, rg, _rq) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; });
 
                     if (consensus)
                     {
-                        Debug.Log($"[MotionAgent] ✅ 双镜鉴通过: 「{fullDesc}」均分={avgScore}/5");
+                        Debug.Log($"[MotionAgent] ✅ 镜鉴通过: 「{fullDesc}」 {sGlm}/5");
                         _actionSuccessCount.TryGetValue(cnDescription, out int oldS);
                         _actionSuccessCount[cnDescription] = oldS + 1;
 
-                        // ★ 闭环学习-写入评分：双镜鉴通过 → UpdateScore（均分为可信评分）
+                        // ★ 闭环学习-写入评分
                         if (mm != null && avgScore > 0)
-                            mm.UpdateScore(cnDescription, avgScore, $"双镜鉴均分{avgScore}/5", snapshot);
+                            mm.UpdateScore(cnDescription, avgScore, $"多帧镜鉴{sGlm}/5", snapshot);
                     }
                     else
                     {
-                        Debug.Log($"[MotionAgent] ⚠️ 双镜鉴未通过: 「{fullDesc}」 GLM={sGlm} Qwen={sQwen}");
+                        Debug.Log($"[MotionAgent] ⚠️ 镜鉴低分: 「{fullDesc}」 GLM={sGlm}/5");
                         _actionFailCount.TryGetValue(cnDescription, out int oldF);
                         _actionFailCount[cnDescription] = oldF + 1;
 
-                        // ★ 闭环学习-写入低分：双镜鉴未通过 → 取两者中较低分
-                        if (mm != null)
-                        {
-                            int failScore = Mathf.Min(sGlm, sQwen);
-                            if (failScore > 0)
-                                mm.UpdateScore(cnDescription, failScore, $"双镜鉴未通过 GLM={sGlm} Qwen={sQwen}", snapshot);
-                        }
+                        // ★ 闭环学习-写入低分
+                        if (mm != null && sGlm > 0)
+                            mm.UpdateScore(cnDescription, sGlm, $"镜鉴低分 GLM={sGlm}/5", snapshot);
                     }
                     _totalActionsSinceReport++;
                 }
@@ -1006,13 +1006,18 @@ public class MotionAgent : MonoBehaviour
 
             if (plan != null)
             {
-                byte[] capturedPng = null;
+                // ── 多帧截图（20%/40%/60%/80% 进度）──
+                var framePngs = new List<byte[]>();
+                var capturePoints = new float[] { 0.20f, 0.40f, 0.60f, 0.80f };
                 var generator = new MotionGenerator(_mapper, _model);
                 yield return generator.PlayAsync(plan, progress =>
                 {
-                    if (capturedPng == null && progress >= 0.48f && _renderer != null)
+                    for (int i = 0; i < capturePoints.Length; i++)
                     {
-                        capturedPng = _renderer.CaptureModelSnapshot();
+                        if (i >= framePngs.Count && progress >= capturePoints[i] && _renderer != null)
+                        {
+                            framePngs.Add(_renderer.CaptureModelSnapshot());
+                        }
                     }
                 });
 
@@ -1022,39 +1027,35 @@ public class MotionAgent : MonoBehaviour
                 if (mm != null)
                     mm.RecordMotion(description, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
 
-                // 双模型交叉验证
-                if (capturedPng != null && _dualValidator != null)
+                // 播放完毕 → 多帧拼图 → GLM-4V 视觉验证
+                string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
+                if (collageDataUrl != null && _dualValidator != null)
                 {
-                    string dataUrl = "data:image/png;base64," + Convert.ToBase64String(capturedPng);
                     bool consensus = false;
-                    int avgScore = 0, sGlm = 0, sQwen = 0;
-                    string rGlm = "", rQwen = "";
-                    yield return _dualValidator.ValidateAsync(description, dataUrl, plan,
-                        (c, avg, g, q, rg, rq) => { consensus = c; avgScore = avg; sGlm = g; sQwen = q; rGlm = rg; rQwen = rq; });
+                    int avgScore = 0, sGlm = 0;
+                    string rGlm = "";
+                    yield return _dualValidator.ValidateAsync(description, collageDataUrl, plan,
+                        (c, avg, g, _u1, _u2, rg, _rq) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; });
 
                     if (consensus)
                     {
-                        Debug.Log($"[MotionAgent] ✅ 双镜鉴通过(combo): 「{description}」均分={avgScore}/5");
+                        Debug.Log($"[MotionAgent] ✅ 镜鉴通过(combo): 「{description}」 {sGlm}/5");
                         _actionSuccessCount.TryGetValue(description, out int oldS);
                         _actionSuccessCount[description] = oldS + 1;
 
                         // ★ 闭环学习-写入评分
                         if (mm != null && avgScore > 0)
-                            mm.UpdateScore(description, avgScore, $"双镜鉴均分{avgScore}/5", snapshot);
+                            mm.UpdateScore(description, avgScore, $"多帧镜鉴{sGlm}/5", snapshot);
                     }
                     else
                     {
-                        Debug.Log($"[MotionAgent] ⚠️ 双镜鉴未通过(combo): 「{description}」 GLM={sGlm} Qwen={sQwen}");
+                        Debug.Log($"[MotionAgent] ⚠️ 镜鉴低分(combo): 「{description}」 GLM={sGlm}/5");
                         _actionFailCount.TryGetValue(description, out int oldF);
                         _actionFailCount[description] = oldF + 1;
 
                         // ★ 闭环学习-写入低分
-                        if (mm != null)
-                        {
-                            int failScore = Mathf.Min(sGlm, sQwen);
-                            if (failScore > 0)
-                                mm.UpdateScore(description, failScore, $"双镜鉴未通过 GLM={sGlm} Qwen={sQwen}", snapshot);
-                        }
+                        if (mm != null && sGlm > 0)
+                            mm.UpdateScore(description, sGlm, $"镜鉴低分 GLM={sGlm}/5", snapshot);
                     }
                     _totalActionsSinceReport++;
                 }
