@@ -4,13 +4,13 @@ using UnityEngine;
 using UnityEngine.Networking;
 using System.Collections;
 using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 
 /// <summary>
 /// 共享 API 客户端 — 统一的 HTTP 请求与 JSON 解析工具
 ///
-/// ChatManager 和 IdleChatGenerator 中原先各自维护了一套近乎相同的
-/// PostRequest / EscapeJson / ExtractContent / ExtractErrorMessage，
-/// 现提取至此处集中管理，减少重复代码。
+/// 整合了 ChatManager 和 IdleChatGenerator 中曾各自维护的重复代码，
+/// 提供 PostRequest / StreamRequest 及 JSON 解析辅助方法。
 ///
 /// 用法:
 ///   yield return ApiClient.PostRequest(url, key, json, timeout,
@@ -54,36 +54,12 @@ public static class ApiClient
             else
             {
                 string errBody = req.downloadHandler?.text ?? "";
-                string errMsg = !string.IsNullOrEmpty(errBody) && errBody.Contains("\"message\"")
+                string errMsg = !string.IsNullOrEmpty(errBody)
                     ? ExtractErrorMessage(errBody)
                     : req.error;
                 onError?.Invoke(errMsg);
             }
         }
-    }
-
-    // ================================================================
-    //  JSON 转义
-    // ================================================================
-
-    /// <summary>转义字符串中的特殊字符，使其可嵌入 JSON 字符串值中</summary>
-    public static string EscapeJson(string s)
-    {
-        if (string.IsNullOrEmpty(s)) return "";
-        var sb = new StringBuilder(s.Length);
-        foreach (char c in s)
-        {
-            switch (c)
-            {
-                case '"':  sb.Append("\\\""); break;
-                case '\\': sb.Append("\\\\"); break;
-                case '\n': sb.Append("\\n");  break;
-                case '\r': sb.Append("\\r");  break;
-                case '\t': sb.Append("\\t");  break;
-                default:   sb.Append(c);      break;
-            }
-        }
-        return sb.ToString();
     }
 
     // ================================================================
@@ -94,96 +70,34 @@ public static class ApiClient
     public static string ExtractContent(string json)
     {
         if (string.IsNullOrEmpty(json)) return "";
-
-        // 从 messages 数组中找 content
-        int msgIdx = json.IndexOf("\"message\"");
-        if (msgIdx < 0) return "";
-
-        string key = "\"content\":\"";
-        int idx = json.IndexOf(key, msgIdx);
-        if (idx < 0)
+        try
         {
-            // content 可能为 null（纯 tool_call 回复）
-            if (json.IndexOf("\"content\":null", msgIdx) >= 0)
-                return "";
+            var root = JObject.Parse(json);
+            var choices = root["choices"] as JArray;
+            if (choices == null || choices.Count == 0) return "";
+            var delta = choices[0]["message"]?["content"];
+            return delta?.ToString() ?? "";
+        }
+        catch
+        {
             return "";
         }
-
-        idx += key.Length;
-        var content = new StringBuilder();
-        for (int i = idx; i < json.Length; i++)
-        {
-            if (json[i] == '\\' && i + 1 < json.Length)
-            {
-                char next = json[i + 1];
-                switch (next)
-                {
-                    case 'n': content.Append('\n'); i++; break;
-                    case 't': content.Append('\t'); i++; break;
-                    case '"': content.Append('"');  i++; break;
-                    case '\\':content.Append('\\'); i++; break;
-                    case 'r': i++; break;
-                    default:  content.Append(json[i]); break;
-                }
-            }
-            else if (json[i] == '"')
-            {
-                break;
-            }
-            else
-            {
-                content.Append(json[i]);
-            }
-        }
-        return content.ToString();
     }
 
     /// <summary>从错误响应 JSON 中提取 message 字段（人类可读错误描述）</summary>
     public static string ExtractErrorMessage(string json)
     {
         if (string.IsNullOrEmpty(json)) return "未知错误";
-
-        string key = "\"message\":\"";
-        int idx = json.IndexOf(key);
-        if (idx < 0) return json; // 回退：返回原始 JSON
-
-        idx += key.Length;
-        var msg = new StringBuilder();
-        for (int i = idx; i < json.Length; i++)
+        try
         {
-            if (json[i] == '"') break;
-            msg.Append(json[i]);
+            var root = JObject.Parse(json);
+            var msg = root["error"]?["message"] ?? root["message"];
+            return msg?.ToString() ?? json;
         }
-        return msg.ToString();
-    }
-
-    /// <summary>从 JSON 中提取 "key":"value" 中的 value 纯字符串</summary>
-    public static string ExtractSimpleString(string json, int start)
-    {
-        if (start >= json.Length) return "";
-        var sb = new StringBuilder();
-        for (int i = start; i < json.Length; i++)
+        catch
         {
-            if (json[i] == '\\' && i + 1 < json.Length)
-            {
-                char n = json[i + 1];
-                if (n == '"')  { sb.Append('"'); i++; }
-                else if (n == '\\') { sb.Append('\\'); i++; }
-                else if (n == 'n')  { sb.Append('\n'); i++; }
-                else if (n == 't')  { sb.Append('\t'); i++; }
-                else if (n == 'r')  { i++; }
-                else sb.Append(json[i]);
-            }
-            else if (json[i] == '"')
-            {
-                break;
-            }
-            else
-            {
-                sb.Append(json[i]);
-            }
+            return json;
         }
-        return sb.ToString();
     }
 
     // ================================================================
@@ -274,7 +188,7 @@ public static class ApiClient
             {
                 errorMsg = req.error;
                 string errBody = handler.Peek();
-                if (!string.IsNullOrEmpty(errBody) && errBody.Contains("\"message\""))
+                if (!string.IsNullOrEmpty(errBody))
                     errorMsg = ExtractErrorMessage(errBody);
                 onError?.Invoke(errorMsg);
             }
@@ -373,80 +287,39 @@ public static class ApiClient
     {
         var result = new StreamDelta();
 
-        // 提取 content
-        string contentKey = "\"content\":\"";
-        int ci = dataJson.IndexOf(contentKey);
-        if (ci >= 0)
+        try
         {
-            ci += contentKey.Length;
-            var sb = new StringBuilder();
-            for (int i = ci; i < dataJson.Length; i++)
+            var root = JObject.Parse(dataJson);
+            var choice = root["choices"]?[0];
+            if (choice == null) return result;
+
+            var delta = choice["delta"];
+            if (delta == null) return result;
+
+            // content
+            var content = delta["content"];
+            if (content != null)
+                result.content = content.Type == JTokenType.Null ? null : content.ToString();
+            else
+                result.content = null;
+
+            // tool_calls
+            var toolCalls = delta["tool_calls"] as JArray;
+            if (toolCalls != null && toolCalls.Count > 0)
             {
-                if (dataJson[i] == '\\' && i + 1 < dataJson.Length)
+                var tc = toolCalls[0];
+                result.toolCallId = tc["id"]?.ToString();
+                var fn = tc["function"];
+                if (fn != null)
                 {
-                    char n = dataJson[i + 1];
-                    if (n == 'n') { sb.Append('\n'); i++; }
-                    else if (n == '"') { sb.Append('"'); i++; }
-                    else if (n == '\\') { sb.Append('\\'); i++; }
-                    else if (n == 'r') { i++; }
-                    else if (n == 't') { sb.Append('\t'); i++; }
-                    else sb.Append(dataJson[i]);
+                    result.toolName = fn["name"]?.ToString();
+                    result.toolArgsPart = fn["arguments"]?.ToString();
                 }
-                else if (dataJson[i] == '"')
-                {
-                    break;
-                }
-                else sb.Append(dataJson[i]);
             }
-            result.content = sb.ToString();
         }
-        // content 也可能为 null
-        else if (dataJson.Contains("\"content\":null"))
+        catch
         {
-            result.content = null;
-        }
-
-        // 提取 tool_calls
-        if (dataJson.Contains("\"tool_calls\""))
-        {
-            // 提取 id
-            int idI = dataJson.IndexOf("\"id\":\"");
-            if (idI >= 0)
-            {
-                idI += 6;
-                result.toolCallId = ExtractSimpleString(dataJson, idI);
-            }
-
-            // 提取 function.name
-            int fnI = dataJson.IndexOf("\"name\":\"");
-            if (fnI >= 0)
-            {
-                fnI += 8;
-                result.toolName = ExtractSimpleString(dataJson, fnI);
-            }
-
-            // 提取 function.arguments 片段
-            int argI = dataJson.IndexOf("\"arguments\":");
-            if (argI >= 0)
-            {
-                argI += 12;
-                // arguments 可能是字符串或对象
-                if (argI < dataJson.Length && dataJson[argI] == '"')
-                {
-                    result.toolArgsPart = ExtractSimpleString(dataJson, argI + 1);
-                }
-                else if (argI < dataJson.Length && dataJson[argI] == '{')
-                {
-                    // JSON 对象片段 — 按原样取
-                    int depth = 1;
-                    int start = argI;
-                    for (int i = argI + 1; i < dataJson.Length; i++)
-                    {
-                        if (dataJson[i] == '{') depth++;
-                        else if (dataJson[i] == '}') { depth--; if (depth == 0) { result.toolArgsPart = dataJson.Substring(start, i - start + 1); break; } }
-                    }
-                }
-            }
+            // 单个 data 行解析失败不影响整体流
         }
 
         return result;
@@ -457,26 +330,24 @@ public static class ApiClient
     {
         if (acc.Count == 0) return null;
 
-        var sb = new StringBuilder();
-        sb.Append('[');
-        bool first = true;
+        var arr = new JArray();
         for (int i = 0; i < acc.Count; i++)
         {
             var t = acc[i];
-            // 跳过空名累加器（占位后 name 从未被更新）
             if (string.IsNullOrEmpty(t.name)) continue;
-            if (!first) sb.Append(',');
-            first = false;
-            sb.Append("{\"id\":\"");
-            sb.Append(EscapeJson(t.id));
-            sb.Append("\",\"type\":\"function\",\"function\":{\"name\":\"");
-            sb.Append(EscapeJson(t.name));
-            sb.Append("\",\"arguments\":\"");
-            sb.Append(EscapeJson(t.args.ToString()));
-            sb.Append("\"}}");
+
+            arr.Add(new JObject
+            {
+                ["id"] = t.id,
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = t.name,
+                    ["arguments"] = t.args.ToString()
+                }
+            });
         }
-        sb.Append(']');
-        string result = sb.ToString();
-        return result == "[]" ? null : result;
+
+        return arr.Count == 0 ? null : arr.ToString(Newtonsoft.Json.Formatting.None);
     }
 }

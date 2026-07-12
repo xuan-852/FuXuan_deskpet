@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using Newtonsoft.Json.Linq;
 
 /// <summary>
 /// 闲话/问候生成器 — 调用 DeepSeek API 动态生成符玄的回复
@@ -334,10 +335,16 @@ public class IdleChatGenerator : MonoBehaviour
     /// <summary>构造简单的 user/system 双消息请求体</summary>
     private string BuildSimpleRequestBody(string systemPrompt, string userMessage)
     {
-        return "{\"model\":\"" + ApiClient.EscapeJson(model)
-            + "\",\"messages\":["
-            + "{\"role\":\"system\",\"content\":\"" + ApiClient.EscapeJson(systemPrompt) + "\"}"
-            + ",{\"role\":\"user\",\"content\":\"" + ApiClient.EscapeJson(userMessage) + "\"}"
-            + "],\"max_tokens\":512}";
+        var body = new JObject
+        {
+            ["model"] = model,
+            ["messages"] = new JArray
+            {
+                new JObject { ["role"] = "system", ["content"] = systemPrompt },
+                new JObject { ["role"] = "user", ["content"] = userMessage }
+            },
+            ["max_tokens"] = 512
+        };
+        return body.ToString(Newtonsoft.Json.Formatting.None);
     }
 }

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
 using Live2D.Cubism.Core;
 
 /// <summary>
@@ -666,96 +667,79 @@ public class ChatManager : MonoBehaviour
 
     private string BuildRequestBody()
     {
-        StringBuilder sb = new StringBuilder();
-        sb.Append("{\"model\":\"");
-        sb.Append(EscapeJson(model));
-        sb.Append("\",\"messages\":[");
+        var body = new JObject();
+        body["model"] = model;
+
+        var msgs = new JArray();
 
         // system prompt
         string sysPrompt = BuildSystemPrompt();
-        sb.Append("{\"role\":\"system\",\"content\":\"");
-        sb.Append(EscapeJson(sysPrompt));
-        sb.Append("\"}");
+        msgs.Add(new JObject
+        {
+            ["role"] = "system",
+            ["content"] = sysPrompt
+        });
 
         // history
         for (int i = 0; i < _history.Count; i++)
         {
             var e = _history[i];
-            if (!string.IsNullOrEmpty(sysPrompt)) sb.Append(",");
-
-            sb.Append("{\"role\":\"");
-            sb.Append(EscapeJson(e.role));
-            sb.Append("\"");
+            var msg = new JObject { ["role"] = e.role };
 
             if (e.role == "tool")
             {
-                // tool 角色需要 tool_call_id 和 name
-                sb.Append(",\"tool_call_id\":\"");
-                sb.Append(EscapeJson(e.tool_call_id ?? ""));
-                sb.Append("\",\"name\":\"");
-                sb.Append(EscapeJson(e.name ?? ""));
-                sb.Append("\"");
+                msg["tool_call_id"] = e.tool_call_id ?? "";
+                msg["name"] = e.name ?? "";
+                msg["content"] = e.content ?? "";
             }
             else if (e.role == "assistant" && !string.IsNullOrEmpty(e.toolCallsJson))
             {
-                // assistant 消息带 tool_calls 时，原样发回
-                sb.Append(",\"tool_calls\":");
-                sb.Append(e.toolCallsJson);
-            }
-
-            sb.Append(",\"content\":");
-            // ★ DeepSeek API 要求：assistant 带 tool_calls 时 content 必须为 null
-            if (e.role == "assistant" && !string.IsNullOrEmpty(e.toolCallsJson))
-            {
-                sb.Append("null");
+                // ★ DeepSeek API 要求：assistant 带 tool_calls 时 content 必须为 null
+                msg["content"] = null;
+                if (!string.IsNullOrEmpty(e.toolCallsJson))
+                    msg["tool_calls"] = JArray.Parse(e.toolCallsJson);
             }
             else
             {
-                sb.Append("\"");
-                sb.Append(EscapeJson(e.content ?? ""));
-                sb.Append("\"");
+                msg["content"] = e.content ?? "";
             }
-            sb.Append("}");
+
+            msgs.Add(msg);
         }
 
-        sb.Append("]");
+        body["messages"] = msgs;
 
         // ——— 附加 tools 定义 ———
         if (enableTools && toolInvoker != null)
         {
-            sb.Append(",\"tools\":");
-            sb.Append(toolInvoker.GetToolsJson());
+            body["tools"] = JArray.Parse(toolInvoker.GetToolsJson());
         }
 
-        sb.Append(",\"stream\":true}");
-        return sb.ToString();
+        body["stream"] = true;
+        return body.ToString(Newtonsoft.Json.Formatting.None);
     }
 
     // ==================================================================
     //  响应解析
     // ==================================================================
 
-    /// <summary>提取 content 字段（普通回复） — 委托给 ApiClient</summary>
-    private string ExtractContent(string json) => ApiClient.ExtractContent(json);
-
     /// <summary>提取 tool_calls JSON 块</summary>
     private string ExtractToolCalls(string json)
     {
-        // 查找 "tool_calls":[{...}]
-        string key = "\"tool_calls\":";
-        int idx = json.IndexOf(key);
-        if (idx < 0) return "[]";
-
-        idx += key.Length;
-        // 找到匹配的 ] 结束
-        int depth = 1; // 当前已经是 [
-        int start = idx;
-        for (int i = idx + 1; i < json.Length; i++)
+        try
         {
-            if (json[i] == '[') depth++;
-            else if (json[i] == ']') { depth--; if (depth == 0) return json.Substring(start, i - start + 1); }
+            var root = JObject.Parse(json);
+            var choices = root["choices"] as JArray;
+            if (choices == null || choices.Count == 0) return "[]";
+            var delta = choices[0]["delta"];
+            var calls = delta?["tool_calls"] as JArray;
+            if (calls == null || calls.Count == 0) return "[]";
+            return calls.ToString(Newtonsoft.Json.Formatting.None);
         }
-        return "[]";
+        catch
+        {
+            return "[]";
+        }
     }
 
     private struct ToolCallInfo
@@ -768,61 +752,26 @@ public class ChatManager : MonoBehaviour
     private List<ToolCallInfo> ParseToolCalls(string callsJson)
     {
         var list = new List<ToolCallInfo>();
-
-        // 简易解析: 依次找 id, function.name, function.arguments
-        int pos = 0;
-        while (true)
+        try
         {
-            // 找下一个 "id":"...  （在同一 tool_call 对象内）
-            int idIdx = callsJson.IndexOf("\"id\":\"", pos);
-            if (idIdx < 0) break;
-
-            string id = ExtractSimpleString(callsJson, idIdx + 6);
-
-            int nameIdx = callsJson.IndexOf("\"name\":\"", idIdx);
-            string name = nameIdx >= 0 ? ExtractSimpleString(callsJson, nameIdx + 8) : "";
-
-            int argIdx = callsJson.IndexOf("\"arguments\":", idIdx);
-            string args = "";
-            if (argIdx >= 0)
+            JArray arr = JArray.Parse(callsJson);
+            foreach (var item in arr)
             {
-                argIdx += 12; // skip "\"arguments\":" 
-                // arguments 可能是一个 JSON 对象字符串: "\"{...}\"" 或 JSON 对象 {...}
-                if (argIdx < callsJson.Length && callsJson[argIdx] == '"')
+                var tc = new ToolCallInfo
                 {
-                    // 字符串: 提取并转义还原
-                    args = ExtractSimpleString(callsJson, argIdx + 1);
-                    args = args.Replace("\\\"", "\"").Replace("\\n", "\n").Replace("\\t", "\t").Replace("\\\\", "\\");
-                }
-                else
-                {
-                    // JSON 对象: 提取 {...} 块
-                    int objStart = argIdx;
-                    if (callsJson[objStart] == '{')
-                    {
-                        int d = 1;
-                        for (int i = objStart + 1; i < callsJson.Length; i++)
-                        {
-                            if (callsJson[i] == '{') d++;
-                            else if (callsJson[i] == '}') { d--; if (d == 0) { args = callsJson.Substring(objStart, i - objStart + 1); break; } }
-                        }
-                    }
-                }
+                    id = item["id"]?.ToString() ?? "",
+                    name = item["function"]?["name"]?.ToString() ?? "",
+                    arguments = item["function"]?["arguments"]?.ToString() ?? ""
+                };
+                list.Add(tc);
             }
-
-            list.Add(new ToolCallInfo { id = id, name = name, arguments = args });
-            pos = idIdx + 1;
         }
-
+        catch (Exception ex)
+        {
+            Debug.LogError($"[ChatManager] ⚠ ParseToolCalls 失败: {ex.Message}");
+        }
         return list;
     }
-
-    /// <summary>从 JSON 中提取 "key":"value" 中 value 部分的纯字符串</summary>
-    private static string ExtractSimpleString(string json, int start)
-        => ApiClient.ExtractSimpleString(json, start);
-
-    /// <summary>从错误 JSON 中提取 message 字段 — 委托给 ApiClient</summary>
-    private string ExtractErrorMessage(string json) => ApiClient.ExtractErrorMessage(json);
 
     // ==================================================================
     //  长期记忆记录
@@ -973,35 +922,16 @@ public class ChatManager : MonoBehaviour
     private static string ExtractSearchKeyword(string args)
     {
         if (string.IsNullOrEmpty(args)) return "未知";
-        string q = "";
-        // 尝试 "query":"..."
-        int idx = args.IndexOf("\"query\":\"");
-        if (idx >= 0)
+        try
         {
-            idx += 9;
-            for (int i = idx; i < args.Length; i++)
-            {
-                if (args[i] == '"') break;
-                if (args[i] == '\\' && i + 1 < args.Length) { q += args[i + 1]; i++; }
-                else q += args[i];
-            }
+            var obj = JObject.Parse(args);
+            string q = obj["query"]?.ToString() ?? obj["keyword"]?.ToString() ?? "";
+            return string.IsNullOrEmpty(q) ? "未知" : q;
         }
-        else
+        catch
         {
-            // 尝试 "keyword":"..."
-            idx = args.IndexOf("\"keyword\":\"");
-            if (idx >= 0)
-            {
-                idx += 10;
-                for (int i = idx; i < args.Length; i++)
-                {
-                    if (args[i] == '"') break;
-                    if (args[i] == '\\' && i + 1 < args.Length) { q += args[i + 1]; i++; }
-                    else q += args[i];
-                }
-            }
+            return "未知";
         }
-        return string.IsNullOrEmpty(q) ? "未知" : q;
     }
 
     // ==================================================================
@@ -1015,9 +945,20 @@ public class ChatManager : MonoBehaviour
         string reply = null;
 
         // 使用 DeepSeek API（不占对话历史，纯粹后台调用）
-        string jsonBody = "{\"model\":\"" + ApiClient.EscapeJson(model)
-            + "\",\"messages\":[{\"role\":\"user\",\"content\":\""
-            + ApiClient.EscapeJson(prompt) + "\"}],\"stream\":false}";
+        var reqBody = new JObject
+        {
+            ["model"] = model,
+            ["messages"] = new JArray
+            {
+                new JObject
+                {
+                    ["role"] = "user",
+                    ["content"] = prompt
+                }
+            },
+            ["stream"] = false
+        };
+        string jsonBody = reqBody.ToString(Newtonsoft.Json.Formatting.None);
 
         yield return StartCoroutine(
             ApiClient.PostRequest(apiUrl, apiKey, jsonBody, 30,
@@ -1171,9 +1112,6 @@ public class ChatManager : MonoBehaviour
     // ==================================================================
     //  工具
     // ==================================================================
-
-    /// <summary>JSON 转义 — 委托给 ApiClient</summary>
-    private string EscapeJson(string s) => ApiClient.EscapeJson(s);
 
     /// <summary>清空对话历史</summary>
     public void ClearHistory()
