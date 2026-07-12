@@ -1,0 +1,158 @@
+{
+  "entries": [
+    {
+      "actionName": "害羞捂脸",
+      "bestParamJson": "{\n  \"totalDuration\": 3.5,\n  \"description\": \"害羞捂脸\",\n  \"keyframes\": [\n    {\n      \"time\": 0.0,\n      \"values\": {}\n    },\n    {\n      \"time\": 0.5,\n      \"values\": {\n        \"arm_right_upper\": 24.933456924857865,\n        \"arm_left_upper\": 25.0275688628509,\n        \"arm_right_lower\": -19.96294819175772,\n        \"arm_left_lower\": -19.497866083007477,\n        \"arm_right_reach\": 0.6054595784595438\n      }\n    },\n    {\n      \"time\": 1.0,\n      \"values\": {\n        \"head_angle_y\": -15.245972006028682,\n        \"eye_l_open\": 0.2958577713889524,\n        \"eye_r_open\": 0.2990638980152787\n      }\n    },\n    {\n      \"time\": 2.0,\n      \"values\": {\n        \"head_angle_y\": -12.466437574455341,\n        \"eye_l_open\": 0.2090756551949005,\n        \"eye_r_open\": 0.1931315932921994,\n        \"mouth_form\": 0.29071776101065977\n      }\n    },\n    {\n      \"time\": 3.0,\n      \"values\": {\n        \"head_angle_y\": -4.408532935442857,\n        \"arm_right_upper\": 14.86603371043197,\n        \"arm_left_upper\": 14.739070511283849\n      }\n    },\n    {\n      \"time\": 3.5,\n      \"values\": {}\n    }\n  ]\n}",
+      "bestScore": 4,
+      "bestReview": "种子数据 — 手工设计的优质害羞捂脸动作",
+      "lastParamSnapshot": "eye_l_open=0.2, eye_r_open=0.2, head_angle_y=-12.5, mouth_form=0.3",
+      "timestamp": "2026-07-12 00:00",
+      "attempts": 1,
+      "totalDuration": 3.5,
+      "keyframeCount": 6,
+      "scoreHistory": [
+        4
+      ]
+    },
+    {
+      "actionName": "骄傲叉腰",
+      "bestParamJson": "{\n  \"totalDuration\": 4.0,\n  \"description\": \"骄傲叉腰\",\n  \"keyframes\": [\n    {\n      \"time\": 0.0,\n      \"values\": {}\n    },\n    {\n      \"time\": 0.4,\n      \"values\": {\n        \"arm_right_upper\": 19.897080971035365,\n        \"arm_left_upper\": 19.62812720147236,\n        \"arm_right_lower\": -15.457640918130442,\n        \"arm_left_lower\": -14.929425158104234,\n        \"body_angle_z\": 4.726638842959666\n      }\n    },\n    {\n      \"time\": 1.0,\n      \"values\": {\n        \"head_angle_y\": 9.651419791018895,\n        \"eye_l_smile\": 0.29316408735846344,\n        \"eye_r_smile\": 0.301336313473687,\n        \"mouth_form\": 0.4082442022150855,\n        \"body_angle_z\": 3.5332072235893435\n      }\n    },\n    {\n      \"time\": 2.5,\n      \"values\": {\n        \"head_angle_y\": 7.557693556973028,\n        \"eye_l_smile\": 0.507351166235749,\n        \"eye_r_smile\": 0.5036313239358158\n      }\n    },\n    {\n      \"time\": 3.5,\n      \"values\": {\n        \"head_angle_y\": 12.143599148716007,\n        \"body_angle_z\": 7.812848146361105\n      }\n    },\n    {\n      \"time\": 4.0,\n      \"values\": {}\n    }\n  ]\n}",
+      "bestScore": 4,
+      "bestReview": "种子数据 — 手工设计的优质骄傲叉腰动作",
+      "lastParamSnapshot": "eye_l_smile=0.5, eye_r_smile=0.5, head_angle_y=7.6",
+      "timestamp": "2026-07-12 00:00",
+      "attempts": 1,
+      "totalDuration": 4.0,
+      "keyframeCount": 6,
+      "scoreHistory": [
+        4
+      ]
+    },
+    {
+      "actionName": "歪头思考",
+      "bestParamJson": "{\n  \"totalDuration\": 4.5,\n  \"description\": \"歪头思考\",\n  \"keyframes\": [\n    {\n      \"time\": 0.0,\n      \"values\": {}\n    },\n    {\n      \"time\": 0.5,\n      \"values\": {\n        \"head_angle_z\": 19.550596308711427\n      }\n    },\n    {\n      \"time\": 1.0,\n      \"values\": {\n        \"head_angle_z\": 24.547378807505467,\n        \"eye_ball_y\": -0.597045116494562,\n        \"eye_ball_x\": 0.1842496734585901\n      }\n    },\n    {\n      \"time\": 2.0,\n      \"values\": {\n        \"head_angle_z\": 22.54440141149783,\n        \"mouth_form\": 0.19143688891177957\n      }\n    },\n    {\n      \"time\": 3.0,\n      \"values\": {\n        \"head_angle_z\": 24.618038790281588,\n        \"eye_ball_y\": -0.4837503277152637\n      }\n    },\n    {\n      \"time\": 4.0,\n      \"values\": {\n        \"head_angle_z\": 10.38387738391613\n      }\n    },\n    {\n      \"time\": 4.5,\n      \"values\": {}\n    }\n  ]\n}",
+      "bestScore": 4,
+      "bestReview": "种子数据 — 手工设计的优质歪头思考动作",
+      "lastParamSnapshot": "head_angle_z=22.5, mouth_form=0.2",
+      "timestamp": "2026-07-12 00:00",
+      "attempts": 1,
+      "totalDuration": 4.5,
+      "keyframeCount": 7,
+      "scoreHistory": [
+        4
+      ]
+    },
+    {
+      "actionName": "惊讶捂嘴",
+      "bestParamJson": "{\n  \"totalDuration\": 3.0,\n  \"description\": \"惊讶捂嘴\",\n  \"keyframes\": [\n    {\n      \"time\": 0.0,\n      \"values\": {}\n    },\n    {\n      \"time\": 0.3,\n      \"values\": {\n        \"head_angle_y\": 9.842230864801891,\n        \"eye_l_open\": 0.9099026347903874,\n        \"eye_r_open\": 0.9093318773610602\n      }\n    },\n    {\n      \"time\": 0.6,\n      \"values\": {\n        \"head_angle_y\": 11.603633515479345,\n        \"mouth_open_y\": 0.5981816560873672,\n        \"arm_right_upper\": 24.963262503205655,\n        \"arm_left_upper\": 19.919074317748162,\n        \"arm_right_reach\": 0.5007406111700204,\n        \"arm_left_lower\": -9.99609927236451\n      }\n    },\n    {\n      \"time\": 1.2,\n      \"values\": {\n        \"head_angle_y\": 8.050018281373191,\n        \"mouth_open_y\": 0.2915594303393686\n      }\n    },\n    {\n      \"time\": 2.0,\n      \"values\": {\n        \"head_angle_y\": 3.191926926035798,\n        \"eye_l_open\": 0.5929078921865165,\n        \"eye_r_open\": 0.6051169907045071\n      }\n    },\n    {\n      \"time\": 3.0,\n      \"values\": {}\n    }\n  ]\n}",
+      "bestScore": 4,
+      "bestReview": "种子数据 — 手工设计的优质惊讶捂嘴动作",
+      "lastParamSnapshot": "head_angle_y=8.1, mouth_open_y=0.3",
+      "timestamp": "2026-07-12 00:00",
+      "attempts": 1,
+      "totalDuration": 3.0,
+      "keyframeCount": 6,
+      "scoreHistory": [
+        4
+      ]
+    },
+    {
+      "actionName": "行礼鞠躬",
+      "bestParamJson": "{\n  \"totalDuration\": 3.5,\n  \"description\": \"行礼鞠躬\",\n  \"keyframes\": [\n    {\n      \"time\": 0.0,\n      \"values\": {}\n    },\n    {\n      \"time\": 0.5,\n      \"values\": {\n        \"body_angle_y\": -20.256031324987422\n      }\n    },\n    {\n      \"time\": 1.0,\n      \"values\": {\n        \"body_angle_y\": -25.20298092547972,\n        \"head_angle_y\": -20.11695289289035,\n        \"arm_right_lower\": -15.389483068273671,\n        \"arm_left_lower\": -15.049659975914235\n      }\n    },\n    {\n      \"time\": 1.5,\n      \"values\": {\n        \"body_angle_y\": -24.940843967935187,\n        \"head_angle_y\": -20.266969873112156\n      }\n    },\n    {\n      \"time\": 2.5,\n      \"values\": {\n        \"body_angle_y\": -9.866253334455699,\n        \"head_angle_y\": -8.150639320116301\n      }\n    },\n    {\n      \"time\": 3.5,\n      \"values\": {}\n    }\n  ]\n}",
+      "bestScore": 4,
+      "bestReview": "种子数据 — 手工设计的优质行礼鞠躬动作",
+      "lastParamSnapshot": "body_angle_y=-24.9, head_angle_y=-20.3",
+      "timestamp": "2026-07-12 00:00",
+      "attempts": 1,
+      "totalDuration": 3.5,
+      "keyframeCount": 6,
+      "scoreHistory": [
+        4
+      ]
+    },
+    {
+      "actionName": "合十祈祷",
+      "bestParamJson": "{\n  \"totalDuration\": 5.0,\n  \"description\": \"合十祈祷\",\n  \"keyframes\": [\n    {\n      \"time\": 0.0,\n      \"values\": {}\n    },\n    {\n      \"time\": 0.5,\n      \"values\": {\n        \"arm_right_upper\": 24.851767201712057,\n        \"arm_left_upper\": 25.408455487451207,\n        \"arm_right_lower\": -19.962465904058103,\n        \"arm_left_lower\": -20.152223584594815\n      }\n    },\n    {\n      \"time\": 1.0,\n      \"values\": {\n        \"head_angle_y\": -10.405336323885138,\n        \"eye_l_open\": 0.20494837685579848,\n        \"eye_r_open\": 0.20071098533593748\n      }\n    },\n    {\n      \"time\": 2.5,\n      \"values\": {\n        \"head_angle_y\": -7.938963188338018,\n        \"mouth_form\": 0.10354834718162244\n      }\n    },\n    {\n      \"time\": 4.0,\n      \"values\": {\n        \"head_angle_y\": -4.7436700064163375,\n        \"arm_right_upper\": 19.933056625098033,\n        \"arm_left_upper\": 19.597240955850395\n      }\n    },\n    {\n      \"time\": 5.0,\n      \"values\": {}\n    }\n  ]\n}",
+      "bestScore": 4,
+      "bestReview": "种子数据 — 手工设计的优质合十祈祷动作",
+      "lastParamSnapshot": "head_angle_y=-7.9, mouth_form=0.1",
+      "timestamp": "2026-07-12 00:00",
+      "attempts": 1,
+      "totalDuration": 5.0,
+      "keyframeCount": 6,
+      "scoreHistory": [
+        4
+      ]
+    },
+    {
+      "actionName": "俏皮眨眼",
+      "bestParamJson": "{\n  \"totalDuration\": 2.5,\n  \"description\": \"俏皮眨眼\",\n  \"keyframes\": [\n    {\n      \"time\": 0.0,\n      \"values\": {}\n    },\n    {\n      \"time\": 0.3,\n      \"values\": {\n        \"head_angle_z\": 8.005805277604772,\n        \"head_angle_y\": 4.481947950311337\n      }\n    },\n    {\n      \"time\": 0.6,\n      \"values\": {\n        \"eye_r_open\": 0.10932671753407884,\n        \"eye_l_open\": 0.894385725606297,\n        \"mouth_form\": 0.307702401903194\n      }\n    },\n    {\n      \"time\": 1.0,\n      \"values\": {\n        \"eye_r_open\": 0.0014202327349928435,\n        \"head_angle_z\": 4.6016811843580925\n      }\n    },\n    {\n      \"time\": 1.3,\n      \"values\": {\n        \"eye_r_open\": 0.8953569622834359,\n        \"head_angle_z\": 2.4433670181703206\n      }\n    },\n    {\n      \"time\": 2.0,\n      \"values\": {\n        \"eye_r_open\": 0.9008098707002922,\n        \"eye_l_open\": 0.895481788164873\n      }\n    },\n    {\n      \"time\": 2.5,\n      \"values\": {}\n    }\n  ]\n}",
+      "bestScore": 4,
+      "bestReview": "种子数据 — 手工设计的优质俏皮眨眼动作",
+      "lastParamSnapshot": "eye_r_open=0.0, head_angle_z=4.6",
+      "timestamp": "2026-07-12 00:00",
+      "attempts": 1,
+      "totalDuration": 2.5,
+      "keyframeCount": 7,
+      "scoreHistory": [
+        4
+      ]
+    },
+    {
+      "actionName": "伸懒腰",
+      "bestParamJson": "{\n  \"totalDuration\": 4.5,\n  \"description\": \"伸懒腰\",\n  \"keyframes\": [\n    {\n      \"time\": 0.0,\n      \"values\": {}\n    },\n    {\n      \"time\": 0.8,\n      \"values\": {\n        \"arm_right_upper\": -25.487295190478047,\n        \"arm_left_upper\": -25.038982494298708,\n        \"head_angle_y\": 14.937287540122384,\n        \"body_angle_y\": 5.377559412158902\n      }\n    },\n    {\n      \"time\": 1.5,\n      \"values\": {\n        \"arm_right_upper\": -28.59793045488224,\n        \"arm_left_upper\": -28.536709754658617,\n        \"head_angle_y\": 19.752769929609215,\n        \"mouth_open_y\": 0.6091134149065761,\n        \"eye_l_open\": 0.2093892457195541,\n        \"eye_r_open\": 0.1940247454263006\n      }\n    },\n    {\n      \"time\": 2.5,\n      \"values\": {\n        \"arm_right_upper\": -20.379287801056396,\n        \"arm_left_upper\": -20.057542224353707,\n        \"head_angle_y\": 9.905389029587191\n      }\n    },\n    {\n      \"time\": 3.5,\n      \"values\": {\n        \"arm_right_upper\": -4.980003720410355,\n        \"arm_left_upper\": -5.556813716232298\n      }\n    },\n    {\n      \"time\": 4.5,\n      \"values\": {}\n    }\n  ]\n}",
+      "bestScore": 4,
+      "bestReview": "种子数据 — 手工设计的优质伸懒腰动作",
+      "lastParamSnapshot": "arm_left_upper=-20.1, arm_right_upper=-20.4, head_angle_y=9.9",
+      "timestamp": "2026-07-12 00:00",
+      "attempts": 1,
+      "totalDuration": 4.5,
+      "keyframeCount": 6,
+      "scoreHistory": [
+        4
+      ]
+    },
+    {
+      "actionName": "摇头",
+      "bestParamJson": "{\n  \"totalDuration\": 2.2,\n  \"description\": \"摇头\",\n  \"keyframes\": [\n    {\n      \"time\": 0.0,\n      \"values\": {}\n    },\n    {\n      \"time\": 0.2,\n      \"values\": {\n        \"head_angle_x\": -19.856994314907283,\n        \"head_angle_y\": -4.519979881722875\n      }\n    },\n    {\n      \"time\": 0.5,\n      \"values\": {\n        \"head_angle_x\": 20.36137873795139\n      }\n    },\n    {\n      \"time\": 0.8,\n      \"values\": {\n        \"head_angle_x\": -17.417778721379523\n      }\n    },\n    {\n      \"time\": 1.1,\n      \"values\": {\n        \"head_angle_x\": 18.07893619363061\n      }\n    },\n    {\n      \"time\": 1.4,\n      \"values\": {\n        \"head_angle_x\": -9.482194131945178\n      }\n    },\n    {\n      \"time\": 1.8,\n      \"values\": {\n        \"head_angle_x\": 5.385161159156233\n      }\n    },\n    {\n      \"time\": 2.2,\n      \"values\": {}\n    }\n  ]\n}",
+      "bestScore": 4,
+      "bestReview": "种子数据 — 手工设计的优质摇头动作",
+      "lastParamSnapshot": "head_angle_x=18.1",
+      "timestamp": "2026-07-12 00:00",
+      "attempts": 1,
+      "totalDuration": 2.2,
+      "keyframeCount": 8,
+      "scoreHistory": [
+        4
+      ]
+    },
+    {
+      "actionName": "低头玩衣角",
+      "bestParamJson": "{\n  \"totalDuration\": 5.5,\n  \"description\": \"低头玩衣角\",\n  \"keyframes\": [\n    {\n      \"time\": 0.0,\n      \"values\": {}\n    },\n    {\n      \"time\": 0.5,\n      \"values\": {\n        \"head_angle_y\": -20.109222995242018,\n        \"arm_right_upper\": 9.496807679398643,\n        \"arm_right_lower\": 19.86411405808117,\n        \"arm_right_wrist_z\": 30,\n        \"eye_l_open\": 0.3019540058996244,\n        \"eye_r_open\": 0.3051901029735266\n      }\n    },\n    {\n      \"time\": 1.5,\n      \"values\": {\n        \"head_angle_y\": -21.934915405056962,\n        \"arm_right_wrist_z\": 30,\n        \"head_angle_z\": 5.158976312328548,\n        \"mouth_form\": 0.20338207949500525\n      }\n    },\n    {\n      \"time\": 2.5,\n      \"values\": {\n        \"head_angle_y\": -18.579707131711746,\n        \"arm_right_wrist_z\": 30\n      }\n    },\n    {\n      \"time\": 3.5,\n      \"values\": {\n        \"head_angle_y\": -15.094681424018827,\n        \"arm_right_wrist_z\": 30\n      }\n    },\n    {\n      \"time\": 4.5,\n      \"values\": {\n        \"head_angle_y\": -7.474483451447654\n      }\n    },\n    {\n      \"time\": 5.5,\n      \"values\": {}\n    }\n  ]\n}",
+      "bestScore": 4,
+      "bestReview": "种子数据 — 手工设计的优质低头玩衣角动作",
+      "lastParamSnapshot": "arm_right_wrist_z=30.0, head_angle_y=-18.6",
+      "timestamp": "2026-07-12 00:00",
+      "attempts": 1,
+      "totalDuration": 5.5,
+      "keyframeCount": 7,
+      "scoreHistory": [
+        4
+      ]
+    },
+    {
+      "actionName": "开心挥手",
+      "bestParamJson": "{\n  \"totalDuration\": 3.0,\n  \"description\": \"开心挥手\",\n  \"keyframes\": [\n    {\n      \"time\": 0.0,\n      \"values\": {}\n    },\n    {\n      \"time\": 0.3,\n      \"values\": {\n        \"arm_right_upper\": 24.850513388159335,\n        \"arm_right_lower\": 14.628726523563095,\n        \"head_angle_y\": 8.381507709241049,\n        \"eye_l_smile\": 0.6987316846663801,\n        \"eye_r_smile\": 0.6933692033886144\n      }\n    },\n    {\n      \"time\": 0.8,\n      \"values\": {\n        \"arm_right_upper\": 20.420417699753244,\n        \"arm_right_lower\": 24.503702025992524,\n        \"mouth_form\": 0.5075193839816697\n      }\n    },\n    {\n      \"time\": 1.3,\n      \"values\": {\n        \"arm_right_upper\": 24.561278533391658,\n        \"arm_right_lower\": 15.36949009089934\n      }\n    },\n    {\n      \"time\": 1.8,\n      \"values\": {\n        \"arm_right_upper\": 19.43729248306819,\n        \"arm_right_lower\": 25.083879247076936\n      }\n    },\n    {\n      \"time\": 2.5,\n      \"values\": {\n        \"arm_right_upper\": 14.580715580573397,\n        \"arm_right_lower\": 9.785643886084848\n      }\n    },\n    {\n      \"time\": 3.0,\n      \"values\": {}\n    }\n  ]\n}",
+      "bestScore": 4,
+      "bestReview": "种子数据 — 手工设计的优质开心挥手动作",
+      "lastParamSnapshot": "arm_right_lower=15.4, arm_right_upper=24.6",
+      "timestamp": "2026-07-12 00:00",
+      "attempts": 1,
+      "totalDuration": 3.0,
+      "keyframeCount": 7,
+      "scoreHistory": [
+        4
+      ]
+    }
+  ]
+}
