@@ -288,6 +288,7 @@ public class ChatManager : MonoBehaviour
         }
 
         _history.Add(new Entry { role = "user", content = text.Trim() });
+        TrimHistory(); // 裁剪旧历史，防止 token 无限增长
         _isWaiting = true;
         _lastReply = "";
         _lastError = "";
@@ -306,6 +307,8 @@ public class ChatManager : MonoBehaviour
     // ==================================================================
 
     private const int MAX_TOOL_ROUNDS = 5; // 防止无限循环
+    /// <summary>历史消息最大条数，超出时裁剪最早的（保留最近 N 条）</summary>
+    private const int MAX_HISTORY_ENTRIES = 60;
 
     private IEnumerator SendRequestCoroutine()
     {
@@ -1112,6 +1115,18 @@ public class ChatManager : MonoBehaviour
     // ==================================================================
     //  工具
     // ==================================================================
+
+    /// <summary>裁剪旧历史：超出 MAX_HISTORY_ENTRIES 时移除最早的对话轮次
+    /// 保留最近 N 条，避免 token 无限增长</summary>
+    private void TrimHistory()
+    {
+        if (_history.Count <= MAX_HISTORY_ENTRIES) return;
+        // 计算需要移除的条数（对齐到最近的 user/assistant 对）
+        int removeCount = _history.Count - MAX_HISTORY_ENTRIES;
+        // 最少保留 system 消息（如果有的话）
+        _history.RemoveRange(0, removeCount);
+        Debug.Log($"[ChatManager] ✂️ 历史已达上限({MAX_HISTORY_ENTRIES})，裁剪了 {removeCount} 条旧消息");
+    }
 
     /// <summary>清空对话历史</summary>
     public void ClearHistory()

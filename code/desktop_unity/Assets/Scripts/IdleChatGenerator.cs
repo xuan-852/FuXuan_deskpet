@@ -317,9 +317,12 @@ public class IdleChatGenerator : MonoBehaviour
         int count = 0;
         foreach (string line in lines)
         {
-            if (line.Contains("entry_") && count < 3)
+            string trimmed = line.Trim();
+            // 匹配带时间戳的记忆条目: "(2026-07-12 14:30) [✦✦✦✦] ..."
+            // 或核心事实: "✦ ..."
+            if ((trimmed.StartsWith("(") || trimmed.StartsWith("✦")) && count < 3)
             {
-                sb.AppendLine(line.Trim());
+                sb.AppendLine(trimmed);
                 count++;
             }
         }
