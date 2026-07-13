@@ -1,12 +1,31 @@
 # 改动日志
 
-## V2.1 (2026-07-09)
+## V2.3+ (2026-07-13)
 
 ### ✨ 新功能
-- **悬浮球 + 辐射菜单** — 桌面右下角粉色 ✦ 悬浮球，单击展开辐射菜单（⚙ 设置 / 📊 报告 / 📋 便签），拖拽可移动位置
-  - 点击菜单项直接打开 ContextMenu 对应标签页
-  - 菜单外点击或右键关闭菜单
-  - 完善的点击/拖拽区分，不会误触
+- **运动记忆自反馈** — `MotionMemoryManager` 新增负面反馈阈值、绝望检测、冷却机制、PhysicallyImpossibleActions 黑名单
+- **多帧拼图评分** — GLM-4V 单模型对动作视频的多帧拼图进行一致性评分，替代移除的 Qwen-VL
+- **GpuLoadMonitor 游戏检测** — 检测 GPU 被游戏占用时拦截 LLM 动作决策，避免影响游戏性能
+- **SafetyValidator 参数校验** — 校验 LLM 生成的动作参数不超出物理安全阈值
+
+### 🔧 技术改进
+- **移除 Qwen-VL-Plus** — 因 401 Unauthorized 不可用，视觉验证统一为 GLM-4V 单模型 + 多帧拼图
+- **Newtonsoft.Json 迁移** — 全面替换手写 JSON 解析器，提升稳定性
+- **MotionAgent 架构清理** — MotionPlanner(11模板/6曲线/6表情)、MotionTranslator(LLM→Live2D参数)、MotionExecutor(插值执行)
+- **闭环验证 P0 修复** — 修复数据流断裂，确保验证反馈正确写入运动记忆
+- **MotionTranslator 参数保护** — 防止 LLM 生成极限参数值损坏 Live2D 模型
+
+## V2.3 (2026-07)
+
+### ✨ 新功能
+- **报告面板复制按钮** — RightPanel 报告标签页支持一键复制内容
+- **MotionAgent 自主动作决策** — AI 驱动的动作生成全链路（规划→翻译→执行→验证→记忆）
+
+## V2.2 (2026-07)
+
+### ✨ 新功能
+- **悬浮球 + 辐射菜单完善** — BallPanel 拖拽交互优化 + RightPanel 多标签页（设置/报告/便签）
+- **动作系统重构** — 拆分为 Live2DFramework（参数映射/物理）、ActionAgent（动作选择/空闲动作管理）
 
 ## N18 (2026-06-22)
 
