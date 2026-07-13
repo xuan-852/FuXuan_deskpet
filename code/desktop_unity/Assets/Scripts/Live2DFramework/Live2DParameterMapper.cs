@@ -28,6 +28,7 @@ public class Live2DParameterMapper
     private Dictionary<string, float> _defaultValues;   // 参数 ID → 默认值
     private Dictionary<string, ParameterRange> _ranges; // 参数 ID → 范围
     private HashSet<string> _missingParams;             // 映射了但模型中不存在的参数
+    private HashSet<string> _unknownWarned;              // 已报过警的未知语义名（防刷屏）
 
     private bool _loaded = false;
 
@@ -62,6 +63,7 @@ public class Live2DParameterMapper
         _defaultValues = new Dictionary<string, float>();
         _ranges = new Dictionary<string, ParameterRange>();
         _missingParams = new HashSet<string>();
+        _unknownWarned = new HashSet<string>();
         ModelName = "Unknown";
     }
 
@@ -207,7 +209,9 @@ public class Live2DParameterMapper
 
         if (!_semanticToId.TryGetValue(semanticName, out string paramId))
         {
-            Debug.LogWarning($"[Live2DParameterMapper] 未知语义名: {semanticName}");
+            // ★ 每个未知语义名只报一次，防止 DeepSeek 脑补不存在的参数时刷几十万行日志
+            if (_unknownWarned.Add(semanticName))
+                Debug.LogWarning($"[Live2DParameterMapper] 未知语义名: {semanticName}");
             return;
         }
 

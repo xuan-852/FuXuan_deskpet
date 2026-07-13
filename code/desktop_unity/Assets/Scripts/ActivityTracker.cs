@@ -661,7 +661,13 @@ public class ActivityTracker : MonoBehaviour
 
             SaveData data;
             if (File.Exists(FilePath))
-                data = JsonUtility.FromJson<SaveData>(File.ReadAllText(FilePath)) ?? new SaveData();
+            {
+                string rawJson = File.ReadAllText(FilePath);
+                if (string.IsNullOrWhiteSpace(rawJson))
+                    data = new SaveData();
+                else
+                    data = JsonUtility.FromJson<SaveData>(rawJson) ?? new SaveData();
+            }
             else
                 data = new SaveData();
 

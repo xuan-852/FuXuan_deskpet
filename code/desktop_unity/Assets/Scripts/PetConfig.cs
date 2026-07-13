@@ -34,7 +34,7 @@ public class PetConfig : MonoBehaviour
 
         // ===== MotionAgent（分神化身）配置 =====
         public bool motionAgentEnabled = true;
-        public string localModel = "qwen2.5:0.5b";
+        public string localModel = "qwen2.5:3b";
         public string localApiUrl = "http://127.0.0.1:11434/v1";
     }
 

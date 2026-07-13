@@ -96,7 +96,14 @@ public static class MotionTranslator
             "    0 = neutral/resting, 15~25 = clearly visible raised arm, 30 = max.\n" +
             "    DO NOT use values like 0.7 for arm_* — that's only 0.7 degrees and invisible!\n" +
             "  - Eye/head/body angle parameters are also in degrees.\n" +
-            "  - Normalized parameters (eye_*_open, mouth_open_y, hand_layer_*, etc.) use [0~1] range.\n\n" +
+            "  - Normalized parameters (eye_*_open, mouth_open_y, hand_layer_*, etc.) use [0~1] range.\n" +
+            "  - FINGER parameters: This model has TWO finger modes controlled by sword_finger_switch (0 or 1):\n" +
+            "    Mode 0 (default hand, sword_finger_switch=0): finger_normal_1~5 [0~1], finger_z_rotate [-20~20]\n" +
+            "    Mode 1 (sword-finger/pointing, sword_finger_switch=1): finger_thumb/index/middle/ring/pinky [0~1]\n" +
+            "    To use pointing gestures: set sword_finger_switch=1, then finger_index=1, others=0\n" +
+            "    To use counting/normal gestures: keep sword_finger_switch=0, use finger_normal_1~5\n" +
+            "  - HAND_LAYER parameters (hand_layer_95/98/100/108/116/117/119/120): control where hands appear visually [0~1].\n" +
+            "    Set hand_layer_100=1 to make hands visible in front of the body.\n\n" +
 
             "SPECIAL PATTERNS for common pose types (use DEGREES for angle params, normalized for [0~1] params):\n" +
             "  - Hands_on_hips/叉腰: arm_right_upper=15~25, arm_left_upper=15~25, " +
@@ -112,7 +119,18 @@ public static class MotionTranslator
             "  - Cowering/缩团: head_angle_y=-15~-25 (chin down), " +
             "arm_right_upper=-15~-25, arm_left_upper=-15~-25 (pull arms in/down), " +
             "arm_right_lower=-15~-25, arm_left_lower=-15~-25, " +
-            "body_angle_y=15~25 (lean back)\n\n" +
+            "body_angle_y=15~25 (lean back)\n" +
+            "  - Pointing/指: sword_finger_switch=1, arm_right_upper=15~25, arm_right_lower=10~20, " +
+            "finger_index=1.0, finger_thumb=1.0, finger_middle=0, finger_ring=0, finger_pinky=0\n" +
+            "  - Beckoning/招手(come here): arm_right_upper=20~28, arm_right_lower=10~18, " +
+            "finger_normal_1~2=0.6~1.0 (curl). Alternate arm position every 0.4s for waving motion.\n" +
+            "  - Hands_covering_face/捂脸: arm_right_upper=20~30, arm_left_upper=20~30, " +
+            "arm_right_rotation=20~30, arm_right_reach=0.5~0.8, " +
+            "hand_layer_100=1, hand_layer_120=0.8, " +
+            "head_angle_y=-8~-15 (look down)\n" +
+            "  - Hands_praying/合十祈祷: arm_right_upper=10~20, arm_left_upper=10~20, " +
+            "arm_right_lower=15~25, arm_left_lower=15~25, " +
+            "hand_layer_100=1, head_angle_y=-3~-8\n\n" +
 
             (string.IsNullOrEmpty(motionMemories) ? "" : motionMemories + "\n\n") +
 
@@ -168,6 +186,8 @@ public static class MotionTranslator
                 MotionPlanner.MotionPlan plan = ParseResponse(responseText, description);
                 if (plan != null && plan.KeyFrames.Count > 0)
                 {
+                    // ——— 6. 参数分布检查：如果全是头/面参数，注入肢体参数 ———
+                    EnrichWithLimbParams(plan);
                     Debug.Log($"[MotionTranslator] ✅ 翻译成功：「{description}」→ {plan.KeyFrames.Count} 帧, {plan.TotalDuration:F1}s");
                     onResult(plan);
                 }
@@ -783,6 +803,96 @@ public static class MotionTranslator
     }
 
     // ──────────────────────────────────────────────
+    //  参数分布增强 — 打破头部偏好
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// 检查生成的关键帧参数分布。如果全是头/面参数而没有任何肢体参数，
+    /// 自动注入一组随机肢体参数变体，让动作更多样化。
+    /// </summary>
+    private static void EnrichWithLimbParams(MotionPlanner.MotionPlan plan)
+    {
+        if (plan == null || plan.KeyFrames.Count == 0) return;
+
+        // 统计所有关键帧中出现的参数类型
+        bool hasArmParam = false, hasHandParam = false, hasFingerParam = false;
+        int headFaceCount = 0, totalCount = 0;
+
+        foreach (var kf in plan.KeyFrames)
+        {
+            foreach (var key in kf.Values.Keys)
+            {
+                totalCount++;
+                if (key.StartsWith("arm_")) hasArmParam = true;
+                else if (key.StartsWith("hand_")) hasHandParam = true;
+                else if (key.StartsWith("finger_") || key.StartsWith("sword_")) hasFingerParam = true;
+                else if (key.StartsWith("head_") || key.StartsWith("eye_") || key.StartsWith("brow_") || key.StartsWith("mouth_"))
+                    headFaceCount++;
+            }
+        }
+
+        // 如果已经包含肢体参数，不需要增强
+        if (hasArmParam || hasHandParam || hasFingerParam) return;
+
+        // 如果头面参数占比 > 80%，注入肢体参数
+        float headFaceRatio = totalCount > 0 ? (float)headFaceCount / totalCount : 1f;
+        if (headFaceRatio < 0.8f) return;
+
+        // 选择一组合适的肢体参数变体
+        int variant = UnityEngine.Random.Range(0, 5);
+        var enrichParams = new Dictionary<string, float>();
+
+        switch (variant)
+        {
+            case 0: // 右手抬起
+                enrichParams["arm_right_upper"] = UnityEngine.Random.Range(12f, 22f);
+                enrichParams["arm_right_lower"] = UnityEngine.Random.Range(-10f, 10f);
+                break;
+            case 1: // 双臂微展（惊讶/欢迎）
+                enrichParams["arm_right_upper"] = UnityEngine.Random.Range(10f, 18f);
+                enrichParams["arm_left_upper"] = UnityEngine.Random.Range(10f, 18f);
+                enrichParams["arm_right_reach"] = UnityEngine.Random.Range(0.2f, 0.5f);
+                break;
+            case 2: // 左手叉腰
+                enrichParams["arm_left_upper"] = UnityEngine.Random.Range(15f, 22f);
+                enrichParams["arm_left_lower"] = UnityEngine.Random.Range(-18f, -12f);
+                break;
+            case 3: // 双手缩胸（害羞/冷）
+                enrichParams["arm_right_upper"] = UnityEngine.Random.Range(-15f, -8f);
+                enrichParams["arm_left_upper"] = UnityEngine.Random.Range(-15f, -8f);
+                enrichParams["arm_right_lower"] = UnityEngine.Random.Range(-15f, -8f);
+                enrichParams["arm_right_reach"] = 0.3f;
+                break;
+            case 4: // 右手捂胸
+                enrichParams["arm_right_upper"] = UnityEngine.Random.Range(15f, 25f);
+                enrichParams["arm_right_lower"] = UnityEngine.Random.Range(8f, 15f);
+                enrichParams["arm_right_rotation"] = UnityEngine.Random.Range(15f, 25f);
+                enrichParams["arm_right_reach"] = UnityEngine.Random.Range(0.4f, 0.6f);
+                break;
+        }
+
+        // 找到中间帧（动作峰值附近），注入肢体参数
+        int midIdx = plan.KeyFrames.Count / 2;
+        if (midIdx >= plan.KeyFrames.Count) midIdx = plan.KeyFrames.Count - 1;
+
+        var midKf = plan.KeyFrames[midIdx];
+        foreach (var kv in enrichParams)
+        {
+            midKf.Values[kv.Key] = kv.Value;
+        }
+
+        // 在最后一帧清理这些注入的参数
+        var lastKf = plan.KeyFrames[plan.KeyFrames.Count - 1];
+        foreach (var key in enrichParams.Keys)
+        {
+            if (!lastKf.Values.ContainsKey(key))
+                lastKf.Values[key] = 0f;
+        }
+
+        Debug.Log($"[MotionTranslator] 鈿犱负 \"{plan.Description}\" 鑷姩娉ㄥ叆 {enrichParams.Count} 涓偄浣撳弬鏁帮紙鍘熷ご闈㈠崰姣?{headFaceRatio:P0}锛?");
+    }
+
+    // ──────────────────────────────────────────────
     //  闭环学习: 运动记忆读写
     // ──────────────────────────────────────────────
 
@@ -792,10 +902,14 @@ public static class MotionTranslator
         var mm = MotionMemoryManager.Instance;
         if (mm == null) return "";
 
+        // 同时注入运动记忆和肢体参数命中统计（闭环反馈）
         string memories = mm.GetFormattedMemories();
         if (!string.IsNullOrEmpty(memories))
         {
-            UnityEngine.Debug.Log($"[MotionTranslator] 📖 注入 {memories.Split('\n').Length} 行运动记忆到 prompt");
+            int lines = memories.Split('\n').Length;
+            int armCount = memories.Split(new[] { "arm_" }, StringSplitOptions.None).Length - 1;
+            int fingerCount = memories.Split(new[] { "finger_" }, StringSplitOptions.None).Length - 1;
+            Debug.Log($"[MotionTranslator] 鉂わ笍 娉ㄥ叆 {lines} 琛岃繍鍔ㄨ蹇嗗埌 prompt (鍚玜rm_={armCount}妗?鎸噁inger_={fingerCount}妗?)");
         }
         return memories;
     }

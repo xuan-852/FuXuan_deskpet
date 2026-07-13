@@ -214,6 +214,157 @@ public class DualModelValidator : MonoBehaviour
 
 
     // ==================================================================
+    //  描述调用 — 盲探索时让 GLM 描述姿态像什么动作
+    // ==================================================================
+
+    private static string BuildDescribePrompt()
+    {
+        return "你是一个动作描述专家。下面是一张桌面宠物（符玄）的截图。\n\n"
+            + "请仔细观察截图中的角色姿态、手势和表情，然后回答：\n\n"
+            + "这个角色看起来在做什么动作？\n\n"
+            + "要求：\n"
+            + "1. 用简短的中文描述（2-8个字），例如：开心挥手、叉腰站立、害羞捂脸、歪头思考、伸懒腰、低头鞠躬、合十祈祷\n"
+            + "2. 如果你确信它有一个清晰的动作含义，直接给出描述\n"
+            + "3. 如果角色姿态不明确（接近默认站立或无明显意图），回复「无明确动作」\n\n"
+            + "=== 回复格式（严格按此格式）===\n"
+            + "描述：【你的描述】\n"
+            + "自信度：【高/中/低】\n"
+            + "理由：...";
+    }
+
+    /// <summary>
+    /// 调用 GLM-4V 描述当前姿态像什么动作（盲探索用）
+    /// </summary>
+    /// <param name="imageDataUrl">截图 data:image/png;base64,...</param>
+    /// <param name="onResult">回调: (description, confidence) confidence: 3=高, 2=中, 1=低, 0=无明确动作</param>
+    public IEnumerator CallGlmVisionDescribe(string imageDataUrl, Action<string, int> onResult)
+    {
+        string apiKey = ChatConfig.GlmApiKey;
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            Debug.LogWarning("[DualModelValidator] GLM API Key 未配置，跳过描述");
+            onResult("", 0);
+            yield break;
+        }
+
+        string prompt = BuildDescribePrompt();
+
+        string jsonBody = "{";
+        jsonBody += "\"model\":\"" + EscapeJson(ChatConfig.GlmVisionModel) + "\",";
+        jsonBody += "\"messages\":[{";
+        jsonBody += "\"role\":\"user\",";
+        jsonBody += "\"content\":[";
+        jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJson(prompt) + "\"},";
+        jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(imageDataUrl) + "\"}}";
+        jsonBody += "]}],";
+        jsonBody += "\"temperature\":0.3,";
+        jsonBody += "\"max_tokens\":512";
+        jsonBody += "}";
+
+        string url = ChatConfig.GlmApiBaseUrl.TrimEnd('/') + "/chat/completions";
+
+        using (UnityWebRequest req = new UnityWebRequest(url, "POST"))
+        {
+            byte[] body = Encoding.UTF8.GetBytes(jsonBody);
+            req.uploadHandler = new UploadHandlerRaw(body);
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            req.timeout = 90;
+
+            yield return req.SendWebRequest();
+
+            if (req.result == UnityWebRequest.Result.Success)
+            {
+                string response = req.downloadHandler.text;
+                Debug.Log($"[DualModelValidator] GLM 描述响应: {Truncate(response, 300)}");
+                ParseDescribeResponse(response, out string description, out int confidence);
+                onResult(description, confidence);
+            }
+            else
+            {
+                string errBody = req.downloadHandler?.text ?? "";
+                string errMsg = TryExtractGlmError(errBody) ?? req.error;
+                Debug.LogWarning($"[DualModelValidator] GLM 描述请求失败: {errMsg}");
+                onResult("", 0);
+            }
+        }
+    }
+
+    private void ParseDescribeResponse(string responseJson, out string description, out int confidence)
+    {
+        description = "";
+        confidence = 0;
+
+        try
+        {
+            string content = ExtractContent(responseJson);
+            if (string.IsNullOrEmpty(content))
+            {
+                Debug.LogWarning("[DualModelValidator] 描述响应中未找到 content");
+                return;
+            }
+
+            content = content.Trim();
+
+            // 检查是否无明确动作
+            if (content.Contains("无明确动作") || content.Contains("没有明确"))
+            {
+                Debug.Log("[DualModelValidator] GLM 认为无明确动作");
+                return;
+            }
+
+            // 提取描述
+            var match = Regex.Match(content, @"描述[：:]\s*【?(.+?)】?");
+            if (match.Success)
+            {
+                description = match.Groups[1].Value.Trim();
+                description = description.Replace("】", "").Replace("【", "").Trim();
+            }
+            else
+            {
+                // 备选：从自信度行上方找简短文本
+                var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    string trimmed = line.Trim();
+                    if (!trimmed.Contains("自信") && !trimmed.Contains("理由") && trimmed.Length > 1 && trimmed.Length < 15)
+                    {
+                        description = trimmed;
+                        break;
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(description) || description.Length > 15)
+            {
+                Debug.Log($"[DualModelValidator] 描述过长或无描述: {description}");
+                description = "";
+                return;
+            }
+
+            // 提取自信度
+            match = Regex.Match(content, @"自信度[：:]\s*(高|中|低)");
+            if (match.Success)
+            {
+                confidence = match.Groups[1].Value switch
+                {
+                    "高" => 3,
+                    "中" => 2,
+                    "低" => 1,
+                    _ => 0
+                };
+            }
+
+            Debug.Log($"[DualModelValidator] 📝 GLM 描述: 「{description}」(自信度={confidence})");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[DualModelValidator] 解析描述响应异常: {e.Message}");
+        }
+    }
+
+    // ==================================================================
     //  评分 Prompt 工厂
     // ==================================================================
 
@@ -493,32 +644,97 @@ public class DualModelValidator : MonoBehaviour
         cols = Mathf.Min(cols, count);
         int rows = (count + cols - 1) / cols;
 
-        // 加载第一帧获取帧尺寸
-        var sampleTex = new Texture2D(2, 2);
-        sampleTex.LoadImage(framePngs[0]);
-        int fw = sampleTex.width;
-        int fh = sampleTex.height;
-        UnityEngine.Object.DestroyImmediate(sampleTex);
+        // 加载各帧，分别获取各自尺寸（裁剪后尺寸可能不同）
+        var frames = new List<(Texture2D tex, int w, int h)>();
+        int maxW = 0, maxH = 0;
+        for (int i = 0; i < count; i++)
+        {
+            var srcTex = new Texture2D(2, 2);
+            srcTex.LoadImage(framePngs[i]);
+            int tw = srcTex.width, th = srcTex.height;
 
-        // 创建拼图画布
-        int cw = fw * cols;
-        int ch = fh * rows;
+            // 安全帽：单帧像素超 64 万（约 800×800）时等比缩小 — GLM-4V 足够看清，内存省 3/4
+            const int MAX_PX = 800 * 800;
+            while (tw * th > MAX_PX)
+            {
+                tw /= 2;
+                th /= 2;
+            }
+            Texture2D tex;
+            if (tw != srcTex.width || th != srcTex.height)
+            {
+                // 缩小该帧
+                RenderTexture rt = RenderTexture.GetTemporary(tw, th, 0, RenderTextureFormat.ARGB32);
+                Graphics.Blit(srcTex, rt);
+                RenderTexture prev = RenderTexture.active;
+                RenderTexture.active = rt;
+                tex = new Texture2D(tw, th, TextureFormat.RGB24, false);
+                tex.ReadPixels(new Rect(0, 0, tw, th), 0, 0);
+                tex.Apply();
+                RenderTexture.active = prev;
+                RenderTexture.ReleaseTemporary(rt);
+                UnityEngine.Object.DestroyImmediate(srcTex);
+            }
+            else
+            {
+                tex = srcTex;
+            }
+
+            frames.Add((tex, tw, th));
+            if (tw > maxW) maxW = tw;
+            if (th > maxH) maxH = th;
+        }
+
+        // ★ 额外限制：拼图总像素不超过 1600×1600
+        int cw = Mathf.Min(maxW * cols, 1600);
+        int ch = Mathf.Min(maxH * rows, 1600);
         var canvas = new Texture2D(cw, ch, TextureFormat.RGB24, false);
+
+        // 用黑色填充背景（GLM 看到黑底拼图）
+        var bgColor = Color.black;
+        var bgPixels32 = new Color32[cw * ch];
+        for (int i = 0; i < bgPixels32.Length; i++) bgPixels32[i] = bgColor;
+        canvas.SetPixels32(bgPixels32);
 
         for (int i = 0; i < count; i++)
         {
-            var tex = new Texture2D(2, 2);
-            tex.LoadImage(framePngs[i]);
-            int x = (i % cols) * fw;
-            int y = ch - ((i / cols) + 1) * fh; // 从顶部往下排
-            Color[] pixels = tex.GetPixels(0, 0, fw, fh);
-            canvas.SetPixels(x, y, fw, fh, pixels);
+            var (tex, tw, th) = frames[i];
+            int cellX = (i % cols) * maxW;
+            int cellY = ch - ((i / cols) + 1) * maxH;
+            // 在格子内居中渲染
+            int ox = cellX + (maxW - tw) / 2;
+            int oy = cellY + (maxH - th) / 2;
+            // ★ GetPixels32 → 每像素 4 字节（GetPixels 用 Color 是 16 字节，内存 4 倍！）
+            var pixels32 = tex.GetPixels32();
+            canvas.SetPixels32(ox, oy, tw, th, pixels32);
             UnityEngine.Object.DestroyImmediate(tex);
         }
 
         canvas.Apply();
         byte[] resultPng = canvas.EncodeToPNG();
         UnityEngine.Object.DestroyImmediate(canvas);
+
+        // ★ 紧急 GC：立刻释放拼图过程中的临时内存
+        System.GC.Collect();
+
+        // ★ 保存拼图到磁盘，方便用户查看 GLM-4V 实际看到的画面
+#if !UNITY_EDITOR
+        try
+        {
+            string dir = Path.Combine(Application.persistentDataPath, "glm_collages");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, $"collage_{DateTime.Now:HHmmssfff}.png");
+            File.WriteAllBytes(path, resultPng);
+            // 最多保留 50 张自动清理
+            var files = Directory.GetFiles(dir, "*.png");
+            if (files.Length > 50)
+            {
+                System.Array.Sort(files);
+                for (int i = 0; i < files.Length - 50; i++) File.Delete(files[i]);
+            }
+        }
+        catch { /* 保存截图失败不影响主流程 */ }
+#endif
 
         return "data:image/png;base64," + Convert.ToBase64String(resultPng);
     }

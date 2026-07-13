@@ -388,6 +388,28 @@
       "side": "left"
     },
     {
+      "s": "arm_left_rotation",
+      "p": "Param36",
+      "d": "左手上臂旋转（映射至上臂中段）",
+      "part": "arm",
+      "domain": "angle",
+      "axis": "Z",
+      "min": -30,
+      "max": 30,
+      "side": "left"
+    },
+    {
+      "s": "arm_left_reach",
+      "p": "Param37",
+      "d": "左手伸出参数（映射至下臂角度）",
+      "part": "arm",
+      "domain": "normalized",
+      "axis": "",
+      "min": 0,
+      "max": 1,
+      "side": "left"
+    },
+    {
       "s": "hand_layer_95",
       "p": "Param95",
       "d": "右手上壁透视",

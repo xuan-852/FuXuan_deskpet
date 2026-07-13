@@ -42,6 +42,11 @@ public static class LocalLLMClient
     public static bool IsReady { get; private set; } = false;
 
     /// <summary>
+    /// 是否被暂停（游戏检测暂停时设为 true，此时不发起新请求）
+    /// </summary>
+    public static bool Paused { get; set; } = false;
+
+    /// <summary>
     /// 最后一次检查的结果描述
     /// </summary>
     public static string LastHealthMessage { get; private set; } = "";
@@ -126,6 +131,13 @@ public static class LocalLLMClient
         int maxTokens = 256,
         int timeout = DEFAULT_TIMEOUT)
     {
+        // 被游戏模式暂停时直接跳过
+        if (Paused)
+        {
+            onResult?.Invoke(false, "本地 LLM 已暂停（游戏模式）");
+            yield break;
+        }
+
         if (!IsReady)
         {
             // 首次使用前先做健康检查

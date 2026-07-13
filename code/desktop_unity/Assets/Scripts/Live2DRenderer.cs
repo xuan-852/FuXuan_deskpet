@@ -322,34 +322,25 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     public Live2DParameterMapper Mapper => _mapper;
     public CubismModel CubismModel => _cubismModel;
 
-    /// <summary>截取当前模型渲染快照（PNG bytes），供 GLM 视觉分析用</summary>
+    /// <summary>截取当前模型渲染快照（PNG bytes），自动裁切到模型区域，供 GLM 视觉分析用</summary>
     public byte[] CaptureModelSnapshot()
     {
         if (_overlayRT == null || !_overlayRT.IsCreated()) return null;
+        if (_overlayCamera == null) return null;
         try
         {
-            // 强制叠加相机立即渲染到 RT，确保 ReadPixels 读到最新帧
-            if (_overlayCamera != null)
-            {
-#if UNITY_EDITOR
-                // Editor 下模型在 Layer 0（Default），叠加相机默认只渲染 Layer 31
-                // 临时设为 -1（Everything）以确保能捕获到模型画面
-                int savedMask = _overlayCamera.cullingMask;
-                _overlayCamera.cullingMask = -1;
-                _overlayCamera.Render();
-                _overlayCamera.cullingMask = savedMask;
-#else
-                _overlayCamera.Render();
-#endif
-            }
-
-            RenderTexture prev = RenderTexture.active;
+            // ★ 直接从 _overlayRT 读取（已在 OnGUI 每帧正常渲染），不新建 RT 调
+            //   Camera.Render() — Cubium 用 CommandBuffer 做遮罩，手动 Render
+            //   到新 RT 会导致遮罩纹理连接断开，模型变全透明。
+            RenderTexture saved = RenderTexture.active;
             RenderTexture.active = _overlayRT;
-            var tex = new Texture2D(_overlayRT.width, _overlayRT.height, TextureFormat.RGB24, false);
+            var tex = new Texture2D(_overlayRT.width, _overlayRT.height, TextureFormat.RGBA32, false);
             tex.ReadPixels(new Rect(0, 0, _overlayRT.width, _overlayRT.height), 0, 0);
             tex.Apply();
-            RenderTexture.active = prev;
-            byte[] bytes = tex.EncodeToPNG();
+            RenderTexture.active = saved;
+
+            // ★ 自动裁切到模型区域（移除透明背景），使 GLM-4V 看到的模型更大更清晰
+            byte[] bytes = CropToModelArea(tex);
             DestroyImmediate(tex);
             return bytes;
         }
@@ -358,6 +349,79 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             Debug.LogWarning($"[Live2DRenderer] CaptureModelSnapshot 异常: {e.Message}");
             return null;
         }
+    }
+
+    /// <summary>根据 alpha 通道自动裁切到非透明模型区域，移除周围透明背景</summary>
+    private byte[] CropToModelArea(Texture2D tex)
+    {
+        int w = tex.width, h = tex.height;
+        Color32[] pixels = tex.GetPixels32();
+        const int THRESHOLD = 20; // alpha > 20 视为有内容
+
+        // 从四边向内扫描，找内容边界
+        int top = 0, bottom = h - 1, left = 0, right = w - 1;
+        bool found = false;
+
+        // 顶部 → 向下扫
+        for (int y = 0; y < h && !found; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                if (pixels[y * w + x].a > THRESHOLD) { top = y; found = true; break; }
+            }
+        }
+        if (!found) return tex.EncodeToPNG(); // 全透明 → 返回原图
+
+        // 底部 → 向上扫
+        found = false;
+        for (int y = h - 1; y >= 0 && !found; y--)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                if (pixels[y * w + x].a > THRESHOLD) { bottom = y; found = true; break; }
+            }
+        }
+
+        // 左侧 → 向右扫（只在 top~bottom 行内）
+        found = false;
+        for (int x = 0; x < w && !found; x++)
+        {
+            for (int y = top; y <= bottom; y++)
+            {
+                if (pixels[y * w + x].a > THRESHOLD) { left = x; found = true; break; }
+            }
+        }
+
+        // 右侧 → 向左扫（只在 top~bottom 行内）
+        found = false;
+        for (int x = w - 1; x >= 0 && !found; x--)
+        {
+            for (int y = top; y <= bottom; y++)
+            {
+                if (pixels[y * w + x].a > THRESHOLD) { right = x; found = true; break; }
+            }
+        }
+
+        // 加 4 像素边距防切到模型边缘
+        int pad = 4;
+        left   = Mathf.Max(0, left - pad);
+        top    = Mathf.Max(0, top - pad);
+        right  = Mathf.Min(w - 1, right + pad);
+        bottom = Mathf.Min(h - 1, bottom + pad);
+
+        int cw = right - left + 1;
+        int ch = bottom - top + 1;
+
+        // 裁切
+        var cropped = new Texture2D(cw, ch, TextureFormat.RGB24, false);
+        var cropPixels = new Color32[cw * ch];
+        for (int y = 0; y < ch; y++)
+            System.Array.Copy(pixels, (top + y) * w + left, cropPixels, y * cw, cw);
+        cropped.SetPixels32(cropPixels);
+        cropped.Apply();
+        byte[] bytes = cropped.EncodeToPNG();
+        DestroyImmediate(cropped);
+        return bytes;
     }
 
     // =====

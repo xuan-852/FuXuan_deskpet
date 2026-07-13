@@ -26,6 +26,9 @@ public class MotionMemoryManager : MonoBehaviour
     [Tooltip("尝试次数超过此值且最高分仍≤2，视为「无望动作」，优先淘汰")]
     public int hopelessAttempts = 5;
 
+    [Tooltip("动作执行后多少秒内不注入 prompt（防止复读）")]
+    public float cooldownSeconds = 120f;
+
     [Header("负反馈配置")]
     [Tooltip("最多保留多少个负反馈例子")]
     public int maxNegativeExamples = 10;
@@ -70,6 +73,8 @@ public class MotionMemoryManager : MonoBehaviour
         public string lastParamSnapshot;
         /// <summary>上次更新时间</summary>
         public string timestamp;
+        /// <summary>上次执行时间（Unix 秒，用于过滤刚做过的动作）</summary>
+        public long lastExecutedTicks;
         /// <summary>尝试总次数</summary>
         public int attempts;
         /// <summary>动作持续时长</summary>
@@ -120,6 +125,7 @@ public class MotionMemoryManager : MonoBehaviour
         entry.keyframeCount = keyframeCount;
         entry.totalDuration = duration;
         entry.timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+        entry.lastExecutedTicks = DateTime.Now.Ticks;
         entry.attempts++;
         Save();
 
@@ -538,11 +544,15 @@ public class MotionMemoryManager : MonoBehaviour
     //  内部逻辑
     // ==================================================================
 
-    /// <summary>获取适合注入的条目（评分 ≥ minInjectionScore）</summary>
+    /// <summary>获取适合注入的条目（评分 ≥ minInjectionScore，且不在冷却期内）</summary>
     private List<MotionMemoryEntry> GetInjectableEntries()
     {
+        long nowTicks = DateTime.Now.Ticks;
+        long cooldownTicks = (long)(cooldownSeconds * TimeSpan.TicksPerSecond);
+
         return _data.entries
             .Where(e => e.bestScore >= minInjectionScore && !string.IsNullOrEmpty(e.bestParamJson))
+            .Where(e => nowTicks - e.lastExecutedTicks > cooldownTicks) // 冷却期内不注入
             .OrderByDescending(e => e.bestScore)
             .ThenByDescending(e => e.timestamp)
             .Take(5) // 最多注入 5 条
@@ -657,6 +667,54 @@ public class MotionMemoryManager : MonoBehaviour
             UnityEngine.Debug.LogError($"[MotionMemoryManager] 加载失败: {e.Message}");
             _data = new StorageData();
         }
+    }
+
+    // ==================================================================
+    //  盲探索发现 — 当 GLM 看图描述发现新动作时自动入库
+    // ==================================================================
+
+    /// <summary>
+    /// 添加盲探索发现的新动作
+    /// </summary>
+    /// <param name="discoveredName">GLM 发现的动作名</param>
+    /// <param name="paramSnapshot">参数快照</param>
+    /// <param name="confidence">自信度 1-3</param>
+    /// <param name="score">继承评分</param>
+    public void AddDiscoveredMotion(string discoveredName, string paramSnapshot, int confidence, int score)
+    {
+        var existing = _data.entries.FirstOrDefault(e => e.actionName == discoveredName);
+        if (existing != null)
+        {
+            if (score > existing.bestScore)
+            {
+                existing.bestScore = score;
+                existing.bestParamJson = paramSnapshot;
+                existing.lastParamSnapshot = paramSnapshot;
+                existing.timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+                existing.lastExecutedTicks = DateTime.Now.Ticks;
+                existing.attempts++;
+                Save();
+                UnityEngine.Debug.Log($"[MotionMemoryManager] 🔄 发现更新「{discoveredName}」({score}/5)");
+            }
+            return;
+        }
+
+        var entry = new MotionMemoryEntry
+        {
+            actionName = discoveredName,
+            bestParamJson = paramSnapshot,
+            bestScore = Mathf.Max(score, 1),
+            bestReview = $"盲探索发现（自信度={confidence}）",
+            lastParamSnapshot = paramSnapshot,
+            timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+            lastExecutedTicks = DateTime.Now.Ticks,
+            attempts = 1,
+            scoreHistory = new List<int> { Mathf.Max(score, 1) }
+        };
+        _data.entries.Add(entry);
+        EnforceMaxEntries();
+        Save();
+        UnityEngine.Debug.Log($"[MotionMemoryManager] 🎉 盲探索发现新动作「{discoveredName}」({score}/5, 自信度={confidence})");
     }
 
     /// <summary>清空所有运动记忆（用于调试）</summary>

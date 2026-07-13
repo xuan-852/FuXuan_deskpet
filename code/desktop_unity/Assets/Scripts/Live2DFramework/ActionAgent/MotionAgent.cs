@@ -40,7 +40,7 @@ public class MotionAgent : MonoBehaviour
 
     [Header("◈ 本地 LLM 配置")]
     [Tooltip("本地模型名")]
-    public string localModel = "qwen2.5:0.5b";
+    public string localModel = "qwen2.5:3b";
 
     [Tooltip("本地 API 地址")]
     public string localApiUrl = "http://127.0.0.1:11434/v1";
@@ -206,6 +206,11 @@ public class MotionAgent : MonoBehaviour
 
         // 启动健康检查（不阻塞启动流程）
         StartCoroutine(DelayedHealthCheck());
+
+        // 挂载 GPU 负载监控（游戏检测 → 自动暂停本地 LLM）
+        var gpuMon = GetComponent<GpuLoadMonitor>();
+        if (gpuMon == null)
+            gpuMon = gameObject.AddComponent<GpuLoadMonitor>();
 
         // 启动主决策循环
         StartCoroutine(DecisionLoop());
@@ -471,11 +476,11 @@ public class MotionAgent : MonoBehaviour
         // AI 控制中（ChatManager 工具调用进行中）
         if (_chatManager != null && _chatManager.IsWaiting) return false;
 
-        // AI 锁定参数中（动作正在被工具控制）
+        // 渲染器正在播放强制动作或空闲动作 → 不打断
         if (_renderer != null)
         {
-            // 通过反射检查 _aiControlLocked（私有字段）
-            // 简化: 检查 ChatManager 是否 IsWaiting
+            if (_renderer.IsActionLocked) return false;
+            if (_renderer.CurrentActionId != 0) return false;
         }
 
         // 冷却中（刚执行完动作）
@@ -483,12 +488,6 @@ public class MotionAgent : MonoBehaviour
 
         // Sleep 级别 → 极低概率决策（每 5 次才决策一次）
         if (CurrentDensity == DensityLevel.Sleep && UnityEngine.Random.value > 0.2f) return false;
-
-        // 正在播放 JSON 空闲动作
-        if (_renderer != null)
-        {
-            // 检查是否正在播放预设动作（简化）
-        }
 
         return true;
     }
@@ -524,13 +523,14 @@ public class MotionAgent : MonoBehaviour
         // 4. 密度级别
         parts.Add($"决策密度: {CurrentDensity}");
 
-        // 5. 演武心经（过往经验统计）
+        // 5. 演武心经（过往经验统计 — 仅注入注入最高分的 3 条经验，防止小模型上下文过载）
         var mm = MotionMemoryManager.Instance;
         if (mm != null)
         {
-            string report = mm.GetPipelineReport();
-            if (!string.IsNullOrEmpty(report))
-                parts.Add(report);
+            // 用 GetFormattedMemories 替代全量报告（只吐 5 条高分 + 负反馈）
+            string brief = mm.GetFormattedMemories();
+            if (!string.IsNullOrEmpty(brief))
+                parts.Add(brief);
         }
 
         // 6. 最近动作历史（去重）
@@ -579,19 +579,6 @@ public class MotionAgent : MonoBehaviour
 
     private IEnumerator DecideWithLLM(string context, Action<MotionDecision> onResult)
     {
-        // 拼接演武心经经验
-        string mmMemories = "";
-        var mm = MotionMemoryManager.Instance;
-        if (mm != null)
-        {
-            string formatted = mm.GetFormattedMemories();
-            if (!string.IsNullOrEmpty(formatted))
-                mmMemories = $"\n过往演武经验:\n{formatted}\n";
-            string negative = mm.GetFormattedNegativeExamples();
-            if (!string.IsNullOrEmpty(negative))
-                mmMemories += $"\n需避免的失败案例:\n{negative}\n";
-        }
-
         string systemPrompt =
             "你是一个桌面宠物「符玄」的自主动作决策引擎。你的任务是根据当前上下文，创作最合适的动作。\n\n" +
             "规则:\n" +
@@ -611,7 +598,6 @@ public class MotionAgent : MonoBehaviour
             "- duration 2~6秒，combo可到8秒\n" +
             "- 不要重复最近做过的动作\n" +
             "- 参考过往演武经验，优先选择已掌握的高分动作，避免表现不佳的动作\n\n" +
-            mmMemories +
             "输出格式(JSON ONLY, 不要markdown):\n" +
             "{\"action\":\"motion\", \"target\":\"害羞地扭捏捂脸\", \"intensity\":0.6, \"duration\":3.5, \"reason\":\"被主人盯着看了好一会\"}";
 
@@ -907,6 +893,52 @@ public class MotionAgent : MonoBehaviour
         }
     }
 
+    // ★ 后台 GLM 验证（不阻塞决策循环）
+    private IEnumerator RunGlmValidationAsync(string fullDesc, string collageDataUrl,
+        string cnDescription, string snapshot, MotionPlanner.MotionPlan plan)
+    {
+        var mm = MotionMemoryManager.Instance;
+        if (_dualValidator == null || string.IsNullOrEmpty(collageDataUrl) || mm == null)
+            yield break;
+
+        bool consensus = false;
+        int avgScore = 0, sGlm = 0;
+        yield return _dualValidator.ValidateAsync(fullDesc, collageDataUrl, plan,
+            (c, avg, g, _u1, _u2, rg, _rq) => { consensus = c; avgScore = avg; sGlm = g; });
+
+        if (consensus)
+        {
+            Debug.Log($"[MotionAgent] ✅ 镜鉴通过: 「{fullDesc}」 {sGlm}/5");
+            _actionSuccessCount.TryGetValue(cnDescription, out int oldS);
+            _actionSuccessCount[cnDescription] = oldS + 1;
+            if (avgScore > 0)
+                mm.UpdateScore(cnDescription, avgScore, $"多帧镜鉴{sGlm}/5", snapshot);
+        }
+        else
+        {
+            Debug.Log($"[MotionAgent] ⚠️ 镜鉴低分: 「{fullDesc}」 GLM={sGlm}/5");
+            _actionFailCount.TryGetValue(cnDescription, out int oldF);
+            _actionFailCount[cnDescription] = oldF + 1;
+            if (sGlm > 0)
+                mm.UpdateScore(cnDescription, sGlm, $"镜鉴低分 GLM={sGlm}/5", snapshot);
+
+            // 盲探索：低分时让 GLM 看截图描述发现了什么动作
+            if (sGlm <= 2 && !string.IsNullOrEmpty(collageDataUrl))
+            {
+                string snapForExplore = snapshot;
+                yield return _dualValidator.CallGlmVisionDescribe(collageDataUrl, (desc, conf) =>
+                {
+                    if (conf >= 2 && !string.IsNullOrEmpty(desc) && desc.Length <= 10 && desc != cnDescription)
+                    {
+                        Debug.Log($"[MotionAgent] 🔍 盲探索发现潜在新动作「{desc}」({conf}/3)");
+                        mm.AddDiscoveredMotion(desc, snapForExplore, conf, Mathf.Max(sGlm, 1));
+                    }
+                });
+            }
+        }
+        _totalActionsSinceReport++;
+    }
+
     private IEnumerator ExecuteMotion(string target, float intensity, float duration)
     {
         // 用 MotionMemoryManager 统一映射（与 GetFailurePenalty 共享）
@@ -927,6 +959,10 @@ public class MotionAgent : MonoBehaviour
 
             if (plan != null)
             {
+                // ── 锁定 AI 控制权，防止空闲动画/走路系统争抢参数 ──
+                if (_renderer != null)
+                    _renderer.SetAiControlLock(duration + 0.5f);
+
                 // ── 多帧截图（20%/40%/60%/80% 进度）──
                 var framePngs = new List<byte[]>();
                 var capturePoints = new float[] { 0.20f, 0.40f, 0.60f, 0.80f };
@@ -942,43 +978,22 @@ public class MotionAgent : MonoBehaviour
                     }
                 });
 
-                // ★ 闭环学习-写入演武心经：记录本次动作参数快照
+                // ★ 播放完毕 → 立即释放 AI 控制锁（让空闲动画恢复）
+                if (_renderer != null)
+                    _renderer.ReleaseAiControlLock();
+
+                // ★ 闭环学习-写入演武心经
                 string snapshot = BuildParamSnapshot(plan);
                 var mm = MotionMemoryManager.Instance;
                 if (mm != null)
                     mm.RecordMotion(cnDescription, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
 
-                // 播放完毕 → 多帧拼图 → GLM-4V 视觉验证
+                // ★ GLM 验证移入后台协程，不阻塞决策循环
                 string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
-                if (collageDataUrl != null && _dualValidator != null)
+                if (!string.IsNullOrEmpty(collageDataUrl) && _dualValidator != null)
                 {
-                    bool consensus = false;
-                    int avgScore = 0, sGlm = 0;
-                    string rGlm = "";
-                    yield return _dualValidator.ValidateAsync(fullDesc, collageDataUrl, plan,
-                        (c, avg, g, _u1, _u2, rg, _rq) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; });
-
-                    if (consensus)
-                    {
-                        Debug.Log($"[MotionAgent] ✅ 镜鉴通过: 「{fullDesc}」 {sGlm}/5");
-                        _actionSuccessCount.TryGetValue(cnDescription, out int oldS);
-                        _actionSuccessCount[cnDescription] = oldS + 1;
-
-                        // ★ 闭环学习-写入评分
-                        if (mm != null && avgScore > 0)
-                            mm.UpdateScore(cnDescription, avgScore, $"多帧镜鉴{sGlm}/5", snapshot);
-                    }
-                    else
-                    {
-                        Debug.Log($"[MotionAgent] ⚠️ 镜鉴低分: 「{fullDesc}」 GLM={sGlm}/5");
-                        _actionFailCount.TryGetValue(cnDescription, out int oldF);
-                        _actionFailCount[cnDescription] = oldF + 1;
-
-                        // ★ 闭环学习-写入低分
-                        if (mm != null && sGlm > 0)
-                            mm.UpdateScore(cnDescription, sGlm, $"镜鉴低分 GLM={sGlm}/5", snapshot);
-                    }
-                    _totalActionsSinceReport++;
+                    StartCoroutine(RunGlmValidationAsync(
+                        fullDesc, collageDataUrl, cnDescription, snapshot, plan));
                 }
             }
             else
@@ -1021,43 +1036,26 @@ public class MotionAgent : MonoBehaviour
                     }
                 });
 
+                // ★ 复合动作也加 AI 控制锁 + 释放
+                if (_renderer != null)
+                    _renderer.SetAiControlLock(duration + 0.5f);
+
                 // ★ 闭环学习-写入演武心经：记录复合动作参数快照
                 string snapshot = BuildParamSnapshot(plan);
                 var mm = MotionMemoryManager.Instance;
                 if (mm != null)
                     mm.RecordMotion(description, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
 
-                // 播放完毕 → 多帧拼图 → GLM-4V 视觉验证
+                // 播放完毕 → 立即释放 AI 控制锁
+                if (_renderer != null)
+                    _renderer.ReleaseAiControlLock();
+
+                // ★ GLM 验证移入后台（同 ExecuteMotion）
                 string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
-                if (collageDataUrl != null && _dualValidator != null)
+                if (!string.IsNullOrEmpty(collageDataUrl) && _dualValidator != null)
                 {
-                    bool consensus = false;
-                    int avgScore = 0, sGlm = 0;
-                    string rGlm = "";
-                    yield return _dualValidator.ValidateAsync(description, collageDataUrl, plan,
-                        (c, avg, g, _u1, _u2, rg, _rq) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; });
-
-                    if (consensus)
-                    {
-                        Debug.Log($"[MotionAgent] ✅ 镜鉴通过(combo): 「{description}」 {sGlm}/5");
-                        _actionSuccessCount.TryGetValue(description, out int oldS);
-                        _actionSuccessCount[description] = oldS + 1;
-
-                        // ★ 闭环学习-写入评分
-                        if (mm != null && avgScore > 0)
-                            mm.UpdateScore(description, avgScore, $"多帧镜鉴{sGlm}/5", snapshot);
-                    }
-                    else
-                    {
-                        Debug.Log($"[MotionAgent] ⚠️ 镜鉴低分(combo): 「{description}」 GLM={sGlm}/5");
-                        _actionFailCount.TryGetValue(description, out int oldF);
-                        _actionFailCount[description] = oldF + 1;
-
-                        // ★ 闭环学习-写入低分
-                        if (mm != null && sGlm > 0)
-                            mm.UpdateScore(description, sGlm, $"镜鉴低分 GLM={sGlm}/5", snapshot);
-                    }
-                    _totalActionsSinceReport++;
+                    StartCoroutine(RunGlmValidationAsync(
+                        description, collageDataUrl, description, snapshot, plan));
                 }
             }
             else

@@ -279,6 +279,134 @@ public static class MotionPlanner
             return plan;
         }
 
+        // 叉腰
+        if (desc.Contains("叉腰") || desc.Contains("掐腰") || desc.Contains("hand on hip") || desc.Contains("akimbo"))
+        {
+            var plan = new MotionPlan { TotalDuration = 3f, Description = "叉腰", Looping = false };
+            plan.KeyFrames.Add(new KeyFrame { Time = 0.4f, Curve = InterpolationType.EaseOut, Values = {
+                {"arm_right_upper", 20f}, {"arm_left_upper", 20f},
+                {"arm_right_lower", -20f}, {"arm_left_lower", -20f},
+                {"arm_right_reach", 0.4f},
+                {"head_angle_y", 3f}, {"eye_l_smile", 0.3f}, {"eye_r_smile", 0.3f}
+            } });
+            plan.KeyFrames.Add(new KeyFrame { Time = 2f, Curve = InterpolationType.Hold, Values = {
+                {"arm_right_upper", 20f}, {"arm_left_upper", 20f},
+                {"arm_right_lower", -20f}, {"arm_left_lower", -20f},
+                {"arm_right_reach", 0.4f},
+                {"head_angle_y", 3f}, {"eye_l_smile", 0.3f}, {"eye_r_smile", 0.3f}
+            } });
+            plan.KeyFrames.Add(new KeyFrame { Time = 2.8f, Curve = InterpolationType.EaseIn, Values = {
+                {"arm_right_upper", 0f}, {"arm_left_upper", 0f},
+                {"arm_right_lower", 0f}, {"arm_left_lower", 0f},
+                {"arm_right_reach", 0f},
+                {"head_angle_y", 0f}, {"eye_l_smile", 0f}, {"eye_r_smile", 0f}
+            } });
+            return plan;
+        }
+
+        // 捂脸/捂嘴/害羞捂
+        if (desc.Contains("捂脸") || desc.Contains("捂嘴") || (desc.Contains("害羞") && desc.Contains("捂")))
+        {
+            var plan = new MotionPlan { TotalDuration = 3f, Description = "捂脸", Looping = false };
+            plan.KeyFrames.Add(new KeyFrame { Time = 0.5f, Curve = InterpolationType.EaseOut, Values = {
+                {"arm_right_upper", 25f}, {"arm_left_upper", 25f},
+                {"arm_right_lower", 10f}, {"arm_left_lower", 10f},
+                {"arm_right_rotation", 25f}, {"arm_right_reach", 0.7f},
+                {"hand_layer_100", 1f}, {"hand_layer_120", 0.8f},
+                {"head_angle_y", -10f}, {"eye_l_open", 0.3f}, {"eye_r_open", 0.3f}
+            } });
+            plan.KeyFrames.Add(new KeyFrame { Time = 2f, Curve = InterpolationType.Hold, Values = {
+                {"arm_right_upper", 25f}, {"arm_left_upper", 25f},
+                {"arm_right_lower", 10f}, {"arm_left_lower", 10f},
+                {"arm_right_rotation", 25f}, {"arm_right_reach", 0.7f},
+                {"hand_layer_100", 1f}, {"hand_layer_120", 0.8f},
+                {"head_angle_y", -10f}, {"eye_l_open", 0.3f}, {"eye_r_open", 0.3f}
+            } });
+            plan.KeyFrames.Add(new KeyFrame { Time = 2.8f, Curve = InterpolationType.EaseIn, Values = {
+                {"arm_right_upper", 0f}, {"arm_left_upper", 0f},
+                {"arm_right_lower", 0f}, {"arm_left_lower", 0f},
+                {"arm_right_rotation", 0f}, {"arm_right_reach", 0f},
+                {"hand_layer_100", 0f}, {"hand_layer_120", 0f},
+                {"head_angle_y", 0f}, {"eye_l_open", 1f}, {"eye_r_open", 1f}
+            } });
+            return plan;
+        }
+
+        // 指/指方向/指人
+        if ((desc.Contains("指") && (desc.Contains("方") || desc.Contains("人") || desc.Contains("你") || desc.Contains("路") || desc.Contains("那边") || desc.Contains("里面") || desc.Contains("外面"))) || desc.Contains("point"))
+        {
+            var plan = new MotionPlan { TotalDuration = 2.5f, Description = "指", Looping = false };
+            plan.KeyFrames.Add(new KeyFrame { Time = 0.3f, Curve = InterpolationType.EaseOut, Values = {
+                {"sword_finger_switch", 1f},
+                {"arm_right_upper", 20f}, {"arm_right_lower", 15f},
+                {"finger_index", 1f}, {"finger_thumb", 1f}, {"finger_middle", 0f}, {"finger_ring", 0f}, {"finger_pinky", 0f},
+                {"head_angle_y", 5f}, {"head_angle_x", -3f}
+            } });
+            plan.KeyFrames.Add(new KeyFrame { Time = 1.8f, Curve = InterpolationType.Hold, Values = {
+                {"sword_finger_switch", 1f},
+                {"arm_right_upper", 20f}, {"arm_right_lower", 15f},
+                {"finger_index", 1f}, {"finger_thumb", 1f}, {"finger_middle", 0f}, {"finger_ring", 0f}, {"finger_pinky", 0f},
+                {"head_angle_y", 5f}, {"head_angle_x", -3f}
+            } });
+            plan.KeyFrames.Add(new KeyFrame { Time = 2.5f, Curve = InterpolationType.EaseIn, Values = {
+                {"sword_finger_switch", 0f},
+                {"arm_right_upper", 0f}, {"arm_right_lower", 0f},
+                {"head_angle_y", 0f}, {"head_angle_x", 0f}
+            } });
+            return plan;
+        }
+
+        // 招手/过来/再见
+        if (desc.Contains("招手") || desc.Contains("过来") || desc.Contains("come") || desc.Contains("beckon"))
+        {
+            var plan = new MotionPlan { TotalDuration = 3f, Description = "招手", Looping = false };
+            float[] times = { 0f, 0.3f, 0.7f, 1.1f, 1.5f, 1.9f, 2.3f, 2.7f, 3f };
+            float[] armUpper = { 0f, 25f, 25f, 20f, 25f, 20f, 25f, 20f, 0f };
+            float[] armLower = { 0f, 15f, 10f, 15f, 10f, 15f, 10f, 15f, 0f };
+            float[] fingerCurl = { 0f, 0f, 0.8f, 0f, 0.8f, 0f, 0.8f, 0f, 0f };
+
+            for (int i = 0; i < times.Length; i++)
+            {
+                var kf = new KeyFrame { Time = times[i], Curve = InterpolationType.Smooth };
+                kf.Values["arm_right_upper"] = armUpper[i];
+                kf.Values["arm_right_lower"] = armLower[i];
+                kf.Values["finger_normal_1"] = fingerCurl[i];
+                kf.Values["finger_normal_2"] = fingerCurl[i];
+                kf.Values["finger_normal_3"] = 1f - fingerCurl[i] * 0.3f;
+                kf.Values["arm_right_reach"] = Mathf.Lerp(0f, 0.5f, armUpper[i] / 25f);
+                plan.KeyFrames.Add(kf);
+            }
+            return plan;
+        }
+
+        // 合十/祈祷/拜托
+        if (desc.Contains("合十") || desc.Contains("祈祷") || desc.Contains("拜") || desc.Contains("please") || desc.Contains("pray"))
+        {
+            var plan = new MotionPlan { TotalDuration = 3f, Description = "合十", Looping = false };
+            plan.KeyFrames.Add(new KeyFrame { Time = 0.5f, Curve = InterpolationType.EaseOut, Values = {
+                {"arm_right_upper", 15f}, {"arm_left_upper", 15f},
+                {"arm_right_lower", 20f}, {"arm_left_lower", 20f},
+                {"arm_right_rotation", -10f},
+                {"hand_layer_100", 1f},
+                {"head_angle_y", -5f}, {"eye_l_smile", 0.3f}, {"eye_r_smile", 0.3f}
+            } });
+            plan.KeyFrames.Add(new KeyFrame { Time = 2f, Curve = InterpolationType.Hold, Values = {
+                {"arm_right_upper", 15f}, {"arm_left_upper", 15f},
+                {"arm_right_lower", 20f}, {"arm_left_lower", 20f},
+                {"arm_right_rotation", -10f},
+                {"hand_layer_100", 1f},
+                {"head_angle_y", -5f}, {"eye_l_smile", 0.3f}, {"eye_r_smile", 0.3f}
+            } });
+            plan.KeyFrames.Add(new KeyFrame { Time = 2.8f, Curve = InterpolationType.EaseIn, Values = {
+                {"arm_right_upper", 0f}, {"arm_left_upper", 0f},
+                {"arm_right_lower", 0f}, {"arm_left_lower", 0f},
+                {"arm_right_rotation", 0f},
+                {"hand_layer_100", 0f},
+                {"head_angle_y", 0f}, {"eye_l_smile", 0f}, {"eye_r_smile", 0f}
+            } });
+            return plan;
+        }
+
         return null;
     }
 
@@ -295,28 +423,57 @@ public static class MotionPlanner
         float mid = duration * 0.4f;
         float end = duration;
 
+        // 随机选择肢体动作变体，避免纯头部微动
+        int variant = UnityEngine.Random.Range(0, 4);
+        var midValues = new Dictionary<string, float>
+        {
+            {"head_angle_x", 3f},
+            {"head_angle_y", 2f},
+            {"eye_ball_x", 0.2f},
+            {"eye_ball_y", -0.1f}
+        };
+
+        switch (variant)
+        {
+            case 1: // 轻微抬臂
+                midValues["arm_right_upper"] = 8f;
+                midValues["arm_right_lower"] = -5f;
+                break;
+            case 2: // 轻微歪头+伸左手
+                midValues["head_angle_z"] = 8f;
+                midValues["arm_left_upper"] = 6f;
+                break;
+            case 3: // 微耸肩展臂
+                midValues["arm_right_upper"] = 5f;
+                midValues["arm_left_upper"] = 5f;
+                break;
+            // case 0: 纯头部微动（默认）
+        }
+
         plan.KeyFrames.Add(new KeyFrame
         {
             Time = mid,
             Curve = InterpolationType.Smooth,
-            Values = {
-                {"head_angle_x", 3f},
-                {"head_angle_y", 2f},
-                {"eye_ball_x", 0.2f},
-                {"eye_ball_y", -0.1f}
-            }
+            Values = midValues
         });
+
+        var resetValues = new Dictionary<string, float>
+        {
+            {"head_angle_x", 0f},
+            {"head_angle_y", 0f},
+            {"head_angle_z", 0f},
+            {"eye_ball_x", 0f},
+            {"eye_ball_y", 0f},
+            {"arm_right_upper", 0f},
+            {"arm_right_lower", 0f},
+            {"arm_left_upper", 0f}
+        };
 
         plan.KeyFrames.Add(new KeyFrame
         {
             Time = end,
             Curve = InterpolationType.Smooth,
-            Values = {
-                {"head_angle_x", 0f},
-                {"head_angle_y", 0f},
-                {"eye_ball_x", 0f},
-                {"eye_ball_y", 0f}
-            }
+            Values = resetValues
         });
 
         return plan;
