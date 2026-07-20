@@ -27,6 +27,9 @@ public class DualModelValidator : MonoBehaviour
     [Tooltip("最低通过分（含），低于此分不写入记忆")]
     public int passThreshold = 3;
 
+    /// <summary>是否已确认余额不足，后续请求直接用免费 flash 模型</summary>
+    private bool _useFreeGlm = false;
+
     // ==================================================================
     //  运行时
     // ==================================================================
@@ -169,44 +172,73 @@ public class DualModelValidator : MonoBehaviour
 
         string prompt = BuildScorePrompt(description);
 
-        string jsonBody = "{";
-        jsonBody += "\"model\":\"" + EscapeJson(ChatConfig.GlmVisionModel) + "\",";
-        jsonBody += "\"messages\":[{";
-        jsonBody += "\"role\":\"user\",";
-        jsonBody += "\"content\":[";
-        jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJson(prompt) + "\"},";
-        jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(imageDataUrl) + "\"}}";
-        jsonBody += "]}],";
-        jsonBody += "\"temperature\":0.1,";
-        jsonBody += "\"max_tokens\":2048";
-        jsonBody += "}";
+        // ★ 余额检测：先选付费模型，失败时 fallback 到免费 flash
+        string model = _useFreeGlm ? ChatConfig.GlmVisionModelFree : ChatConfig.GlmVisionModel;
+        bool fellBack = false;
 
-        string url = ChatConfig.GlmApiBaseUrl.TrimEnd('/') + "/chat/completions";
-
-        using (UnityWebRequest req = new UnityWebRequest(url, "POST"))
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            byte[] body = Encoding.UTF8.GetBytes(jsonBody);
-            req.uploadHandler = new UploadHandlerRaw(body);
-            req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.SetRequestHeader("Authorization", "Bearer " + apiKey);
-            req.timeout = 90;
+            string jsonBody = "{";
+            jsonBody += "\"model\":\"" + EscapeJson(model) + "\",";
+            jsonBody += "\"messages\":[{";
+            jsonBody += "\"role\":\"user\",";
+            jsonBody += "\"content\":[";
+            jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJson(prompt) + "\"},";
+            jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(imageDataUrl) + "\"}}";
+            jsonBody += "]}],";
+            jsonBody += "\"temperature\":0.1,";
+            jsonBody += "\"max_tokens\":2048";
+            jsonBody += "}";
 
-            yield return req.SendWebRequest();
+            string url = ChatConfig.GlmApiBaseUrl.TrimEnd('/') + "/chat/completions";
 
-            if (req.result == UnityWebRequest.Result.Success)
+            using (UnityWebRequest req = new UnityWebRequest(url, "POST"))
             {
-                string response = req.downloadHandler.text;
-                Debug.Log($"[DualModelValidator] GLM 原始响应: {Truncate(response, 300)}");
-                ParseScoreResponse(response, out int score, out string review);
-                onResult(score, review);
-            }
-            else
-            {
-                string errBody = req.downloadHandler?.text ?? "";
-                string errMsg = TryExtractGlmError(errBody) ?? req.error;
-                Debug.LogWarning($"[DualModelValidator] GLM 请求失败: {errMsg}");
-                onResult(0, "");
+                byte[] body = Encoding.UTF8.GetBytes(jsonBody);
+                req.uploadHandler = new UploadHandlerRaw(body);
+                req.downloadHandler = new DownloadHandlerBuffer();
+                req.SetRequestHeader("Content-Type", "application/json");
+                req.SetRequestHeader("Authorization", "Bearer " + apiKey);
+                req.timeout = 90;
+
+                yield return req.SendWebRequest();
+
+                if (req.result == UnityWebRequest.Result.Success)
+                {
+                    string response = req.downloadHandler.text;
+                    Debug.Log($"[DualModelValidator] GLM({model}) 响应: {Truncate(response, 300)}");
+                    ParseScoreResponse(response, out int score, out string review);
+
+                    // 如果此次请求成功且是用的 flash 回退，记录状态
+                    if (fellBack)
+                        _useFreeGlm = true;
+
+                    onResult(score, review);
+                    yield break;
+                }
+                else
+                {
+                    string errBody = req.downloadHandler?.text ?? "";
+                    string errMsg = TryExtractGlmError(errBody) ?? req.error;
+                    Debug.LogWarning($"[DualModelValidator] GLM({model}) 请求失败: {errMsg}");
+
+                    // 检查是否是余额不足/无权限错误，若是则回退到免费模型
+                    if (!fellBack && attempt == 0)
+                    {
+                        bool insufficientBalance = IsBalanceError(errBody, req.responseCode);
+                        if (insufficientBalance)
+                        {
+                            Debug.LogWarning($"[DualModelValidator] GLM-4V 余额不足({req.responseCode})，回退到 {ChatConfig.GlmVisionModelFree}");
+                            model = ChatConfig.GlmVisionModelFree;
+                            fellBack = true;
+                            _useFreeGlm = true;
+                            continue;
+                        }
+                    }
+
+                    onResult(0, "");
+                    yield break;
+                }
             }
         }
     }
@@ -249,44 +281,72 @@ public class DualModelValidator : MonoBehaviour
 
         string prompt = BuildDescribePrompt();
 
-        string jsonBody = "{";
-        jsonBody += "\"model\":\"" + EscapeJson(ChatConfig.GlmVisionModel) + "\",";
-        jsonBody += "\"messages\":[{";
-        jsonBody += "\"role\":\"user\",";
-        jsonBody += "\"content\":[";
-        jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJson(prompt) + "\"},";
-        jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(imageDataUrl) + "\"}}";
-        jsonBody += "]}],";
-        jsonBody += "\"temperature\":0.3,";
-        jsonBody += "\"max_tokens\":512";
-        jsonBody += "}";
+        // ★ 余额检测：先选付费模型，失败时 fallback 到免费 flash
+        string model = _useFreeGlm ? ChatConfig.GlmVisionModelFree : ChatConfig.GlmVisionModel;
+        bool fellBack = false;
 
-        string url = ChatConfig.GlmApiBaseUrl.TrimEnd('/') + "/chat/completions";
-
-        using (UnityWebRequest req = new UnityWebRequest(url, "POST"))
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            byte[] body = Encoding.UTF8.GetBytes(jsonBody);
-            req.uploadHandler = new UploadHandlerRaw(body);
-            req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.SetRequestHeader("Authorization", "Bearer " + apiKey);
-            req.timeout = 90;
+            string jsonBody = "{";
+            jsonBody += "\"model\":\"" + EscapeJson(model) + "\",";
+            jsonBody += "\"messages\":[{";
+            jsonBody += "\"role\":\"user\",";
+            jsonBody += "\"content\":[";
+            jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJson(prompt) + "\"},";
+            jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(imageDataUrl) + "\"}}";
+            jsonBody += "]}],";
+            jsonBody += "\"temperature\":0.3,";
+            jsonBody += "\"max_tokens\":512";
+            jsonBody += "}";
 
-            yield return req.SendWebRequest();
+            string url = ChatConfig.GlmApiBaseUrl.TrimEnd('/') + "/chat/completions";
 
-            if (req.result == UnityWebRequest.Result.Success)
+            using (UnityWebRequest req = new UnityWebRequest(url, "POST"))
             {
-                string response = req.downloadHandler.text;
-                Debug.Log($"[DualModelValidator] GLM 描述响应: {Truncate(response, 300)}");
-                ParseDescribeResponse(response, out string description, out int confidence);
-                onResult(description, confidence);
-            }
-            else
-            {
-                string errBody = req.downloadHandler?.text ?? "";
-                string errMsg = TryExtractGlmError(errBody) ?? req.error;
-                Debug.LogWarning($"[DualModelValidator] GLM 描述请求失败: {errMsg}");
-                onResult("", 0);
+                byte[] body = Encoding.UTF8.GetBytes(jsonBody);
+                req.uploadHandler = new UploadHandlerRaw(body);
+                req.downloadHandler = new DownloadHandlerBuffer();
+                req.SetRequestHeader("Content-Type", "application/json");
+                req.SetRequestHeader("Authorization", "Bearer " + apiKey);
+                req.timeout = 90;
+
+                yield return req.SendWebRequest();
+
+                if (req.result == UnityWebRequest.Result.Success)
+                {
+                    string response = req.downloadHandler.text;
+                    Debug.Log($"[DualModelValidator] GLM({model}) 描述响应: {Truncate(response, 300)}");
+                    ParseDescribeResponse(response, out string description, out int confidence);
+
+                    if (fellBack)
+                        _useFreeGlm = true;
+
+                    onResult(description, confidence);
+                    yield break;
+                }
+                else
+                {
+                    string errBody = req.downloadHandler?.text ?? "";
+                    string errMsg = TryExtractGlmError(errBody) ?? req.error;
+                    Debug.LogWarning($"[DualModelValidator] GLM({model}) 描述请求失败: {errMsg}");
+
+                    // 余额不足时回退到免费模型
+                    if (!fellBack && attempt == 0)
+                    {
+                        bool insufficientBalance = IsBalanceError(errBody, req.responseCode);
+                        if (insufficientBalance)
+                        {
+                            Debug.LogWarning($"[DualModelValidator] GLM-4V 余额不足，描述回退到 {ChatConfig.GlmVisionModelFree}");
+                            model = ChatConfig.GlmVisionModelFree;
+                            fellBack = true;
+                            _useFreeGlm = true;
+                            continue;
+                        }
+                    }
+
+                    onResult("", 0);
+                    yield break;
+                }
             }
         }
     }
@@ -811,6 +871,28 @@ public class DualModelValidator : MonoBehaviour
             return body.Substring(start, end - start);
         }
         catch { return null; }
+    }
+
+    /// <summary>
+    /// 判断 GLM API 错误是否是余额不足/无权限
+    /// 智谱 API 返回 401/402/403 或 JSON 中 code 含 insufficient_balance/余额/insufficient_quota 时判定为余额不足
+    /// </summary>
+    private static bool IsBalanceError(string errBody, long httpCode)
+    {
+        if (httpCode == 401 || httpCode == 402 || httpCode == 403)
+            return true;
+
+        if (string.IsNullOrEmpty(errBody)) return false;
+
+        string lower = errBody.ToLowerInvariant();
+        if (lower.Contains("余额") || lower.Contains("insufficient_balance") ||
+            lower.Contains("insufficient_quota") || lower.Contains("超出配额") ||
+            lower.Contains("no balance") || lower.Contains("quota") ||
+            lower.Contains("no enough") || lower.Contains("limit") ||
+            lower.Contains("access denied"))
+            return true;
+
+        return false;
     }
 
     private static string EscapeJson(string s)

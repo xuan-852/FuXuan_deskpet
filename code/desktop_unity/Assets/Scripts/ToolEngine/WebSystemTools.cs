@@ -3,11 +3,43 @@ using System.Collections;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using UnityEngine;
 
 // ================================================================
 //  1. 观星术 — 打开网页 / 搜索信息
 // ================================================================
+
+/// <summary>
+/// 后台静默搜索工具。借助本地桥接服务器获取搜索结果并返回摘要文本。
+/// 不打开浏览器，适合AI不知答案时自行查阅。
+/// </summary>
+public class SearchWebTool : AsyncToolBase
+{
+    public override string ToolName => "search_web";
+    public override string ToolDescription => "后台搜索互联网并返回结果摘要（不打开浏览器）。当不知道某首歌、某个人、某个知识点时用此术查探，获取信息后可直接回答用户。不可用于天气、打开网址。";
+    public override string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("query", "string", "搜索关键词")
+    );
+
+    protected override async Task<string> ExecuteAsyncTask(string argsJson)
+    {
+        string query = ToolHelpers.JsonRead(argsJson, "query");
+        if (string.IsNullOrEmpty(query))
+            return "❌ 未说要搜什么";
+
+        // 先发一条中间状态，由 AsyncToolBase 的 ExecuteAsync 处理首次返回
+        string result = await OpenClawBridge.SearchWebAsync(query, 30);
+        if (string.IsNullOrEmpty(result) || result.StartsWith("❌"))
+            return $"❌ 天机难测，未能搜到「{query}」：{result}";
+
+        // 截取前 2000 字以免 token 溢出
+        if (result.Length > 2000)
+            result = result.Substring(0, 2000) + "\n…（以下省略 " + (result.Length - 2000) + " 字）";
+
+        return $"🔍 搜索结果——\n{result}";
+    }
+}
 
 public class OpenUrlTool : IPetTool
 {
@@ -37,7 +69,7 @@ public class OpenUrlTool : IPetTool
 public class SearchTool : IPetTool
 {
     public string ToolName => "search";
-    public string ToolDescription => "在 Bing 搜索引擎上查询信息并打开浏览器显示结果。用户说「帮我搜一下xxx」时调用。禁止用于查询天气（天气请用 get_weather）";
+    public string ToolDescription => "在 Bing 搜索引擎上查询信息并通过默认浏览器展示网页结果（会打开浏览器窗口）。仅当用户明确要求「打开浏览器搜索」或「帮我搜一下XXX到浏览器里」时使用。如需自己查看搜索结果并直接回答用户，请用 search_web。禁止用于查询天气（天气请用 get_weather）";
     public string ToolParametersJson => ToolSchema.Schema(
         ToolSchema.Req("query", "string", "搜索关键词")
     );

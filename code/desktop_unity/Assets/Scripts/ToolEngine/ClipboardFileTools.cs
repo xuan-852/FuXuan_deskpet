@@ -331,7 +331,10 @@ public class FileCreateTool : IPetTool
 {
     public string ToolName => "file_create";
     public string ToolDescription => "【文件管理】创建一个新的文本文件，可指定内容。用户说「新建文件」「创建文件」「写个文件」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""path"":{""type"":""string"",""description"":""文件完整路径""},""content"":{""type"":""string"",""description"":""文件内容（可选，不提供则创建空文件）""}},""required"":[""path""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("path", "string", "文件完整路径"),
+        ToolSchema.Opt("content", "string", "文件内容（可选，不提供则创建空文件）")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -360,7 +363,9 @@ public class DirCreateTool : IPetTool
 {
     public string ToolName => "dir_create";
     public string ToolDescription => "【文件管理】创建新文件夹。用户说「新建文件夹」「创建目录」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""path"":{""type"":""string"",""description"":""要创建的文件夹路径""}},""required"":[""path""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("path", "string", "要创建的文件夹路径")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -382,7 +387,10 @@ public class FileReadTool : IPetTool
 {
     public string ToolName => "file_read";
     public string ToolDescription => "【文件管理】读取文本文件的内容（自动检测是否为二进制文件）。用户说「看看这个文件里写了什么」「打开记事本看看」「读一下这个文件」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""path"":{""type"":""string"",""description"":""文件路径或 file:// URI""},""max_length"":{""type"":""integer"",""description"":""最大返回字符数，默认2000""}},""required"":[""path""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("path", "string", "文件路径或 file:// URI"),
+        ToolSchema.Opt("max_length", "integer", "最大返回字符数，默认2000")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -436,7 +444,10 @@ public class SearchFilesTool : IPetTool
 {
     public string ToolName => "search_files";
     public string ToolDescription => "【搜索文件】按关键词搜索文件，若电脑有 Everything 则毫秒级搜索全盘，否则递归搜索指定目录。用户说「帮我找找xxx」「搜一下电脑里的xxx」「找文件」时调用。未指定 root 时默认搜索全盘（Everything模式）或桌面（递归回退模式）。最多返回200个结果。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""query"":{""type"":""string"",""description"":""要搜索的文件名关键词（不区分大小写）""},""root"":{""type"":""string"",""description"":""搜索根目录（有 Everything 时自动限定在此目录下搜索），为空则全盘搜索""}},""required"":[""query""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("query", "string", "要搜索的文件名关键词（不区分大小写）"),
+        ToolSchema.Opt("root", "string", "搜索根目录（有 Everything 时自动限定在此目录下搜索），为空则全盘搜索")
+    );
     public bool IsAsync => true;
 
     public string Execute(string argsJson) => "⏳ 天眼通搜索中……";
@@ -527,7 +538,10 @@ public class SearchFileTool : IPetTool
 {
     public string ToolName => "search_file";
     public string ToolDescription => "【文件管理】在全盘或指定目录中搜索文件/文件夹，支持任意中文/英文/特殊字符文件名，返回匹配的文件列表（含完整路径）。用户说「帮我找一下xxx」「搜索文件」「找图片」「电脑里有xxx吗」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""query"":{""type"":""string"",""description"":""要搜索的文件名关键词（支持中英文和特殊字符，不区分大小写）""},""root"":{""type"":""string"",""description"":""搜索根目录，为空则全盘搜索""}},""required"":[""query""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("query", "string", "要搜索的文件名关键词（支持中英文和特殊字符，不区分大小写）"),
+        ToolSchema.Opt("root", "string", "搜索根目录，为空则全盘搜索")
+    );
     public bool IsAsync => true;
 
     public string Execute(string argsJson) => "⏳ 天眼通搜索中……";

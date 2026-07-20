@@ -599,6 +599,20 @@ public class DesktopPet : MonoBehaviour
             Debug.Log("[DesktopPet] 自动添加了 AutoChat 组件");
         }
 
+        // ★ ProactiveMessageScheduler：零 LLM 成本的主动关心调度器
+        if (GetComponent<ProactiveMessageScheduler>() == null)
+        {
+            gameObject.AddComponent<ProactiveMessageScheduler>();
+            Debug.Log("[DesktopPet] 自动添加了 ProactiveMessageScheduler（体贴天机）组件");
+        }
+
+        // ★ VisualHeartbeat：零 LLM 成本的屏幕变化感知（法眼）
+        if (GetComponent<VisualHeartbeat>() == null)
+        {
+            gameObject.AddComponent<VisualHeartbeat>();
+            Debug.Log("[DesktopPet] 自动添加了 VisualHeartbeat（法眼）组件");
+        }
+
         // 获取渲染器引用：优先使用 HybridRenderer
         var hybrid = GetComponent<HybridRenderer>();
         if (hybrid != null)

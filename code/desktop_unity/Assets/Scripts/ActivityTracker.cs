@@ -61,6 +61,32 @@ public class ActivityTracker : MonoBehaviour
     [DllImport("user32.dll")]
     private static extern bool IsIconic(IntPtr hWnd);
 
+    // ——— 多显示器支持 ———
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool GetMonitorInfoW(IntPtr hMonitor, ref MONITORINFOEXW lpmi);
+
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFOEXW
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string szDevice;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int left, top, right, bottom;
+    }
+
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     private const uint PROCESS_QUERY_INFORMATION = 0x0400;
@@ -133,6 +159,8 @@ public class ActivityTracker : MonoBehaviour
     public string CurrentWindowTitle { get; private set; } = "";
     /// <summary>当前前台进程名（最新轮询结果，供 AI 注入）</summary>
     public string CurrentProcessName { get; private set; } = "";
+    /// <summary>当前前台窗口所在显示器名称（如 \\.\DISPLAY1），空=未知</summary>
+    public string CurrentMonitorName { get; private set; } = "";
     /// <summary>当前活动分类</summary>
     public string CurrentCategory => _lastCategory;
 
@@ -263,9 +291,10 @@ public class ActivityTracker : MonoBehaviour
             StringBuilder sb = new StringBuilder(512);
             GetWindowText(hwnd, sb, sb.Capacity);
             string title = sb.ToString().Trim();
-            // ★ 保留窗口标题和进程名供 AI 注入
+            // ★ 保留窗口标题、进程名、所在显示器供 AI 注入
             CurrentWindowTitle = title;
             CurrentProcessName = procName;
+            CurrentMonitorName = GetMonitorName(hwnd);
             _lastCategory = Classify(procName, title);
             if (_pollCount <= 5 || _pollCount % 30 == 0)
                 Debug.Log($"[ActivityTracker] 轮询#{_pollCount}: 窗口={procName} title=\"{title}\" → {_lastCategory}");
@@ -611,6 +640,11 @@ public class ActivityTracker : MonoBehaviour
         var sorted = new List<KeyValuePair<string, float>>(_today.dict);
         sorted.Sort((a, b) => b.Value.CompareTo(a.Value));
 
+        // ★ 注入当前前台窗口所在显示器
+        string monitorInfo = "";
+        if (!string.IsNullOrEmpty(CurrentMonitorName))
+            monitorInfo = CurrentMonitorName.Replace("\\\\?\\", ""); // 把 \\.\DISPLAY1 简化为 DISPLAY1
+
         var sb = new StringBuilder("【法眼观测 | 今日行为】");
         bool hasData = false;
 
@@ -643,6 +677,11 @@ public class ActivityTracker : MonoBehaviour
         }
 
         if (!hasData) return "";
+
+        // ★ 追加当前前台所在显示器
+        if (!string.IsNullOrEmpty(monitorInfo))
+            sb.Append($" | 当前在 {monitorInfo}");
+
         return sb.ToString();
     }
 
@@ -656,7 +695,26 @@ public class ActivityTracker : MonoBehaviour
         return 0;
     }
 
-    // ============================================================
+    /// <summary>
+    /// 获取窗口所在显示器的设备名（如 \\.\DISPLAY1），失败返回空
+    /// </summary>
+    private static string GetMonitorName(IntPtr hwnd)
+    {
+        try
+        {
+            IntPtr hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            if (hMonitor == IntPtr.Zero) return "";
+
+            var mi = new MONITORINFOEXW();
+            mi.cbSize = Marshal.SizeOf(typeof(MONITORINFOEXW));
+            if (GetMonitorInfoW(hMonitor, ref mi))
+                return mi.szDevice;
+        }
+        catch { }
+        return "";
+    }
+
+    // ============================================================ //
     //  持久化
     // ============================================================
 

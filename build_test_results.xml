@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="20" result="Passed" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-07-20 15:02:09Z" end-time="2026-07-20 15:02:11Z" duration="1.320474">
+  <test-suite type="TestSuite" id="1027" name="desktop pet" fullname="desktop pet" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-07-20 15:02:09Z" end-time="2026-07-20 15:02:11Z" duration="1.320474" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties />
+    <test-suite type="Assembly" id="1049" name="Assembly-CSharp-Editor.dll" fullname="D:/Unity/projects/Desktop_per_pro/code/desktop_unity/Library/ScriptAssemblies/Assembly-CSharp-Editor.dll" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-07-20 15:02:09Z" end-time="2026-07-20 15:02:11Z" duration="1.294360" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="38680" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+      </properties>
+      <test-suite type="TestFixture" id="1028" name="ToolEngineTests" fullname="ToolEngineTests" classname="ToolEngineTests" runstate="Runnable" testcasecount="20" result="Passed" start-time="2026-07-20 15:02:09Z" end-time="2026-07-20 15:02:11Z" duration="1.292464" total="20" passed="20" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-case id="1036" name="Execute_只读工具不抛异常" fullname="ToolEngineTests.Execute_只读工具不抛异常" methodname="Execute_只读工具不抛异常" classname="ToolEngineTests" runstate="Runnable" seed="881167290" result="Passed" start-time="2026-07-20 15:02:09Z" end-time="2026-07-20 15:02:10Z" duration="0.340924" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1035" name="Execute_未知工具返回错误" fullname="ToolEngineTests.Execute_未知工具返回错误" methodname="Execute_未知工具返回错误" classname="ToolEngineTests" runstate="Runnable" seed="515823727" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.044526" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1041" name="ExecuteAsync_所有异步工具可启动" fullname="ToolEngineTests.ExecuteAsync_所有异步工具可启动" methodname="ExecuteAsync_所有异步工具可启动" classname="ToolEngineTests" runstate="Runnable" seed="539114178" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.152634" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+          </properties>
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1040" name="ExecuteAsync_未知工具返回错误" fullname="ToolEngineTests.ExecuteAsync_未知工具返回错误" methodname="ExecuteAsync_未知工具返回错误" classname="ToolEngineTests" runstate="Runnable" seed="734603470" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.042821" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+          </properties>
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1039" name="GetClipboard_不抛异常" fullname="ToolEngineTests.GetClipboard_不抛异常" methodname="GetClipboard_不抛异常" classname="ToolEngineTests" runstate="Runnable" seed="382813972" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.040610" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1038" name="GetMousePos_返回坐标" fullname="ToolEngineTests.GetMousePos_返回坐标" methodname="GetMousePos_返回坐标" classname="ToolEngineTests" runstate="Runnable" seed="1554259902" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.038148" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1037" name="GetSystemInfo_返回合法信息" fullname="ToolEngineTests.GetSystemInfo_返回合法信息" methodname="GetSystemInfo_返回合法信息" classname="ToolEngineTests" runstate="Runnable" seed="1224838727" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.036731" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1034" name="GetToolsJson_自动初始化" fullname="ToolEngineTests.GetToolsJson_自动初始化" methodname="GetToolsJson_自动初始化" classname="ToolEngineTests" runstate="Runnable" seed="1670243155" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.101618" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1033" name="GetToolsJson_返回有效JSON" fullname="ToolEngineTests.GetToolsJson_返回有效JSON" methodname="GetToolsJson_返回有效JSON" classname="ToolEngineTests" runstate="Runnable" seed="1247858966" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.056061" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1029" name="Initialize_发现工具数量大于零" fullname="ToolEngineTests.Initialize_发现工具数量大于零" methodname="Initialize_发现工具数量大于零" classname="ToolEngineTests" runstate="Runnable" seed="131094861" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.039038" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1032" name="IsAsync分类与内部字典一致" fullname="ToolEngineTests.IsAsync分类与内部字典一致" methodname="IsAsync分类与内部字典一致" classname="ToolEngineTests" runstate="Runnable" seed="549734864" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.038869" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1043" name="Register_null触发错误" fullname="ToolEngineTests.Register_null触发错误" methodname="Register_null触发错误" classname="ToolEngineTests" runstate="Runnable" seed="1869497663" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.037641" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+[ToolRegistry] 试图注册空工具
+]]></output>
+        </test-case>
+        <test-case id="1042" name="Register_重复工具触发警告" fullname="ToolEngineTests.Register_重复工具触发警告" methodname="Register_重复工具触发警告" classname="ToolEngineTests" runstate="Runnable" seed="35824603" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.037190" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+[ToolRegistry] 术式「open_url」重复注册，跳过
+]]></output>
+        </test-case>
+        <test-case id="1045" name="ToolCallInvoker_全部接口正常" fullname="ToolEngineTests.ToolCallInvoker_全部接口正常" methodname="ToolCallInvoker_全部接口正常" classname="ToolEngineTests" runstate="Runnable" seed="809523117" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.055856" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+          </properties>
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1044" name="两次初始化不重复计数" fullname="ToolEngineTests.两次初始化不重复计数" methodname="两次初始化不重复计数" classname="ToolEngineTests" runstate="Runnable" seed="1735623359" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.035456" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1048" name="所有同步工具可被HasTool识别但不被IsAsync识别" fullname="ToolEngineTests.所有同步工具可被HasTool识别但不被IsAsync识别" methodname="所有同步工具可被HasTool识别但不被IsAsync识别" classname="ToolEngineTests" runstate="Runnable" seed="1693890757" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:10Z" duration="0.035101" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1031" name="所有工具可被HasTool检测" fullname="ToolEngineTests.所有工具可被HasTool检测" methodname="所有工具可被HasTool检测" classname="ToolEngineTests" runstate="Runnable" seed="593264899" result="Passed" start-time="2026-07-20 15:02:10Z" end-time="2026-07-20 15:02:11Z" duration="0.035758" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1030" name="所有工具名称唯一" fullname="ToolEngineTests.所有工具名称唯一" methodname="所有工具名称唯一" classname="ToolEngineTests" runstate="Runnable" seed="1642869472" result="Passed" start-time="2026-07-20 15:02:11Z" end-time="2026-07-20 15:02:11Z" duration="0.036295" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1046" name="所有工具拥有有效描述" fullname="ToolEngineTests.所有工具拥有有效描述" methodname="所有工具拥有有效描述" classname="ToolEngineTests" runstate="Runnable" seed="668608283" result="Passed" start-time="2026-07-20 15:02:11Z" end-time="2026-07-20 15:02:11Z" duration="0.035781" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+        <test-case id="1047" name="所有异步工具可被IsAsync正确识别" fullname="ToolEngineTests.所有异步工具可被IsAsync正确识别" methodname="所有异步工具可被IsAsync正确识别" classname="ToolEngineTests" runstate="Runnable" seed="1383113774" result="Passed" start-time="2026-07-20 15:02:11Z" end-time="2026-07-20 15:02:11Z" duration="0.034253" asserts="0">
+          <properties />
+          <output><![CDATA[[ToolRegistry] 法阵已载入 51 道术式（同步 35 + 异步 16）
+]]></output>
+        </test-case>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

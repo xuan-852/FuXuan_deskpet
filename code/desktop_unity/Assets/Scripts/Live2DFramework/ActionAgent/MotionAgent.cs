@@ -71,7 +71,7 @@ public class MotionAgent : MonoBehaviour
 
     [Header("◈ 测试模式")]
     [Tooltip("测试模式：强制 High 密度 + 关闭睡眠检测，用于数据积累")]
-    public bool testMode = true;
+    public bool testMode = false;
 
     // ==================================================================
     //  运行时状态
