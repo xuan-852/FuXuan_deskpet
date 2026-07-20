@@ -91,4 +91,17 @@ public class BuildScript
         // 脚本编译本身成功就算验证通过
         EditorApplication.Exit(0);
     }
+
+    /// <summary>
+    /// 运行所有 Editor 测试的入口点。
+    /// 实际通过 Unity 命令行 -runTests 参数调用，
+    /// 此方法仅用于前置准备和日志。
+    /// </summary>
+    public static void RunAllTests()
+    {
+        Debug.Log("[BuildScript] Editor 测试模式启动...");
+        Debug.Log("[BuildScript] 测试运行由 Test Runner 框架管理（-runTests 参数）");
+        // 此方法作为 -runTests 前的准备工作，保持简单
+        EditorApplication.Exit(0);
+    }
 }

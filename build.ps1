@@ -8,16 +8,19 @@
     用法:
         .\build.ps1                     # 完整构建（默认）
         .\build.ps1 -Quick              # 仅验证编译
+        .\build.ps1 -RunTests           # 运行 Editor 测试套件
         .\build.ps1 -OutputDir "D:\tmp" # 指定输出目录
 .EXAMPLE
     .\build.ps1
     .\build.ps1 -Quick
+    .\build.ps1 -RunTests
 #>
 
 param(
     [string]$UnityExe = "D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe",
     [string]$LogFile = "D:\Unity\projects\Desktop_per_pro\build_log.txt",
-    [switch]$Quick
+    [switch]$Quick,
+    [switch]$RunTests
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,19 +50,31 @@ if (-not (Test-Path (Join-Path $ProjectDir "Assets"))) {
 }
 Write-Host "[OK] Project: $ProjectDir"
 
-# ---- Build Unity args ----
-# CRITICAL: Tuanjie prepends CWD to -projectPath.
-# So we must CD to the project dir and use -projectPath .
-$BuildMethod = if ($Quick) { "BuildScript.VerifyCompile" } else { "BuildScript.BuildDesktopPet" }
-$Label = if ($Quick) { "Quick (compile check)" } else { "Full build" }
+# ---- Determine build/test mode ----
+if ($RunTests) {
+    $Label = "Run Tests"
+    $TestResultsFile = Join-Path $RootDir "build_test_results.xml"
+    $unityArgs = @(
+        "-batchmode"
+        "-nographics"
+        "-projectPath", "."
+        "-logFile", $LogFile
+        "-runTests"
+        "-testPlatform", "EditMode"
+        "-testResults", $TestResultsFile
+    )
+} else {
+    $BuildMethod = if ($Quick) { "BuildScript.VerifyCompile" } else { "BuildScript.BuildDesktopPet" }
+    $Label = if ($Quick) { "Quick (compile check)" } else { "Full build" }
 
-$unityArgs = @(
-    "-batchmode"
-    "-quit"
-    "-projectPath", "."
-    "-logFile", $LogFile
-    "-executeMethod", $BuildMethod
-)
+    $unityArgs = @(
+        "-batchmode"
+        "-quit"
+        "-projectPath", "."
+        "-logFile", $LogFile
+        "-executeMethod", $BuildMethod
+    )
+}
 
 # ---- Save current dir and CD to project ----
 $OldCwd = Get-Location
