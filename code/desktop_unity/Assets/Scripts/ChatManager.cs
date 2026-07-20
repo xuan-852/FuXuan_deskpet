@@ -938,6 +938,14 @@ public class ChatManager : MonoBehaviour
                 summary = "本座动用了法眼摄形之术，窥见了主人的屏幕";
                 break;
 
+            case "openclaw_search":
+                topic = "通神算术式";
+                {
+                    string q = ExtractSearchKeyword(args);
+                    summary = $"主人启动了太卜通神算术式，推演了: 「{q}」";
+                }
+                break;
+
             default:
                 // 其他工具只记录名称
                 if (result.Length > 60)

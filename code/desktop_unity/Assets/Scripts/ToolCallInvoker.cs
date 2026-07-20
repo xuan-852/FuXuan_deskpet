@@ -1838,6 +1838,20 @@ public class ToolCallInvoker : MonoBehaviour
         ""required"": [""path""]
       }
     }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""openclaw_search"",
+      ""description"": ""【太卜通神算术式·全网搜索】通过太卜通神算术式（OpenClaw AI 引擎）在互联网上实时搜索并研究任何话题，返回 AI 整理的研究结果。当用户问「帮我查一下xxx」「搜索xxx」「查资料」「研究一下xxx」「最近有什么新闻」「xxx是什么情况」「上网查查」或者任何需要实时网络信息的问题时，必须调用此术式。注意：此术式比普通的 search 更强大——不仅能搜索，还能让 AI 分析、总结、研究复杂话题。调用时请用卦象口吻告诉主人「待本座开启通神算术式」。每次调用返回 AI 研究后的文本结果。超时时间 180 秒。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""query"": { ""type"": ""string"", ""description"": ""搜索查询或要研究的问题，尽量详细"" }
+        },
+        ""required"": [""query""]
+      }
+    }
   }
 ]";
     }
@@ -1875,6 +1889,7 @@ public class ToolCallInvoker : MonoBehaviour
             ["vis_verify"]        = args => VisVerifyCoroutine(args),
             ["knowledge_search"]  = args => KnowledgeSearchCoroutine(args),
             ["knowledge_index"]   = args => KnowledgeIndexCoroutine(args),
+            ["openclaw_search"]   = args => RunAsyncTool(() => OpenClawSearchTask(args)),
         };
     }
 
@@ -2825,6 +2840,33 @@ public class ToolCallInvoker : MonoBehaviour
 
         var kb = KnowledgeBaseManager.Instance;
         _coroutineResult = $"{resultMsg}\n📚 藏书阁现有 {kb.DocumentCount} 卷藏书，共 {kb.ChunkCount} 个分块。";
+    }
+
+    // ================================================================
+    //  太卜通神算术式：OpenClaw 全网搜索
+    // ================================================================
+
+    /// <summary>通过 OpenClaw AI 引擎执行全网搜索与研究</summary>
+    private async Task<string> OpenClawSearchTask(string args)
+    {
+        string query = JsonRead(args, "query");
+        if (string.IsNullOrEmpty(query))
+        {
+            query = JsonRead(args, "description");
+        }
+        if (string.IsNullOrEmpty(query))
+        {
+            return "❌ 请告诉本座你想查什么，例如「帮我查一下最近的AI新闻」";
+        }
+
+        // 先检查桥接服务器是否在线
+        bool healthy = await OpenClawBridge.CheckHealthAsync();
+        if (!healthy)
+        {
+            return $"❌ 太卜通神算术式无法启动：未检测到通神阵法（{OpenClawBridge.LastError}）。请先运行 openclaw_bridge.js 启动桥接服务器。";
+        }
+
+        return await OpenClawBridge.SearchWebAsync(query);
     }
 
     // ---- GLM 响应模型 ----
