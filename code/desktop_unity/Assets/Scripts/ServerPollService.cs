@@ -22,8 +22,21 @@ public class ServerPollService : MonoBehaviour
     [Tooltip("本地课表服务地址")]
     public string serverUrl = "http://localhost:3000";
 
-    [Tooltip("桌面端 API Token（需与 .env 中的 DESKTOP_TOKEN 一致）")]
-    public string desktopToken = "desktop_secret_token_here";
+    [Tooltip("桌面端 API Token（需与 .env 中的 DESKTOP_TOKEN 一致；留空则从环境变量 DESKTOP_TOKEN 读取）")]
+    public string desktopToken = "";
+
+    public string EffectiveToken
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(desktopToken))
+                return desktopToken;
+            var env = System.Environment.GetEnvironmentVariable("DESKTOP_TOKEN");
+            if (!string.IsNullOrEmpty(env))
+                return env;
+            return "desktop_secret_token_here"; // 本地后备
+        }
+    }
 
     [Header("轮询设置")]
     [Tooltip("轮询间隔（秒）")]
@@ -41,6 +54,7 @@ public class ServerPollService : MonoBehaviour
     // 引用
     private ReminderManager _reminder;
     private ChatBubble _bubble;
+    private ChatManager _chat;
 
     // 已处理的考试 ID 集合（避免重复添加待办）
     private HashSet<string> _processedExamIds = new HashSet<string>();
@@ -58,8 +72,9 @@ public class ServerPollService : MonoBehaviour
     {
         _http = new HttpClient();
         _http.Timeout = TimeSpan.FromSeconds(5);
-        if (!string.IsNullOrEmpty(desktopToken))
-            _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {desktopToken}");
+        string token = EffectiveToken;
+        if (!string.IsNullOrEmpty(token))
+            _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
     }
 
     private void Start()
@@ -68,6 +83,8 @@ public class ServerPollService : MonoBehaviour
         if (_reminder == null) _reminder = FindObjectOfType<ReminderManager>();
         _bubble = GetComponent<ChatBubble>();
         if (_bubble == null) _bubble = FindObjectOfType<ChatBubble>();
+        _chat = GetComponent<ChatManager>();
+        if (_chat == null) _chat = FindObjectOfType<ChatManager>();
 
         // 启动后马上拉一次
         _timer = pollInterval;
@@ -84,7 +101,19 @@ public class ServerPollService : MonoBehaviour
         if (_timer >= pollInterval)
         {
             _timer = 0f;
-            PollMessages();
+            // 异步轮询：fire-and-forget，但通过 ContinueWith 确保异常被捕获
+            PollMessagesAsync().ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                    Debug.LogWarning($"[ServerPollService] 轮询异常: {t.Exception.InnerException?.Message}");
+            }, TaskContinuationOptions.OnlyOnFaulted);
+        }
+
+        // 定期清理 _processedExamIds（每 100 帧清除一次过期 ID，防无限增长）
+        if (Time.frameCount % 100 == 0 && _processedExamIds.Count > 500)
+        {
+            _processedExamIds.Clear();
+            Debug.Log("[ServerPollService] 清理 _processedExamIds（防无限增长）");
         }
     }
 
@@ -98,7 +127,7 @@ public class ServerPollService : MonoBehaviour
     // ================================================================
 
     /// <summary>轮询推送消息队列</summary>
-    private async void PollMessages()
+    private async Task PollMessagesAsync()
     {
         try
         {
@@ -107,7 +136,9 @@ public class ServerPollService : MonoBehaviour
 
             if (!response.IsSuccessStatusCode)
             {
-                // 服务器未运行时不报错
+                // 非成功状态码（如 401 未授权）输出 warning 便于排查
+                var body = await response.Content.ReadAsStringAsync();
+                Debug.LogWarning($"[ServerPollService] 轮询失败: HTTP {(int)response.StatusCode} {body}");
                 return;
             }
 
@@ -155,6 +186,10 @@ public class ServerPollService : MonoBehaviour
 
             case "schedule_reminder":
                 HandleScheduleReminder(msg);
+                break;
+
+            case "chat_message":
+                HandleChatMessage(msg);
                 break;
 
             default:
@@ -276,6 +311,47 @@ public class ServerPollService : MonoBehaviour
         }
 
         ShowBubble($"🌅 {msg.title}\n{msg.body}");
+    }
+
+    /// <summary>
+    /// 处理来自服务端的对话消息（type=chat_message）。
+    /// 将消息直接喂给 ChatManager.SendMessage() 触发 AI 对话。
+    /// payload 可选字段：
+    ///   - autoTriggerTools (bool): 是否允许 AI 自主调用工具，默认 true
+    /// </summary>
+    private void HandleChatMessage(PollMessage msg)
+    {
+        // 解析 payload
+        bool autoTriggerTools = true;
+        if (!string.IsNullOrEmpty(msg.payload))
+        {
+            try
+            {
+                var payload = JsonUtility.FromJson<ChatMessagePayload>(msg.payload);
+                if (payload != null)
+                    autoTriggerTools = payload.autoTriggerTools;
+            }
+            catch { }
+        }
+
+        Debug.Log($"[ServerPollService] 📩 收到远程对话: {msg.title} | {msg.body}");
+
+        // 显示气泡
+        ShowBubble($"📩 {msg.title}");
+
+        // 喂给 AI
+        if (_chat != null)
+        {
+            string userText = msg.body;
+            // 如果允许自动使用工具，加提示让 AI 主动调用
+            if (autoTriggerTools)
+                userText += "\n\n（本座可用天眼通 search_files、藏书阁 knowledge_search 等术式）";
+            _chat.SendMessage(userText, null);
+        }
+        else
+        {
+            Debug.LogWarning("[ServerPollService] ChatManager 未找到，无法处理对话消息");
+        }
     }
 
     /// <summary>显示角色头顶气泡</summary>
@@ -594,5 +670,14 @@ public class ServerPollService : MonoBehaviour
         public int scoresCount;
         public int examsCount;
         public int scheduleWeeks;
+    }
+
+    // ============ 对话消息 payload 模型 ============
+
+    [System.Serializable]
+    private class ChatMessagePayload
+    {
+        /// <summary>是否允许 AI 自主调用工具，默认 true</summary>
+        public bool autoTriggerTools = true;
     }
 }

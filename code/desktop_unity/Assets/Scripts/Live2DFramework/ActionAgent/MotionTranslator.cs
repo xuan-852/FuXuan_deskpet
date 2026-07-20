@@ -661,7 +661,7 @@ public static class MotionTranslator
                 end++;
             }
             if (end >= json.Length) return null;
-            return json.Substring(start, end - start).Replace("\\\"", "\"");
+            return DecodeJsonString(json.Substring(start, end - start));
         }
 
         // 数值
@@ -746,8 +746,8 @@ public static class MotionTranslator
                     if (json[strEnd] == '\\') { esc = true; strEnd++; continue; }
                     if (json[strEnd] == '"') break;
                     strEnd++;
-                }
-                pos = strEnd + 1;
+                }                // 解析 key 中的 Unicode 转义
+                key = DecodeJsonString(key);                pos = strEnd + 1;
                 continue;
             }
 
@@ -788,7 +788,7 @@ public static class MotionTranslator
             end++;
         }
         if (end >= responseBody.Length) return null;
-        return responseBody.Substring(start, end - start);
+        return DecodeJsonString(responseBody.Substring(start, end - start));
     }
 
     /// <summary>转义 JSON 字符串中的特殊字符</summary>
@@ -800,6 +800,46 @@ public static class MotionTranslator
                 .Replace("\n", "\\n")
                 .Replace("\r", "\\r")
                 .Replace("\t", "\\t");
+    }
+
+    /// <summary>
+    /// 解码 JSON 字符串中的转义序列（\n, \\, \", \uXXXX）
+    /// </summary>
+    private static string DecodeJsonString(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return raw;
+        var sb = new StringBuilder();
+        for (int i = 0; i < raw.Length; i++)
+        {
+            if (raw[i] == '\\' && i + 1 < raw.Length)
+            {
+                char n = raw[i + 1];
+                switch (n)
+                {
+                    case '"':  sb.Append('"'); i++; break;
+                    case '\\': sb.Append('\\'); i++; break;
+                    case 'n':  sb.Append('\n'); i++; break;
+                    case 'r':  sb.Append('\r'); i++; break;
+                    case 't':  sb.Append('\t'); i++; break;
+                    case 'u':
+                        if (i + 5 < raw.Length)
+                        {
+                            try
+                            {
+                                string hex = raw.Substring(i + 2, 4);
+                                sb.Append((char)Convert.ToInt32(hex, 16));
+                                i += 5;
+                            }
+                            catch { sb.Append(raw[i]); }
+                        }
+                        else sb.Append(raw[i]);
+                        break;
+                    default: sb.Append(raw[i]); break;
+                }
+            }
+            else sb.Append(raw[i]);
+        }
+        return sb.ToString();
     }
 
     // ──────────────────────────────────────────────

@@ -11,7 +11,7 @@ using UnityEngine;
 ///   供 AI 调用 self_review 工具时做"实际 vs 标准"对比分析。
 ///
 /// 存储位置：
-///   Application.persistentDataPath/ActionRefs/<动作名>.png
+///   D:\DesktopPetData\ActionRefs\<动作名>.png
 ///
 /// 文件格式：
 ///   512×512 RGBA，去背景的纯模型渲染快照
@@ -25,7 +25,7 @@ public static class ActionReferenceManager
         get
         {
             if (_baseDir == null)
-                _baseDir = Path.Combine(Application.persistentDataPath, "ActionRefs");
+                _baseDir = Path.Combine(DataPathConfig.DataRoot, "ActionRefs");
             return _baseDir;
         }
     }

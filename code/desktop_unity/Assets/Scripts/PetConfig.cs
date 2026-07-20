@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>
 /// 符玄「天机簿」— 配置持久化
-/// 保存/加载运行时设置到 pet_config.json（persistentDataPath）
+/// 保存/加载运行时设置到 D:\DesktopPetData\pet_config.json
 /// 重启后保留上次的权重调节、API 地址、天气城市等配置
 /// </summary>
 public class PetConfig : MonoBehaviour
@@ -43,7 +43,7 @@ public class PetConfig : MonoBehaviour
 
     public static PetConfig Instance { get; private set; }
 
-    private string FilePath => Path.Combine(Application.persistentDataPath, "pet_config.json");
+    private string FilePath => Path.Combine(DataPathConfig.DataRoot, "pet_config.json");
 
     void Awake()
     {

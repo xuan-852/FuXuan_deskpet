@@ -77,7 +77,7 @@ public class PetMemory : MonoBehaviour
 
     public static PetMemory Instance { get; private set; }
 
-    private string FilePath => Path.Combine(Application.persistentDataPath, "pet_memory.json");
+    private string FilePath => Path.Combine(DataPathConfig.DataRoot, "pet_memory.json");
 
     void Awake()
     {
@@ -142,7 +142,7 @@ public class PetMemory : MonoBehaviour
         // 超出上限时，丢弃重要性最低的（而非最早的）
         while (_data.entries.Count > maxMemories)
         {
-            var lowest = _data.entries.OrderBy(e => e.importance).First();
+            var lowest = _data.entries.OrderBy(e => e.importance).ThenBy(e => e.timestamp).First();
             _data.entries.Remove(lowest);
         }
 

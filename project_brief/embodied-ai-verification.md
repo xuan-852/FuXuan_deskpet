@@ -1,7 +1,7 @@
 # 具身智能验证协议 — Embodied AI Verification Protocol
 
 > 文件版本: N32 · 最后更新: 2026-07-06
-> 验证对象: MotionPlanner (5 硬编码模板) + MotionTranslator (LLM 任意动作翻译)
+> 验证对象: MotionPlanner (10 种硬编码模板) + MotionTranslator (LLM 任意动作翻译)
 
 ---
 
@@ -11,7 +11,7 @@
 
 ```
 MotionPlanner.PlanFromDescription():
-  ├─ 硬编码模板 (5种): 挥手 / 点头 / 摇头 / 鞠躬 / 伸懒腰
+  ├─ 硬编码模板 (10种): 挥手 / 点头 / 摇头 / 鞠躬 / 伸懒腰 / 叉腰 / 捂脸 / 指 / 招手 / 合十
   └─ 回退 → 泛用微动: 头左右晃 3° + 眼珠微动 (仅 2 帧，极简)
 
 MotionTranslator.TranslateAsync():
@@ -79,7 +79,7 @@ MotionTranslator.TranslateAsync():
 
 ### 3.1 MotionVerifier.cs
 
-验证核心文件。位置: `Assets/Scripts/ActionAgent/MotionVerifier.cs`
+验证核心文件。位置: `Assets/Scripts/Live2DFramework/ActionAgent/MotionVerifier.cs`
 
 **功能**:
 1. 逐条执行测试集中的描述

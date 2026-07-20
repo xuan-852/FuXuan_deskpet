@@ -19,7 +19,7 @@ using UnityEngine.Networking;
 ///
 /// 注：Qwen-VL-Plus 实测无视觉区分度（始终打 1~2 分），已移除。
 ///
-/// 验证日志: Application.persistentDataPath/validation_log.json
+/// 验证日志: D:\DesktopPetData\validation_log.json
 /// </summary>
 public class DualModelValidator : MonoBehaviour
 {
@@ -55,7 +55,7 @@ public class DualModelValidator : MonoBehaviour
     }
 
     private ValidationStore _log = new ValidationStore();
-    private string LogPath => Path.Combine(Application.persistentDataPath, "validation_log.json");
+    private string LogPath => Path.Combine(DataPathConfig.DataRoot, "validation_log.json");
 
     public static DualModelValidator Instance { get; private set; }
 
@@ -649,54 +649,87 @@ public class DualModelValidator : MonoBehaviour
         int maxW = 0, maxH = 0;
         for (int i = 0; i < count; i++)
         {
-            var srcTex = new Texture2D(2, 2);
-            srcTex.LoadImage(framePngs[i]);
-            int tw = srcTex.width, th = srcTex.height;
+            Texture2D srcTex;
+            int tw, th;
+            try
+            {
+                srcTex = new Texture2D(2, 2);
+                if (!srcTex.LoadImage(framePngs[i]))
+                {
+                    Debug.LogWarning($"[DualModelValidator] 帧 {i} LoadImage 失败，跳过");
+                    UnityEngine.Object.DestroyImmediate(srcTex);
+                    continue;
+                }
+                tw = srcTex.width; th = srcTex.height;
 
-            // 安全帽：单帧像素超 64 万（约 800×800）时等比缩小 — GLM-4V 足够看清，内存省 3/4
-            const int MAX_PX = 800 * 800;
-            while (tw * th > MAX_PX)
-            {
-                tw /= 2;
-                th /= 2;
+                // ★ 安全帽：单帧最大 640×640 — GLM-4V 足够看清
+                //   LoadImage 已经分配了全尺寸内存，但至少后续操作受控
+                const int MAX_DIM = 640;
+                if (tw > MAX_DIM || th > MAX_DIM)
+                {
+                    float scale = Mathf.Min((float)MAX_DIM / tw, (float)MAX_DIM / th);
+                    int newW = Mathf.Max(1, Mathf.RoundToInt(tw * scale));
+                    int newH = Mathf.Max(1, Mathf.RoundToInt(th * scale));
+                    RenderTexture rt = RenderTexture.GetTemporary(newW, newH, 0, RenderTextureFormat.ARGB32);
+                    Graphics.Blit(srcTex, rt);
+                    RenderTexture prev = RenderTexture.active;
+                    RenderTexture.active = rt;
+                    var scaled = new Texture2D(newW, newH, TextureFormat.RGB24, false);
+                    scaled.ReadPixels(new Rect(0, 0, newW, newH), 0, 0);
+                    scaled.Apply();
+                    RenderTexture.active = prev;
+                    RenderTexture.ReleaseTemporary(rt);
+                    UnityEngine.Object.DestroyImmediate(srcTex);
+                    srcTex = scaled;
+                    tw = newW; th = newH;
+                }
             }
-            Texture2D tex;
-            if (tw != srcTex.width || th != srcTex.height)
+            catch (System.Exception e)
             {
-                // 缩小该帧
-                RenderTexture rt = RenderTexture.GetTemporary(tw, th, 0, RenderTextureFormat.ARGB32);
-                Graphics.Blit(srcTex, rt);
-                RenderTexture prev = RenderTexture.active;
-                RenderTexture.active = rt;
-                tex = new Texture2D(tw, th, TextureFormat.RGB24, false);
-                tex.ReadPixels(new Rect(0, 0, tw, th), 0, 0);
-                tex.Apply();
-                RenderTexture.active = prev;
-                RenderTexture.ReleaseTemporary(rt);
-                UnityEngine.Object.DestroyImmediate(srcTex);
-            }
-            else
-            {
-                tex = srcTex;
+                Debug.LogWarning($"[DualModelValidator] 帧 {i} 加载异常 ({e.Message})，跳过");
+                continue;
             }
 
-            frames.Add((tex, tw, th));
+            frames.Add((srcTex, tw, th));
             if (tw > maxW) maxW = tw;
             if (th > maxH) maxH = th;
         }
 
-        // ★ 额外限制：拼图总像素不超过 1600×1600
-        int cw = Mathf.Min(maxW * cols, 1600);
-        int ch = Mathf.Min(maxH * rows, 1600);
+        // ★ 如果所有帧都加载失败，直接返回 null
+        if (frames.Count == 0)
+        {
+            Debug.LogWarning("[DualModelValidator] 无有效帧可拼图");
+            return null;
+        }
+
+        // ★ 额外限制：拼图总像素不超过 1024×1024（之前 1600 但 GetPixels32 仍可能 OOM）
+        int cw = Mathf.Min(maxW * cols, 1024);
+        int ch = Mathf.Min(maxH * rows, 1024);
+        // ★ 极端保护：总像素超过 200 万时跳过拼图（不应触发，但防御）
+        if (cw * ch > 2000000)
+        {
+            Debug.LogWarning($"[DualModelValidator] 拼图过大 ({cw}×{ch})，跳过");
+            for (int i = 0; i < frames.Count; i++) UnityEngine.Object.DestroyImmediate(frames[i].tex);
+            return null;
+        }
         var canvas = new Texture2D(cw, ch, TextureFormat.RGB24, false);
 
         // 用黑色填充背景（GLM 看到黑底拼图）
         var bgColor = Color.black;
         var bgPixels32 = new Color32[cw * ch];
-        for (int i = 0; i < bgPixels32.Length; i++) bgPixels32[i] = bgColor;
-        canvas.SetPixels32(bgPixels32);
+        try
+        {
+            canvas.SetPixels32(bgPixels32);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[DualModelValidator] 背景填充 OOM ({e.Message})，跳过拼图");
+            UnityEngine.Object.DestroyImmediate(canvas);
+            for (int i = 0; i < frames.Count; i++) UnityEngine.Object.DestroyImmediate(frames[i].tex);
+            return null;
+        }
 
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < frames.Count; i++)
         {
             var (tex, tw, th) = frames[i];
             int cellX = (i % cols) * maxW;
@@ -705,23 +738,45 @@ public class DualModelValidator : MonoBehaviour
             int ox = cellX + (maxW - tw) / 2;
             int oy = cellY + (maxH - th) / 2;
             // ★ GetPixels32 → 每像素 4 字节（GetPixels 用 Color 是 16 字节，内存 4 倍！）
-            var pixels32 = tex.GetPixels32();
-            canvas.SetPixels32(ox, oy, tw, th, pixels32);
+            Color32[] pixels32;
+            try
+            {
+                pixels32 = tex.GetPixels32();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[DualModelValidator] 帧 {i} GetPixels32 OOM ({e.Message})，跳过");
+                continue;
+            }
+            try
+            {
+                canvas.SetPixels32(ox, oy, tw, th, pixels32);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[DualModelValidator] 帧 {i} SetPixels32 异常 ({e.Message})，跳过");
+                continue;
+            }
             UnityEngine.Object.DestroyImmediate(tex);
         }
 
-        canvas.Apply();
-        byte[] resultPng = canvas.EncodeToPNG();
+        byte[] resultPng = null;
+        try
+        {
+            canvas.Apply();
+            resultPng = canvas.EncodeToPNG();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[DualModelValidator] EncodeToPNG 异常 ({e.Message})，跳过拼图");
+        }
         UnityEngine.Object.DestroyImmediate(canvas);
-
-        // ★ 紧急 GC：立刻释放拼图过程中的临时内存
-        System.GC.Collect();
 
         // ★ 保存拼图到磁盘，方便用户查看 GLM-4V 实际看到的画面
 #if !UNITY_EDITOR
         try
         {
-            string dir = Path.Combine(Application.persistentDataPath, "glm_collages");
+            string dir = Path.Combine(DataPathConfig.DataRoot, "glm_collages");
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, $"collage_{DateTime.Now:HHmmssfff}.png");
             File.WriteAllBytes(path, resultPng);

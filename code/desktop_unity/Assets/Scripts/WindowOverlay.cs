@@ -148,6 +148,10 @@ public class WindowOverlay : MonoBehaviour
     [Tooltip("重试次数")]
     public int maxRetries = 5;
 
+    [Header("恢复设置")]
+    [Tooltip("透明窗口设置失败后，后台重试间隔（秒），0=不重试")]
+    public float backgroundRetryInterval = 30f;
+
     [Header("调试")]
     public bool debugLog = true;
 
@@ -167,6 +171,52 @@ public class WindowOverlay : MonoBehaviour
         if (!Application.isEditor)
         {
             StartCoroutine(RetryApply());
+
+            // ★ 后台自动恢复：初始重试失败后，每 30s 再试一次
+            if (backgroundRetryInterval > 0f)
+                StartCoroutine(BackgroundRetryLoop());
+        }
+    }
+
+    /// <summary>
+    /// 后台定时检测透明窗口状态，失败时自动恢复
+    /// DWM 在驱动重置、系统负载高时可能暂时不可用，需持续重试
+    /// </summary>
+    private System.Collections.IEnumerator BackgroundRetryLoop()
+    {
+        // 先等初始重试完成
+        yield return new WaitForSeconds(backgroundRetryInterval);
+
+        while (backgroundRetryInterval > 0f)
+        {
+            // 已成功就绪，且窗口句柄有效 → 不需要恢复
+            if (_applied && _hwnd != IntPtr.Zero && IsWindow(_hwnd))
+            {
+                yield return new WaitForSeconds(backgroundRetryInterval);
+                continue;
+            }
+
+            // 重新查找窗口句柄（可能因为 DWM 重启、快速启动等原因窗口重建了句柄）
+            IntPtr newHwnd = FindUnityWindow();
+            if (newHwnd != IntPtr.Zero)
+            {
+                _hwnd = newHwnd;
+                bool ok = ApplyNow();
+                if (ok)
+                {
+                    Log($"✅ 后台自动恢复透明窗口成功 (句柄={_hwnd.ToInt64():X8})");
+                }
+                else
+                {
+                    Log($"⚠️ 后台自动恢复第尝试失败，{backgroundRetryInterval}s 后重试");
+                }
+            }
+            else
+            {
+                Log($"⚠️ 后台恢复：未找到 Unity 窗口，{backgroundRetryInterval}s 后重试");
+            }
+
+            yield return new WaitForSeconds(backgroundRetryInterval);
         }
     }
 

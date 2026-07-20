@@ -96,7 +96,7 @@ public class MotionMemoryManager : MonoBehaviour
     // ==================================================================
 
     private StorageData _data = new StorageData();
-    private string FilePath => Path.Combine(Application.persistentDataPath, "motion_memory.json");
+    private string FilePath => Path.Combine(DataPathConfig.DataRoot, "motion_memory.json");
 
     public static MotionMemoryManager Instance { get; private set; }
 

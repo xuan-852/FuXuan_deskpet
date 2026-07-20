@@ -29,6 +29,10 @@ public class ChatManager : MonoBehaviour
     private string _systemPromptTemplate;
     /// <summary>法眼 — 行为追踪器</summary>
     public ActivityTracker activityTracker;
+    /// <summary>最近一次对话涉及的话题（用于知识库搜索）</summary>
+    private string _lastConversationTopic = "";
+    /// <summary>藏书阁检索结果缓存（注入 SystemPrompt）</summary>
+    private string _cachedKnowledgeContext = "";
 
     void Awake()
     {
@@ -61,6 +65,20 @@ public class ChatManager : MonoBehaviour
             memGo.AddComponent<PetMemory>();
             memGo.transform.SetParent(transform);
         }
+        // ——— 确保 PersonalityManager 单例存在 ———
+        if (PersonalityManager.Instance == null)
+        {
+            var persGo = new GameObject("PersonalityManager");
+            persGo.AddComponent<PersonalityManager>();
+            persGo.transform.SetParent(transform);
+        }
+        // ——— 确保 KnowledgeBaseManager 单例存在 ———
+        if (KnowledgeBaseManager.Instance == null)
+        {
+            var kbGo = new GameObject("KnowledgeBaseManager");
+            kbGo.AddComponent<KnowledgeBaseManager>();
+            kbGo.transform.SetParent(transform);
+        }
 
         // ——— 注册反思回调：当 PetMemory 需要反思时，由我们调 LLM ———
         PetMemory.Instance.OnReflectRequest = candidates =>
@@ -82,6 +100,20 @@ public class ChatManager : MonoBehaviour
             string memories = PetMemory.Instance.GetFormattedMemories();
             if (!string.IsNullOrEmpty(memories))
                 prompt += "\n" + memories;
+        }
+
+        // ★ 注入人格特质与关系
+        if (PersonalityManager.Instance != null)
+        {
+            string personality = PersonalityManager.Instance.FormatForPrompt();
+            if (!string.IsNullOrEmpty(personality))
+                prompt += "\n" + personality;
+        }
+
+        // ★ 注入知识库上下文（藏书阁检索结果缓存）
+        if (KnowledgeBaseManager.Instance != null && !string.IsNullOrEmpty(_cachedKnowledgeContext))
+        {
+            prompt += "\n" + _cachedKnowledgeContext;
         }
 
         // 注入法眼观测（今日行为摘要 + 当前窗口 + 多窗口环境）
@@ -293,6 +325,7 @@ public class ChatManager : MonoBehaviour
         _lastReply = "";
         _lastError = "";
         _abortRequested = false; // 重置中止标志，允许新的请求
+        _apiRetryCount = 0; // 重置自动重试计数
         _requestStartTime = Time.time; // 启动看门狗计时
         _onUpdate = onUpdate;
 
@@ -309,6 +342,24 @@ public class ChatManager : MonoBehaviour
     private const int MAX_TOOL_ROUNDS = 5; // 防止无限循环
     /// <summary>历史消息最大条数，超出时裁剪最早的（保留最近 N 条）</summary>
     private const int MAX_HISTORY_ENTRIES = 60;
+
+    /// <summary>API 自动重试计数（每次新消息重置）</summary>
+    private int _apiRetryCount = 0;
+
+    /// <summary>判断是否应该自动重试 API 请求</summary>
+    private bool ShouldRetry(string error, out int attempt)
+    {
+        attempt = _apiRetryCount + 1;
+        if (string.IsNullOrEmpty(error) || attempt > 3) return false;
+
+        // 400 Bad Request → 请求格式错误，重试无意义
+        if (error.Contains("400")) return false;
+        // 401/403 → 鉴权错误，重试无意义
+        if (error.Contains("401") || error.Contains("403")) return false;
+
+        _apiRetryCount = attempt;
+        return true;
+    }
 
     private IEnumerator SendRequestCoroutine()
     {
@@ -334,6 +385,12 @@ public class ChatManager : MonoBehaviour
                 StartCoroutine(DoReflection(candidates));
             }
         }
+
+        // ——— 人格演化：记录本次交互 ———
+        RecordPersonalityInteraction();
+
+        // ——— 知识库：针对对话话题进行后台检索（缓存结果供下次对话使用）———
+        StartCoroutine(BackgroundKnowledgeSearch());
     }
 
     private IEnumerator DoToolLoop()
@@ -392,6 +449,16 @@ public class ChatManager : MonoBehaviour
             if (hadError)
             {
                 Debug.LogError($"[ChatManager] ❌ API 请求失败 (round={round}): {_lastError}");
+
+                // ★ 自动重试：网络/限流错误（非 4xx 业务错误）重试最多 3 次
+                if (ShouldRetry(_lastError, out int attempt))
+                {
+                    string retryDelayStr = attempt <= 3 ? "2" : "5";
+                    Debug.Log($"[ChatManager] 🔄 {attempt}/3 自动重试 ({retryDelayStr}s 后)...");
+                    yield return new WaitForSeconds(attempt <= 3 ? 2f : 5f);
+                    continue; // 重新执行当前 round
+                }
+
                 OnRequestError?.Invoke($"❌ 法阵术式失败: {_lastError}");
                 yield break;
             }
@@ -987,6 +1054,110 @@ public class ChatManager : MonoBehaviour
         }
 
         Debug.Log($"[ChatManager] 🧠 记忆反思完成，产生 {lines.Length} 条洞察");
+    }
+
+    // ==================================================================
+    //  ★ 人格演化记录
+    // ==================================================================
+
+    /// <summary>
+    /// 记录本轮交互到 PersonalityManager，触发人格微调
+    /// </summary>
+    private void RecordPersonalityInteraction()
+    {
+        if (PersonalityManager.Instance == null) return;
+
+        // 取用户最后一条消息
+        string userMsg = "";
+        for (int i = _history.Count - 1; i >= 0; i--)
+        {
+            if (_history[i].role == "user")
+            {
+                userMsg = _history[i].content;
+                break;
+            }
+        }
+        if (string.IsNullOrEmpty(userMsg)) return;
+
+        // 取当前活动分类（从 ActivityTracker 获取当前窗口信息）
+        string activity = "";
+        if (activityTracker != null)
+        {
+            string proc = activityTracker.CurrentProcessName;
+            if (!string.IsNullOrEmpty(proc))
+            {
+                // 根据进程名映射到活动分类
+                string p = proc.ToLower();
+                if (p.Contains("code") || p.Contains("devenv") || p.Contains("vim")) activity = "coding";
+                else if (p.Contains("chrome") || p.Contains("msedge") || p.Contains("firefox")) activity = "browsing";
+                else if (p.Contains("unity") || p.Contains("blender")) activity = "creative";
+                else if (p.Contains("spotify") || p.Contains("wmplayer")) activity = "music";
+                else activity = "other";
+            }
+        }
+
+        // 收集本轮工具调用结果
+        var toolResults = new List<string>();
+        for (int i = _history.Count - 1; i >= 0; i--)
+        {
+            if (_history[i].role == "tool")
+                toolResults.Add(_history[i].content);
+            else if (_history[i].role == "user" && i != _history.Count - 1)
+                break; // 越过本轮的 user → 本轮的最后一个 tool
+        }
+
+        PersonalityManager.Instance.RecordInteraction(
+            userMsg, _lastReply, activity, toolResults);
+
+        // 提取关键词作为知识库搜索话题
+        _lastConversationTopic = ExtractSearchTopic(userMsg);
+    }
+
+    // ==================================================================
+    //  ★ 知识库后台检索
+    // ==================================================================
+
+    /// <summary>
+    /// 后台检索知识库，将结果缓存到 _cachedKnowledgeContext 供下次 SystemPrompt 注入
+    /// </summary>
+    private IEnumerator BackgroundKnowledgeSearch()
+    {
+        var kb = KnowledgeBaseManager.Instance;
+        if (kb == null || kb.DocumentCount == 0) yield break;
+        if (string.IsNullOrEmpty(_lastConversationTopic)) yield break;
+
+        // 搜索前先清除旧缓存，避免搜索失败时仍使用过时结果
+        _cachedKnowledgeContext = "";
+
+        string result = "";
+        yield return kb.SearchAndFormat(_lastConversationTopic, kb.maxContextResults, r => result = r);
+
+        if (!string.IsNullOrEmpty(result))
+        {
+            _cachedKnowledgeContext = result;
+            Debug.Log($"[ChatManager] 藏书阁检索完毕，结果 {result.Length} 字符");
+        }
+    }
+
+    /// <summary>
+    /// 从用户消息中提取检索关键词（去掉常见无意义词后取前 50 字）
+    /// </summary>
+    private string ExtractSearchTopic(string userMsg)
+    {
+        if (string.IsNullOrEmpty(userMsg)) return "";
+
+        // 去掉常见的非信息性问句前缀
+        var noise = new[] { "帮我", "请问", "能不能", "看一下", "查一下", "搜一下", "看看", "我想", "我要", "你知不知道", "你了解", "你记得" };
+        string cleaned = userMsg;
+        foreach (var n in noise)
+        {
+            cleaned = Regex.Replace(cleaned, "^" + Regex.Escape(n), "", RegexOptions.IgnoreCase);
+        }
+
+        cleaned = cleaned.Trim().Trim('？', '?', '！', '!', '，', ',', '。', '.', '、');
+        if (cleaned.Length > 50) cleaned = cleaned.Substring(0, 50);
+
+        return cleaned;
     }
 
     // ==================================================================

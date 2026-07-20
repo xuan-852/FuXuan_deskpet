@@ -329,15 +329,39 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (_overlayCamera == null) return null;
         try
         {
-            // ★ 直接从 _overlayRT 读取（已在 OnGUI 每帧正常渲染），不新建 RT 调
-            //   Camera.Render() — Cubium 用 CommandBuffer 做遮罩，手动 Render
-            //   到新 RT 会导致遮罩纹理连接断开，模型变全透明。
             RenderTexture saved = RenderTexture.active;
             RenderTexture.active = _overlayRT;
-            var tex = new Texture2D(_overlayRT.width, _overlayRT.height, TextureFormat.RGBA32, false);
-            tex.ReadPixels(new Rect(0, 0, _overlayRT.width, _overlayRT.height), 0, 0);
-            tex.Apply();
-            RenderTexture.active = saved;
+
+            // ★ 降采样保护：如果 RT 过大（总像素 > 640*480），先 blit 到小 RT 再读
+            Texture2D tex;
+            const int MAX_SNAPSHOT_PIXELS = 640 * 480;
+            int totalPixels = _overlayRT.width * _overlayRT.height;
+
+            if (totalPixels > MAX_SNAPSHOT_PIXELS)
+            {
+                // 等比例缩放到 640*480 以内
+                float scale = Mathf.Sqrt((float)MAX_SNAPSHOT_PIXELS / totalPixels);
+                int sw = Mathf.Max(64, Mathf.RoundToInt(_overlayRT.width * scale));
+                int sh = Mathf.Max(64, Mathf.RoundToInt(_overlayRT.height * scale));
+
+                var scaledRT = RenderTexture.GetTemporary(sw, sh, 0, RenderTextureFormat.ARGB32);
+                Graphics.Blit(_overlayRT, scaledRT);
+
+                RenderTexture.active = scaledRT;
+                tex = new Texture2D(sw, sh, TextureFormat.RGBA32, false);
+                tex.ReadPixels(new Rect(0, 0, sw, sh), 0, 0);
+                tex.Apply();
+
+                RenderTexture.active = saved;
+                RenderTexture.ReleaseTemporary(scaledRT);
+            }
+            else
+            {
+                tex = new Texture2D(_overlayRT.width, _overlayRT.height, TextureFormat.RGBA32, false);
+                tex.ReadPixels(new Rect(0, 0, _overlayRT.width, _overlayRT.height), 0, 0);
+                tex.Apply();
+                RenderTexture.active = saved;
+            }
 
             // ★ 自动裁切到模型区域（移除透明背景），使 GLM-4V 看到的模型更大更清晰
             byte[] bytes = CropToModelArea(tex);

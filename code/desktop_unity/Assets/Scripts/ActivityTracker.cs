@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -70,7 +71,7 @@ public class ActivityTracker : MonoBehaviour
     /// </summary>
     private static string GetProcessNameByPid(uint pid)
     {
-        IntPtr hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid);
+        IntPtr hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, false, pid);
         if (hProcess == IntPtr.Zero)
             return null;
         try
@@ -149,7 +150,7 @@ public class ActivityTracker : MonoBehaviour
     //  路径
     // ============================================================
 
-    private string FilePath => Path.Combine(Application.persistentDataPath, "activity_log.json");
+    private string FilePath => Path.Combine(DataPathConfig.DataRoot, "activity_log.json");
 
     // ============================================================
     //  生命周期
@@ -399,7 +400,7 @@ public class ActivityTracker : MonoBehaviour
     //  浏览器标签页深度感知
     // ——————————————————————————————————————————————
 
-    /// <summary>刷新当前前台浏览器的标签页信息（UIA）</summary>
+    /// <summary>刷新当前前台浏览器的标签页信息（UIA，后台线程 + 3s 超时避免主线程卡死）</summary>
     private void RefreshBrowserTabs()
     {
         if (!BrowserTabReader.IsAvailable)
@@ -408,23 +409,40 @@ public class ActivityTracker : MonoBehaviour
             return;
         }
 
-        var tabs = BrowserTabReader.ReadTabs(_lastHwnd);
-        if (tabs.Count == 0)
+        try
         {
-            _lastBrowserTabsSummary = "";
-            return;
-        }
+            var task = Task.Run(() => BrowserTabReader.ReadTabs(_lastHwnd));
+            if (task.Wait(3000)) // 3 秒超时，防止 UIA 挂死主线程
+            {
+                var tabs = task.Result;
+                if (tabs.Count == 0)
+                {
+                    _lastBrowserTabsSummary = "";
+                    return;
+                }
 
-        var sb = new StringBuilder();
-        sb.Append("【法眼浏览器 | 当前标签】");
-        int count = 0;
-        foreach (string tab in tabs)
-        {
-            sb.Append($" {tab}");
-            count++;
-            if (count >= 10) break; // 最多列 10 个标签
+                var sb = new StringBuilder();
+                sb.Append("【法眼浏览器 | 当前标签】");
+                int count = 0;
+                foreach (string tab in tabs)
+                {
+                    sb.Append($" {tab}");
+                    count++;
+                    if (count >= 10) break; // 最多列 10 个标签
+                }
+                _lastBrowserTabsSummary = sb.ToString();
+            }
+            else
+            {
+                Debug.LogWarning("[ActivityTracker] UIA 读取标签超时（3s），可能浏览器无响应");
+                _lastBrowserTabsSummary = "⏳ 浏览器暂时无响应";
+            }
         }
-        _lastBrowserTabsSummary = sb.ToString();
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[ActivityTracker] UIA 读取标签失败: {ex.Message}");
+            _lastBrowserTabsSummary = "";
+        }
     }
 
     /// <summary>

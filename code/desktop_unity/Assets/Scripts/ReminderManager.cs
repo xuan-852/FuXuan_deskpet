@@ -12,7 +12,7 @@ using UnityEngine;
 /// - 每帧检查是否有到期提醒
 /// - 到期时触发气泡 + Windows 系统通知
 /// - 支持每日重复提醒
-/// - 数据存于 Application.persistentDataPath/reminders.json
+/// - 数据存于 D:\DesktopPetData\reminders.json
 ///
 /// 对接 DeepSeek Function Calling：
 ///   set_reminder(text, remindAt)   → 新增提醒
@@ -56,8 +56,22 @@ public class ReminderManager : MonoBehaviour
     public float checkInterval = 1f;
 
     [Header("Server酱³ 推送")]
-    [Tooltip("Server酱³ 推送 URL（在 sc3.ft07.com 获取）")]
-    public string serverChanUrl = "https://22900.push.ft07.com/send/sctp22900taqpvdfaudumkja8wybmjq8.send";
+    [Tooltip("Server酱³ SendKey（从环境变量 SERVERCHAN_SENDKEY 读取，无需在此填写）")]
+    public string serverChanSendKey = "";
+
+    /// <summary>从环境变量构建 Server酱³ 推送 URL</summary>
+    private string ServerChanUrl
+    {
+        get
+        {
+            string sendKey = serverChanSendKey;
+            if (string.IsNullOrEmpty(sendKey))
+                sendKey = System.Environment.GetEnvironmentVariable("SERVERCHAN_SENDKEY") ?? "";
+            if (string.IsNullOrEmpty(sendKey))
+                return null;
+            return $"https://sctapi.ft07.com/send/{sendKey}";
+        }
+    }
 
     // 组件引用
     private ChatBubble _bubble;
@@ -94,7 +108,7 @@ public class ReminderManager : MonoBehaviour
 
     private void Start()
     {
-        _filePath = Path.Combine(Application.persistentDataPath, "reminders.json");
+        _filePath = Path.Combine(DataPathConfig.DataRoot, "reminders.json");
         _bubble = GetComponent<ChatBubble>();
         if (_bubble == null) _bubble = FindObjectOfType<ChatBubble>();
         _chat = GetComponent<ChatManager>();
@@ -133,6 +147,23 @@ public class ReminderManager : MonoBehaviour
         _checkTimer = 0f;
 
         CheckDueReminders();
+
+        // 定期清理已触发 ID 集合（防止无限增长）
+        if (Time.frameCount % 600 == 0) // 约每 10 秒（60fps下）清理一次
+            CleanupTriggeredIds();
+    }
+
+    /// <summary>清理 _triggeredIds 中已完成或已删除的 ID</summary>
+    private void CleanupTriggeredIds()
+    {
+        var activeIds = new HashSet<string>();
+        foreach (var r in _data.reminders)
+        {
+            if (r.done && string.IsNullOrEmpty(r.recurring))
+                continue; // 一次性已完成的不保留
+            activeIds.Add(r.id);
+        }
+        _triggeredIds.IntersectWith(activeIds);
     }
 
     private void OnApplicationQuit()
@@ -447,12 +478,12 @@ public class ReminderManager : MonoBehaviour
     /// <summary>通过 Server酱³ 向手机推送提醒</summary>
     private void PushToServerChan(string title, string message)
     {
-        if (string.IsNullOrEmpty(serverChanUrl)) return;
+        string url = ServerChanUrl;
+        if (string.IsNullOrEmpty(url)) return;
 
         try
         {
-            // UnityWebRequest 需要放在协程里，用简单的异步委托即可
-            string url = $"{serverChanUrl}?title={UriEscape(title)}&desp={UriEscape(message)}";
+            url = $"{url}?title={UriEscape(title)}&desp={UriEscape(message)}";
             var req = new System.Net.Http.HttpClient();
             req.Timeout = TimeSpan.FromSeconds(5);
             req.GetAsync(url).ContinueWith(t =>

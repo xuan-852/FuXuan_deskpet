@@ -4,6 +4,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using UnityEngine;
 
 /// <summary>
@@ -192,6 +193,11 @@ public class MotionAgent : MonoBehaviour
             return;
         }
         Instance = this;
+
+        // ——— 人格联动：用 PersonalityManager 调整情绪基线 ———
+        if (PersonalityManager.Instance != null)
+            PersonalityManager.Instance.ApplyPersonalityToEmotion(emotion);
+
         emotion.Init();
     }
 
@@ -222,6 +228,10 @@ public class MotionAgent : MonoBehaviour
 
         // 情绪自动衰减
         emotion.TickDecay();
+
+        // ★ 定期同步人格 → 情绪基线（人格演化后情绪也应随之调整）
+        if (Time.frameCount % 300 == 0 && PersonalityManager.Instance != null)
+            PersonalityManager.Instance.ApplyPersonalityToEmotion(emotion);
 
         // 密度级别自适应
         UpdateDensityLevel();
@@ -389,6 +399,13 @@ public class MotionAgent : MonoBehaviour
         {
             _lastInteractionTime = Time.time;
         }
+
+        // ★ 长时间无交互时人格缓慢回归中性
+        float idleDuration = Time.time - _lastInteractionTime;
+        if (idleDuration > longIdleThreshold && PersonalityManager.Instance != null)
+        {
+            PersonalityManager.Instance.DriftTowardNeutral(0.002f);
+        }
     }
 
     /// <summary>外部通知用户交互（由 DragHandler/ChatBubble 等触发）</summary>
@@ -507,6 +524,10 @@ public class MotionAgent : MonoBehaviour
 
         // 2. 情绪
         parts.Add(emotion.FormatForPrompt());
+
+        // 2.5 人格特质
+        if (PersonalityManager.Instance != null)
+            parts.Add(PersonalityManager.Instance.FormatShortForPrompt());
 
         // 3. 用户状态
         if (_activityTracker != null)
@@ -1119,7 +1140,7 @@ public class MotionAgent : MonoBehaviour
                 end++;
             }
             if (end >= json.Length) return null;
-            return json.Substring(start, end - start).Replace("\\\"", "\"").Replace("\\n", "\n");
+            return DecodeJsonString(json.Substring(start, end - start));
         }
         // 非字符串值
         int valEnd = start;
@@ -1147,5 +1168,45 @@ public class MotionAgent : MonoBehaviour
         float.TryParse(numStr, System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out result);
         return result;
+    }
+
+    /// <summary>
+    /// 解码 JSON 字符串中的转义序列（\n, \\, \", \uXXXX）
+    /// </summary>
+    private static string DecodeJsonString(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return raw;
+        var sb = new StringBuilder();
+        for (int i = 0; i < raw.Length; i++)
+        {
+            if (raw[i] == '\\' && i + 1 < raw.Length)
+            {
+                char n = raw[i + 1];
+                switch (n)
+                {
+                    case '"':  sb.Append('"'); i++; break;
+                    case '\\': sb.Append('\\'); i++; break;
+                    case 'n':  sb.Append('\n'); i++; break;
+                    case 'r':  sb.Append('\r'); i++; break;
+                    case 't':  sb.Append('\t'); i++; break;
+                    case 'u':
+                        if (i + 5 < raw.Length)
+                        {
+                            try
+                            {
+                                string hex = raw.Substring(i + 2, 4);
+                                sb.Append((char)Convert.ToInt32(hex, 16));
+                                i += 5;
+                            }
+                            catch { sb.Append(raw[i]); }
+                        }
+                        else sb.Append(raw[i]);
+                        break;
+                    default: sb.Append(raw[i]); break;
+                }
+            }
+            else sb.Append(raw[i]);
+        }
+        return sb.ToString();
     }
 }

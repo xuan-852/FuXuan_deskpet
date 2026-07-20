@@ -155,10 +155,11 @@ public class HybridRenderer : MonoBehaviour, IPetRenderer
 
         if (!isDragging)
         {
-            // TODO: 接入 3D 模型后将 true 恢复
-            if (!onGround) RequestSwitch(false);
-            else if (Mathf.Abs(petVx) > 0) RequestSwitch(false);
-            else RequestSwitch(false);
+            // TODO: 接入 3D 模型后可根据条件切 true：
+            //   !onGround (空中) → 3D; Mathf.Abs(petVx) > 0 (行走) → 3D; 否则 → Live2D
+            // 当前 3D 模型未接入，强制 Live2D
+            bool shouldUse3D = false;
+            RequestSwitch(shouldUse3D);
         }
 
         live2DRenderer.OnPetUpdate(petX, petY, petWidth, petHeight,

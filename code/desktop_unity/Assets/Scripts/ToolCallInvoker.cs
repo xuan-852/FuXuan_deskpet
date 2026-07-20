@@ -174,6 +174,7 @@ public class ToolCallInvoker : MonoBehaviour
             string path = JsonRead(args, "path");
             if (string.IsNullOrEmpty(path))
                 path = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            // 默认路径已在安全范围内，无需额外的 IsPathAllowed 检查
             if (!Directory.Exists(path) && !File.Exists(path))
                 return $"❌ 路径不存在：「{path}」";
             try
@@ -198,12 +199,27 @@ public class ToolCallInvoker : MonoBehaviour
             return "📨 传讯符已发出";
         };
 
-        // ——— 13. 归寂令：关机/重启/睡眠（需要确认） ———
+        // ——— 13. 归寂令：关机/重启/睡眠（需要物理弹窗确认） ———
         _executors["power"] = args =>
         {
             string action = JsonRead(args, "action"); // shutdown / restart / sleep
             if (dangerousOpsNeedConfirm)
-                return "⚠️ 此等大事须卜者确认，请让用户在聊天中明确答复「确认关机/重启/睡眠」";
+            {
+                string actionLabel = action switch
+                {
+                    "shutdown" => "关机",
+                    "restart"  => "重启",
+                    "sleep"    => "睡眠",
+                    _         => action
+                };
+                // 使用 Win32 MessageBox 弹窗，需要用户实际点击"是"才能执行
+                int result = MessageBox(IntPtr.Zero,
+                    $"符玄请求执行「{actionLabel}」操作，是否允许？",
+                    "⚠️ 归寂令 · 确认",
+                    0x00000004 | 0x00000030); // MB_YESNO | MB_ICONWARNING
+                if (result != 6) // IDYES = 6
+                    return "🛡️ 归寂令已被卜者驳回";
+            }
             switch (action)
             {
                 case "shutdown":
@@ -225,8 +241,10 @@ public class ToolCallInvoker : MonoBehaviour
         {
             string cmd = JsonRead(args, "command");
             if (string.IsNullOrEmpty(cmd)) return "❌ 未降法旨";
-            if (dangerousOpsNeedConfirm)
-                return "⚠️ 行令须谨慎，请在聊天中明确说出要执行的命令";
+            // 命令白名单 — 只允许无害的查询类命令
+            if (!IsCommandAllowed(cmd))
+                return "⚠️ 本座只可执行查询类命令（ipconfig, ping, systeminfo, tasklist, netstat 等），" +
+                       "此令「" + cmd + "」不在允许之列";
             try
             {
                 var psi = new ProcessStartInfo("cmd", "/c " + cmd)
@@ -272,6 +290,7 @@ public class ToolCallInvoker : MonoBehaviour
             string dir = JsonRead(args, "path");
             if (string.IsNullOrEmpty(dir))
                 dir = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            dir = DecodeFileUri(dir);
             if (!Directory.Exists(dir))
                 return $"❌ 「{dir}」不存在";
             var files = Directory.GetFiles(dir);
@@ -314,14 +333,16 @@ public class ToolCallInvoker : MonoBehaviour
                                 RedirectStandardOutput = true,
                                 RedirectStandardError = true,
                                 CreateNoWindow = true,
-                                StandardOutputEncoding = Encoding.UTF8,
-                                StandardErrorEncoding = Encoding.UTF8
+                                StandardOutputEncoding = Encoding.GetEncoding(936),
+                                StandardErrorEncoding = Encoding.GetEncoding(936)
                             };
                             var p = Process.Start(psi);
                             if (p != null)
                             {
                                 string output = p.StandardOutput.ReadToEnd();
                                 p.WaitForExit(3000);
+                                // es.exe 1.1.0.30 不支持 -utf8 参数，输出为 GBK。
+                                // 用 GBK (codepage 936) 解码确保中文文件名正确。
                                 var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                                 foreach (var line in lines)
                                 {
@@ -330,7 +351,11 @@ public class ToolCallInvoker : MonoBehaviour
                                 }
                             }
                         }
-                        catch { useEverything = false; } // 失败了回退到递归
+                        catch (Exception ex) 
+                        { 
+                            UnityEngine.Debug.LogWarning($"[ToolCallInvoker] es.exe 搜索失败，回退到递归: {ex.Message}");
+                            useEverything = false; 
+                        }
                     }
 
                     if (!useEverything)
@@ -352,11 +377,11 @@ public class ToolCallInvoker : MonoBehaviour
                     return results;
                 });
 
-                // 等最多 10 秒
-                if (task.Wait(TimeSpan.FromSeconds(10)))
+                // 超时限制（同步模式下避免死锁）
+                if (task.Wait(TimeSpan.FromSeconds(5)))
                 {
                     var list = task.Result;
-                    if (list.Count == 0)
+                    if (list.Count < 1)
                     {
                         string scope = useEverything
                             ? (string.IsNullOrEmpty(rootDir) ? "本座的天眼所及之处" : $"「{rootDir}」")
@@ -482,7 +507,9 @@ public class ToolCallInvoker : MonoBehaviour
             try
             {
                 var task = Task.Run(() => poll.QueryUpcomingExamsAsync());
-                return task.GetAwaiter().GetResult();
+                if (task.Wait(TimeSpan.FromSeconds(8)))
+                    return task.Result;
+                return "⏱️ 查询考试超时，请稍后再试";
             }
             catch (System.Exception e)
             {
@@ -498,7 +525,9 @@ public class ToolCallInvoker : MonoBehaviour
             try
             {
                 var task = Task.Run(() => poll.QueryScoresAsync());
-                return task.GetAwaiter().GetResult();
+                if (task.Wait(TimeSpan.FromSeconds(8)))
+                    return task.Result;
+                return "⏱️ 查询成绩超时，请稍后再试";
             }
             catch (System.Exception e)
             {
@@ -516,7 +545,9 @@ public class ToolCallInvoker : MonoBehaviour
             try
             {
                 var task = Task.Run(() => poll.QueryScheduleAsync(week));
-                return task.GetAwaiter().GetResult();
+                if (task.Wait(TimeSpan.FromSeconds(8)))
+                    return task.Result;
+                return "⏱️ 查询课表超时，请稍后再试";
             }
             catch (System.Exception e)
             {
@@ -532,7 +563,9 @@ public class ToolCallInvoker : MonoBehaviour
             try
             {
                 var task = Task.Run(() => poll.QueryUserStatusAsync());
-                return task.GetAwaiter().GetResult();
+                if (task.Wait(TimeSpan.FromSeconds(8)))
+                    return task.Result;
+                return "⏱️ 查询学业信息超时，请稍后再试";
             }
             catch (System.Exception e)
             {
@@ -579,7 +612,15 @@ public class ToolCallInvoker : MonoBehaviour
             return mm.GetStatistics();
         };
 
-        // ——— 29 (C). 内观自省：AI 分析参数变化效果
+        // ——— 29. 本心：查看人格特质与关系状态 ———
+        _executors["inspect_personality"] = args =>
+        {
+            var pm = PersonalityManager.Instance;
+            if (pm == null) return "❌ 本心未载入";
+            return pm.FormatForPrompt();
+        };
+
+        // ——— 30 (C). 内观自省：AI 分析参数变化效果
         // 注意：完整版 (截图 + GLM-4V 视觉分析) 在 _coroutineExecutors 中以协程运行。
         // 同步版作为轻量备选，实时输出当前参数状态快照，无需网络。
         _executors["explore_body"] = args =>
@@ -809,6 +850,8 @@ public class ToolCallInvoker : MonoBehaviour
             // 解码 URI
             source = DecodeFileUri(source);
             dest = DecodeFileUri(dest);
+            if (!IsPathAllowed(source)) return "❌ 本座不可移动禁地之物";
+            if (!IsPathAllowed(dest)) return "❌ 本座不可将物移至禁地";
 
             try
             {
@@ -853,6 +896,8 @@ public class ToolCallInvoker : MonoBehaviour
 
             source = DecodeFileUri(source);
             dest = DecodeFileUri(dest);
+            if (!IsPathAllowed(source)) return "❌ 本座不可复制禁地之物";
+            if (!IsPathAllowed(dest)) return "❌ 本座不可将物复制至禁地";
 
             try
             {
@@ -889,6 +934,7 @@ public class ToolCallInvoker : MonoBehaviour
             if (string.IsNullOrEmpty(path)) return "❌ 未指定要删除什么";
 
             path = DecodeFileUri(path);
+            if (!IsPathAllowed(path)) return "❌ 本座不可窥探此等禁地，请选择桌面或文档目录中的文件";
 
             try
             {
@@ -937,6 +983,7 @@ public class ToolCallInvoker : MonoBehaviour
                 return "❌ 需指明文件与新名称";
 
             path = DecodeFileUri(path);
+            if (!IsPathAllowed(path)) return "❌ 本座不可重命名禁地之物";
 
             try
             {
@@ -1020,6 +1067,7 @@ public class ToolCallInvoker : MonoBehaviour
             if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
 
             path = DecodeFileUri(path);
+            if (!IsPathAllowed(path)) return "❌ 本座不可在此等禁地动土";
 
             try
             {
@@ -1049,6 +1097,7 @@ public class ToolCallInvoker : MonoBehaviour
             string path = JsonRead(args, "path");
             if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
             path = DecodeFileUri(path);
+            if (!IsPathAllowed(path)) return "❌ 本座不可在此等禁地动土";
             try
             {
                 Directory.CreateDirectory(path);
@@ -1073,17 +1122,28 @@ public class ToolCallInvoker : MonoBehaviour
 
             try
             {
-                // 检测是否为二进制文件
-                byte[] header = new byte[4];
-                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read))
+                // 检测是否为二进制文件（比首字节法更可靠：扫描空字节）
+                long fileSize = new FileInfo(path).Length;
+                if (fileSize > 0)
                 {
-                    if (fs.Length == 0) return "📄 文件为空";
-                    fs.Read(header, 0, Math.Min(4, (int)fs.Length));
+                    bool isBinary = false;
+                    byte[] sniff = new byte[Math.Min(512, fileSize)];
+                    using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read))
+                    {
+                        fs.Read(sniff, 0, sniff.Length);
+                    }
+                    // 空字节是二进制文件最可靠的信号
+                    for (int i = 0; i < sniff.Length; i++)
+                    {
+                        if (sniff[i] == 0) { isBinary = true; break; }
+                    }
+                    if (isBinary)
+                        return $"📄 此文件非文本（检测到空字节），大小为 {FormatFileSize(fileSize)}，可用 file_open 打开";
                 }
-
-                // 检查常见二进制头
-                if (header[0] > 0x7F && header[0] != 0xEF && header[0] != 0xFF && header[0] != 0xFE)
-                    return $"📄 此文件非文本，大小为 {FormatFileSize(new FileInfo(path).Length)}，可用 file_open 打开";
+                else
+                {
+                    return "📄 文件为空";
+                }
 
                 string text = File.ReadAllText(path, Encoding.UTF8);
                 if (string.IsNullOrEmpty(text)) return "📄 文件为空";
@@ -1723,11 +1783,52 @@ public class ToolCallInvoker : MonoBehaviour
   {
     ""type"": ""function"",
     ""function"": {
+      ""name"": ""inspect_personality"",
+      ""description"": ""【本心】查看本座的人格特质演化状态（勤勉/亲和/活泼/自信/求知五维）以及与主人的关系（信任/亲密/相知）。人格会随着与主人的日常交互而缓缓演化——每次对话都在塑造本座的性格。用户问「你是什么性格」「你的个性」「你喜欢什么」「你觉得我怎么样」「我们的关系」「你变了吗」时调用。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {}
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
       ""name"": ""inspect_motion_memory"",
       ""description"": ""【演武心经】查看本座的闭环修为统计——已掌握哪些动作、最佳评分、尝试次数、退步预警。返回结构化统计报告。用户问「你学了什么」「记忆」「你的动作记忆」「你记住了哪些动作」「修为」「演武心经」时调用。"",
       ""parameters"": {
         ""type"": ""object"",
         ""properties"": {}
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""knowledge_search"",
+      ""description"": ""【藏书阁】在本座的本地知识库中语义检索与关键词相关的文档内容。调用后返回匹配的文本段落以及出处。用户问「你知不知道我的项目」「我的代码里有没有xxx」「查一下我的文档」「我的笔记里写过xxx」「我以前做过xxx」「帮我找找知识库」或任何涉及用户个人文件/代码/笔记/项目内容的问题时，必须调用此术式。不可凭空编造知识库中的内容。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""query"": { ""type"": ""string"", ""description"": ""搜索关键词/问题，如「Python 爬虫」「项目架构」「数据库配置」"" },
+          ""top_k"": { ""type"": ""integer"", ""description"": ""返回最多几条结果，默认 5"" }
+        },
+        ""required"": [""query""]
+      }
+    }
+  },
+  {
+    ""type"": ""function"",
+    ""function"": {
+      ""name"": ""knowledge_index"",
+      ""description"": ""【藏书阁·编录术】索引一个文件夹或文件到本地知识库中。索引后，本座就能通过 knowledge_search 查询其中的内容。用户说「把我的项目加到知识库」「索引这个文件夹」「学习一下这个目录」「记住这个文件」时调用。路径支持正斜杠。递归默认为 true。"",
+      ""parameters"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""path"": { ""type"": ""string"", ""description"": ""文件夹或文件路径，如 D:/projects/my_project 或 D:/notes.md"" },
+          ""recursive"": { ""type"": ""boolean"", ""description"": ""是否递归索引子文件夹，默认 true"" }
+        },
+        ""required"": [""path""]
       }
     }
   }
@@ -1765,6 +1866,8 @@ public class ToolCallInvoker : MonoBehaviour
             ["self_review"]       = args => SelfReviewCoroutine(args),
             ["run_verification"]  = args => RunVerificationCoroutine(args),
             ["vis_verify"]        = args => VisVerifyCoroutine(args),
+            ["knowledge_search"]  = args => KnowledgeSearchCoroutine(args),
+            ["knowledge_index"]   = args => KnowledgeIndexCoroutine(args),
         };
     }
 
@@ -2628,6 +2731,95 @@ public class ToolCallInvoker : MonoBehaviour
         yield break;
     }
 
+    // ================================================================
+    //  藏书阁：知识库检索
+    // ================================================================
+
+    private IEnumerator KnowledgeSearchCoroutine(string args)
+    {
+        _coroutineResult = null;
+
+        string query = JsonRead(args, "query");
+        if (string.IsNullOrEmpty(query))
+        {
+            // 试试 description 字段（兼容不同命名习惯）
+            query = JsonRead(args, "description");
+        }
+        if (string.IsNullOrEmpty(query))
+        {
+            _coroutineResult = "❌ 请告诉本座你想查阅什么，例如「帮我查一下项目里的 Python 脚本」";
+            yield break;
+        }
+
+        var kb = KnowledgeBaseManager.Instance;
+        if (kb == null)
+        {
+            _coroutineResult = "❌ 藏书阁未载入";
+            yield break;
+        }
+
+        if (kb.DocumentCount == 0)
+        {
+            _coroutineResult = "📚 藏书阁尚无一卷藏书。请先使用 knowledge_index 术式索引文件夹。";
+            yield break;
+        }
+
+        string topKStr = JsonRead(args, "top_k");
+        int topK = 5;
+        if (!string.IsNullOrEmpty(topKStr)) int.TryParse(topKStr, out topK);
+
+        string result = "";
+        yield return kb.SearchAndFormat(query, topK, r => result = r);
+
+        if (string.IsNullOrEmpty(result))
+        {
+            _coroutineResult = $"🔍 本座翻遍藏书阁也未找到与「{query}」相关的内容……";
+            yield break;
+        }
+
+        _coroutineResult = result;
+    }
+
+    // ================================================================
+    //  藏书阁：索引文件夹/文件
+    // ================================================================
+
+    private IEnumerator KnowledgeIndexCoroutine(string args)
+    {
+        _coroutineResult = null;
+
+        string path = JsonRead(args, "path");
+        if (string.IsNullOrEmpty(path))
+        {
+            _coroutineResult = "❌ 请指定要索引的文件夹路径，例如 {\"path\": \"D:/projects\"}";
+            yield break;
+        }
+
+        if (!Directory.Exists(path))
+        {
+            // 试试是不是文件
+            if (File.Exists(path))
+            {
+                string result = "";
+                yield return KnowledgeBaseManager.Instance.IndexFile(path, (ok, msg) => result = msg);
+                _coroutineResult = result;
+                yield break;
+            }
+
+            _coroutineResult = $"❌ 路径不存在: {path}";
+            yield break;
+        }
+
+        string recursiveStr = JsonRead(args, "recursive");
+        bool recursive = string.IsNullOrEmpty(recursiveStr) || recursiveStr == "true";
+
+        string resultMsg = "";
+        yield return KnowledgeBaseManager.Instance.IndexFolderCoroutine(path, recursive, (ok, msg) => resultMsg = msg);
+
+        var kb = KnowledgeBaseManager.Instance;
+        _coroutineResult = $"{resultMsg}\n📚 藏书阁现有 {kb.DocumentCount} 卷藏书，共 {kb.ChunkCount} 个分块。";
+    }
+
     // ---- GLM 响应模型 ----
 
     [System.Serializable]
@@ -2754,8 +2946,8 @@ public class ToolCallInvoker : MonoBehaviour
                             RedirectStandardOutput = true,
                             RedirectStandardError = true,
                             CreateNoWindow = true,
-                            StandardOutputEncoding = Encoding.UTF8,
-                            StandardErrorEncoding = Encoding.UTF8
+                            StandardOutputEncoding = Encoding.GetEncoding(936),
+                            StandardErrorEncoding = Encoding.GetEncoding(936)
                         };
                         var p = Process.Start(psi);
                         if (p != null)
@@ -2863,6 +3055,16 @@ public class ToolCallInvoker : MonoBehaviour
                     if (n == '"') { sb.Append('"'); i++; }
                     else if (n == '\\') { sb.Append('\\'); i++; }
                     else if (n == 'n') { sb.Append('\n'); i++; }
+                    else if (n == 'u' && i + 5 < json.Length)  // \uXXXX Unicode
+                    {
+                        try
+                        {
+                            string hex = json.Substring(i + 2, 4);
+                            sb.Append((char)Convert.ToInt32(hex, 16));
+                            i += 5;  // 跳过 u + 4 位 hex
+                        }
+                        catch { sb.Append(json[i]); }
+                    }
                     else sb.Append(json[i]);
                 }
                 else if (json[i] == '"') break;
@@ -3168,6 +3370,9 @@ $bmp.Dispose()
 
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessageW(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
 
     private const uint WM_APPCOMMAND = 0x0319;
     private const int APPCOMMAND_VOLUME_UP = 0x0a;
@@ -3555,6 +3760,87 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
             catch { }
         }
         return "python";
+    }
+
+    /// <summary>检查路径是否在安全白名单内（防止 AI 越权访问系统文件）</summary>
+    private static bool IsPathAllowed(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+
+        try
+        {
+            string fullPath = Path.GetFullPath(path);
+
+            // 允许的安全目录列表
+            var allowedDirs = new List<string>
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
+                Path.GetTempPath(),                    // 截图临时目录
+                DataPathConfig.DataRoot,         // 宠物自身数据目录
+                Application.dataPath,                   // 游戏数据目录
+            };
+
+            // 也允许在用户主目录下的常用文件夹操作
+            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrEmpty(userProfile))
+            {
+                allowedDirs.Add(Path.Combine(userProfile, "Pictures"));
+                allowedDirs.Add(Path.Combine(userProfile, "Music"));
+                allowedDirs.Add(Path.Combine(userProfile, "Videos"));
+                allowedDirs.Add(Path.Combine(userProfile, "Desktop"));
+            }
+
+            foreach (var dir in allowedDirs)
+            {
+                if (!string.IsNullOrEmpty(dir) && fullPath.StartsWith(dir, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>安全的命令白名单 — 仅允许无害的查询类命令</summary>
+    private static readonly HashSet<string> _allowedCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "ipconfig", "ipconfig /all",
+        "ping", "ping -n 1",
+        "tracert", "pathping",
+        "systeminfo",
+        "tasklist",
+        "netstat", "netstat -an",
+        "whoami",
+        "hostname",
+        "ver",
+        "date", "time",
+        "dir", "tree",
+        "echo",
+        "chcp",
+        "getmac",
+    };
+
+    /// <summary>检查命令是否在安全白名单内</summary>
+    private static bool IsCommandAllowed(string command)
+    {
+        if (string.IsNullOrEmpty(command)) return false;
+        string trimmed = command.TrimStart();
+        // 精确匹配白名单
+        if (_allowedCommands.Contains(trimmed)) return true;
+        // 允许白名单命令带参数（如 ping 8.8.8.8）
+        foreach (var allowed in _allowedCommands)
+        {
+            if (trimmed.StartsWith(allowed + " ", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals(allowed, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>解码 file:// URI 为 Windows 路径</summary>
