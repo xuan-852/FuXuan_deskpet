@@ -1,6 +1,6 @@
 using System;
-using System.Text;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -55,22 +55,21 @@ public static class OpenClawBridge
             string raw = req.downloadHandler?.text ?? "{}";
             try
             {
-                // 手动简易 JSON 解析
-                string success = ExtractJsonValue(raw, "success");
-                if (success == "true")
+                var obj = JObject.Parse(raw);
+                bool success = obj["success"]?.Value<bool>() ?? false;
+                if (success)
                 {
                     IsAvailable = true;
                     LastError = "";
-                    string response = ExtractJsonValue(raw, "response");
+                    string response = obj["response"]?.ToString();
                     if (!string.IsNullOrEmpty(response))
                         return response;
 
-                    // fallback: 返回完整 body
                     return raw;
                 }
                 else
                 {
-                    string err = ExtractJsonValue(raw, "error");
+                    string err = obj["error"]?.ToString() ?? "未知错误";
                     LastError = err;
                     return $"❌ 通神术式未应验: {err}";
                 }
@@ -104,57 +103,22 @@ public static class OpenClawBridge
             }
 
             string raw = req.downloadHandler?.text ?? "";
-            string status = ExtractJsonValue(raw, "status");
-            IsAvailable = (status == "ok");
+            try
+            {
+                var obj = JObject.Parse(raw);
+                string status = obj["status"]?.ToString();
+                IsAvailable = (status == "ok");
+            }
+            catch
+            {
+                IsAvailable = false;
+            }
+
             if (!IsAvailable)
                 LastError = "通神阵法未就绪";
             else
                 LastError = "";
             return IsAvailable;
         }
-    }
-
-    /// <summary>简易 JSON 字段提取（不依赖外部库）</summary>
-    private static string ExtractJsonValue(string json, string key)
-    {
-        string search = $"\"{key}\":\"";
-        int idx = json.IndexOf(search);
-        if (idx >= 0)
-        {
-            idx += search.Length;
-            var sb = new StringBuilder();
-            for (int i = idx; i < json.Length; i++)
-            {
-                if (json[i] == '\\' && i + 1 < json.Length)
-                {
-                    char n = json[i + 1];
-                    if (n == '"') { sb.Append('"'); i++; }
-                    else if (n == '\\') { sb.Append('\\'); i++; }
-                    else if (n == 'n') { sb.Append('\n'); i++; }
-                    else sb.Append(json[i]);
-                }
-                else if (json[i] == '"') break;
-                else sb.Append(json[i]);
-            }
-            return sb.ToString().Trim();
-        }
-
-        // 尝试提取不带引号的布尔/数字值
-        search = $"\"{key}\":";
-        idx = json.IndexOf(search);
-        if (idx >= 0)
-        {
-            idx += search.Length;
-            var sb = new StringBuilder();
-            for (int i = idx; i < json.Length; i++)
-            {
-                char c = json[i];
-                if (c == ',' || c == '}' || c == ']') break;
-                sb.Append(c);
-            }
-            return sb.ToString().Trim().Trim('"');
-        }
-
-        return "";
     }
 }

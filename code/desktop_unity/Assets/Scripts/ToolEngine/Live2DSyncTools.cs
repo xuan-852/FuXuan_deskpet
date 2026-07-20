@@ -12,7 +12,9 @@ public class SetExpressionTool : IPetTool
 {
     public string ToolName => "set_expression";
     public string ToolDescription => "【法身·变脸术】切换桌面宠物的面部表情。用户说「笑一个」「换个表情」「伤心脸」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""expression"":{""type"":""string"",""description"":""表情名称，如 happy/sad/angry/surprised/cry/embarrassed/love/default 等""}},""required"":[""expression""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("expression", "string", "表情名称，如 happy/sad/angry/surprised/cry/embarrassed/love/default 等")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -36,7 +38,9 @@ public class PlayActionTool : IPetTool
 {
     public string ToolName => "play_action";
     public string ToolDescription => "【法身·演武】播放一段复合动作（挥手/点头/摇头/叉腰/跳舞等）。用户说「做个动作」「挥手」「跳个舞」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""description"":""动作名称，如 wave/nod/shake_hands/bow/stretch/dance 等""}},""required"":[""action""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("action", "string", "动作名称，如 wave/nod/shake_hands/bow/stretch/dance 等")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -60,7 +64,7 @@ public class StopActionTool : IPetTool
 {
     public string ToolName => "stop_action";
     public string ToolDescription => "【法身·归元】停止当前所有动作和表情，恢复常态。用户说「停下来」「归元」「别动了」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+    public string ToolParametersJson => ToolSchema.Empty;
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -82,7 +86,7 @@ public class InspectMotionMemoryTool : IPetTool
 {
     public string ToolName => "inspect_motion_memory";
     public string ToolDescription => "【法身·演武心经】查看闭环修为统计——所有演武动作的记录、得分和最佳成绩。用户问「动作记录」「演武统计」「看看学了多少动作」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+    public string ToolParametersJson => ToolSchema.Empty;
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -103,7 +107,7 @@ public class InspectPersonalityTool : IPetTool
 {
     public string ToolName => "inspect_personality";
     public string ToolDescription => "【法身·本心】查看当前人格特质与关系状态。用户问「你现在是什么性格」「我们的关系如何」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+    public string ToolParametersJson => ToolSchema.Empty;
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -124,7 +128,7 @@ public class ExploreBodySyncTool : IPetTool
 {
     public string ToolName => "explore_body";
     public string ToolDescription => "【法身·内观自省】查看当前身体各部位参数状态（同步版本，无需GLM视觉）。输出头部/眼睛/眉毛/嘴/身体/手臂等所有可动部件的实时参数值。用户问「你现在是什么姿势」「参数状态」时调用。完整视觉分析用异步版本。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+    public string ToolParametersJson => ToolSchema.Empty;
     public bool IsAsync => true; // 既有同步快照又有异步GLM分析，以异步为主
 
     public string Execute(string argsJson) => "⏳ 本座正在内观……";
@@ -206,7 +210,10 @@ public class ControlBodyTool : IPetTool
 {
     public string ToolName => "control_body";
     public string ToolDescription => "【法身·御形】精确控制身体参数或套用表情模板。用户说「把头转过来」「抬起右手」「歪头笑」时调用。可指定具体参数值（如 ParamAngleX=15）或表情名称。自动锁定防空闲动画覆盖，持续到下次解锁。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""expression"":{""type"":""string"",""description"":""表情/姿势模板名称，如 happy/sad/angry/tilt_head 等（可选）""},""params"":{""type"":""object"",""description"":""具体参数映射，如 {""ParamAngleX"":15,""ParamAngleY"":5}（可选）""}},""required"":[]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Opt("expression", "string", "表情/姿势模板名称，如 happy/sad/angry/tilt_head 等（可选）"),
+        ToolSchema.Opt("params", "object", "具体参数映射，如 {\"ParamAngleX\":15,\"ParamAngleY\":5}（可选）")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)

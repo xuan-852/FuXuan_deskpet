@@ -16,7 +16,10 @@ public class GenerateMotionTool : IPetTool
 {
     public string ToolName => "generate_motion";
     public string ToolDescription => "【法身·演武】根据自然语言描述生成并播放动作。不但会动，还能自动截图并送 GLM-4V 考官评价质量（闭环自评）。用户说「做个开心的动作」「演武」「跳个舞」「挥手」时调用。需要文字描述，越详细越好。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""description"":{""type"":""string"",""description"":""动作描述，如「开心地挥手」「害羞地遮脸」「叉腰生气」""},""duration"":{""type"":""number"",""description"":""持续时间（秒），默认3秒""}},""required"":[""description""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("description", "string", "动作描述，如「开心地挥手」「害羞地遮脸」「叉腰生气」"),
+        ToolSchema.Opt("duration", "number", "持续时间（秒），默认3秒")
+    );
     public bool IsAsync => true;
 
     public string Execute(string argsJson) => "⏳ 演武中……";
@@ -141,7 +144,9 @@ public class ExploreBodyVisionTool : IPetTool
 {
     public string ToolName => "explore_body_vision";
     public string ToolDescription => "【法身·内观自省 GLM】截取法身当前渲染图 → GLM-4V 视觉分析各部位状态 → 输出详细分析。比同步版 explore_body 更直观，能看到具体画面。用户说「AI看看我现在」「帮我看看我的姿势」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""focus"":{""type"":""string"",""description"":""关注重点，如 face/hand/body/overall，可选""}},""required"":[]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Opt("focus", "string", "关注重点，如 face/hand/body/overall，可选")
+    );
     public bool IsAsync => true;
 
     public string Execute(string argsJson) => "⏳ 本座正在内观……";
@@ -300,7 +305,9 @@ public class RunVerificationTool : IPetTool
 {
     public string ToolName => "run_verification";
     public string ToolDescription => "【验阵校验·已废弃】快速校验 5 个硬编码模板（挥手/点头/摇头/鞠躬/伸懒腰）的参数范围。注意：此工具仅检查模板参数是否在范围内，不像 vis_verify 那样让 GLM-4V 考官实际观察 AI 执行效果。已被 vis_verify 取代！如果已经执行过 vis_verify，无需再调此工具。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""tier"":{""type"":""string"",""description"":""验证级别：quick（摘要）/ full（完整报告，可能很长），默认 quick""}},""required"":[]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Opt("tier", "string", "验证级别：quick（摘要）/ full（完整报告，可能很长），默认 quick")
+    );
     public bool IsAsync => true;
 
     public string Execute(string argsJson) => "⏳ 验阵中……";
@@ -349,7 +356,9 @@ public class VisVerifyTool : IPetTool
 {
     public string ToolName => "vis_verify";
     public string ToolDescription => "【视觉具身验证·推荐】让本座依次播放所有运动模板并截取执行截图，逐帧送 GLM-4V 考官验证执行质量。用户说「验证一下动作」「检查动作质量」「做个全面体检」「动作测试」时调用。包含闭环学习，结果写入演武心经。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""mode"":{""type"":""string"",""description"":""验证模式：test_only（默认，完整验证）/ quick（返回上次缓存摘要）""}},""required"":[]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Opt("mode", "string", "验证模式：test_only（默认，完整验证）/ quick（返回上次缓存摘要）")
+    );
     public bool IsAsync => true;
 
     public string Execute(string argsJson) => "⏳ 法阵验证中……";
@@ -435,7 +444,9 @@ public class SelfReviewTool : IPetTool
 {
     public string ToolName => "self_review";
     public string ToolDescription => "【法身·自省】播放指定动作模板并截图，送 GLM-4V 审视线下执行效果。用户说「看看我刚才做得怎么样」「评审这个动作」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""description"":""要评价的动作模板名称，如 wave/nod/bow 等""}},""required"":[""action""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("action", "string", "要评价的动作模板名称，如 wave/nod/bow 等")
+    );
     public bool IsAsync => true;
 
     public string Execute(string argsJson) => "⏳ 自省中……";

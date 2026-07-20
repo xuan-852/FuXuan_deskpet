@@ -11,7 +11,12 @@ public class SetReminderTool : IPetTool
 {
     public string ToolName => "set_reminder";
     public string ToolDescription => "【卜算记事】设置提醒/待办事项。用户说「提醒我xxx」「记一下xxx」「设个提醒」时调用。支持时间（yyyy-MM-dd HH:mm）、重复周期（daily/weekly/monthly）和优先级（high/normal/low）。默认1小时后。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""text"":{""type"":""string"",""description"":""提醒内容""},""remind_at"":{""type"":""string"",""description"":""提醒时间，格式 yyyy-MM-dd HH:mm，为空则自动设为1小时后""},""recurring"":{""type"":""string"",""description"":""重复周期：daily/weekly/monthly，不重复则留空""},""priority"":{""type"":""string"",""description"":""优先级：high/normal/low，默认 normal""}},""required"":[""text""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("text", "string", "提醒内容"),
+        ToolSchema.Opt("remind_at", "string", "提醒时间，格式 yyyy-MM-dd HH:mm，为空则自动设为1小时后"),
+        ToolSchema.Opt("recurring", "string", "重复周期：daily/weekly/monthly，不重复则留空"),
+        ToolSchema.Opt("priority", "string", "优先级：high/normal/low，默认 normal")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -67,7 +72,7 @@ public class QueryRemindersTool : IPetTool
 {
     public string ToolName => "query_reminders";
     public string ToolDescription => "【卜算记事】查询所有待办提醒。用户问「有什么提醒」「查提醒」「未办事项」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+    public string ToolParametersJson => ToolSchema.Empty;
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -88,7 +93,9 @@ public class MarkReminderDoneTool : IPetTool
 {
     public string ToolName => "mark_reminder_done";
     public string ToolDescription => "【卜算记事】将提醒标记为已完成。用户说「完成了」「勾掉」「搞定」时调用。支持用 ID 前几位匹配。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""id"":{""type"":""string"",""description"":""提醒 ID（支持前几位模糊匹配）""}},""required"":[""id""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("id", "string", "提醒 ID（支持前几位模糊匹配）")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -118,7 +125,9 @@ public class DeleteReminderTool : IPetTool
 {
     public string ToolName => "delete_reminder";
     public string ToolDescription => "【卜算记事】删除提醒。用户说「删掉这个提醒」「移除提醒」时调用。支持用 ID 前几位匹配。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""id"":{""type"":""string"",""description"":""提醒 ID（支持前几位模糊匹配）""}},""required"":[""id""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("id", "string", "提醒 ID（支持前几位模糊匹配）")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -173,7 +182,7 @@ public class QueryExamsTool : BaseAcademicTool
 {
     public override string ToolName => "query_exams";
     public override string ToolDescription => "【学业占卜】查询最近的考试安排。用户问「最近有什么考试」「考试安排」时调用。数据来自课表传讯服务（ServerPollService），自动绑定学校教务系统。";
-    public override string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+public override string ToolParametersJson => ToolSchema.Empty;
 
     public override IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
@@ -196,7 +205,7 @@ public class QueryScoresTool : BaseAcademicTool
 {
     public override string ToolName => "query_scores";
     public override string ToolDescription => "【学业占卜】查询已出成绩。用户问「成绩出来了吗」「考了多少分」「查成绩」时调用。";
-    public override string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+public override string ToolParametersJson => ToolSchema.Empty;
 
     public override IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
@@ -219,7 +228,9 @@ public class QueryScheduleTool : BaseAcademicTool
 {
     public override string ToolName => "query_schedule";
     public override string ToolDescription => "【学业占卜】查询课程表。用户问「今天有什么课」「下周课表」「什么时候上课」时调用。";
-    public override string ToolParametersJson => @"{""type"":""object"",""properties"":{""week"":{""type"":""integer"",""description"":""第几周（0=本周，1=下周...），默认0""}},""required"":[]}";
+public override string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Opt("week", "integer", "第几周（0=本周，1=下周...），默认0")
+    );
 
     public override IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
@@ -245,7 +256,7 @@ public class QueryUserStatusTool : BaseAcademicTool
 {
     public override string ToolName => "query_user_status";
     public override string ToolDescription => "【学业占卜】查看用户绑定状态和学业概览。用户问「我绑定了什么」「学业信息」时调用。";
-    public override string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+public override string ToolParametersJson => ToolSchema.Empty;
 
     public override IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {

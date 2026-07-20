@@ -16,7 +16,7 @@ public class TakeScreenshotTool : IPetTool
 {
     public string ToolName => "take_screenshot";
     public string ToolDescription => "【法眼摄形】截图并让 AI 分析屏幕内容。用户说「看看我的屏幕」「帮我看一下电脑」「截图」时调用。静默截图，不留本地文件痕迹。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+    public string ToolParametersJson => ToolSchema.Empty;
     public bool IsAsync => true;
 
     public string Execute(string argsJson) => "⏳ 法眼摄形中……";
@@ -134,7 +134,10 @@ public class KnowledgeSearchTool : IPetTool
 {
     public string ToolName => "knowledge_search";
     public string ToolDescription => "【藏书阁·阅魂术】搜索本地知识库中的内容。用户问关于代码库、项目结构、文件内容等问题，且这些内容已被索引时调用。先 knowledge_index 再搜索。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""query"":{""type"":""string"",""description"":""搜索关键词或自然语言查询""},""top_k"":{""type"":""integer"",""description"":""返回结果数量，默认5""}},""required"":[""query""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("query", "string", "搜索关键词或自然语言查询"),
+        ToolSchema.Opt("top_k", "integer", "返回结果数量，默认5")
+    );
     public bool IsAsync => true;
 
     public string Execute(string argsJson) => "⏳ 翻阅藏书阁中……";
@@ -175,7 +178,10 @@ public class KnowledgeIndexTool : IPetTool
 {
     public string ToolName => "knowledge_index";
     public string ToolDescription => "【藏书阁·编录术】索引一个文件夹或文件到本地知识库中。索引后，本座就能通过 knowledge_search 查询其中的内容。用户说「把我的项目加到知识库」「索引这个文件夹」「学习一下这个目录」「记住这个文件」时调用。路径支持正斜杠。递归默认为 true。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""path"":{""type"":""string"",""description"":""要索引的文件或文件夹路径""},""recursive"":{""type"":""boolean"",""description"":""是否递归索引子文件夹，默认 true""}},""required"":[""path""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("path", "string", "要索引的文件或文件夹路径"),
+        ToolSchema.Opt("recursive", "boolean", "是否递归索引子文件夹，默认 true")
+    );
     public bool IsAsync => true;
 
     public string Execute(string argsJson) => "⏳ 编录中……";
@@ -221,7 +227,9 @@ public class OpenClawSearchTool : IPetTool
 {
     public string ToolName => "openclaw_search";
     public string ToolDescription => "【太卜通神算术式】让本座通过 AI 搜索引擎自主上网查阅最新信息。当需要获取实时信息、最新新闻、查询联网数据时使用。注意：此为最终工具，调用后直接返回搜索结果，请勿再调用其它工具！";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""query"":{""type"":""string"",""description"":""搜索查询或要研究的问题，尽量详细""}},""required"":[""query""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("query", "string", "搜索查询或要研究的问题，尽量详细")
+    );
     public bool IsAsync => true;
 
     public string Execute(string argsJson) => "⏳ 太卜通神算术式运转中……";

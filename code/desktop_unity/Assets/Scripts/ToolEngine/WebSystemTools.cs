@@ -13,7 +13,9 @@ public class OpenUrlTool : IPetTool
 {
     public string ToolName => "open_url";
     public string ToolDescription => "在默认浏览器中打开指定网址。比如用户说「打开B站」就调用此术。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""url"":{""type"":""string"",""description"":""要打开的完整网址""}},""required"":[""url""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("url", "string", "要打开的完整网址")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -36,7 +38,9 @@ public class SearchTool : IPetTool
 {
     public string ToolName => "search";
     public string ToolDescription => "在 Bing 搜索引擎上查询信息并打开浏览器显示结果。用户说「帮我搜一下xxx」时调用。禁止用于查询天气（天气请用 get_weather）";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""query"":{""type"":""string"",""description"":""搜索关键词""}},""required"":[""query""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("query", "string", "搜索关键词")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -63,7 +67,9 @@ public class OpenAppTool : IPetTool
 {
     public string ToolName => "open_app";
     public string ToolDescription => "启动一个应用程序或打开文件。比如「打开计算器」「打开记事本」「帮我打开D盘下的某某文件」";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""name"":{""type"":""string"",""description"":""应用名称或文件路径，如 calc、notepad、D:/path/file.txt""}},""required"":[""name""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("name", "string", "应用名称或文件路径，如 calc、notepad、D:/path/file.txt")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -117,7 +123,9 @@ public class OpenFolderTool : IPetTool
 {
     public string ToolName => "open_folder";
     public string ToolDescription => "在文件资源管理器中打开指定文件夹。用户说「打开D盘」「打开桌面」「打开下载文件夹」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""path"":{""type"":""string"",""description"":""文件夹路径，如果为空则打开桌面""}},""required"":[]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Opt("path", "string", "文件夹路径，如果为空则打开桌面")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -163,7 +171,7 @@ public class GetSystemInfoTool : IPetTool
 {
     public string ToolName => "get_system_info";
     public string ToolDescription => "获取电脑的系统信息，包括操作系统、CPU、内存、磁盘、运行时间等。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+    public string ToolParametersJson => ToolSchema.Empty;
     public bool IsAsync => false;
 
     public string Execute(string argsJson) => ToolHelpers.GetSystemInfo();
@@ -178,7 +186,7 @@ public class LockScreenTool : IPetTool
 {
     public string ToolName => "lock_screen";
     public string ToolDescription => "锁定电脑屏幕。用户说「锁屏」「离开一下」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+    public string ToolParametersJson => ToolSchema.Empty;
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -203,7 +211,9 @@ public class SetVolumeTool : IPetTool
 {
     public string ToolName => "set_volume";
     public string ToolDescription => "调节系统音量。用户说「声音大一点」「音量调到50」「静音」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""level"":{""type"":""integer"",""description"":""音量值 0～100""}},""required"":[""level""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("level", "integer", "音量值 0～100")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -225,7 +235,9 @@ public class MuteTool : IPetTool
 {
     public string ToolName => "mute";
     public string ToolDescription => "切换静音状态。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""muted"":{""type"":""boolean"",""description"":""true=静音 false=取消静音""}},""required"":[""muted""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("muted", "boolean", "true=静音 false=取消静音")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -250,7 +262,7 @@ public class GetMousePosTool : IPetTool
 {
     public string ToolName => "get_mouse_pos";
     public string ToolDescription => "获取鼠标当前在屏幕上的位置坐标。用户问「鼠标在哪」「光标位置」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+    public string ToolParametersJson => ToolSchema.Empty;
     public bool IsAsync => false;
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT lpPoint);
@@ -276,7 +288,9 @@ public class ListFilesTool : IPetTool
 {
     public string ToolName => "list_files";
     public string ToolDescription => "列出指定目录下的文件和子目录。用户说「看看桌面上有什么」「D盘有什么」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""path"":{""type"":""string"",""description"":""目录路径，为空则桌面""}},""required"":[]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Opt("path", "string", "目录路径，为空则桌面")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -316,7 +330,10 @@ public class NotifyTool : IPetTool
 {
     public string ToolName => "notify";
     public string ToolDescription => "发送 Windows 桌面通知。当你有什么事情想主动告诉用户但用户可能在忙时，用此术弹窗。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""title"":{""type"":""string"",""description"":""通知标题""},""message"":{""type"":""string"",""description"":""通知正文""}},""required"":[""message""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Opt("title", "string", "通知标题"),
+        ToolSchema.Req("message", "string", "通知正文")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -340,7 +357,9 @@ public class RunCommandTool : IPetTool
 {
     public string ToolName => "run_command";
     public string ToolDescription => "执行一条 CMD 命令。高级用法，只有用户明确要求执行特定命令时才使用。需要用户确认。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""command"":{""type"":""string"",""description"":""要执行的命令""}},""required"":[""command""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("command", "string", "要执行的命令")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -384,7 +403,9 @@ public class PowerTool : IPetTool
 {
     public string ToolName => "power";
     public string ToolDescription => "关机 / 重启 / 睡眠。用户明确说「关机」「重启电脑」时调用。需要用户确认后才能执行。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""action"":{""type"":""string"",""enum"":[""shutdown"",""restart"",""sleep""],""description"":""shutdown=关机 restart=重启 sleep=睡眠""}},""required"":[""action""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("action", "string", "shutdown=关机 restart=重启 sleep=睡眠")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)

@@ -14,7 +14,7 @@ public class GetClipboardTool : IPetTool
 {
     public string ToolName => "get_clipboard";
     public string ToolDescription => "读取剪贴板文本内容。用户说「看剪贴板」「复制了什么」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+    public string ToolParametersJson => ToolSchema.Empty;
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -36,7 +36,9 @@ public class SetClipboardTool : IPetTool
 {
     public string ToolName => "set_clipboard";
     public string ToolDescription => "将文本写入剪贴板。用户说「帮我复制这段」「记下来」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""text"":{""type"":""string"",""description"":""要写入的文本""}},""required"":[""text""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("text", "string", "要写入的文本")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -62,7 +64,7 @@ public class GetWeatherTool : IPetTool
 {
     public string ToolName => "get_weather";
     public string ToolDescription => "【天气专用】直接读取桌面本地已经获取到的天气数据（使用和风天气或 wttr.in），无需打开浏览器或搜索。用户问任何关于天气/温度/冷热的问题时，必须优先使用此术式，绝对不能用 search 去搜索天气。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{}}";
+    public string ToolParametersJson => ToolSchema.Empty;
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -95,7 +97,9 @@ public class FileOpenTool : IPetTool
 {
     public string ToolName => "file_open";
     public string ToolDescription => "【文件管理】打开任意文件、文件夹或应用程序（自动识别路径）。用户说「打开这个」「打开文件」「帮我打开xxx」时调用。支持 file:// URI 格式。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""path"":{""type"":""string"",""description"":""文件/文件夹/应用路径，或 file:// URI""}},""required"":[""path""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("path", "string", "文件/文件夹/应用路径，或 file:// URI")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -130,7 +134,10 @@ public class FileMoveTool : IPetTool
 {
     public string ToolName => "file_move";
     public string ToolDescription => "【文件管理】移动文件/文件夹到新位置，或重命名。用户说「把这个文件移到」「移动到」「挪到」时调用。支持中文名称。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""source"":{""type"":""string"",""description"":""源文件/文件夹路径或 file:// URI""},""destination"":{""type"":""string"",""description"":""目标路径""}},""required"":[""source"",""destination""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("source", "string", "源文件/文件夹路径或 file:// URI"),
+        ToolSchema.Req("destination", "string", "目标路径")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -164,7 +171,10 @@ public class FileCopyTool : IPetTool
 {
     public string ToolName => "file_copy";
     public string ToolDescription => "【文件管理】复制文件或文件夹到新位置。用户说「复制这个到」「拷贝到」「备份一下」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""source"":{""type"":""string"",""description"":""源文件/文件夹路径或 file:// URI""},""destination"":{""type"":""string"",""description"":""目标路径""}},""required"":[""source"",""destination""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("source", "string", "源文件/文件夹路径或 file:// URI"),
+        ToolSchema.Req("destination", "string", "目标路径")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -202,7 +212,10 @@ public class FileDeleteTool : IPetTool
 {
     public string ToolName => "file_delete";
     public string ToolDescription => "【文件管理】删除文件或文件夹（默认移到回收站，加 permanent=true 则永久删除）。用户说「删掉这个」「删除文件」「把这个扔掉」时调用。操作前会自动向用户确认。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""path"":{""type"":""string"",""description"":""要删除的文件/文件夹路径或 file:// URI""},""permanent"":{""type"":""boolean"",""description"":""是否永久删除（不经过回收站），默认 false""}},""required"":[""path""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("path", "string", "要删除的文件/文件夹路径或 file:// URI"),
+        ToolSchema.Opt("permanent", "boolean", "是否永久删除（不经过回收站），默认 false")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -245,7 +258,10 @@ public class FileRenameTool : IPetTool
 {
     public string ToolName => "file_rename";
     public string ToolDescription => "【文件管理】重命名文件或文件夹。用户说「重命名」「改名为」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""path"":{""type"":""string"",""description"":""文件/文件夹路径或 file:// URI""},""new_name"":{""type"":""string"",""description"":""新文件名（含扩展名）""}},""required"":[""path"",""new_name""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("path", "string", "文件/文件夹路径或 file:// URI"),
+        ToolSchema.Req("new_name", "string", "新文件名（含扩展名）")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
@@ -276,7 +292,9 @@ public class FileInfoTool : IPetTool
 {
     public string ToolName => "file_info";
     public string ToolDescription => "【文件管理】查看文件或文件夹的详细信息（大小、创建时间、修改时间、属性等）。用户说「看看这个文件」「文件详情」「属性」「多大」时调用。";
-    public string ToolParametersJson => @"{""type"":""object"",""properties"":{""path"":{""type"":""string"",""description"":""文件/文件夹路径或 file:// URI""}},""required"":[""path""]}";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("path", "string", "文件/文件夹路径或 file:// URI")
+    );
     public bool IsAsync => false;
 
     public string Execute(string argsJson)
