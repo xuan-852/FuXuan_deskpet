@@ -1122,6 +1122,13 @@ public class ToolCallInvoker : MonoBehaviour
 
             try
             {
+                // ——— PDF 专用通道：调用 Python PyMuPDF 提取文字 ———
+                string ext = Path.GetExtension(path);
+                if (".pdf".Equals(ext, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ReadPdfViaPython(path, maxLen);
+                }
+
                 // 检测是否为二进制文件（比首字节法更可靠：扫描空字节）
                 long fileSize = new FileInfo(path).Length;
                 if (fileSize > 0)
@@ -3889,6 +3896,106 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
             string destSubDir = Path.Combine(destDir, Path.GetFileName(subDir));
             CopyDirectoryRecursive(subDir, destSubDir);
         }
+    }
+
+    /// <summary>
+    /// 用 Python PyMuPDF 桥提取 PDF 文本内容
+    /// </summary>
+    private static string ReadPdfViaPython(string pdfPath, int maxLen)
+    {
+        try
+        {
+            string scriptPath = FindPdfExtractScript();
+            if (scriptPath == null)
+                return "📄 PDF 文件：Python 提取脚本未找到，请安装 tools/pdf_extract.py";
+
+            string pythonExe = FindPythonExe();
+
+            string args = $"\"{scriptPath}\" \"{pdfPath.Replace("\"", "\\\"")}\" {maxLen}";
+
+            var psi = new ProcessStartInfo(pythonExe, args)
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
+            };
+
+            var p = Process.Start(psi);
+            if (p == null)
+                return $"❌ PDF 提取失败：无法启动 Python";
+
+            string jsonOutput = p.StandardOutput.ReadToEnd();
+            string errOutput = p.StandardError.ReadToEnd();
+            p.WaitForExit(15000);
+
+            if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(jsonOutput))
+            {
+                UnityEngine.Debug.LogWarning($"[ToolCallInvoker] PDF 提取失败: {StringExtensions.Truncate(errOutput, 200)}");
+                return $"❌ PDF 提取失败：{StringExtensions.Truncate(errOutput, 100)}";
+            }
+
+            // 解析 JSON 结果
+            try
+            {
+                var obj = Newtonsoft.Json.Linq.JObject.Parse(jsonOutput);
+                var successToken = obj["success"];
+                bool success = successToken != null && (bool)successToken;
+
+                if (!success)
+                {
+                    var errToken = obj["error"];
+                    string error = errToken != null ? (string)errToken : "未知错误";
+                    var pagesToken = obj["pages"];
+                    int? pages = pagesToken != null ? (int?)pagesToken : null;
+                    if (pages > 0)
+                        return $"📄 PDF（共 {pages} 页）为扫描件，无法提取文字，需要 OCR 软件处理";
+                    return $"❌ PDF 提取失败：{error}";
+                }
+
+                var textToken = obj["text"];
+                string text = textToken != null ? (string)textToken : "";
+                var ppToken = obj["pages"];
+                int totalPages = ppToken != null ? (int)ppToken : 0;
+                var ccToken = obj["total_chars"];
+                int totalChars = ccToken != null ? (int)ccToken : 0;
+
+                if (string.IsNullOrEmpty(text))
+                    return $"📄 PDF（共 {totalPages} 页）未提取到文字";
+
+                return $"📄 PDF（共 {totalPages} 页，提取 {totalChars} 字符）：\n\n{text}";
+            }
+            catch (Exception ex)
+            {
+                return $"❌ PDF 提取结果解析失败：{ex.Message}";
+            }
+        }
+        catch (Exception e)
+        {
+            return $"❌ PDF 读取失败：{e.Message}";
+        }
+    }
+
+    /// <summary>查找 pdf_extract.py 脚本位置</summary>
+    private static string FindPdfExtractScript()
+    {
+        string projectRoot = AppDomain.CurrentDomain.BaseDirectory;
+        string[] searchPaths =
+        {
+            Path.Combine(projectRoot, "..\\..\\..\\..\\tools\\pdf_extract.py"),
+            Path.Combine(projectRoot, "..\\..\\tools\\pdf_extract.py"),
+            Path.Combine(projectRoot, "..\\tools\\pdf_extract.py"),
+            Path.Combine(Environment.CurrentDirectory, "tools\\pdf_extract.py"),
+            @"D:\Unity\projects\Desktop_per_pro\tools\pdf_extract.py",
+        };
+        foreach (var p in searchPaths)
+        {
+            string full = Path.GetFullPath(p);
+            if (File.Exists(full)) return full;
+        }
+        return null;
     }
 
     // ---- 回收站 Shell API ----

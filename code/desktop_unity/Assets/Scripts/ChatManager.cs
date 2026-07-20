@@ -80,6 +80,14 @@ public class ChatManager : MonoBehaviour
             kbGo.transform.SetParent(transform);
         }
 
+        // ——— 确保 LocalLLMAgentService 单例存在（本地 LLM 四艺：分类/回退/压缩/提取）———
+        if (LocalLLMAgentService.Instance == null)
+        {
+            var llmGo = new GameObject("LocalLLMAgentService");
+            llmGo.AddComponent<LocalLLMAgentService>();
+            llmGo.transform.SetParent(transform);
+        }
+
         // ——— 注册反思回调：当 PetMemory 需要反思时，由我们调 LLM ———
         PetMemory.Instance.OnReflectRequest = candidates =>
         {
@@ -333,6 +341,18 @@ public class ChatManager : MonoBehaviour
         OnRequestStarted?.Invoke();
 
         StartCoroutine(SendRequestCoroutine());
+
+        // 🧠 功能1：意图/情绪分类（异步，不阻塞对话流）
+        if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
+        {
+            LocalLLMAgentService.Instance.ClassifyIntent(text.Trim(), intent =>
+            {
+                if (intent.success)
+                {
+                    Debug.Log($"[ChatManager] 🏷️ 本地灵识判断: intent={intent.intent}, emotion={intent.emotion}");
+                }
+            });
+        }
     }
 
     // ==================================================================
@@ -457,6 +477,17 @@ public class ChatManager : MonoBehaviour
                     Debug.Log($"[ChatManager] 🔄 {attempt}/3 自动重试 ({retryDelayStr}s 后)...");
                     yield return new WaitForSeconds(attempt <= 3 ? 2f : 5f);
                     continue; // 重新执行当前 round
+                }
+
+                // 🔄 功能2：离线回退 — DeepSeek 不可用时尝试本地模型
+                if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
+                {
+                    bool fallbackHandled = false;
+                    yield return StartCoroutine(OfflineFallbackCoroutine((handled) => fallbackHandled = handled));
+                    if (fallbackHandled)
+                    {
+                        yield break; // 回退已处理完毕，退出
+                    }
                 }
 
                 OnRequestError?.Invoke($"❌ 法阵术式失败: {_lastError}");
@@ -921,11 +952,110 @@ public class ChatManager : MonoBehaviour
     }
 
     // ==================================================================
+    //  🔄 功能2：离线回退协程
+    // ==================================================================
+
+    /// <summary>
+    /// 当 DeepSeek API 不可用时，用本地模型生成回复
+    /// </summary>
+    private IEnumerator OfflineFallbackCoroutine(Action<bool> onHandled)
+    {
+        if (LocalLLMAgentService.Instance == null || !LocalLLMAgentService.Instance.CanProcess)
+        {
+            onHandled?.Invoke(false);
+            yield break;
+        }
+
+        // 获取角色设定（仅性格人设，不包含工具定义）
+        string characterDesc = _systemPromptTemplate;
+        if (characterDesc.Length > 200)
+            characterDesc = characterDesc.Substring(0, 200) + "…";
+
+        // 收集最近几轮对话作为上下文
+        var recentEntries = new List<string>();
+        for (int i = Math.Max(0, _history.Count - 6); i < _history.Count; i++)
+        {
+            var e = _history[i];
+            if (e.role == "user" || e.role == "assistant")
+            {
+                recentEntries.Add($"{e.role}: {e.content}");
+            }
+        }
+        string recentHistory = string.Join("\n", recentEntries);
+
+        // 取用户最后一条消息
+        string userMessage = "";
+        for (int i = _history.Count - 1; i >= 0; i--)
+        {
+            if (_history[i].role == "user")
+            {
+                userMessage = _history[i].content;
+                break;
+            }
+        }
+        if (string.IsNullOrEmpty(userMessage))
+        {
+            onHandled?.Invoke(false);
+            yield break;
+        }
+
+        bool fallbackSuccess = false;
+        string fallbackReply = "";
+
+        // 等待本地模型生成回复（通过队列，不阻塞太久）
+        float timeout = 15f;
+        float startTime = Time.time;
+        bool gotResult = false;
+
+        LocalLLMAgentService.Instance.GenerateFallbackReply(characterDesc, recentHistory, userMessage, (ok, reply) =>
+        {
+            gotResult = true;
+            fallbackSuccess = ok;
+            fallbackReply = reply;
+        });
+
+        // 等待结果或超时
+        while (!gotResult)
+        {
+            if (Time.time - startTime > timeout)
+            {
+                Debug.LogWarning("[ChatManager] ⏰ 离线回退超时");
+                break;
+            }
+            yield return new WaitForSeconds(0.1f);
+        }
+
+        if (!fallbackSuccess || string.IsNullOrEmpty(fallbackReply))
+        {
+            Debug.LogWarning("[ChatManager] 离线回退未能生成有效回复");
+            onHandled?.Invoke(false);
+            yield break;
+        }
+
+        // 成功：将本地回复加入历史
+        _history.Add(new Entry { role = "assistant", content = fallbackReply });
+        _lastReply = fallbackReply;
+        _fullReplyText = fallbackReply;
+
+        // 触发显示（使用流式路径的显示机制）
+        OnNewReply?.Invoke(fallbackReply);
+        StartSentenceQueue(fallbackReply);
+
+        // 记录记忆
+        RecordConversationMemory(fallbackReply);
+
+        Debug.Log($"[ChatManager] 🔄 离线回退成功（{fallbackReply.Length} 字）");
+        onHandled?.Invoke(true);
+    }
+
+    // ==================================================================
     //  对话记忆记录 & 摘要
     // ==================================================================
 
     private int _conversationSinceSummary = 0;
+    private int _conversationSinceLocalExtract = 0;
     private const int SUMMARY_INTERVAL = 15; // 每 15 次对话更新摘要
+    private const int LOCAL_EXTRACT_INTERVAL = 5; // 每 5 次对话尝试本地模型提取记忆
 
     /// <summary>记录纯文字回复到长期记忆（按重要性过滤）</summary>
     private void RecordConversationMemory(string reply)
@@ -971,19 +1101,61 @@ public class ChatManager : MonoBehaviour
         if (_conversationSinceSummary >= SUMMARY_INTERVAL)
         {
             _conversationSinceSummary = 0;
-            // 收集近期话题（兼容 .NET Standard 2.0，不用 TakeLast）
-            var userMessages = _history.Where(e => e.role == "user").ToList();
-            int skip = Math.Max(0, userMessages.Count - 10);
-            var recentTopics = userMessages.Skip(skip).Select(e => e.content).ToList();
 
-            if (recentTopics.Count > 0)
+            // 📝 功能3：对话压缩 — 用本地模型智能摘要（如可用）
+            bool localSummaryUsed = false;
+            if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess && !string.IsNullOrEmpty(lastUserMsg))
             {
-                string combined = string.Join(" | ", recentTopics);
-                string summary = combined.Length > 100
-                    ? combined.Substring(0, 100) + "…"
-                    : combined;
-                PetMemory.Instance.UpdateConversationSummary(
-                    $"近日与主人谈论了: {summary}");
+                LocalLLMAgentService.Instance.SummarizeConversation(lastUserMsg, (ok, summary) =>
+                {
+                    if (ok && !string.IsNullOrEmpty(summary) && summary.Length > 5)
+                    {
+                        PetMemory.Instance.UpdateConversationSummary(
+                            $"近日与主人谈论了: {summary}");
+                        localSummaryUsed = true;
+                        Debug.Log($"[ChatManager] 📝 本地灵识摘要: {summary}");
+                    }
+                });
+            }
+
+            if (!localSummaryUsed)
+            {
+                // 回退：原来的字符串截断方式
+                var userMessages = _history.Where(e => e.role == "user").ToList();
+                int skip = Math.Max(0, userMessages.Count - 10);
+                var recentTopics = userMessages.Skip(skip).Select(e => e.content).ToList();
+
+                if (recentTopics.Count > 0)
+                {
+                    string combined = string.Join(" | ", recentTopics);
+                    string summary = combined.Length > 100
+                        ? combined.Substring(0, 100) + "…"
+                        : combined;
+                    PetMemory.Instance.UpdateConversationSummary(
+                        $"近日与主人谈论了: {summary}");
+                }
+            }
+        }
+
+        // 💾 功能4：本地模型提取记忆（每 5 次对话尝试一次）
+        _conversationSinceLocalExtract++;
+        if (_conversationSinceLocalExtract >= LOCAL_EXTRACT_INTERVAL && !string.IsNullOrEmpty(lastUserMsg))
+        {
+            _conversationSinceLocalExtract = 0;
+            if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
+            {
+                LocalLLMAgentService.Instance.ExtractMemory(lastUserMsg, extract =>
+                {
+                    if (extract.shouldRemember && !string.IsNullOrEmpty(extract.summary))
+                    {
+                        PetMemory.Instance.AddMemoryWithImportance(
+                            $"主人提及: 「{extract.summary}」",
+                            extract.topic,
+                            "conversation",
+                            extract.importance);
+                        Debug.Log($"[ChatManager] 💾 本地灵识提取记忆: [{extract.topic}] {extract.summary} (重要度:{extract.importance})");
+                    }
+                });
             }
         }
     }

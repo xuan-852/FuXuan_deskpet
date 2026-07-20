@@ -33,8 +33,9 @@ public static class LocalLLMClient
 
     /// <summary>
     /// 当前使用的模型名（可通过 SetModel 修改）
+    /// MotionAgent 启动时会覆盖为 3b，这里设为 3b 作为默认值便于本地服务使用
     /// </summary>
-    public static string ModelName { get; private set; } = "qwen2.5:0.5b";
+    public static string ModelName { get; private set; } = "qwen2.5:3b";
 
     /// <summary>
     /// 是否就绪（上次连接成功则 true）
