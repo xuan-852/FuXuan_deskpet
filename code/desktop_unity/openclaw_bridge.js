@@ -14,6 +14,9 @@
 import { GatewayChatClient } from 'file:///D:/openclaw/node_modules/openclaw/dist/gateway-chat-BW6uyvQL.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { execSync } from 'node:child_process';
+import { writeFileSync, unlinkSync, existsSync, mkdirSync } from 'node:fs';
+import { dirname, basename, extname, join } from 'node:path';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 const GATEWAY_URL     = process.env.GATEWAY_URL     || 'ws://127.0.0.1:18789';
@@ -174,8 +177,119 @@ function startHttpServer() {
             return;
         }
 
+        // ─── POST /compile_latex ─────────────────────────────────────
+        if (path === '/compile_latex' && req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', () => {
+                try {
+                    const { source, output_path, compiler: requestedCompiler, title, pin_to_desktop } = JSON.parse(body);
+                    if (!source || !source.trim()) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: 'Missing source' }));
+                        return;
+                    }
+
+                    // ── 选择编译器 ──
+                    const compiler = requestedCompiler || 'xelatex';  // 默认 xelatex（中文友好）
+                    const compilerPath = process.env.LATEX_COMPILER || compiler;
+                    try {
+                        execSync(`where "${compilerPath}"`, { stdio: 'pipe', windowsHide: true, timeout: 5000, encoding: 'utf-8' });
+                    } catch {
+                        res.writeHead(412, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({
+                            success: false,
+                            error: `未找到编译器「${compilerPath}」。请安装 TeX Live (https://tug.org/texlive/) 并确保 ${compilerPath} 在 PATH 中。`,
+                            compiler: compilerPath
+                        }));
+                        return;
+                    }
+
+                    // ── 确定输出路径（按标题建文件夹） ──
+                    const docTitle = (title || 'document').replace(/[<>:"\/\\|?*]/g, '_');
+                    let texPath, outDir;
+                    if (output_path) {
+                        texPath = output_path.endsWith('.tex') ? output_path : output_path + '.tex';
+                        outDir = dirname(texPath);
+                    } else {
+                        const folderName = `${docTitle}_${new Date().toISOString().slice(0,10).replace(/-/g,'')}_${Date.now().toString(36)}`;
+                        outDir = join('D:\\DesktopPetData\\Documents', folderName);
+                        texPath = join(outDir, `${docTitle}.tex`);
+                    }
+                    if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+
+                    // ── 写 .tex 文件 ──
+                    writeFileSync(texPath, source, 'utf-8');
+
+                    // ── 编译 ──
+                    const compileArgs = `-interaction=nonstopmode -halt-on-error -output-directory="${outDir}" "${texPath}"`;
+                    const baseNoExt = join(outDir, basename(texPath, '.tex'));
+
+                    for (let pass = 1; pass <= 2; pass++) {
+                        try {
+                            execSync(`"${compilerPath}" ${compileArgs}`, {
+                                cwd: outDir, timeout: 120000, windowsHide: true, stdio: 'pipe', encoding: 'utf-8',
+                            });
+                        } catch (e) {
+                            // 提取最后几行错误信息
+                            const stderr = (e.stderr || '').trim();
+                            const lines = stderr ? stderr.split('\n') : (e.stdout || '').split('\n');
+                            const tail = lines.slice(-10).join('\n').trim();
+                            res.writeHead(500, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({
+                                success: false, error: `编译失败（第 ${pass} 遍）`,
+                                compiler: compilerPath, log_tail: tail || e.message
+                            }));
+                            return;
+                        }
+                    }
+
+                    // ── 清理中间产物（保留 .log） ──
+                    const allExts = ['.aux', '.out', '.toc', '.lof', '.lot', '.idx', '.bbl', '.blg', '.fls', '.synctex.gz'];
+                    for (const ext of allExts) {
+                        const p = baseNoExt + ext;
+                        try { if (existsSync(p)) unlinkSync(p); } catch { /* ignore */ }
+                    }
+
+                    const pdfPath = baseNoExt + '.pdf';
+                    if (!existsSync(pdfPath)) {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: '编译失败，未生成 PDF' }));
+                        return;
+                    }
+
+                    // ── 创建桌面快捷方式 ──
+                    let shortcutPath = null;
+                    if (pin_to_desktop === true) {
+                        try {
+                            const desktopDir = join(process.env.USERPROFILE || 'C:\\Users\\25295', 'Desktop');
+                            shortcutPath = join(desktopDir, `${docTitle}.lnk`);
+                            const psCmd = `$wshell = New-Object -ComObject WScript.Shell; $lnk = $wshell.CreateShortcut('${shortcutPath.replace(/'/g, "''")}'); $lnk.TargetPath = '${pdfPath.replace(/'/g, "''")}'; $lnk.Save()`;
+                            execSync(`powershell -Command \"${psCmd.replace(/"/g, '\\"')}\"`, { windowsHide: true, timeout: 10000 });
+                            console.log(`[Bridge] Shortcut created: ${shortcutPath}`);
+                        } catch (e) {
+                            console.error(`[Bridge] Shortcut creation failed: ${e.message}`);
+                            shortcutPath = null;
+                        }
+                    }
+
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({
+                        success: true, pdf_path: pdfPath, tex_path: texPath,
+                        folder_path: outDir, shortcut_path: shortcutPath,
+                        title: docTitle, compiler: compilerPath
+                    }));
+                } catch (err) {
+                    console.error(`[Bridge] Compile error: ${err.message}`);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: err.message }));
+                }
+            });
+            return;
+        }
+
         res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Not found. Use /search?q= or /health' }));
+        res.end(JSON.stringify({ error: 'Not found. Use /search?q=, /compile_latex, or /health' }));
     });
 
     server.listen(BRIDGE_PORT, '127.0.0.1', () => {
@@ -189,6 +303,8 @@ async function main() {
     startHttpServer();
     process.on('SIGINT', () => { console.log('\n[Bridge] Shutdown'); chatClient?.stop(); process.exit(0); });
     process.on('SIGTERM', () => { console.log('\n[Bridge] Shutdown'); chatClient?.stop(); process.exit(0); });
+    process.on('uncaughtException', (e) => { console.error(`[Bridge] Uncaught: ${e.message}`); });
+    process.on('unhandledRejection', (e) => { console.error(`[Bridge] Unhandled rejection: ${e?.message || e}`); });
 }
 
 main().catch(e => { console.error(`[Bridge] Fatal: ${e.message}`); process.exit(1); });

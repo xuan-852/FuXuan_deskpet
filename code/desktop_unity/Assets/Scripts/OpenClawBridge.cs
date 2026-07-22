@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -119,6 +120,69 @@ public static class OpenClawBridge
             else
                 LastError = "";
             return IsAvailable;
+        }
+    }
+
+    /// <summary>
+    /// 编译 LaTeX 源码为 PDF（通过桥接服务器调 pdflatex/xelatex）
+    /// </summary>
+    /// <param name="source">LaTeX 文档源码</param>
+    /// <param name="outputPath">输出 .tex 路径（可选，默认 Documents 目录）</param>
+    /// <param name="compiler">编译器：pdflatex / xelatex / lualatex（默认 xelatex）</param>
+    /// <param name="title">文档标题（用于命名文件夹，可选）</param>
+    /// <param name="pinToDesktop">是否在桌面创建快捷方式</param>
+    /// <returns>包含 pdf_path 和 tex_path 的 JSON 文本</returns>
+    public static async Task<string> CompileLatexAsync(string source, string outputPath = null, string compiler = "xelatex", string title = null, bool pinToDesktop = false)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return "❌ 未提供 LaTeX 源码";
+
+        string url = $"{BASE_URL}/compile_latex";
+        var payload = new Newtonsoft.Json.Linq.JObject
+        {
+            ["source"] = source,
+            ["output_path"] = outputPath ?? "",
+            ["compiler"] = compiler,
+            ["title"] = title ?? "",
+            ["pin_to_desktop"] = pinToDesktop
+        };
+        string jsonBody = payload.ToString(Newtonsoft.Json.Formatting.None);
+
+        using (var req = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
+            req.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.timeout = 180;
+
+            var op = req.SendWebRequest();
+            while (!op.isDone)
+                await Task.Yield();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                LastError = req.error;
+                return $"{{\"success\":false,\"error\":\"{req.error}\"}}";
+            }
+
+            string raw = req.downloadHandler?.text ?? "{}";
+            try
+            {
+                var obj = JObject.Parse(raw);
+                bool success = obj["success"]?.Value<bool>() ?? false;
+                if (success)
+                    return raw; // 完整 JSON 给工具层解析
+
+                string err = obj["error"]?.ToString() ?? "未知编译错误";
+                LastError = err;
+                return $"{{\"success\":false,\"error\":\"{err}\"}}";
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                return $"{{\"success\":false,\"error\":\"{ex.Message}\"}}";
+            }
         }
     }
 }
