@@ -3,8 +3,6 @@ using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
-using TMPro;
-
 /// <summary>
 /// 收纳盘 — 单个文件图标
 ///
@@ -16,7 +14,7 @@ public class DockItem : MonoBehaviour, IPointerClickHandler
 {
     [Header("UI 引用")]
     public Image iconImage;
-    public TMP_Text fileNameLabel;
+    public Text fileNameLabel;
 
     [Header("行为")]
     [SerializeField] private int maxNameLength = 12;

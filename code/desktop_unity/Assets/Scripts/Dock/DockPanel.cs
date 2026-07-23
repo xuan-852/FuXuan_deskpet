@@ -4,8 +4,6 @@ using System.IO;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
-
 /// <summary>
 /// 收纳盘主控 — 文件拖放收纳面板
 ///
@@ -25,8 +23,8 @@ public class DockPanel : MonoBehaviour
     [SerializeField] private Transform iconGrid;             // 图标容器
     [SerializeField] private GameObject dockItemPrefab;      // DockItem 预制体
     [SerializeField] private Button clearButton;
-    [SerializeField] private TMP_Text countLabel;
-    [SerializeField] private TMP_Text collapsedCountLabel;       // 迷你条上的数量文本
+    [SerializeField] private Text countLabel;
+    [SerializeField] private Text collapsedCountLabel;       // 迷你条上的数量文本
 
     [Header("行为")]
     [SerializeField] private float topMargin = 10f;
@@ -406,8 +404,8 @@ public class DockPanel : MonoBehaviour
         Transform iconGrid,
         GameObject dockItemPrefab,
         Button clearButton,
-        TMP_Text countLabel,
-        TMP_Text collapsedCountLabel)
+        Text countLabel,
+        Text collapsedCountLabel)
     {
         this.dockRoot = dockRoot;
         this.collapsedBar = collapsedBar;

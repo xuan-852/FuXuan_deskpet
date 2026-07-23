@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 using UnityEngine.EventSystems;
 
 /// <summary>
@@ -76,13 +75,11 @@ public class DockAutoSetup : MonoBehaviour
         cr.sizeDelta = new Vector2(48f, 48f);
 
         GameObject collapsedIcon = CreateChild("IconText", collapsedBar.transform);
-        TextMeshProUGUI iconText = collapsedIcon.AddComponent<TextMeshProUGUI>();
-        if (iconText != null) {
+        Text iconText = collapsedIcon.AddComponent<Text>();
         iconText.text = "\U0001f4ce"; // 📎
         iconText.fontSize = 20;
-        iconText.alignment = TextAlignmentOptions.Center;
+        iconText.alignment = TextAnchor.MiddleCenter;
         iconText.color = Color.white;
-        }
         RectTransform iconRt = collapsedIcon.GetComponent<RectTransform>();
         iconRt.pivot = new Vector2(0.5f, 0.6f);
         iconRt.anchorMin = Vector2.zero;
@@ -90,13 +87,11 @@ public class DockAutoSetup : MonoBehaviour
         iconRt.sizeDelta = Vector2.zero;
 
         GameObject collapsedCountTextObj = CreateChild("CountText", collapsedBar.transform);
-        TextMeshProUGUI collapsedCountText = collapsedCountTextObj.AddComponent<TextMeshProUGUI>();
-        if (collapsedCountText != null) {
+        Text collapsedCountText = collapsedCountTextObj.AddComponent<Text>();
         collapsedCountText.text = "0";
         collapsedCountText.fontSize = 11;
-        collapsedCountText.alignment = TextAlignmentOptions.Bottom;
+        collapsedCountText.alignment = TextAnchor.LowerCenter;
         collapsedCountText.color = Color.white;
-        }
         RectTransform cct = collapsedCountTextObj.GetComponent<RectTransform>();
         cct.anchorMin = Vector2.zero;
         cct.anchorMax = Vector2.one;
@@ -126,13 +121,11 @@ public class DockAutoSetup : MonoBehaviour
         hdr.sizeDelta = new Vector2(0, 30);
         hdr.anchoredPosition = new Vector2(0, -4);
 
-        TextMeshProUGUI headerLabel = header.AddComponent<TextMeshProUGUI>();
-        if (headerLabel != null) {
+        Text headerLabel = header.AddComponent<Text>();
         headerLabel.text = "收纳盘 (0项)";
         headerLabel.fontSize = 13;
-        headerLabel.alignment = TextAlignmentOptions.Left;
+        headerLabel.alignment = TextAnchor.MiddleLeft;
         headerLabel.color = new Color(0.85f, 0.85f, 0.85f);
-        }
         RectTransform hlRt = headerLabel.GetComponent<RectTransform>();
         hlRt.anchorMin = new Vector2(0, 0);
         hlRt.anchorMax = new Vector2(1, 1);
@@ -152,14 +145,12 @@ public class DockAutoSetup : MonoBehaviour
         btnRt.sizeDelta = new Vector2(40, 22);
         btnRt.anchoredPosition = new Vector2(-4, 0);
 
-        TextMeshProUGUI btnLabel = clearBtnObj.AddComponent<TextMeshProUGUI>();
-        if (btnLabel != null) {
+        Text btnLabel = clearBtnObj.AddComponent<Text>();
         btnLabel.text = "\U0001f5d1"; // 🗑
         btnLabel.fontSize = 14;
-        btnLabel.alignment = TextAlignmentOptions.Center;
+        btnLabel.alignment = TextAnchor.MiddleCenter;
         btnLabel.color = Color.white;
         btnLabel.raycastTarget = true;
-        }
 
         // ── 3c. IconGrid ──
         GameObject iconGridObj = CreateChild("IconGrid", expandedPanel.transform);
@@ -213,14 +204,12 @@ public class DockAutoSetup : MonoBehaviour
 
         // fileNameLabel
         GameObject itemLabel = CreateChild("FileNameLabel", dockItemTemplate.transform);
-        TextMeshProUGUI fnLabel = itemLabel.AddComponent<TextMeshProUGUI>();
-        if (fnLabel != null) {
+        Text fnLabel = itemLabel.AddComponent<Text>();
         fnLabel.text = "文件名";
         fnLabel.fontSize = 10;
-        fnLabel.alignment = TextAlignmentOptions.Top;
+        fnLabel.alignment = TextAnchor.UpperCenter;
         fnLabel.color = new Color(0.85f, 0.85f, 0.85f);
-        fnLabel.overflowMode = TextOverflowModes.Overflow;
-        }
+        fnLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
         RectTransform fl = itemLabel.GetComponent<RectTransform>();
         fl.anchorMin = new Vector2(0, 0);
         fl.anchorMax = new Vector2(1, 0);
