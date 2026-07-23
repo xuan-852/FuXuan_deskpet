@@ -508,6 +508,13 @@ public class DesktopPet : MonoBehaviour
             Debug.Log("[DesktopPet] 自动添加了 DragHandler 组件");
         }
 
+        // 自动搭建收纳盘（场景中无 DockPanelRoot 时）
+        if (GetComponent<DockAutoSetup>() == null)
+        {
+            gameObject.AddComponent<DockAutoSetup>();
+            Debug.Log("[DesktopPet] 自动添加了 DockAutoSetup（收纳盘自动搭建）");
+        }
+
         // 自动确保 HybridRenderer 存在
         if (GetComponent<HybridRenderer>() == null)
         {

@@ -36,6 +36,9 @@ public class DragHandler : MonoBehaviour
     private WindowOverlay _window;
     private IPetRenderer _renderer;
 
+    // 收纳盘引用（点击穿透集成）
+    private DockPanel _dockPanel;
+
     [Header("拖拽设置")]
     [Tooltip("触发拖拽的最小移动像素")]
     public int dragThreshold = 5;
@@ -96,6 +99,10 @@ public class DragHandler : MonoBehaviour
         // 获取 RightPanel 引用
         _rightPanel = GetComponent<RightPanel>();
         if (_rightPanel == null) _rightPanel = FindObjectOfType<RightPanel>();
+
+        // 获取 DockPanel 引用
+        _dockPanel = GetComponent<DockPanel>();
+        if (_dockPanel == null) _dockPanel = FindObjectOfType<DockPanel>();
     }
 
     private void Update()
@@ -111,8 +118,23 @@ public class DragHandler : MonoBehaviour
         {
             _rightPanel = GetComponent<RightPanel>() ?? FindObjectOfType<RightPanel>();
         }
+        if (_dockPanel == null)
+        {
+            _dockPanel = GetComponent<DockPanel>() ?? FindObjectOfType<DockPanel>();
+        }
 
-        // ========== 0a. RightPanel 展开时 ==========
+        // ========== 0a. RightPanel 展开时 / DockPanel 展开时 ==========
+        Vector2 mousePosForSection0 = GetMousePos();
+        bool isDockExpanded = _dockPanel != null && _dockPanel.IsExpanded;
+        bool overDockPanel = isDockExpanded && _dockPanel.IsPointInDockArea(mousePosForSection0);
+
+        if (overDockPanel)
+        {
+            _lastFramePanelOpen = true;
+            _window?.SetClickThrough(false);
+            _mouseOverPet = false;
+        }
+
         if (_rightPanel != null)
         {
             Vector2 mousePos = GetMousePos();
@@ -131,8 +153,12 @@ public class DragHandler : MonoBehaviour
         {
             _lastFramePanelOpen = true;
             Vector2 mousePos = GetMousePos();
+
+            // DockPanel 展开时也在面板区域内关穿透
+            bool overDock = _dockPanel != null && _dockPanel.IsExpanded
+                && _dockPanel.IsPointInDockArea(mousePos);
             bool overPanel = _ballPanel.IsMouseOverPanel(mousePos);
-            _window?.SetClickThrough(!overPanel);
+            _window?.SetClickThrough(!(overPanel || overDock));
             _mouseOverPet = false;
 
             // 右键关闭面板
@@ -333,7 +359,11 @@ public class DragHandler : MonoBehaviour
         bool overRightPanel = _rightPanel != null
             && _rightPanel.IsPointInInteractiveArea(mousePos);
 
-        bool needInput = overPet || overPanel || overRightPanel;
+        // ★ DockPanel 收纳盘展开时也接收点击
+        bool overDock = _dockPanel != null
+            && _dockPanel.IsPointInDockArea(mousePos);
+
+        bool needInput = overPet || overPanel || overRightPanel || overDock;
 
         if (needInput != _mouseOverPet)
         {

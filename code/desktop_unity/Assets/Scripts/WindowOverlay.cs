@@ -420,6 +420,12 @@ public class WindowOverlay : MonoBehaviour
         // ★ 启动时开启穿透，让桌面点击正常通过。
         SetClickThrough(true);
 
+        // ★ 初始化收纳盘拖放接收（窗口就绪后方可挂载 WndProc）
+        if (_hwnd != IntPtr.Zero)
+        {
+            DockDropHandler.Initialize(_hwnd);
+        }
+
         // ★ 通知 DragHandler 强制重设穿透缓存
         DragHandler dragHandler = GetComponent<DragHandler>();
         if (dragHandler != null)
@@ -698,5 +704,13 @@ public class WindowOverlay : MonoBehaviour
     private void LogError(string msg)
     {
         UnityEngine.Debug.LogError($"[WindowOverlay] {msg}");
+    }
+
+    /// <summary>
+    /// 销毁时清理收纳盘拖放接收（还原窗口过程）
+    /// </summary>
+    private void OnDestroy()
+    {
+        DockDropHandler.Shutdown();
     }
 }
