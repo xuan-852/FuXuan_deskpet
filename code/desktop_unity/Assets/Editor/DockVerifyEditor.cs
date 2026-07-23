@@ -1,7 +1,6 @@
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 using System.Collections.Generic;
 using System.IO;
 
@@ -20,7 +19,6 @@ public class DockVerifyEditor : EditorWindow
         int ok = 0, fail = 0;
 
         // ── 1. 资源层 ──
-        ok += Check("TMP Settings.asset", File.Exists("Assets/TextMesh Pro/Resources/TMP Settings.asset"));
         ok += Check("DockItem.prefab", File.Exists("Assets/Prefabs/DockItem.prefab"));
 
         // ── 2. 场景层级 ──
@@ -54,17 +52,17 @@ public class DockVerifyEditor : EditorWindow
                 ok += Check("  dockItemPrefab 已赋值", so.FindProperty("dockItemPrefab").objectReferenceValue != null);
                 ok += Check("  clearButton 已赋值", so.FindProperty("clearButton").objectReferenceValue != null);
 
-                // TMP 文本字段
+                // Text 字段
                 Object countLabel = so.FindProperty("countLabel").objectReferenceValue;
                 Object collapsedCount = so.FindProperty("collapsedCountLabel").objectReferenceValue;
                 ok += Check("  countLabel 已赋值", countLabel != null);
                 ok += Check("  collapsedCountLabel 已赋值", collapsedCount != null);
 
-                // 如果赋值了但组件不可用，标黄
+                // 验证 Text 组件存在
                 if (countLabel != null && countLabel is Component c1)
-                    CheckTMPComponent(c1.gameObject, "countLabel 的 GameObject 有 TextMeshProUGUI");
+                    CheckTextComponent(c1.gameObject, "countLabel");
                 if (collapsedCount != null && collapsedCount is Component c2)
-                    CheckTMPComponent(c2.gameObject, "collapsedCountLabel 的 GameObject 有 TextMeshProUGUI");
+                    CheckTextComponent(c2.gameObject, "collapsedCountLabel");
             }
 
             // 子对象完整性
@@ -149,11 +147,11 @@ public class DockVerifyEditor : EditorWindow
         }
     }
 
-    private static void CheckTMPComponent(GameObject go, string label)
+    private static void CheckTextComponent(GameObject go, string label)
     {
-        if (go.GetComponent<TextMeshProUGUI>() != null)
-            Debug.Log($"  ✅ {label}");
+        if (go.GetComponent<Text>() != null)
+            Debug.Log($"  ✅ {label} 的 GameObject 有 Text 组件");
         else
-            Debug.LogWarning($"  ⚠️ {label} — GameObject 存在但 TextMeshProUGUI 组件可能未正确初始化（文字可能不显示）");
+            Debug.LogWarning($"  ⚠️ {label} 的 GameObject 缺少 Text 组件");
     }
 }

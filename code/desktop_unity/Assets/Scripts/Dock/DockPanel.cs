@@ -61,6 +61,9 @@ public class DockPanel : MonoBehaviour
         // 订阅拖放事件
         DockDropHandler.OnFilesDropped += OnFilesDropped;
 
+        // 初始强制关闭拖放接收（折叠状态），文件穿透到桌面/其他窗口
+        DockDropHandler.SetAcceptFiles(false);
+
         _initialized = true;
         Log("收纳盘初始化完成");
     }
@@ -166,6 +169,10 @@ public class DockPanel : MonoBehaviour
             expandedPanel.SetActive(true);
 
         _mouseLeaveTimestamp = 0f;
+
+        // 展开时开启拖放接收，仅收纳盘区域可拖入文件
+        DockDropHandler.SetAcceptFiles(true);
+
         Log("收纳盘展开");
     }
 
@@ -179,6 +186,9 @@ public class DockPanel : MonoBehaviour
 
         if (expandedPanel != null)
             expandedPanel.SetActive(false);
+
+        // 折叠时关闭拖放接收，文件穿透到桌面/其他窗口
+        DockDropHandler.SetAcceptFiles(false);
 
         Log("收纳盘折叠");
     }

@@ -145,12 +145,18 @@ public class DockAutoSetup : MonoBehaviour
         btnRt.sizeDelta = new Vector2(40, 22);
         btnRt.anchoredPosition = new Vector2(-4, 0);
 
-        Text btnLabel = clearBtnObj.AddComponent<Text>();
+        // Text 作为子对象（不能和 Image 在同一 GameObject）
+        GameObject btnLabelObj = CreateChild("Label", clearBtnObj.transform);
+        Text btnLabel = btnLabelObj.AddComponent<Text>();
         btnLabel.text = "\U0001f5d1"; // 🗑
         btnLabel.fontSize = 14;
         btnLabel.alignment = TextAnchor.MiddleCenter;
         btnLabel.color = Color.white;
         btnLabel.raycastTarget = true;
+        RectTransform blRt = btnLabelObj.GetComponent<RectTransform>();
+        blRt.anchorMin = Vector2.zero;
+        blRt.anchorMax = Vector2.one;
+        blRt.sizeDelta = Vector2.zero;
 
         // ── 3c. IconGrid ──
         GameObject iconGridObj = CreateChild("IconGrid", expandedPanel.transform);

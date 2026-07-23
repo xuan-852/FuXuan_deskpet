@@ -93,8 +93,8 @@ public static class DockDropHandler
 
         _hwnd = windowHandle;
 
-        // 允许窗口接收拖放文件
-        DragAcceptFiles(_hwnd, true);
+        // 不在此开启 DragAcceptFiles——由 DockPanel 展开/折叠控制
+        // 初始状态：禁用拖放，文件穿透到桌面
 
         // 子类化窗口过程（32/64 兼容）
         IntPtr funcPtr = Marshal.GetFunctionPointerForDelegate(_wndProcDelegate);
@@ -111,6 +111,9 @@ public static class DockDropHandler
 
         _initialized = true;
         Debug.Log($"[DockDropHandler] 初始化成功, hWnd={_hwnd.ToInt64():X8}");
+
+        // 初始状态强制关闭拖放（折叠态），文件穿透到桌面/其他窗口
+        DragAcceptFiles(_hwnd, false);
     }
 
     /// <summary>每帧由 Unity 主线程调用（或放到 Update 末尾）</summary>
@@ -134,6 +137,15 @@ public static class DockDropHandler
         {
             Debug.LogError($"[DockDropHandler] 处理拖放事件异常: {ex.Message}");
         }
+    }
+
+    /// <summary>根据收纳盘展开/折叠状态，开关拖放接收</summary>
+    /// <param name="accept">true=展开，可接收文件；false=折叠，穿透到桌面</param>
+    public static void SetAcceptFiles(bool accept)
+    {
+        if (!_initialized || _hwnd == IntPtr.Zero) return;
+        DragAcceptFiles(_hwnd, accept);
+        Debug.Log($"[DockDropHandler] 拖放接收: {(accept ? "开启" : "关闭")}");
     }
 
     /// <summary>退出时还原窗口过程，释放拖放资源</summary>

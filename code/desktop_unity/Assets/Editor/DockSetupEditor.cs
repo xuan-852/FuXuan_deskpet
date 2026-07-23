@@ -1,7 +1,6 @@
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 using UnityEngine.EventSystems;
 using System.IO;
 
@@ -11,12 +10,11 @@ using System.IO;
 /// 用法：菜单栏 Tools → 收纳盘 — 一键搭建 UI
 ///
 /// 自动完成：
-/// 1. 导入 TMP Essential Resources（如需要）
-/// 2. 创建 Canvas（含 CanvasScaler）+ EventSystem
-/// 3. 创建 DockPanel 完整 UI 层级
-/// 4. 创建 DockItem 预制体
-/// 5. 在 DesktopPet 上挂 DockToggle
-/// 6. 所有引用自动连线
+/// 1. 创建 Canvas（含 CanvasScaler）+ EventSystem
+/// 2. 创建 DockPanel 完整 UI 层级
+/// 3. 创建 DockItem 预制体
+/// 4. 在 DesktopPet 上挂 DockToggle
+/// 5. 所有引用自动连线
 /// </summary>
 public class DockSetupEditor : EditorWindow
 {
@@ -25,30 +23,6 @@ public class DockSetupEditor : EditorWindow
     [MenuItem("Tools/桌面宠/搭建收纳盘", false, 100)]
     public static void SetupDockPanel()
     {
-        // ── 0. 确保 TMP Essential Resources 已导入 ──
-        if (!EnsureTMPResources())
-        {
-            EditorUtility.DisplayDialog("提示",
-                "TMP 资源包正在导入中，请等右下角进度条走完，\n然后再次点击此菜单完成搭建。", "确定");
-            return;
-        }
-
-        // ── 0b. 验证 TMP 组件是否可创建（团结引擎兼容性检查） ──
-        var tmpTest = new GameObject("_TMP_Test");
-        TextMeshProUGUI tmpCheck = tmpTest.AddComponent<TextMeshProUGUI>();
-        bool tmpUsable = tmpCheck != null;
-        Object.DestroyImmediate(tmpTest);
-        if (!tmpUsable)
-        {
-            EditorUtility.DisplayDialog("警告",
-                "TextMeshProUGUI 组件无法在团结引擎中创建。\n" +
-                "请尝试：\n" +
-                "1. 确保已安装 TextMeshPro 包\n" +
-                "2. 在 Package Manager 中重新导入 TMP Essential Resources\n" +
-                "3. 重启编辑器后重试\n" +
-                "\n仍将尝试创建 UI（文字可能不显示）", "知道了");
-        }
-
         // ── 防止重复搭建：已有 DockPanelRoot 则询问删除 ──
         GameObject existingRoot = GameObject.Find("DockPanelRoot");
         if (existingRoot != null)
@@ -118,13 +92,11 @@ public class DockSetupEditor : EditorWindow
 
         // collapsedBar 子：图标文本 "📎"
         GameObject collapsedIcon = CreateUIObject("IconText", collapsedBar.transform);
-        TextMeshProUGUI iconText = collapsedIcon.AddComponent<TextMeshProUGUI>();
-        if (iconText != null) {
+        Text iconText = collapsedIcon.AddComponent<Text>();
         iconText.text = "📎";
         iconText.fontSize = 20;
-        iconText.alignment = TextAlignmentOptions.Center;
+        iconText.alignment = TextAnchor.MiddleCenter;
         iconText.color = Color.white;
-        }
         RectTransform iconRt = collapsedIcon.GetComponent<RectTransform>();
         iconRt.pivot = new Vector2(0.5f, 0.6f);
         iconRt.anchorMin = Vector2.zero;
@@ -133,13 +105,11 @@ public class DockSetupEditor : EditorWindow
 
         // collapsedBar 子：数量文本
         GameObject collapsedCountText = CreateUIObject("CountText", collapsedBar.transform);
-        TextMeshProUGUI countText = collapsedCountText.AddComponent<TextMeshProUGUI>();
-        if (countText != null) {
+        Text countText = collapsedCountText.AddComponent<Text>();
         countText.text = "0";
         countText.fontSize = 11;
-        countText.alignment = TextAlignmentOptions.Bottom;
+        countText.alignment = TextAnchor.LowerCenter;
         countText.color = Color.white;
-        }
         RectTransform crt = collapsedCountText.GetComponent<RectTransform>();
         crt.anchorMin = Vector2.zero;
         crt.anchorMax = Vector2.one;
@@ -169,13 +139,11 @@ public class DockSetupEditor : EditorWindow
         hdr.sizeDelta = new Vector2(0, 30);
         hdr.anchoredPosition = new Vector2(0, -4);
 
-        TextMeshProUGUI headerLabel = header.AddComponent<TextMeshProUGUI>();
-        if (headerLabel != null) {
+        Text headerLabel = header.AddComponent<Text>();
         headerLabel.text = "收纳盘 (0项)";
         headerLabel.fontSize = 13;
-        headerLabel.alignment = TextAlignmentOptions.Left;
+        headerLabel.alignment = TextAnchor.MiddleLeft;
         headerLabel.color = new Color(0.85f, 0.85f, 0.85f);
-        }
         RectTransform hlRt = headerLabel.GetComponent<RectTransform>();
         hlRt.anchorMin = new Vector2(0, 0);
         hlRt.anchorMax = new Vector2(1, 1);
@@ -195,14 +163,18 @@ public class DockSetupEditor : EditorWindow
         btnRt.sizeDelta = new Vector2(40, 22);
         btnRt.anchoredPosition = new Vector2(-4, 0);
 
-        TextMeshProUGUI btnLabel = clearBtn.AddComponent<TextMeshProUGUI>();
-        if (btnLabel != null) {
+        // Text 作为子对象（不能和 Image 在同一 GameObject）
+        GameObject btnLabelObj = CreateUIObject("Label", clearBtn.transform);
+        Text btnLabel = btnLabelObj.AddComponent<Text>();
         btnLabel.text = "🗑";
         btnLabel.fontSize = 14;
-        btnLabel.alignment = TextAlignmentOptions.Center;
+        btnLabel.alignment = TextAnchor.MiddleCenter;
         btnLabel.color = Color.white;
         btnLabel.raycastTarget = true;
-        }
+        RectTransform blRt = btnLabelObj.GetComponent<RectTransform>();
+        blRt.anchorMin = Vector2.zero;
+        blRt.anchorMax = Vector2.one;
+        blRt.sizeDelta = Vector2.zero;
 
         // ── 3c. iconGrid（图标网格） ──
         GameObject iconGrid = CreateUIObject("IconGrid", expandedPanel.transform);
@@ -242,14 +214,12 @@ public class DockSetupEditor : EditorWindow
 
         // fileNameLabel
         GameObject itemLabel = CreateUIObject("FileNameLabel", dockItemObj.transform);
-        TextMeshProUGUI fnLabel = itemLabel.AddComponent<TextMeshProUGUI>();
-        if (fnLabel != null) {
+        Text fnLabel = itemLabel.AddComponent<Text>();
         fnLabel.text = "文件名";
         fnLabel.fontSize = 10;
-        fnLabel.alignment = TextAlignmentOptions.Top;
+        fnLabel.alignment = TextAnchor.UpperCenter;
         fnLabel.color = new Color(0.85f, 0.85f, 0.85f);
-        fnLabel.overflowMode = TextOverflowModes.Overflow;
-        }
+        fnLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
         RectTransform fl = itemLabel.GetComponent<RectTransform>();
         fl.anchorMin = new Vector2(0, 0);
         fl.anchorMax = new Vector2(1, 0);
@@ -315,35 +285,6 @@ public class DockSetupEditor : EditorWindow
         Selection.activeGameObject = dockRootObj;
 
         Debug.Log("[DockSetup] 🎉 收纳盘 UI 搭建完成！场景已保存。");
-    }
-
-    /// <summary>
-    /// 确保 TMP Essential Resources 已导入。
-    /// 检测关键资源文件是否存在，不存在则静默导入。
-    /// </summary>
-    private static bool EnsureTMPResources()
-    {
-        // 检测关键资源文件是否存在（团结引擎中 FindObjectsOfTypeAll 不可靠）
-        string tmpSettingsPath = "Assets/TextMesh Pro/Resources/TMP Settings.asset";
-        if (File.Exists(tmpSettingsPath))
-            return true;
-
-        // 文件不存在 → 静默导入
-        Debug.Log("📦 正在导入 TMP Essential Resources（静默）...");
-        TMP_PackageResourceImporter.ImportResources(true, false, false);
-        AssetDatabase.Refresh();
-
-        // 给 Unity 一个 frame 处理导入
-        EditorApplication.delayCall += () =>
-        {
-            AssetDatabase.Refresh();
-            if (File.Exists(tmpSettingsPath))
-                Debug.Log("✅ TMP Essential Resources 导入完成");
-            else
-                Debug.LogWarning("⚠️ TMP Essential Resources 导入后仍未就绪，需手动操作");
-        };
-
-        return false;
     }
 
     // ── 工具方法 ──
