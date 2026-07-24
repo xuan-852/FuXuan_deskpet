@@ -106,19 +106,44 @@ public static class ToolRegistry
     {
         if (!_initialized) Initialize();
 
-        var sb = new StringBuilder();
-        sb.Append("[\n");
+        var allTools = CollectAllTools();
+        return BuildToolsJson(allTools);
+    }
 
+    /// <summary>
+    /// 仅生成指定工具列表的 JSON Schema（按意图过滤）
+    /// </summary>
+    public static string GetToolsJson(string[] allowedToolNames)
+    {
+        if (!_initialized) Initialize();
+
+        var allowedSet = new HashSet<string>(allowedToolNames);
+        var allTools = CollectAllTools();
+        var filtered = allTools.Where(t => allowedSet.Contains(t.ToolName)).ToList();
+        return BuildToolsJson(filtered);
+    }
+
+    /// <summary>收集全部已注册工具</summary>
+    private static List<IPetTool> CollectAllTools()
+    {
         var allTools = new List<IPetTool>();
         if (_syncTools != null) allTools.AddRange(_syncTools.Values);
         if (_asyncTools != null) allTools.AddRange(_asyncTools.Values);
+        return allTools;
+    }
+
+    /// <summary>将工具列表构建为 JSON Schema 字符串</summary>
+    private static string BuildToolsJson(List<IPetTool> tools)
+    {
+        var sb = new StringBuilder();
+        sb.Append("[\n");
 
         // 按名称排序，保证每次生成顺序一致
-        allTools.Sort((a, b) => string.Compare(a.ToolName, b.ToolName, StringComparison.Ordinal));
+        tools.Sort((a, b) => string.Compare(a.ToolName, b.ToolName, StringComparison.Ordinal));
 
-        for (int i = 0; i < allTools.Count; i++)
+        for (int i = 0; i < tools.Count; i++)
         {
-            var t = allTools[i];
+            var t = tools[i];
             sb.Append("  {\n");
             sb.Append("    \"type\": \"function\",\n");
             sb.Append("    \"function\": {\n");
@@ -127,7 +152,7 @@ public static class ToolRegistry
             sb.Append($"      \"parameters\": {t.ToolParametersJson}\n");
             sb.Append("    }\n");
             sb.Append("  }");
-            if (i < allTools.Count - 1) sb.Append(",");
+            if (i < tools.Count - 1) sb.Append(",");
             sb.Append("\n");
         }
 

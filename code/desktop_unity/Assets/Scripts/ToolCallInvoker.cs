@@ -85,4 +85,7 @@ public class ToolCallInvoker : MonoBehaviour
 
     /// <summary>保留旧版接口 — 获取所有工具的 JSON Schema</summary>
     public string GetToolsJson() => ToolRegistry.GetToolsJson();
+
+    /// <summary>获取指定工具列表的 JSON Schema（按意图过滤）</summary>
+    public string GetToolsJson(string[] allowedToolNames) => ToolRegistry.GetToolsJson(allowedToolNames);
 }

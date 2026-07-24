@@ -263,6 +263,50 @@ public class ChatManager : MonoBehaviour
     // ---- 中止标志：看门狗超时时通知协程尽快退出 ----
     private bool _abortRequested = false;
 
+    // ---- 本地意图分类：用于 tools 过滤（由 ClassifyIntent 回调写入）----
+    private string _lastIntent = "";
+    /// <summary>当前 tool 轮次，0 = 第一轮</summary>
+    private int _toolRound = 0;
+
+    /// <summary>意图 → 允许的工具名列表（空 = 不发任何 tool）</summary>
+    private static readonly Dictionary<string, string[]> IntentToolMap = new Dictionary<string, string[]>
+    {
+        ["chat"] = new string[0],       // 闲聊 → 纯角色对话，不发 tools
+        ["emotion"] = new string[0],    // 情感 → 纯角色回应
+
+        ["command"] = new[]  // 指令操作类
+        {
+            "launch_pogget", "open_app", "open_url", "open_folder",
+            "search", "search_web", "openclaw_search",
+            "lock_screen", "set_volume", "mute", "power",
+            "get_system_info", "get_mouse_pos", "list_files",
+            "run_command", "notify", "get_clipboard", "set_clipboard",
+            "file_open", "file_move", "file_copy", "file_delete",
+            "file_rename", "file_info", "file_create", "take_screenshot"
+        },
+
+        ["knowledge"] = new[]  // 知识查询类
+        {
+            "search_web", "search", "openclaw_search",
+            "knowledge_search", "get_weather",
+            "get_system_info", "get_mouse_pos", "get_clipboard",
+            "file_info", "list_files",
+            "query_exams", "query_scores", "query_schedule",
+            "query_user_status",
+            "inspect_motion_memory", "inspect_personality",
+            "explore_body", "explore_body_vision"
+        },
+
+        ["operation"] = new[]  // 桌宠控制类
+        {
+            "set_expression", "play_action", "stop_action",
+            "generate_motion",
+            "inspect_motion_memory", "inspect_personality",
+            "explore_body", "explore_body_vision",
+            "take_screenshot", "knowledge_index"
+        },
+    };
+
     // ---- 消息队列：等待时输入不会丢 ----
     private Queue<(string text, System.Action onUpdate)> _messageQueue
         = new Queue<(string, System.Action)>();
@@ -334,6 +378,7 @@ public class ChatManager : MonoBehaviour
         _lastError = "";
         _abortRequested = false; // 重置中止标志，允许新的请求
         _apiRetryCount = 0; // 重置自动重试计数
+        _toolRound = 0; // 重置工具轮次
         _requestStartTime = Time.time; // 启动看门狗计时
         _onUpdate = onUpdate;
 
@@ -349,6 +394,7 @@ public class ChatManager : MonoBehaviour
             {
                 if (intent.success)
                 {
+                    _lastIntent = intent.intent;  // ★ 存下来供 BuildRequestBody 过滤 tools
                     Debug.Log($"[ChatManager] 🏷️ 本地灵识判断: intent={intent.intent}, emotion={intent.emotion}");
                 }
             });
@@ -417,6 +463,7 @@ public class ChatManager : MonoBehaviour
     {
         for (int round = 0; round <= MAX_TOOL_ROUNDS; round++)
         {
+            _toolRound = round; // ★ 记录轮次，第一轮按意图过滤，后续全量
             string jsonBody = BuildRequestBody();
             bool hadError = false;
             string fullContent = "";
@@ -810,10 +857,32 @@ public class ChatManager : MonoBehaviour
 
         body["messages"] = msgs;
 
-        // ——— 附加 tools 定义 ———
+        // ——— 附加 tools 定义（按意图过滤） ———
         if (enableTools && toolInvoker != null)
         {
-            body["tools"] = JArray.Parse(toolInvoker.GetToolsJson());
+            string toolsJson;
+
+            // 第一轮按意图过滤，后续回环发全部工具（工具执行结果可能需要其他类工具）
+            if (_toolRound == 0 && !string.IsNullOrEmpty(_lastIntent)
+                && IntentToolMap.TryGetValue(_lastIntent, out var allowed))
+            {
+                if (allowed.Length > 0)
+                {
+                    toolsJson = toolInvoker.GetToolsJson(allowed);
+                    Debug.Log($"[ChatManager] 🎯 意图「{_lastIntent}」→ 仅发 {allowed.Length} 道术式");
+                }
+                else
+                {
+                    toolsJson = "[]"; // 闲聊/情感 → 不发任何工具
+                    Debug.Log($"[ChatManager] 💬 意图「{_lastIntent}」→ 纯对话，不发 tools");
+                }
+            }
+            else
+            {
+                toolsJson = toolInvoker.GetToolsJson(); // 全部工具（首轮无分类/后续回环）
+            }
+
+            body["tools"] = JArray.Parse(toolsJson);
         }
 
         body["stream"] = true;

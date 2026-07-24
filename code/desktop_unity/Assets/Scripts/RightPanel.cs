@@ -38,6 +38,7 @@ public class RightPanel : MonoBehaviour
         ("设", "设置", BallPanel.PanelType.Settings),
         ("签", "便签", BallPanel.PanelType.Reminders),
         ("告", "报告", BallPanel.PanelType.Report),
+        ("收", "收纳", null),                          // 启动 Pogget
     };
 
     // ==================== 运行时状态 ====================
@@ -97,6 +98,31 @@ public class RightPanel : MonoBehaviour
     {
         if (!_isExpanded && _animWidth <= panelWidthCollapsed + 1f) return false;
         return PanelRect.Contains(guiMousePos);
+    }
+
+    /// <summary>启动 Pogget 桌面收纳工具</summary>
+    private void LaunchPogget()
+    {
+        string exePath = @"d:\pogget\Pogget.exe";
+        if (!System.IO.File.Exists(exePath))
+        {
+            Debug.LogWarning($"[RightPanel] Pogget 未找到: {exePath}");
+            return;
+        }
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo(exePath)
+            {
+                UseShellExecute = true,
+                WorkingDirectory = System.IO.Path.GetDirectoryName(exePath)
+            };
+            System.Diagnostics.Process.Start(psi);
+            Debug.Log("[RightPanel] 已启动 Pogget");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[RightPanel] 启动 Pogget 失败: {e.Message}");
+        }
     }
 
     // ==================== 生命周期 ====================
@@ -279,6 +305,10 @@ public class RightPanel : MonoBehaviour
                 {
                     _inputFocused = true;
                     GUI.FocusControl("rightPanelInput");
+                }
+                else if (tool.label == "收纳")
+                {
+                    LaunchPogget();
                 }
             }
         }
