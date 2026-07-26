@@ -124,27 +124,29 @@ public static class OpenClawBridge
     }
 
     /// <summary>
-    /// 编译 LaTeX 源码为 PDF（通过桥接服务器调 pdflatex/xelatex）
+    /// 编译 LaTeX 源码为 PDF（通过桥接服务器生成源码并编译）
     /// </summary>
-    /// <param name="source">LaTeX 文档源码</param>
+    /// <param name="source">LaTeX 文档源码（直接提供时）</param>
     /// <param name="outputPath">输出 .tex 路径（可选，默认 Documents 目录）</param>
     /// <param name="compiler">编译器：pdflatex / xelatex / lualatex（默认 xelatex）</param>
     /// <param name="title">文档标题（用于命名文件夹，可选）</param>
     /// <param name="pinToDesktop">是否在桌面创建快捷方式</param>
+    /// <param name="description">文档需求描述（AI 将根据描述生成源码，优先级低于 source）</param>
     /// <returns>包含 pdf_path 和 tex_path 的 JSON 文本</returns>
-    public static async Task<string> CompileLatexAsync(string source, string outputPath = null, string compiler = "xelatex", string title = null, bool pinToDesktop = false)
+    public static async Task<string> CompileLatexAsync(string source, string outputPath = null, string compiler = "xelatex", string title = null, bool pinToDesktop = false, string description = null)
     {
-        if (string.IsNullOrWhiteSpace(source))
-            return "❌ 未提供 LaTeX 源码";
+        if (string.IsNullOrWhiteSpace(source) && string.IsNullOrWhiteSpace(description))
+            return "❌ 未提供 LaTeX 源码或需求描述";
 
         string url = $"{BASE_URL}/compile_latex";
         var payload = new Newtonsoft.Json.Linq.JObject
         {
-            ["source"] = source,
+            ["source"] = source ?? "",
             ["output_path"] = outputPath ?? "",
             ["compiler"] = compiler,
             ["title"] = title ?? "",
-            ["pin_to_desktop"] = pinToDesktop
+            ["pin_to_desktop"] = pinToDesktop,
+            ["description"] = description ?? ""
         };
         string jsonBody = payload.ToString(Newtonsoft.Json.Formatting.None);
 

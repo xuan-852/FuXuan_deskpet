@@ -24,7 +24,7 @@ using UnityEngine.Networking;
 public static class MotionTranslator
 {
     private const string API_URL = "https://api.deepseek.com/chat/completions";
-    private const string MODEL = "deepseek-chat";
+    private const string MODEL = "deepseek-v4-flash";
     private const float TEMPERATURE = 0.3f;
     private const int TIMEOUT = 30;
 

@@ -17,7 +17,7 @@ public class ChatManager : MonoBehaviour
     [Header("API 设置")]
     public string apiUrl = "https://api.deepseek.com";
     [System.NonSerialized] public string apiKey = ChatConfig.ApiKey;
-    public string model = "deepseek-chat";
+    public string model = "deepseek-v4-flash";
 
     [Header("工具调用（符玄法阵）")]
     public ToolCallInvoker toolInvoker;
@@ -276,7 +276,7 @@ public class ChatManager : MonoBehaviour
 
         ["command"] = new[]  // 指令操作类
         {
-            "launch_pogget", "open_app", "open_url", "open_folder",
+            "launch_pogget", "pogget_agent", "open_app", "open_url", "open_folder",
             "search", "search_web", "openclaw_search",
             "lock_screen", "set_volume", "mute", "power",
             "get_system_info", "get_mouse_pos", "list_files",
@@ -288,7 +288,7 @@ public class ChatManager : MonoBehaviour
         ["knowledge"] = new[]  // 知识查询类
         {
             "search_web", "search", "openclaw_search",
-            "knowledge_search", "get_weather",
+            "knowledge_search", "compile_latex", "get_weather",
             "get_system_info", "get_mouse_pos", "get_clipboard",
             "file_info", "list_files",
             "query_exams", "query_scores", "query_schedule",
@@ -405,7 +405,7 @@ public class ChatManager : MonoBehaviour
     //  核心：API 请求循环（支持多次 tool_call 回环）
     // ==================================================================
 
-    private const int MAX_TOOL_ROUNDS = 5; // 防止无限循环
+    private const int MAX_TOOL_ROUNDS = 10; // 防止无限循环（5->10: 复杂任务如"读文件→改文件→编译"需多轮）
     /// <summary>历史消息最大条数，超出时裁剪最早的（保留最近 N 条）</summary>
     private const int MAX_HISTORY_ENTRIES = 60;
 

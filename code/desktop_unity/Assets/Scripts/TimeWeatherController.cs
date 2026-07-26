@@ -63,7 +63,7 @@ public class TimeWeatherController : MonoBehaviour
     [Tooltip("用 DeepSeek 生成符玄风格的天气语录（空=已禁用）")]
     public string aiApiUrl = "https://api.deepseek.com";
     [System.NonSerialized] public string aiApiKey = ChatConfig.ApiKey;
-    public string aiModel = "deepseek-chat";
+    public string aiModel = "deepseek-v4-flash";
     [Tooltip("每次天气变化时生成多少句语录")]
     public int aiLineCount = 6;
 

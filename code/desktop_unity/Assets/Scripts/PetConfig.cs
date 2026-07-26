@@ -13,7 +13,7 @@ public class PetConfig : MonoBehaviour
     {
         // ===== API =====
         public string apiUrl = "https://api.deepseek.com";
-        public string model = "deepseek-chat";
+        public string model = "deepseek-v4-flash";
 
         // ===== 天气 =====
         public int weatherSource = 0;          // 0=WttrIn, 1=QWeather

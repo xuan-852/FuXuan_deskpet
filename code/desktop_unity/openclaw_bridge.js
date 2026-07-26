@@ -181,13 +181,57 @@ function startHttpServer() {
         if (path === '/compile_latex' && req.method === 'POST') {
             let body = '';
             req.on('data', chunk => body += chunk);
-            req.on('end', () => {
+            req.on('end', async () => {
                 try {
-                    const { source, output_path, compiler: requestedCompiler, title, pin_to_desktop } = JSON.parse(body);
-                    if (!source || !source.trim()) {
-                        res.writeHead(400, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ success: false, error: 'Missing source' }));
-                        return;
+                    const { source, description, output_path, compiler: requestedCompiler, title, pin_to_desktop } = JSON.parse(body);
+
+                    // ── 获取 LaTeX 源码：直接提供或由 AI 生成 ──
+                    let latexSource = source && source.trim() ? source : null;
+                    if (!latexSource) {
+                        if (!description || !description.trim()) {
+                            res.writeHead(400, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: false, error: '需要提供 source（直接源码）或 description（描述需求由 AI 生成）' }));
+                            return;
+                        }
+                        // 让 Gateway AI 生成 LaTeX 源码
+                        if (!connected) {
+                            try { await connect_(); }
+                            catch (err) {
+                                res.writeHead(503, { 'Content-Type': 'application/json' });
+                                res.end(JSON.stringify({ success: false, error: `AI 生成连接失败: ${err.message}` }));
+                                return;
+                            }
+                        }
+                        const prompt = `你是一个 LaTeX 专家。请根据以下需求生成完整的 LaTeX 文档源码。
+
+需求：${description}
+
+要求：
+- 输出纯 LaTeX 源码（以 \\documentclass 开头）
+- 中文文档用 ctexart 或 xeCJK，英文用 article
+- 包含 \\begin{document} 和 \\end{document}
+- 结构完整、排版美观
+- **只输出 LaTeX 源码，不要任何解释、不要 Markdown 代码块包裹**`;
+                        console.log(`[Bridge] Generating LaTeX via AI for: "${description.substring(0, 80)}..."`);
+                        const t0 = Date.now();
+                        const aiResponse = await sendChatAndWait(prompt);
+                        const elapsed = Date.now() - t0;
+                        // 确保返回字符串
+                        let rawText = (typeof aiResponse === 'string') ? aiResponse : JSON.stringify(aiResponse);
+                        // Gateway 可能返回结构化 JSON 格式，提取 text 字段
+                        try {
+                            const parsed = JSON.parse(rawText);
+                            if (Array.isArray(parsed)) {
+                                rawText = parsed
+                                    .filter(item => item.type === 'text' && item.text)
+                                    .map(item => item.text)
+                                    .join('\n');
+                            }
+                        } catch { /* 不是 JSON，直接使用 */ }
+                        latexSource = rawText;
+                        // 清理可能的代码块包裹
+                        latexSource = latexSource.replace(/^```(?:latex|tex|)\s*/i, '').replace(/\s*```$/i, '').trim();
+                        console.log(`[Bridge] AI generated ${latexSource.length} chars of LaTeX in ${elapsed >= 1000 ? (elapsed/1000).toFixed(1)+'s' : elapsed+'ms'}`);
                     }
 
                     // ── 选择编译器 ──
@@ -219,7 +263,7 @@ function startHttpServer() {
                     if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
                     // ── 写 .tex 文件 ──
-                    writeFileSync(texPath, source, 'utf-8');
+                    writeFileSync(texPath, latexSource, 'utf-8');
 
                     // ── 编译 ──
                     const compileArgs = `-interaction=nonstopmode -halt-on-error -output-directory="${outDir}" "${texPath}"`;

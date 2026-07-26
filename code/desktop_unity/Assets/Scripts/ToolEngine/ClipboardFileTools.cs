@@ -389,7 +389,8 @@ public class FileReadTool : IPetTool
     public string ToolDescription => "【文件管理】读取文本文件的内容（自动检测是否为二进制文件）。用户说「看看这个文件里写了什么」「打开记事本看看」「读一下这个文件」时调用。";
     public string ToolParametersJson => ToolSchema.Schema(
         ToolSchema.Req("path", "string", "文件路径或 file:// URI"),
-        ToolSchema.Opt("max_length", "integer", "最大返回字符数，默认2000")
+        ToolSchema.Opt("max_length", "integer", "最大返回字符数，默认2000"),
+        ToolSchema.Opt("offset", "integer", "读取起始偏移字符数，默认0。用于分段读取大文件")
     );
     public bool IsAsync => false;
 
@@ -397,8 +398,12 @@ public class FileReadTool : IPetTool
     {
         string path = ToolHelpers.DecodeFileUri(ToolHelpers.JsonRead(argsJson, "path"));
         string maxLenStr = ToolHelpers.JsonRead(argsJson, "max_length");
+        string offsetStr = ToolHelpers.JsonRead(argsJson, "offset");
         int maxLen = 2000;
+        int offset = 0;
         if (!string.IsNullOrEmpty(maxLenStr)) int.TryParse(maxLenStr, out maxLen);
+        if (!string.IsNullOrEmpty(offsetStr)) int.TryParse(offsetStr, out offset);
+        if (offset < 0) offset = 0;
         if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
         try
         {
@@ -423,7 +428,13 @@ public class FileReadTool : IPetTool
             if (isBinary) return $"📄 {Path.GetFileName(path)} 采二进制之形，非本座可读";
 
             string content = File.ReadAllText(path, Encoding.UTF8);
-            if (content.Length > maxLen) content = content[..maxLen] + $"\n\n...（余 {content.Length - maxLen} 字符未展示）";
+            if (offset > 0)
+            {
+                if (offset >= content.Length) return $"📄 {Path.GetFileName(path)}：⚠️ 偏移量 {offset} 超过文件长度 {content.Length}，已无更多内容";
+                content = content[offset..];
+            }
+            int remaining = content.Length;
+            if (content.Length > maxLen) content = content[..maxLen] + $"\n\n...（余 {remaining - maxLen} 字符未展示，offset={offset + maxLen} 可继续读取）";
             return $"📄 {Path.GetFileName(path)}：\n{content}";
         }
         catch (Exception e) { return $"❌ 读取失败：{e.Message}"; }

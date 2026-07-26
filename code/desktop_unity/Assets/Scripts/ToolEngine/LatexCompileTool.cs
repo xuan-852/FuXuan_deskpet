@@ -8,7 +8,7 @@ using UnityEngine;
 // ================================================================
 
 /// <summary>
-/// LaTeX 编译工具。接收 LaTeX 源码，通过后台桥接服务器调 pdflatex 编译为 PDF。
+/// LaTeX 编译工具。接收用户需求描述，通过桥接服务器让 AI 生成源码并编译为 PDF。
 /// 源码保留为 .tex 文件，便于后续修改；清理 .aux .log .out 中间产物。
 /// 输出目录统一在 D:\DesktopPetData\Documents\。
 /// </summary>
@@ -16,10 +16,10 @@ public class LatexCompileTool : AsyncToolBase
 {
     public override string ToolName => "compile_latex";
     public override string ToolDescription =>
-        "【专业排版】将 LaTeX 源码编译为 PDF 文档。用户说「帮我写一份报告/论文/简历/文档」 " +
-        "且需要 PDF 输出时调用此术式。生成位置在 D:\\DesktopPetData\\Documents\\。";
+        "【专业排版】生成并编译 LaTeX 文档为 PDF。用户说「帮我写一份报告/论文/简历/文档」 " +
+        "且需要 PDF 输出时调用此术式。本座只需需求描述，AI 会自动生成源码并编译。生成位置在 D:\\DesktopPetData\\Documents\\。";
     public override string ToolParametersJson => ToolSchema.Schema(
-        ToolSchema.Req("source", "string", "完整的 LaTeX 文档源码，含 \\documentclass 和 \\begin{document}…\\end{document}"),
+        ToolSchema.Req("description", "string", "文档需求描述，如「帮我写一份关于人工智能发展史的学术报告，约2000字，含摘要和参考文献」"),
         ToolSchema.Opt("title", "string", "文档标题，用于命名文件夹和文件（如「学术报告」「个人简历」）"),
         ToolSchema.Opt("output", "string", "输出的 .tex 文件路径（可选，默认自动生成）"),
         ToolSchema.Opt("compiler", "string", "编译器：xelatex（默认，中文友好）/ pdflatex / lualatex"),
@@ -28,15 +28,9 @@ public class LatexCompileTool : AsyncToolBase
 
     protected override async Task<string> ExecuteAsyncTask(string argsJson)
     {
-        string source = ToolHelpers.JsonRead(argsJson, "source");
-        if (string.IsNullOrWhiteSpace(source))
-            return "❌ 未提供 LaTeX 源码";
-
-        // 检查源码完整性
-        if (!source.Contains("\\documentclass"))
-            return "⚠️ 源码缺少 \\documentclass，请补全后重试";
-        if (!source.Contains("\\begin{document}") || !source.Contains("\\end{document}"))
-            return "⚠️ 源码缺少 \\begin{document} / \\end{document}，请补全后重试";
+        string description = ToolHelpers.JsonRead(argsJson, "description");
+        if (string.IsNullOrWhiteSpace(description))
+            return "❌ 未提供文档需求描述，请告诉本座想生成什么样的文档";
 
         string title = ToolHelpers.JsonRead(argsJson, "title");
         if (string.IsNullOrWhiteSpace(title)) title = null;
@@ -52,7 +46,7 @@ public class LatexCompileTool : AsyncToolBase
         string pinStr = ToolHelpers.JsonRead(argsJson, "pin_to_desktop");
         bool pinToDesktop = pinStr == "true";
 
-        string result = await OpenClawBridge.CompileLatexAsync(source, output, compiler, title, pinToDesktop);
+        string result = await OpenClawBridge.CompileLatexAsync(null, output, compiler, title, pinToDesktop, description);
 
         try
         {
@@ -96,7 +90,7 @@ public class LatexCompileTool : AsyncToolBase
                 Debug.LogWarning($"[LatexCompileTool] ❌ 编译失败: {err}");
                 string detail = !string.IsNullOrEmpty(logTail) ? $"\n```\n{logTail}\n```" : "";
                 return $"❌ 编译失败：{err}{detail}\n" +
-                       $"💡 你可以把 LaTeX 源码发给我，我帮你检查语法错误。";
+                       $"💡 你可以重新描述需求，本座再试一次。";
             }
         }
         catch (Exception ex)

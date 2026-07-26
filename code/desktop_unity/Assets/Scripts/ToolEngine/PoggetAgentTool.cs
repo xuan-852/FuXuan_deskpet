@@ -105,7 +105,7 @@ public class PoggetAgentTool : IPetTool
                 else { process.Kill(); return "\u274C PoggetAgent 执行超时"; }
 
                 if (process.ExitCode != 0 && string.IsNullOrEmpty(stdout))
-                    return $"\u274C 执行失败：{string.IsNullOrEmpty(stderr) ? $"退出码 {process.ExitCode}" : stderr}";
+                    return $"\u274C 执行失败：{(string.IsNullOrEmpty(stderr) ? "退出码 " + process.ExitCode : stderr)}";
 
                 return string.IsNullOrEmpty(stdout) ? "\u274C 返回空响应" : FormatResponse(args.cmd, stdout);
             }

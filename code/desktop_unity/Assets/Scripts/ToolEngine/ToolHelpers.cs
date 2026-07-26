@@ -175,6 +175,7 @@ public static class ToolHelpers
     {
         string search = $"\"{key}\":\"";
         int idx = json.IndexOf(search);
+        if (idx < 0) { search = $"\"{key}\": \""; idx = json.IndexOf(search); }
         if (idx >= 0)
         {
             idx += search.Length;

@@ -21,7 +21,7 @@ public class IdleChatGenerator : MonoBehaviour
 {
     [Header("API 设置")]
     public string apiUrl = "https://api.deepseek.com";
-    public string model = "deepseek-chat";
+    public string model = "deepseek-v4-flash";
 
     [Header("缓存设置")]
     [Tooltip("最小缓存量 — 低于此数触发后台批量生成")]
