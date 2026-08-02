@@ -690,6 +690,7 @@ public class ParameterVisionScanner : EditorWindow
             jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(dataUrlMin) + "\"}},";
             jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(dataUrlMax) + "\"}}";
             jsonBody += "]}],";
+            jsonBody += "\"thinking\":{\"type\":\"disabled\"},";
             jsonBody += "\"request_id\":\"" + Guid.NewGuid().ToString("N") + "\"";
             jsonBody += "}";
 

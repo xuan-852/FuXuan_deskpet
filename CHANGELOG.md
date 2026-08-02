@@ -1,241 +1,432 @@
-# 改动日志
+# 改动日志 — 太卜司符玄桌面灵伴
 
-## V2.3+ (2026-07-13)
+> 版本命名：`N<数字>` 为迭代号，`v<数字>` 为早期版本。
+
+---
+
+## N39 (2026-08-02)
+
+### 🔧 代码修复（N38 审计出的 9 个 Bug + 2 项结构性偏差）
+
+> 按 `project_brief/code-truth-architecture.md` 第 10 节修复优先级执行，`build.ps1 -Quick` 编译验证通过。
+
+**P0 — 睡眠调度与锁时序**
+- **BUG-1** `MotionAgent.IsSleepTime()`：删除调试期硬编码 `return false`，恢复真实判断（凌晨 1~7 点为睡眠时段），保留 `testMode` 测试保护
+- **BUG-2** `MotionAgent.ExecuteCombo`：AI 控制锁 `SetAiControlLock` 移到 `PlayAsync` **之前**加锁，与 `ExecuteMotion` 锁序一致（连招期间空闲动画不再争抢参数）
+
+**P1 — 反思 / 知识库 / 验证器名实相符**
+- **#9 反思机制**：审计澄清——反思实际已由 `ChatManager.SendRequestCoroutine → CheckReflection → DoReflection`（DeepSeek 提炼）→ `CommitReflection` 接线；删除从未被调用的 `OnReflectRequest` 死字段（`PetMemory` + `ChatManager` 死注册）
+- **#8 知识库**：`KnowledgeBaseManager.GetFormattedContext()` 不再恒返回 ""，新增 `LastFormattedContext` 缓存（由协程 `SearchAndFormat` 填充），同步 API 返回最近一次检索结果
+- **BUG-5** `DualModelValidator.ValidateAsync`：回调签名从 7 参简化为 4 参 `(isConsensus, avgScore, glmScore, glmReview)`（删除恒 0 的 qwen 参数），同步更新 `MotionAgent` / `MotionCoroutineTools` 两处调用方；类注释明确单 GLM-4V
+
+**P2 — 其余 Bug 与死代码**
+- **BUG-3** `MotionAgent.GatherContext()`：用 .NET 内置 `ChineseLunisolarCalendar` 计算真实农历日并映射月相（新月/蛾眉/上弦/满月/下弦/残月/晦月），不再谎称农历实则用公历日
+- **BUG-4** 交互时间：`ActivityTracker` 新增 `LastActivityTime`（前台窗口切换时更新时间戳），`MotionAgent.UpdateInteractionTime()` 的空分支接线为读取该时间戳
+- **BUG-6** 删除 `AutoMotionCollector.cs`（331 行 `[Obsolete]` 死代码）+ `.meta` + `DesktopPet` 中的组件自动添加逻辑
+- **BUG-7** `MotionTranslator` "excited wave" 示例：`arm_right_upper: 0.8` 改为角度值（20~28，与 SPECIAL PATTERNS 招手规则一致），消除对 LLM 的误导
+- BUG-8 / BUG-9 为文档错误，已随 N38 文档重写修正，代码本身无需改动
+
+**保持现状（规划中能力，勿在文档中宣称可用）**：3D 渲染模式（HybridRenderer TODO）、多屏支持（`isMultiMonitor`）、动态分辨率降级（`GetResolutionScale`）。
+
+---
+
+## N38 (2026-08-02)
+
+### 📚 代码真相审计与文档重写
+
+> 以 `code/desktop_unity/Assets/Scripts/` 下真实代码为准，对全部文档做了审计与重写。
+> 权威结论见 [`project_brief/code-truth-architecture.md`](project_brief/code-truth-architecture.md)。
+
+**审计确认的真相数字**（修正此前文档偏差）：
+- 工具回环：**10 轮**（原文档误写 5 轮）；注册工具 **52 个 / 10 文件**（原误写 40+/6 文件）
+- ActionAgent：**16 文件**（原误写 15）；MotionTranslator：**10 规则 + 10 特殊模式**（原误写 11+12）
+- MotionPlanner：**10 模板 + 6 曲线**（含 `Bounce`，原误写 BounceEaseOut）
+- **DualModelValidator 仅 GLM-4V**（Qwen-VL 已删，qwenScore 恒 0），非双模型
+- 天气源：**默认 wttr.in**（cityCode="Nanjing"），QWeather 为可选
+- 反射机制：`OnReflectRequest` 回调恒 null，反思未驱动
+- `KnowledgeBaseManager.GetFormattedContext()` 为 STUB 恒返回 ""
+- `isMultiMonitor` 恒 false；`GetResolutionScale` 恒 1.0f；3D 渲染不可用；`AutoMotionCollector` 死代码
+
+**已确认 9 个 Bug**（BUG-1~BUG-9，详见审计文档第 5 节）：
+1. BUG-1 `MotionAgent.IsSleepTime()` L369 硬编码 `return false`
+2. BUG-2 `ExecuteCombo` 播放后才加 AI 锁（L1062 vs ExecuteMotion L985）
+3. BUG-3 `GatherContext()` 注释称农历月相，实际用 `now.Day` 公历
+4. BUG-4 `ActivityTracker.UpdateInteractionTime()` 空实现
+5. BUG-5 DualModelValidator 名不副实（仅单模型）
+6. BUG-6 AutoMotionCollector 死代码 331 行
+7. BUG-7 MotionTranslator 示例 `arm_right_upper: 0.8` 与规则 15-25° 矛盾
+8. BUG-8 规则数文档 11+12 与实际 10+10 不符
+9. BUG-9 曲线文档 BounceEaseOut 与实际 Bounce 不符
+
+**重写文档**：README.md、CHANGELOG.md、project_brief/report.md、project_brief/task-inventory.md、project_brief/report.tex、record/Latex/report.tex 等 12 份文档全部按代码真相重写或修订。
+
+---
+
+## N37 (2026-07-26)
 
 ### ✨ 新功能
-- **运动记忆自反馈** — `MotionMemoryManager` 新增负面反馈阈值、绝望检测、冷却机制、PhysicallyImpossibleActions 黑名单
-- **多帧拼图评分** — GLM-4V 单模型对动作视频的多帧拼图进行一致性评分，替代移除的 Qwen-VL
-- **GpuLoadMonitor 游戏检测** — 检测 GPU 被游戏占用时拦截 LLM 动作决策，避免影响游戏性能
-- **SafetyValidator 参数校验** — 校验 LLM 生成的动作参数不超出物理安全阈值
+- **言出法随 — 内嵌动作标记系统** — AI 回复文本中嵌入 `【表情:开心】` / `【动作:伸懒腰】` / `（自然描述）` 标记，无需 tool_call 即可同步触发表情动作
+- **ToolEngine 插件架构** — 4065 行 `ToolCallInvoker.cs` 拆分为 1 接口 + 1 注册器 + 6 分类工具文件，反射自动发现
+- **OpenClaw 搜索网关集成** — 通过 GatewayChatClient 实时搜索，180s 超时，自动健康检查
 
 ### 🔧 技术改进
-- **移除 Qwen-VL-Plus** — 因 401 Unauthorized 不可用，视觉验证统一为 GLM-4V 单模型 + 多帧拼图
-- **Newtonsoft.Json 迁移** — 全面替换手写 JSON 解析器，提升稳定性
-- **MotionAgent 架构清理** — MotionPlanner(11模板/6曲线/6表情)、MotionTranslator(LLM→Live2D参数)、MotionExecutor(插值执行)
-- **闭环验证 P0 修复** — 修复数据流断裂，确保验证反馈正确写入运动记忆
-- **MotionTranslator 参数保护** — 防止 LLM 生成极限参数值损坏 Live2D 模型
-
-## V2.3 (2026-07)
-
-### ✨ 新功能
-- **报告面板复制按钮** — RightPanel 报告标签页支持一键复制内容
-- **MotionAgent 自主动作决策** — AI 驱动的动作生成全链路（规划→翻译→执行→验证→记忆）
-
-## V2.2 (2026-07)
-
-### ✨ 新功能
-- **悬浮球 + 辐射菜单完善** — BallPanel 拖拽交互优化 + RightPanel 多标签页（设置/报告/便签）
-- **动作系统重构** — 拆分为 Live2DFramework（参数映射/物理）、ActionAgent（动作选择/空闲动作管理）
-
-## N18 (2026-06-22)
-
-### ✨ 新功能
-- **已完成任务独立视图** — 便签页新增「✅ 已完成」按钮，已完成的任务单独显示，不混在待办列表里。待办/已完成可自由切换查看
-- **系统总内存监控** — 通过 `GlobalMemoryStatusEx` 监控物理内存占用，85% 预警 GC，93% 紧急降档保命，防止 VS Code 与桌面宠物抢内存导致被杀进程
-- **`GetDoneReminders()`** — ReminderManager 新增已完成提醒查询方法
-
-### 🐛 修复
-- 系统内存 > 93% 时自动强制 GC + 通知 PerformanceMonitor 降档至 Low（20fps, 50% RT），减少内存压力，避免被系统自动关掉
+- 修复 Unity Mono `Environment.TickCount64` 不兼容问题
+- `@""` 逐字字符串 `\"` → `""` 转义修复 Unity 编译陷阱
+- SystemPrompt.txt 新增「言出法随」章节
 
 ---
 
-## N17 (2026-06-22)
+## N36 (2026-07-20)
 
 ### ✨ 新功能
-- **提醒去重机制** — `ReminderManager` 新增 `HasPendingReminderContaining()` 和 `DeletePendingRemindersContaining()` 方法，支持按关键词检查/删除重复待办
-- **服务器推送去重** — `HandleExamReminder` 添加考试复习提醒前，先用课程名检查 `ReminderManager` 是否已有同类待办，避免 AI 手动设置 + 服务器推送的重复
-
-### 🐛 修复
-- 考试提醒与用户手动设置（如「提醒我高数考试」）不再重复。保留用户先设的提醒，服务器推送的同类提醒自动跳过
+- **ToolCallInvoker 插件化重构** — 单文件 4065 行 → 插件架构：`IPetTool` 接口 + `ToolRegistry` 反射发现 + 6 分类工具文件
+  - 净减少 ~650 行代码，编译通过 ✅
 
 ---
 
-## N16 (2026-06-20)
+## N35 (2026-07-13)
 
 ### ✨ 新功能
-- **Everything 毫秒级文件搜索** — 集成 Everything CLI（es.exe），`search_files` 工具优先调用 Everything 实现全盘毫秒级搜索，未安装时自动回退递归搜索
-- **Everything CLI 自动检测** — 启动时自动扫描 Program Files、LocalAppData 及 PATH，智能定位 es.exe
+- **运动记忆自反馈** — `MotionMemoryManager`：负反馈阈值 / 绝望检测 / 冷却机制 / 黑名单
+- **GLM-4V 多帧拼图评分** — 20/40/60/80% 截图合成 2×2 拼图，替代已移除的 Qwen-VL
+- **GpuLoadMonitor 游戏检测** — GPU 被游戏占用时拦截 LLM 动作决策
+- **SafetyValidator 参数校验** — 互斥组 / 对称对 / 极端值 3 类保护
+- **异步工具框架** — 支持 `IEnumerator` 协程工具（`generate_motion` 等）
 
-### 🐛 修复
-- **文件搜索 3 秒超时** — 根因：AI 使用 `run_command` 的 `dir /s` 搜索文件，但 `p.WaitForExit(3000)` 仅 3 秒即 `p.Kill()`
-  - 创建专用 `search_files` 工具，Task.Run 异步执行 + 10 秒超时
-  - 重写为 Everything CLI 优先（毫秒级），回退递归搜索
-  - 系统提示词新增「搜文件铁则」引导 AI 使用正确工具
+### 🔧 技术改进
+- 移除 Qwen-VL-Plus（401 不可用），视觉验证统一 GLM-4V
+- Newtonsoft.Json 全面替换手写 JSON 解析器
+- MotionAgent 架构清理：Planner(10模板/6曲线/6表情) + Translator(DeepSeek→Live2D) + Executor(插值)
+  - ⚠️ 注：Planner 实际为 **10 模板**（含 Bounce 曲线），此处历史条目与代码真相审计（N38）一致
+- 闭环验证 P0 修复：确保验证反馈正确写入运动记忆
+- MotionTranslator 参数保护：防止极限值损坏模型
 
 ---
 
-## N15 (2026-06-20)
+## N34 (2026-07-07)
 
-### 🐛 修复
-- **逐句显示 bug** — 多句回复逐句播完后不再将气泡替换为完整全文。之前最后一句播完后 `OnSentenceChanged` 会额外触发一次将气泡设为 `_fullReplyText`，导致"一句一句→突然全文又出来了"的怪异表现。
+### 🔧 技术改进
+- **MotionTranslator SPECIAL PATTERNS 全面优化** — 基于 vis_verify 基线：
+  - 捂脸: arm_mid 升至面部 → 视觉可见
+  - 捂嘴: 新增 ONE_HAND 口诀 + `mouth_open_y=0`
+  - 叉腰: arm_lower 0.15→≥0.4
+  - 缩团: 加 body_angle_y 弓身前倾
+  - 行礼: body_angle_x → body_angle_y 修正
+- **VERIFIED FEEDBACK**：告知 DeepSeek 上次失败案例
+- **闭环自评**：`generate_motion` 播放完毕自动截图 → GLM 评分 → 追加回复
 
 ---
 
-## N14 (2026-06-20)
+## N33 (2026-07-06)
 
 ### ✨ 新功能
-- **小程序数据打通** — 符玄现在可以实时查询课表小程序服务端的学业数据：
-  - `query_scores` — 查询各科成绩（分学期，含分数/学分/课程属性）
-  - `query_schedule` — 查询课表（可选周次，含教师/教室/节次）
-  - `query_user_status` — 查询学业概览（学号/学期/数据统计）
-  - 配合已有的 `query_exams` 实现完整学业数据查询
+- **具身智能验证协议** — `MotionVerifier.cs`：自动测试套件（对照组 5 + 测试组 10 + 边界 4）
+- **闭环数据流** — MotionAgent → Translator → Planner → Generator → Validator → Memory
+- **人格演化系统 V3** — `PersonalityManager.cs`：五维人格 + 三维关系 + 里程碑
+- **MotionMemoryManager** — 学习核心：30 条上限 + 负反馈 + 无望检测 + 冷却
+
+---
+
+## N32 (2026-07-06)
+
+### ✨ 新功能
+- **GLM-4V 视觉验证** — `VisionMotionVerifier.cs`：截图→GLM 评分
+- **盲探索** — GLM 描述当前姿态，发现模型能做到的动作
+- **`inspect_personality` 工具** — #46 人格自省
+- **SystemPrompt 注入闭环能力说明**
+
+### 🔧 技术改进
+- MotionTranslator 规则从 5→10，特殊模式从 6→10
+  - ⚠️ 注：审计（N38）确认实际为 **10 规则 + 10 特殊模式（9 种姿势，捂脸重复）**，此处按代码真相修正
+
+---
+
+## N28 (2026-07-03)
+
+### ✨ 新功能
+- **通用动作代理系统** — 七阶段路线图完成 Phase 1-3
+- **ParameterVisionScanner** — Editor 窗口，GLM-4V 参数视觉扫描
+- **ParameterKnowledgeProvider** — 参数知识注入 ChatManager
+- **MotionPlanner** — 10 种硬编码模板 + 6 种插值曲线
+- **MotionGenerator** — 协程插值播放引擎
+- **IdleActionScheduler** — 加权随机空闲动作调度
+- **SafetyValidator** — 物理安全校验
+
+---
+
+## N27 (2026-06-28)
+
+### 🔧 技术改进
+- 构建流水线标准化：`build.ps1` 支持 `-Quick` / `-RunTests`
+- 针对 Tuanjie 路径拼接 Bug 的 subst 替代方案
+
+---
+
+## N26 (2026-06-25)
+
+### ✨ 新功能
+- **OpenClaw Bridge** — 搜索网关，基于 WebSocket GatewayChatClient 实时搜索
+- **V2.0 参数知识体系** — fuxuan_map.json v2 含分组/域/关联/前提
+
+---
+
+## N25 (2026-06-24)
+
+### ✨ 新功能
+- **Multi-Display 支持** — VirtualScreen 跨屏
+  - ⚠️ 注：审计（N38）确认 `WindowOverlay.isMultiMonitor` 当前恒为 false，跨屏行走为规划中能力
+- **睡眠唤醒恢复** — DWM 重建 + 物理重置
+
+---
+
+## N24 (2026-06-23)
+
+### ✨ 新功能
+- **KnowledgeBaseManager** — 本地 RAG 知识库
+- **LocalLLMAgentService** — Ollama 本地决策（0.5B/3B；N38 核实实际为 `qwen2.5:3b`）
+
+---
+
+## N23 (2026-06-22)
+
+### ✨ 新功能
+- **ProactiveMessageScheduler** — 主动消息调度
+- **VisualHeartbeat** — 系统托盘心跳动画
+
+---
+
+## N22 (2026-06-22)
+
+### ✨ 新功能
+- **已完成任务独立视图** — 便签页「✅ 已完成」按钮
+- **系统总内存监控** — `GlobalMemoryStatusEx`，85% 预警 GC，93% 紧急降档
+- **GpuLoadMonitor** — 游戏检测自动降档
+
+### 🐛 修复
+- 内存 > 93% 时强制 GC + 降档 Low(20fps, 50%RT)
+
+---
+
+## N21 (2026-06-22)
+
+### ✨ 新功能
+- **提醒去重机制** — `HasPendingReminderContaining()` / `DeletePendingRemindersContaining()`
+- **服务器推送去重** — 课程名检查避免重复
+
+### 🐛 修复
+- 考试提醒不与用户手动设置的重复
+
+---
+
+## N20 (2026-06-21)
+
+### ✨ 新功能
+- **MotionAgent 自主动作决策** — 四档密度(4s/8s/15s/30s)
+- **DualModelValidator** — GLM-4V (裁决) + Qwen-VL (辅助)
+- **`generate_motion` 工具** — DeepSeek LLM 任意动作生成
+- **MotionTranslator** — 自然语言 → Live2D 关键帧
+
+### 🔧 技术改进
+- 报告面板复制按钮 — RightPanel 一键复制
+
+---
+
+## N19 (2026-06-21)
+
+### ✨ 新功能
+- **悬浮球 (BallPanel)** — 右下角粉✦ + 420×580px 辐射菜单
+- **右侧面板 (RightPanel)** — `~`键 / 鼠标划过展开
+- **动作系统重构** — 拆分为 Live2DFramework / ActionAgent
+- **SystemPrompt.txt** — 独立提示词文件
+
+---
+
+## N18 (2026-06-20)
+
+### ✨ 新功能
+- **Everything 毫秒级文件搜索** — `search_files` CLI 优先，自动回退
+- **服务端轮询** — `ServerPollService` 定时轮询
+- **Server酱³ 推送** — 手机推送
+- **课表/成绩/考试查询**
+
+### 🐛 修复
+- 文件搜索 3s 超时：`dir /s` → `search_files` 专用异步工具
+- 逐句显示：最后一句不再覆盖全文
 
 ### 🔧 技术
-- **服务端 API** — `pet.js` 新增 3 个端点：`GET /scores`、`GET /schedule?week=N`、`GET /user/status`
-- **ServerPollService** — 新增 3 个异步查询方法 + JSON 反序列化模型
-- **ToolCallInvoker** — 工具注册从 21 个扩展到 24 个
-- **ChatManager** — 系统提示词新增「第 9 条术式：卜算传讯」章节
+- 工具注册 21→24 个，新增 `query_*` 系列
 
 ---
 
-## N13 (2026-06-20)
+## N17 (2026-06-20)
 
 ### ✨ 新功能
-- **服务端推送轮询** — `ServerPollService` 定期轮询 Node.js 服务端获取推送队列
-- **Server酱³ 推送** — `ReminderManager` 到期提醒通过 Server酱³ 推送到手机
-- **桌面开机通知** — 宠物启动时服务端推送桌面已开机通知
+- **服务端推送轮询 + 开机通知**
+- **Server酱³ → 手机推送**
 
 ### 🔧 技术
-- 新增 `ServerPollService.cs` — HTTP 轮询 + 推送队列消费 + 自动重试
-- `ReminderManager.cs` 重构 — 分离本地提醒和服务端推送逻辑
-- `DesktopPet.cs` 启动链中集成服务端轮询
+- 新增 `ServerPollService.cs`
+- `ReminderManager.cs` 重构分离本地/推送逻辑
 
 ---
 
-## N12 (2026-06-19)
+## N16 (2026-06-19)
 
 ### ✨ 新功能
-- **性能监控** — `PerformanceMonitor` 实时监控 FPS/CPU/内存，FPS 过低时通知动画系统降低频率
-- **桌面宠物开机自启** — 系统托盘菜单支持一键设置开机自启（VBS 脚本）
+- **PerformanceMonitor** — FPS/CPU/内存监控
+- **开机自启** — 注册表 HKCU\Run 管理
+
+---
+
+## N15 (2026-06-18)
+
+### ✨ 新功能
+- **启动点击穿透** — 无需先拖拽"激活"
+- **Server酱³ 推送集成**
+
+### 🐛 修复
+- AI 多轮工具调用（最多 5 轮；N38 核实实际 `MAX_TOOL_ROUNDS=10`）
+- 右键菜单穿透逻辑
+- 底部输入栏序列化竞态条件
+
+---
+
+## N14 (2026-06-18)
+
+### ✨ 新功能
+- **优先级气泡系统** — High(AI) > Normal(提醒) > Low(闲话)
+- **工具注册防抖**
+
+### 🐛 修复
+- AI 回复被自动问候打断
+
+---
+
+## N13 (2026-06-18)
+
+### ✨ 新功能
+- **DWM 玻璃层透明** — 彻底解决绿边
+- **底部输入栏** — Windows 搜索风格
+- **聊天 UI 简化** — 仅输入框 + 发送
 
 ### 🔧 技术
-- `PerformanceMonitor.cs` 新增 — 基于 `PerformanceCounter` 的 CPU/内存监控
-- `SystemTrayManager.cs` 新增开机自启管理
+- Camera 背景 (0,0,0,0)
+- `BuildScript.cs` 重建
+- LaTeX 文档完整更新
 
 ---
 
-## N11 (2026-06-18)
-
-### 🐛 修复
-- **AI 回复与自动闲聊抢占** — 引入优先级气泡系统（`MsgPriority` 枚举）：
-  - `High` = AI 主动回复，不可被低优先级消息覆盖
-  - `Normal` = 提醒、交互回应
-  - `Low` = 闲话、定时问候
-- **AI 输出稳定版** — 修复 DeepSeek 回复时被自动问候打断的问题
-- **ToolCallInvoker 工具注册防抖** — 避免重复注册导致的工具调用异常
-
-### 🔧 技术
-- `ChatBubble.cs` 重构 — 新增 `MsgPriority` 枚举 + 优先级比较逻辑
-- `AutoChat.cs` — 更新 `HandleSentenceChanged` 使用高优先级显示 AI 回复
-
----
-
-## N10 (2026-06-18)
+## N12 (2026-06-17)
 
 ### ✨ 新功能
-- **启动点击穿透** — 宠物启动时鼠标可穿透到桌面，无需先拖拽"激活"
-- **右键菜单穿透管理** — 菜单打开时区域内可交互、区域外穿透
-- **Server酱³ 推送集成** — 便签到期可通过 Server酱³ 推送到手机
+- **物理直接驱动** — 20+ 参数绕过 CubismPhysics 延迟
+- **分区点击反馈** — 头/身/腿
+- **拖拽挣扎动画** — 双臂划水 + 慌张表情
+- **时间/天气响应** — wttr.in + 表情联动
+- **第 11 空闲动作** — 困惑（AI 触发）
+- **待机气泡** — 时间/天气特化
 
 ### 🐛 修复
-- **AI 多轮工具调用** — DeepSeek Function Calling 多次工具调用回环支持（最多 5 轮）
-- **右键菜单穿透** — 修复菜单打开时点击穿透逻辑
-- **底部输入栏序列化** — 修复 `GUI.FocusControl` 在构建版中的竞态条件
+- 行走衣服不随体态飘动
+- 手臂幅度过大 / 物理覆盖
 
 ---
 
-## v0.9 (2026-06-18)
+## N11 (2026-06-17)
+
+### 🐛 修复
+- 行走手臂被物理覆盖 → `DefaultExecutionOrder(801)`
+- 体态参数时序 → 提前 Update()
+- 手臂 clamp 满幅 → 分离常量
+
+---
+
+## N10 (2026-06-13)
 
 ### ✨ 新功能
-- **DWM 玻璃层透明** — 窗口透明从色键（#00FF00）切换为 DWM 玻璃层扩展（`DwmExtendFrameIntoClientArea`），彻底解决半透明绿边问题
-- **简化聊天 UI** — 移除消息历史/状态栏/工具栏，仅保留输入框 + 发送按钮
-- **底部输入栏** — Windows 搜索风格（白底 + 浅灰输入框 + 蓝按钮），固定坐标系统（`BAR_LEFT/RIGHT/TOP/BOTTOM`），淡入动画 0.5s
-
-### 🔧 技术
-- Camera 背景统一改为纯黑 (0,0,0,0)
-- `BuildScript.cs` 重建（自动构建脚本）
-- 移除 Live2D 全部视觉特效参数（星辉/法阵/数钱的 Param121/132/137 等）
-- 更新完整 LaTeX 技术文档
-
----
-
-## v0.8 (2026-06-17)
-
-### ✨ 新功能
-- **头发/裙子/法盘直接物理驱动** — 20+ 输出参数绕过 CubismPhysics 延迟（0.8s → 即时）
-- **分区点击反馈** — 头部戳脸 / 身体害羞捂胸 / 腿部踢腿
-- **拖拽挣扎动画** — 双臂划水 + 双腿交替 + 身体扭动 + 慌张表情
-- **时间/天气响应系统** — wttr.in API 获取天气，昼夜犯困眼皮，天气表情联动
-- **第 11 个空闲动作** — 困惑（AI 触发专用）
-- **待机气泡** — 支持时间/天气特化内容
-
-### 🐛 修复
-- 行走时衣服不随体态飘动 — 体态参数提前到 `Update()` 设置
-- 手臂幅度过大 — 分离大/小范围手臂参数常量
-- 物理覆盖手臂参数 — `ForceUpdateNow()` 强制网格重算
-
----
-
-## v0.7 (2026-06-17)
-
-### 🐛 修复
-- **行走手臂被物理覆盖** — 添加 `[DefaultExecutionOrder(801)]` 确保 LateUpdate 跑在 `CubismPhysicsController` 之后
-- **体态参数时序** — 提前到 `Update()` 设置供物理驱动衣服
-- **手臂 clamp 满幅** — 分离大/小范围手臂参数常量
-
----
-
-## v0.6 (2026-06-13)
+- 右键菜单 UI（设置/动作 2 标签）
+- 动作锁定 + 走路淡入(0.3s)
 
 ### 📚 文档
-- 创建 LaTeX 技术文档 `project_brief/report.tex`
+- LaTeX 技术文档
 - 完善 README.md
 
-### 🎮 新功能
-- 右键菜单 UI（设置/动作 2 标签）
-- 动作锁定机制 + 走路淡入过渡（0.3s）
-
 ---
 
-## v0.5
+## N9 (2026-06-12)
 
 ### ✨ 新功能
-- 动作锁定机制（播放期间不被走路覆盖）
-- 走路淡入过渡
+- 地面状态机（5 种行为加权随机切换）
+- 走路动画（转体 + 抬腿 + 垂直颠簸）
+- 像素物理引擎（重力 + 碰撞 + 抛掷）
 
 ---
 
-## v0.4
-
-### ✨ 新功能
-- 右键菜单 UI
-- 权重编辑（5 种地面任务权重滑块）
-
----
-
-## v0.3
+## N8 (2026-06-11)
 
 ### ✨ 新功能
 - 10 种空闲动作循环
 - 强制动作系统
-- 加权随机动作选择（替代顺序循环）
+- 加权随机动作选择
 
 ---
 
-## v0.2
+## N7 (2026-06-10)
 
 ### ✨ 新功能
-- 地面状态机（MoveLeftEdge / MoveRightEdge / MoveLeftTime / MoveRightTime / StopTime）
-- 走路动画（转体 + 抬腿摆臂 + 垂直颠簸）
-- 像素物理引擎（重力 + 边界碰撞 + 抛掷）
+- 右键菜单 UI
+- 权重编辑滑块
 
 ---
 
-## v0.1
+## N6 (2026-06-09)
 
 ### ✨ 新功能
-- 透明窗口（Win32 API: DWM + WS_EX_LAYERED）
-- 基础像素物理
-- Live2D 模型加载与渲染
-- 点击穿透动态管理
-- 拖拽移动 + 抛掷
+- Perlin 噪声空闲微动（7 通道）
+- 自动眨眼
+- 鼠标眼睛跟随
+
+---
+
+## N5 (2026-06-08)
+
+### ✨ 新功能
+- 行走犯困表情系统
+- 夜间/深夜频率递增
+
+---
+
+## N4 (2026-06-07)
+
+### ✨ 新功能
+- 系统托盘（Shell_NotifyIcon）
+- ESC 隐藏到托盘
+- 进程互斥（Mutex）
+
+---
+
+## N3 (2026-06-06)
+
+### ✨ 新功能
+- LLM 对话集成（DeepSeek Chat + Function Calling）
+- 打字机逐句显示
+- 自动闲聊
+- 天气 API 集成
+
+---
+
+## N2 (2026-06-05)
+
+### ✨ 新功能
+- 点击穿透动态管理（WS_EX_TRANSPARENT）
+- 拖拽抛掷物理
+
+---
+
+## N1 (2026-06-04)
+
+### ✨ 新功能
+- DWM 透明窗口（WS_EX_LAYERED + DwmExtendFrameIntoClientArea）
+- Live2D 模型加载（AssetDatabase / Resources 双保险）
+- 基础像素物理（重力 + 地面碰撞 + 弹跳）
+- 拖拽移动

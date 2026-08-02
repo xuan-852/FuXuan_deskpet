@@ -1,7 +1,7 @@
 # Live2DRenderer.cs 硬编码参数迁移清单
 
 > 阶段一/六：梳理所有 `SetParameter()` 硬编码调用，标记为"可迁移到 JSON 动作预设"。
-> 统计：全文件约 **320+ 次 SetParameter 调用**，分布在 15 个方法中。
+> 统计（2026-08-02 代码实测）：全文件 **379+ 处 SetParameter 调用**（部分行内双调用，实际更多），分布在 15 个方法中。
 
 ---
 
@@ -21,18 +21,17 @@
 
 ### 1. LateUpdate() — 安全网 & 条件守卫
 
-**位置**: line 783~840+
-**SetParameter 调用**: 28 次
+**调用**: ~28 次
 **性质**: 全局守卫 + 动作锁覆盖 + 走路/空闲调度
 
-| 调用 | 行 | 值 | 用途 | 优先级 |
-|------|----|----|------|--------|
-| ParamBodyAngleX/Y/Z | 770-772 | 0f | poseLock 安全清零 | 🔴 P0 |
-| ParamAngleX/Y/Z | 773-775 | 0f | poseLock 安全清零 | 🔴 P0 |
-| ParamBreath | 776 | 0f | poseLock 安全清零 | 🔴 P0 |
-| Param34/36/37 | 777-779 | 0f | 左臂 poseLock 清零 | 🔴 P0 |
-| _clickSavedParams 循环 | 801 | 动态 | 摸头锁定参数重设 | 🔴 P0 |
-| Param132-71 (×9) | 818-826 | 0f/1f | **每帧眼睛保护** | 🔴 P0 |
+| 调用 | 用途 | 优先级 |
+|------|------|--------|
+| ParamBodyAngleX/Y/Z = 0f | poseLock 安全清零 | 🔴 P0 |
+| ParamAngleX/Y/Z = 0f | poseLock 安全清零 | 🔴 P0 |
+| ParamBreath = 0f | poseLock 安全清零 | 🔴 P0 |
+| Param34/36/37 = 0f | 左臂 poseLock 清零 | 🔴 P0 |
+| _clickSavedParams 循环 | 摸头锁定参数重设 | 🔴 P0 |
+| Param132-71 (×9) 0f/1f | **每帧眼睛保护** | 🔴 P0 |
 
 **评估**: 全部 P0。这是基础守卫，不是"动画"。
 
@@ -40,164 +39,104 @@
 
 ### 2. UpdateIdleAnimation() — 空闲微动 + 表情基调
 
-**位置**: line 1389~1500
-**SetParameter 调用**: ~30 次
+**调用**: ~30 次
 
-| 段落 | 参数 | 逻辑 | 优先级 |
-|------|------|------|--------|
-| 呼吸 | ParamBreath | Perlin 噪声驱动 | 🟡 P1 — 可封装为 "perlin_wave" |
-| 身体晃动 | ParamBodyAngleX/Y/Z | Perlin 噪声驱动 | 🟡 P1 — 同上 |
-| 头部微动 | ParamAngleX/Y | Perlin 噪声驱动 | 🟡 P1 — 同上 |
-| 眼球 | ParamEyeBallX/Y | Perlin 噪声 + 鼠标覆盖 | ⚪ P4 — 鼠标跟随，保留 |
-| 夜间垂眼 | ParamEyeLOpen/ROpen | 条件+lerp | 🟠 P2 — 含状态判断 |
-| 阴雨委屈 | ParamBrowRY/LY/MouthForm | 天气条件 | 🟠 P2 — 含天气条件 |
-| 晴微笑 | ParamMouthForm | 天气条件 | 🟠 P2 — 含天气条件 |
-| 雪好奇 | ParamMouthOpenY/EyeLOpen/ROpen | 天气条件 | 🟠 P2 — 含天气条件 |
-| 眼睛保护 (×9) | Param132~71 | 每帧清零 | 🔴 **P0** — 安全网 |
-| **空闲动作调度** | 无 SetParameter | 加权随机选动作 | **不涉及参数** |
+| 段落 | 逻辑 | 优先级 |
+|------|------|--------|
+| 呼吸 ParamBreath | Perlin 噪声驱动 | 🟡 P1 |
+| 身体晃动 ParamBodyAngleX/Y/Z | Perlin 噪声驱动 | 🟡 P1 |
+| 头部微动 ParamAngleX/Y | Perlin 噪声驱动 | 🟡 P1 |
+| 眼球 ParamEyeBallX/Y | Perlin + 鼠标覆盖 | ⚪ P4 保留 |
+| 夜间垂眼 | 条件+lerp | 🟠 P2 |
+| 天气表情(晴/雨/雪/雷) | 天气条件映射 | 🟠 P2 |
+| 眼睛保护 (×9) | 每帧清零 | 🔴 **P0** |
 
-**评估**: 呼吸+身体晃动可抽象为 `idle_micro_motion` JSON，天气表情可抽象为 `weather_mood.json`。眼球鼠标跟随保留。
+**评估**: 呼吸+身体晃动可抽象为 `idle_micro_motion` JSON，天气表情可抽象为 `weather_mood.json`。
 
 ---
 
-### 3. UpdateIdleTilt() — 动作1: 歪头
+### 3-5. 动作1-3: 歪头 / 微笑 / 挑眉 (P1)
 
-**位置**: line 1511~1518
-**SetParameter**: 1 次
-```csharp
-SetParameter("ParamAngleZ", t * IDLE_TILT);  // t = sin(π * time/duration)
-```
-
-| 优先级 | 理由 |
-|--------|------|
-| 🟡 **P1** | 纯线性 sin 弧，2秒循环，可直接 JSON |
-
----
-
-### 4. UpdateIdleSmile() — 动作2: 微笑
-
-**位置**: line 1520~1529
-**SetParameter**: 3 次
-```csharp
-SetParameter("ParamEyeLSmile", t * IDLE_SMILE);   // 眯眼
-SetParameter("ParamEyeRSmile", t * IDLE_SMILE);    // 眯眼
-SetParameter("ParamMouthForm", t * IDLE_MOUTH);    // 微笑
-```
-
-| 优先级 | 理由 |
-|--------|------|
-| 🟡 **P1** | 纯线性，2秒循环 |
-
----
-
-### 5. UpdateIdleBrow() — 动作3: 挑眉
-
-**位置**: line 1531~1539
-**SetParameter**: 2 次
-```csharp
-SetParameter("ParamBrowRY", t * IDLE_BROW_Y);
-SetParameter("ParamBrowLY", t * IDLE_BROW_Y);
-```
-
-| 优先级 | 理由 |
-|--------|------|
-| 🟡 **P1** | 纯线性，2秒循环 |
-
-> 注：三者的 IDLE_* 常量数值已在代码中（IDLE_TILT=5, SMILE=0.3, MOUTH=0.15, BROW_Y=0.2），可在生成 JSON 时嵌入。
+| 动作 | SetParameter | 曲线 | 迁移难度 |
+|------|-------------|------|---------|
+| 歪头 | 1 (ParamAngleZ) | sin 弧 2s | 🟡 P1 |
+| 微笑 | 3 (EyeLSmile/RSmile/MouthForm) | 线性 2s | 🟡 P1 |
+| 挑眉 | 2 (BrowRY/LY) | 线性 2s | 🟡 P1 |
 
 ---
 
 ### 6. UpdateStarSpin() — 动作4: 星辉 ✨
 
-**位置**: line 1545~1794
-**SetParameter**: ~30 次/帧
-**阶段数**: 5 阶段 (P1~P5)
-**硬编码常量**: SPIN_DURATION=6s
-
-**参数类别**:
-- 星星特效: star_visibility/size/outer_scale/outer_appear/plate
-- 表情: eyeL/R open/smile, mouth/form, brow, eyeBX/BY
-- 手臂: Param31/32/33/94/97 (右臂全套)
-- 身体/头: ParamBodyAngleZ(2f固定), ParamAngleZ(head_scale)
-- 剑指: SetSwordFinger(), SetHandPose(), SetHandLayer()
-- 手层: Param92/93
-
-| 优先级 | 理由 |
-|--------|------|
-| 🔵 **P3** | 5 阶段状态机 + 每阶段独立 sin 摆动 + 常量复杂。但各阶段逻辑明确，可拆为 5 段 JSON |
+**调用**: ~30 次/帧 | **阶段**: 5 (P1-P5)
+**参数类别**: 星星特效 + 表情 + 手臂 + 身体/头 + 剑指 + 手层
+**优先级**: 🔵 P3 — 5 阶段状态机 + 独立 sin 摆动
 
 ---
 
 ### 7. UpdateStretch() — 动作5: 伸懒腰
 
-**位置**: line 1795~1848
-**SetParameter**: 20 次
-**阶段**: 1 段 (梯形：快起→保持→快落)
-
-```csharp
-float rise = Mathf.Clamp01(t * 3f);   // 梯形上升
-float hold = Mathf.Clamp01((1 - t) * 3f);  // 梯形下降
-float phase = Mathf.Min(rise, hold);   // 梯形
-```
-
-**参数**:
-- 右臂全套(Param31/32/33/94/97/95/117/98/100/116/120/108/119/93/118) × phase
-- 左臂(Param34/36/37) × 0f
-- 身体(ParamBodyAngleX/Z) × phase
-- 头(ParamAngleX) × phase
-- 表情(EyeLOpen/ROpen/MouthForm/Breath) × phase
-
-| 优先级 | 理由 |
-|--------|------|
-| 🟠 **P2** | 梯形曲线简单，但涉及 20 个参数。可封装为 `trapezoid` 曲线 JSON |
+**调用**: 20 次 | **阶段**: 单一梯形 (快起→保持→快落)
+**参数**: 右臂全套(15) + 身体 + 头 + 表情
+**优先级**: 🟠 P2 — 梯形曲线简单但 20 参数
 
 ---
 
-### 8. UpdateCry() — 动作8: 委屈 😢
+### 8. UpdateCry() — 动作8: 委屈
 
-**位置**: line 1849~1890
-**SetParameter**: 11 次
-**阶段**: 1 段 (sin 弧)
-**特殊**: 含 sin 抖动（抽泣）
-
-| 优先级 | 理由 |
-|--------|------|
-| 🟠 **P2** | 单一 sin 弧 + 4Hz 抖动。JSON 需要扩展 "tremble" 曲线支持 |
+**调用**: 11 次 | **特殊**: sin 弧 + 4Hz 抽泣抖动
+**优先级**: 🟠 P2 — 需扩展 "tremble" 曲线
 
 ---
 
-### 9. UpdateBlush() — 动作10: 害羞 😊🖤
+### 9. UpdateBlush() — 动作10: 害羞
 
-**位置**: line 1890~1929
-**SetParameter**: 12 次
-**特殊**: 3Hz 脉冲黑脸 + sin 弧叠加
-
-| 优先级 | 理由 |
-|--------|------|
-| 🟠 **P2** | 含脉冲合成（基础 sin + 3Hz 闪烁），需要 `pulse` 曲线扩展 |
+**调用**: 12 次 | **特殊**: 3Hz 脉冲 + sin 弧叠加
+**优先级**: 🟠 P2 — 需 `pulse` 曲线扩展
 
 ---
 
-### 10. UpdateConfuse() — 动作11: 困惑 🤔
+### 10. UpdateConfuse() — 动作11: 困惑
 
-**位置**: line 1930~1969
-**SetParameter**: 9 次
-**阶段**: 1 段 (sin 弧)
-
-| 优先级 | 理由 |
-|--------|------|
-| 🟡 **P1** | 纯 sin 弧，9 参数，直线 JSON |
+**调用**: 9 次 | **阶段**: 单一 sin 弧
+**优先级**: 🟡 P1 — 纯 sin 弧，直接 JSON
 
 ---
 
-### 11. UpdateMagicCircle() — 动作7: 法阵 ✨🔮
+### 11. UpdateMagicCircle() — 动作7: 法阵
 
-**位置**: line 1971~2318
-**SetParameter**: ~80+ 次/帧
-**阶段**: 3 Act (P1~P3)
-**特殊**: 含物理(Spring-Damper/Perlin) + 16 个常量 + 4 个子函数
+**调用**: ~80+ 次/帧 | **阶段**: 3 Act (P1-P3)
+**特殊**: Spring-Damper/Perlin 物理 + 16 常量 + 4 子函数
+**优先级**: 🔵 P3
 
-**参数类别**:
+---
+
+### 12. 其他动作 (6, 9)
+
+| 动作 | 说明 | 优先级 |
+|------|------|--------|
+| 动作6: 爱心 (Love) | ~10 次，sin 弧 | 🟡 P1 |
+| 动作9: 哭 (Cry2) | 类似 Cry | 🟠 P2 |
+
+---
+
+## 迁移路线图
+
+| 阶段 | 目标 | 预估工作量 |
+|------|------|-----------|
+| 1 (当前) | 梳理全部调用，标记优先级 | 已完成 |
+| 2 | P1 迁移 (6 动作 → JSON) | 1 天 |
+| 3 | P2 迁移 (曲线扩展) | 2 天 |
+| 4 | P3 迁移 (状态机封装) | 3 天 |
+| 5 | P0/P4 优化 | 视需求 |
+
+---
+
+## 当前状态 (N38)
+
+- **已迁移**: 7 个 legacy 方法(~270行)已删除，由 JSON + IdleActionScheduler 替代
+- **硬编码保留**: UpdateStarSpin (动作4: 星辉) + UpdateMagicCircle (动作7: 法阵)
+- **安全网保留**: LateUpdate() P0 全部保留
+- **空闲动作**: 9 种 JSON 配置驱动（7 参数化 + 2 硬编码特效），含权重/冷却/天气时段调制；空闲权重（夜晚微笑×0.3 / 雨哭×1.8 / 雪微笑×1.5）
 - 身体弹簧: ParamBodyAngleX (含 _magicSpringPosX 弹簧偏移)
 - 头弹簧: ParamAngleX (含 _magicSpringPosH 弹簧偏移)
 - 星星: Param451/541/1071/1081

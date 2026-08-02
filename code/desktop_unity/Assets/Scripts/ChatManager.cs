@@ -88,12 +88,8 @@ public class ChatManager : MonoBehaviour
             llmGo.transform.SetParent(transform);
         }
 
-        // ——— 注册反思回调：当 PetMemory 需要反思时，由我们调 LLM ———
-        PetMemory.Instance.OnReflectRequest = candidates =>
-        {
-            // 同步方式不支持回调，改为协程触发
-            return null;
-        };
+        // 反思机制已接线：SendRequestCoroutine 每次对话结束后调用
+        // PetMemory.CheckReflection() → DoReflection()（DeepSeek 提炼）→ CommitReflection()。
     }
 
     /// <summary>构建最终 SystemPrompt（注入时间 + 长期记忆 + 行为观测）</summary>

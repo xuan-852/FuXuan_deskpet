@@ -526,6 +526,7 @@ public class SelfTrainingManager : EditorWindow
             jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(refDataUrl) + "\"}},";
             jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(currentDataUrl) + "\"}}";
             jsonBody += "]}],";
+            jsonBody += "\"thinking\":{\"type\":\"disabled\"},";
             jsonBody += "\"request_id\":\"" + Guid.NewGuid().ToString("N") + "\"";
             jsonBody += "}";
 

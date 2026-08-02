@@ -163,7 +163,8 @@ public class ActivityTracker : MonoBehaviour
     public string CurrentMonitorName { get; private set; } = "";
     /// <summary>当前活动分类</summary>
     public string CurrentCategory => _lastCategory;
-
+    /// <summary>最近一次检测到用户活动的时间（Time.time），供 MotionAgent 等消费</summary>
+    public float LastActivityTime { get; private set; } = float.MinValue;
     // ——— 多窗口环境感知 ———
     private string _lastMultiWindowSummary = "";
     private float _multiWindowTimer = 0f;
@@ -296,6 +297,8 @@ public class ActivityTracker : MonoBehaviour
             CurrentProcessName = procName;
             CurrentMonitorName = GetMonitorName(hwnd);
             _lastCategory = Classify(procName, title);
+            // ★ 窗口切换视为用户活动：更新时间戳供 MotionAgent 交互检测使用
+            LastActivityTime = Time.time;
             if (_pollCount <= 5 || _pollCount % 30 == 0)
                 Debug.Log($"[ActivityTracker] 轮询#{_pollCount}: 窗口={procName} title=\"{title}\" → {_lastCategory}");
         }

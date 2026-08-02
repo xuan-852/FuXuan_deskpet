@@ -36,8 +36,8 @@ public class MotionAgent : MonoBehaviour
     [Tooltip("是否启用自主动作")]
     public bool enabled = true;
 
-    [Tooltip("决策间隔（秒），根据密度级别自动调整")]
-    public float baseInterval = 5f;
+    [Tooltip("决策间隔（秒），根据密度级别自动调整（加大以降本）")]
+    public float baseInterval = 7f;
 
     [Header("◈ 本地 LLM 配置")]
     [Tooltip("本地模型名")]
@@ -370,10 +370,9 @@ public class MotionAgent : MonoBehaviour
     {
         // 测试模式：不进入睡眠
         if (testMode) return false;
-        // 调试：跳过睡眠检查以触发双镜鉴验证
-        return false;
-        //int hour = DateTime.Now.Hour;
-        //return hour >= 1 && hour <= 7; // 凌晨1~7点
+        // 凌晨 1~7 点为睡眠时段：降低动作密度，避免深夜打扰
+        int hour = DateTime.Now.Hour;
+        return hour >= 1 && hour <= 7;
     }
 
     private bool IsUserFocused()
@@ -386,11 +385,10 @@ public class MotionAgent : MonoBehaviour
 
     private void UpdateInteractionTime()
     {
-        // 通过 ActivityTracker 检测用户活动
-        if (_activityTracker != null)
+        // 通过 ActivityTracker 检测用户活动（前台窗口切换 = 用户在场操作）
+        if (_activityTracker != null && _activityTracker.LastActivityTime > _lastInteractionTime)
         {
-            // 如果 ActivityTracker 的上次活动时间比我们记录的新，更新
-            // （简化实现：直接检查静态属性）
+            _lastInteractionTime = _activityTracker.LastActivityTime;
         }
 
         // 通过鼠标移动检测（全局）
@@ -561,8 +559,21 @@ public class MotionAgent : MonoBehaviour
         }
 
         // 6. 日月信息（农历→月相，影响动作风格）
-        int day = now.Day;
-        parts.Add($"日期: {now:MM月dd日} (农历日={day})");
+        // 用 .NET 内置 ChineseLunisolarCalendar 计算真实农历日，再映射粗略月相
+        var chineseCal = new System.Globalization.ChineseLunisolarCalendar();
+        int lunarMonth = chineseCal.GetMonth(now);
+        int lunarDay = chineseCal.GetDayOfMonth(now);
+        string moonPhase = lunarDay switch
+        {
+            <= 2 => "新月",
+            <= 7 => "蛾眉月",
+            <= 12 => "上弦月",
+            <= 17 => "满月",
+            <= 22 => "下弦月",
+            <= 27 => "残月",
+            _ => "晦月",
+        };
+        parts.Add($"日期: {now:MM月dd日} (农历{lunarMonth}月{lunarDay}, 月相≈{moonPhase})");
 
         return string.Join("\n", parts);
     }
@@ -886,7 +897,7 @@ public class MotionAgent : MonoBehaviour
 
             expressionManager.Update(0f); // final flush
         }
-        // 2) 回退: 通过 MotionTranslator 生成简单表情动作
+        // 2) 回退: 本地表情模板优先（零 API），未命中才走 MotionTranslator
         else if (_mapper != null && _model != null)
         {
             string desc = target switch
@@ -902,9 +913,32 @@ public class MotionAgent : MonoBehaviour
                 _ => "微笑",
             };
 
+            // ★ 成本优化：表情先匹配本地 EXPRESSION_TEMPLATES（零 API）
+            string exprKey = target switch
+            {
+                "happy_smile" => "happy",
+                "sad_pout" => "sad",
+                "angry_frown" => "angry",
+                "surprised" => "surprised",
+                "sleepy" => "sleepy",
+                "blush" => "blush",
+                "loving" => "happy",
+                "proud" => "happy",
+                _ => null,
+            };
+
             MotionPlanner.MotionPlan plan = null;
-            yield return MotionTranslator.TranslateAsync(
-                desc, _mapper, _model, duration, p => plan = p);
+            var exprTargets = exprKey != null ? MotionPlanner.GetExpressionTemplate(exprKey) : null;
+            if (exprTargets != null)
+            {
+                plan = MotionPlanner.PlanFromTargets(exprTargets, duration);
+                Debug.Log($"[MotionAgent] 🏠 表情本地模板命中:「{desc}」→ {plan.KeyFrames.Count} 帧（免 API）");
+            }
+            else
+            {
+                yield return MotionTranslator.TranslateAsync(
+                    desc, _mapper, _model, duration, p => plan = p);
+            }
 
             if (plan != null)
             {
@@ -924,8 +958,9 @@ public class MotionAgent : MonoBehaviour
 
         bool consensus = false;
         int avgScore = 0, sGlm = 0;
+        string rGlm = "";
         yield return _dualValidator.ValidateAsync(fullDesc, collageDataUrl, plan,
-            (c, avg, g, _u1, _u2, rg, _rq) => { consensus = c; avgScore = avg; sGlm = g; });
+            (c, avg, g, rg) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; });
 
         if (consensus)
         {
@@ -974,9 +1009,17 @@ public class MotionAgent : MonoBehaviour
                     ? $"轻轻地{cnDescription}"
                     : cnDescription;
 
+            // ★ 成本优化：先查本地模板（零 API），未命中才走 DeepSeek 翻译
             MotionPlanner.MotionPlan plan = null;
-            yield return MotionTranslator.TranslateAsync(
-                fullDesc, _mapper, _model, duration, p => plan = p);
+            if (!MotionPlanner.TryPlanFromDescription(fullDesc, duration, _mapper, out plan))
+            {
+                yield return MotionTranslator.TranslateAsync(
+                    fullDesc, _mapper, _model, duration, p => plan = p);
+            }
+            else
+            {
+                Debug.Log($"[MotionAgent] 🏠 本地模板命中:「{fullDesc}」→ {plan.KeyFrames.Count} 帧（免 API）");
+            }
 
             if (plan != null)
             {
@@ -1033,15 +1076,26 @@ public class MotionAgent : MonoBehaviour
 
     private IEnumerator ExecuteCombo(string description, float duration)
     {
-        // 复合动作：直接传给 MotionTranslator
+        // 复合动作：先查本地模板（零 API），未命中才传给 MotionTranslator
         if (_mapper != null && _model != null)
         {
             MotionPlanner.MotionPlan plan = null;
-            yield return MotionTranslator.TranslateAsync(
-                description, _mapper, _model, duration, p => plan = p);
+            if (!MotionPlanner.TryPlanFromDescription(description, duration, _mapper, out plan))
+            {
+                yield return MotionTranslator.TranslateAsync(
+                    description, _mapper, _model, duration, p => plan = p);
+            }
+            else
+            {
+                Debug.Log($"[MotionAgent] 🏠 复合动作本地模板命中:「{description}」→ {plan.KeyFrames.Count} 帧（免 API）");
+            }
 
             if (plan != null)
             {
+                // ── 锁定 AI 控制权（与 ExecuteMotion 一致：播放前加锁，防止空闲动画争抢参数）──
+                if (_renderer != null)
+                    _renderer.SetAiControlLock(duration + 0.5f);
+
                 // ── 多帧截图（20%/40%/60%/80% 进度）──
                 var framePngs = new List<byte[]>();
                 var capturePoints = new float[] { 0.20f, 0.40f, 0.60f, 0.80f };
@@ -1056,10 +1110,6 @@ public class MotionAgent : MonoBehaviour
                         }
                     }
                 });
-
-                // ★ 复合动作也加 AI 控制锁 + 释放
-                if (_renderer != null)
-                    _renderer.SetAiControlLock(duration + 0.5f);
 
                 // ★ 闭环学习-写入演武心经：记录复合动作参数快照
                 string snapshot = BuildParamSnapshot(plan);

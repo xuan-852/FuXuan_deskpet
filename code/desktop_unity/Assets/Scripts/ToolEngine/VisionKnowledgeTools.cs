@@ -121,6 +121,7 @@ public class TakeScreenshotTool : IPetTool
                     "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + ToolHelpers.EscapeJsonStr(dataUrl) + "\"}}" +
                 "]" +
             "}]," +
+            "\"thinking\":{\"type\":\"disabled\"}," +
             "\"request_id\":\"" + requestId + "\"" +
         "}";
     }

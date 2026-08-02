@@ -101,7 +101,7 @@ public class GenerateMotionTool : IPetTool
             int avgScore = 0, sGlm = 0;
             string rGlm = "";
             yield return validator.ValidateAsync(description, collageDataUrl, plan,
-                (c, avg, g, _u1, _u2, rg, _rq) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; });
+                (c, avg, g, rg) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; });
 
             string result = baseResult + $"\n\n👁️ 自评反馈：{rGlm}";
 
@@ -201,6 +201,7 @@ public class ExploreBodyVisionTool : IPetTool
                     "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + ToolHelpers.EscapeJsonStr(dataUrl) + "\"}}" +
                 "]" +
             "}]," +
+            "\"thinking\":{\"type\":\"disabled\"}," +
             "\"request_id\":\"" + requestId + "\"" +
         "}";
 
@@ -526,6 +527,7 @@ public class SelfReviewTool : IPetTool
                     "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + ToolHelpers.EscapeJsonStr(dataUrl) + "\"}}" +
                 "]" +
             "}]," +
+            "\"thinking\":{\"type\":\"disabled\"}," +
             "\"request_id\":\"" + requestId + "\"" +
         "}";
 

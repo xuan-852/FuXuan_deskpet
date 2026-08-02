@@ -23,6 +23,7 @@ public class ProactiveMessageScheduler : MonoBehaviour
     public bool enableMealTimeReminder = true;
     public bool enableIdleReturnGreeting = true;
     public bool enableLongGamingReminder = true;
+    public bool enableActivityReaction = true;
 
     [Header("⏱ 阈值（分钟）")]
     [Tooltip("累计编程超过此分钟数时提醒休息")]
@@ -42,6 +43,9 @@ public class ProactiveMessageScheduler : MonoBehaviour
     [Tooltip("同类别消息的最小间隔")]
     public float cooldownMinutes = 60f;
 
+    [Tooltip("活动类别切换反应的最小间隔（防止切换窗口频繁触发）")]
+    public float reactionCooldownMinutes = 8f;
+
     [Header("🫧 气泡设置")]
     public float bubbleDuration = 6f;
 
@@ -56,6 +60,10 @@ public class ProactiveMessageScheduler : MonoBehaviour
     // idle 状态跟踪
     private bool _wasIdle = false;
     private bool _firstCheckDone = false; // 跳过第一次避免启动时误触发
+
+    // 活动类别切换跟踪（即时反应）
+    private string _lastCategory = "";
+    private float _lastReactionTime = -999f;
 
     private float _checkTimer = 0f;
     private const float CHECK_INTERVAL = 30f; // 每 30 秒检查一次
@@ -164,6 +172,69 @@ public class ProactiveMessageScheduler : MonoBehaviour
                 }
             }
             _wasIdle = category == "idle";
+        }
+
+        // ——— 6. 活动类别切换即时反应（如：从其他切到 coding → “在写代码呀”） ———
+        if (enableActivityReaction && category != "idle" && category != _lastCategory)
+        {
+            // 首次观测只记录不触发，避免启动时误报
+            if (!string.IsNullOrEmpty(_lastCategory) && now - _lastReactionTime > reactionCooldownMinutes * 60f)
+            {
+                string msg = PickReactionMessage(category);
+                if (msg != null)
+                {
+                    _lastReactionTime = now;
+                    ShowMsg(msg);
+                }
+            }
+            _lastCategory = category;
+        }
+    }
+
+    /// <summary>根据活动类别返回一条符合符玄人设的即时反应（未知类别返回 null 不触发）</summary>
+    private string PickReactionMessage(string category)
+    {
+        switch (category)
+        {
+            case "coding":
+                return new[] {
+                    "哦？开始写代码了？符玄大人为你护法 🔮",
+                    "在写代码呀，需要本座帮忙算一卦吗？",
+                    "代码之道亦如卜筮——本座看你今日思路不错 ✨",
+                    "咦，进入编程阵了？本座在旁为你掠阵～"
+                }[Random.Range(0, 4)];
+            case "gaming":
+                return new[] {
+                    "嗯？开玩了？本座不打扰你 🎮",
+                    "游戏时间到～记得适度哦",
+                    "让本座算算你这局能不能赢…天机不可泄露 😏"
+                }[Random.Range(0, 3)];
+            case "studying":
+                return new[] {
+                    "在学习呀，真用功 📖",
+                    "读书问道，本座甚慰～",
+                    "好学之心，乃成大事之本 ✨"
+                }[Random.Range(0, 3)];
+            case "entertainment":
+                return new[] {
+                    "在看视频放松？也好～ 🎬",
+                    "娱乐休闲，张弛有度才是正道",
+                    "看什么呢，让本座也瞧瞧？"
+                }[Random.Range(0, 3)];
+            case "communication":
+                return new[] {
+                    "在和人聊天呢？本座不打扰 💬",
+                    "聊得正欢？符玄大人表示理解～",
+                    "人际往来，也是修行之道呢"
+                }[Random.Range(0, 3)];
+            case "browsing":
+                return new[] {
+                    "在浏览网页呀，小心别迷了眼 🌐",
+                    "网络信息纷繁，本座帮你把把关？",
+                    "又在逛什么新奇玩意？"
+                }[Random.Range(0, 3)];
+            default:
+                return null; // other / 未知类别不触发
         }
     }
 

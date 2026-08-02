@@ -35,8 +35,8 @@ public class PetMemory : MonoBehaviour
     [Tooltip("重要性积分累计达到此值时触发反思")]
     public int reflectionThreshold = 30;
 
-    [Tooltip("离上次反思的最低冷却（秒），防止频繁反思")]
-    public float reflectionCooldown = 300f; // 5 分钟
+    [Tooltip("离上次反思的最低冷却（秒），防止频繁反思（加大以降本）")]
+    public float reflectionCooldown = 600f; // 10 分钟
 
     // ==================================================================
 
@@ -72,8 +72,8 @@ public class PetMemory : MonoBehaviour
     private float _lastReflectionTime = -999f;
     /// <summary>从上一次反思后累计的重要性积分</summary>
     private int _reflectionAccum = 0;
-    /// <summary>外部注入的反思回调（由 ChatManager 注册）</summary>
-    public System.Func<List<MemoryEntry>, string> OnReflectRequest;
+    // 注：反思已由 ChatManager.SendRequestCoroutine → CheckReflection → DoReflection 驱动；
+    // 曾有的 OnReflectRequest 回调字段从未被调用（恒 null），已删除。
 
     public static PetMemory Instance { get; private set; }
 

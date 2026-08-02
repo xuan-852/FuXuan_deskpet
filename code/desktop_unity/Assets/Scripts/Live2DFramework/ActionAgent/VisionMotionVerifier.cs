@@ -438,6 +438,7 @@ public static class VisionMotionVerifier
         jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJsonStr(prompt) + "\"},";
         jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJsonStr(imageDataUrl) + "\"}}";
         jsonBody += "]}],";
+        jsonBody += "\"thinking\":{\"type\":\"disabled\"},";
         jsonBody += "\"request_id\":\"" + Guid.NewGuid().ToString("N") + "\"";
         jsonBody += "}";
 

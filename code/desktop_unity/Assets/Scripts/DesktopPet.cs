@@ -578,18 +578,11 @@ public class DesktopPet : MonoBehaviour
             Debug.Log("[DesktopPet] 自动添加了 MotionAgent（分神化身）组件");
         }
 
-        // ★ AutoMotionCollector：自主动作采集与 GLM-4V 评分
-        if (GetComponent<AutoMotionCollector>() == null)
-        {
-            gameObject.AddComponent<AutoMotionCollector>();
-            Debug.Log("[DesktopPet] 自动添加了 AutoMotionCollector（演武录）组件");
-        }
-
-        // ★ DualModelValidator：双模型交叉验证器（GLM-4V + Qwen-VL）
+        // ★ DualModelValidator：动作镜鉴（单 GLM-4V 视觉评分，Qwen-VL 已移除）
         if (GetComponent<DualModelValidator>() == null)
         {
             gameObject.AddComponent<DualModelValidator>();
-            Debug.Log("[DesktopPet] 自动添加了 DualModelValidator（双镜鉴）组件");
+            Debug.Log("[DesktopPet] 自动添加了 DualModelValidator（镜鉴）组件");
         }
 
         // 自动确保 AutoChat 存在（AI 回复气泡 + 定时问候 + 互动事件）

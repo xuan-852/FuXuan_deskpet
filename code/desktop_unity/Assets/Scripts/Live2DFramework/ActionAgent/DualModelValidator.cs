@@ -90,25 +90,22 @@ public class DualModelValidator : MonoBehaviour
     // ==================================================================
 
     /// <summary>
-    /// 对动作截图执行双模型交叉验证
+    /// 对动作截图执行镜鉴验证（单 GLM-4V 视觉评分）
     /// </summary>
     /// <param name="description">动作描述</param>
-    /// <param name="imageDataUrl">截图 data:image/png;base64,...</param>
-    /// <param name="plan">动作计划（用于提取参数信息）</param>
-    /// <param name="onResult">回调: (isConsensus, avgScore, glmScore, qwenScore, glmReview, qwenReview)</param>
     /// <param name="imageDataUrl">多帧拼图截图 data:image/png;base64,...</param>
-    /// <param name="singleScore">GLM 评分（1-5），回调后由调用方处理</param>
-    /// <param name="singleReview">GLM 评语</param>
+    /// <param name="plan">动作计划（用于提取参数信息）</param>
+    /// <param name="onResult">回调: (isConsensus, avgScore, glmScore, glmReview)</param>
     public IEnumerator ValidateAsync(
         string description,
         string imageDataUrl,
         MotionPlanner.MotionPlan plan,
-        Action<bool, int, int, int, int, string, string> onResult)
+        Action<bool, int, int, string> onResult)
     {
         if (string.IsNullOrEmpty(imageDataUrl))
         {
             Debug.LogWarning("[DualModelValidator] 截图为空，跳过验证");
-            onResult(false, 0, 0, 0, 0, "", "");
+            onResult(false, 0, 0, "");
             yield break;
         }
 
@@ -128,7 +125,7 @@ public class DualModelValidator : MonoBehaviour
             {
                 Debug.LogWarning("[DualModelValidator] GLM-4V 超时");
                 StopCoroutine(coro);
-                onResult(false, 0, 0, 0, 0, "", "");
+                onResult(false, 0, 0, "");
                 yield break;
             }
             elapsed += Time.unscaledDeltaTime;
@@ -152,7 +149,7 @@ public class DualModelValidator : MonoBehaviour
             _memoryManager.RecordNegativeExample(description, paramSnapshot, score, $"GLM={score}/5: {Truncate(review, 120)}");
         }
 
-        onResult?.Invoke(isConsensus, avgScore, score, 0, 0, review, "");
+        onResult?.Invoke(isConsensus, avgScore, score, review);
     }
 
     // ==================================================================
@@ -186,6 +183,7 @@ public class DualModelValidator : MonoBehaviour
             jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJson(prompt) + "\"},";
             jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(imageDataUrl) + "\"}}";
             jsonBody += "]}],";
+            jsonBody += "\"thinking\":{\"type\":\"disabled\"},";
             jsonBody += "\"temperature\":0.1,";
             jsonBody += "\"max_tokens\":2048";
             jsonBody += "}";
@@ -295,6 +293,7 @@ public class DualModelValidator : MonoBehaviour
             jsonBody += "{\"type\":\"text\",\"text\":\"" + EscapeJson(prompt) + "\"},";
             jsonBody += "{\"type\":\"image_url\",\"image_url\":{\"url\":\"" + EscapeJson(imageDataUrl) + "\"}}";
             jsonBody += "]}],";
+            jsonBody += "\"thinking\":{\"type\":\"disabled\"},";
             jsonBody += "\"temperature\":0.3,";
             jsonBody += "\"max_tokens\":512";
             jsonBody += "}";

@@ -179,6 +179,36 @@ public static class MotionPlanner
         return GenerateGenericMotion(duration);
     }
 
+    /// <summary>
+    /// 尝试用本地模板匹配动作描述（零 API 成本）
+    /// </summary>
+    /// <param name="description">自然语言动作描述</param>
+    /// <param name="duration">建议持续时间（秒）</param>
+    /// <param name="mapper">已加载的 Live2DParameterMapper</param>
+    /// <param name="plan">命中时的动作计划（未命中为 null）</param>
+    /// <returns>true=命中本地模板，false=未命中（调用方应走 API 翻译）</returns>
+    public static bool TryPlanFromDescription(
+        string description,
+        float duration,
+        Live2DParameterMapper mapper,
+        out MotionPlan plan)
+    {
+        var knownTemplate = MatchKnownMotion(description, mapper);
+        if (knownTemplate != null)
+        {
+            plan = knownTemplate;
+            return true;
+        }
+        plan = null;
+        return false;
+    }
+
+    /// <summary>获取表情模板（供外部零成本生成表情动作）</summary>
+    public static Dictionary<string, float> GetExpressionTemplate(string key)
+    {
+        return EXPRESSION_TEMPLATES.TryGetValue(key, out var t) ? t : null;
+    }
+
     // ──────────────────────────────────────────────
     //  内部方法
     // ──────────────────────────────────────────────

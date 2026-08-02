@@ -27,11 +27,11 @@ public class IdleChatGenerator : MonoBehaviour
     [Tooltip("最小缓存量 — 低于此数触发后台批量生成")]
     public int minCacheSize = 4;
 
-    [Tooltip("每次批量生成的条数")]
-    public int batchSize = 10;
+    [Tooltip("每次批量生成的条数（调小以降本）")]
+    public int batchSize = 6;
 
     [Tooltip("批量生成冷却（秒）")]
-    public float generationCooldown = 180f; // 3分钟
+    public float generationCooldown = 300f; // 5分钟（加大以降本）
 
     // ===== 内部状态 =====
     private Queue<string> _idleCache = new Queue<string>();

@@ -360,12 +360,18 @@ public class KnowledgeBaseManager : MonoBehaviour
         onComplete?.Invoke(results);
     }
 
-    /// <summary>获取用于 SystemPrompt 注入的知识上下文</summary>
+    /// <summary>最近一次异步检索的格式化结果缓存（供同步 API 读取）</summary>
+    public string LastFormattedContext { get; private set; } = "";
+
+    /// <summary>
+    /// 获取用于 SystemPrompt 注入的知识上下文（同步 API）。
+    /// 嵌入检索为异步协程（SearchAndFormat），本方法返回最近一次检索的缓存结果；
+    /// ChatManager 的 BackgroundKnowledgeSearch 会持续刷新该缓存。
+    /// </summary>
     public string GetFormattedContext(string query, int maxResults = -1)
     {
         if (maxResults <= 0) maxResults = maxContextResults;
-        // 同步方式返回空字符串，实际由协程填充到缓存
-        return "";
+        return LastFormattedContext;
     }
 
     /// <summary>协程版：搜索并格式化为 prompt 文本</summary>
@@ -395,6 +401,8 @@ public class KnowledgeBaseManager : MonoBehaviour
 
         sb.AppendLine("\n（以上为藏书阁中检索到的相关内容，供本座参考。）");
 
+        // ★ 同步 API 缓存：供 GetFormattedContext 读取
+        LastFormattedContext = sb.ToString();
         onComplete?.Invoke(sb.ToString());
     }
 

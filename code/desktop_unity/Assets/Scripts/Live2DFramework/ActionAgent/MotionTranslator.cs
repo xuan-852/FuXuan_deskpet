@@ -146,14 +146,14 @@ public static class MotionTranslator
             "  ]\n" +
             "}\n\n" +
 
-            "Example for \"excited wave\" — note the LARGE values:\n" +
+            "Example for \"excited wave\" — use DEGREES for angle params (e.g. arm_right_upper 20~28):\n" +
             "{\"totalDuration\":3.0,\"description\":\"excited wave\",\"keyframes\":[" +
             "{\"time\":0,\"values\":{}}," +
-            "{\"time\":0.3,\"values\":{\"arm_right_upper\":0.8,\"arm_right_lower\":0.4,\"head_angle_y\":8,\"eye_l_smile\":0.8,\"eye_r_smile\":0.8}}," +
-            "{\"time\":0.8,\"values\":{\"arm_right_upper\":1.0,\"arm_right_lower\":0.6,\"mouth_form\":0.6}}," +
-            "{\"time\":1.3,\"values\":{\"arm_right_upper\":0.8,\"arm_right_lower\":0.4}}," +
-            "{\"time\":1.8,\"values\":{\"arm_right_upper\":1.0,\"arm_right_lower\":0.6}}," +
-            "{\"time\":2.5,\"values\":{\"arm_right_upper\":0.5,\"arm_right_lower\":0.2}}," +
+            "{\"time\":0.3,\"values\":{\"arm_right_upper\":24,\"arm_right_lower\":14,\"head_angle_y\":8,\"eye_l_smile\":0.8,\"eye_r_smile\":0.8}}," +
+            "{\"time\":0.8,\"values\":{\"arm_right_upper\":28,\"arm_right_lower\":18,\"mouth_form\":0.6}}," +
+            "{\"time\":1.3,\"values\":{\"arm_right_upper\":24,\"arm_right_lower\":14}}," +
+            "{\"time\":1.8,\"values\":{\"arm_right_upper\":28,\"arm_right_lower\":18}}," +
+            "{\"time\":2.5,\"values\":{\"arm_right_upper\":20,\"arm_right_lower\":10}}," +
             "{\"time\":3.0,\"values\":{\"arm_right_upper\":0,\"arm_right_lower\":0,\"head_angle_y\":0,\"eye_l_smile\":0,\"eye_r_smile\":0,\"mouth_form\":0}}" +
             "]}";
 
