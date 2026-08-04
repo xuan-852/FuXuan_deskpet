@@ -87,10 +87,21 @@ public class LatexCompileTool : AsyncToolBase
             {
                 string err = obj["error"]?.ToString() ?? "未知编译错误";
                 string logTail = obj["log_tail"]?.ToString() ?? "";
+                string logPath = obj["log_path"]?.ToString() ?? "";
                 Debug.LogWarning($"[LatexCompileTool] ❌ 编译失败: {err}");
-                string detail = !string.IsNullOrEmpty(logTail) ? $"\n```\n{logTail}\n```" : "";
-                return $"❌ 编译失败：{err}{detail}\n" +
-                       $"💡 你可以重新描述需求，本座再试一次。";
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"❌ 编译失败：{err}");
+                if (!string.IsNullOrEmpty(logTail))
+                {
+                    string head = logTail.Length > 800 ? logTail.Substring(0, 800) + "…" : logTail;
+                    sb.AppendLine("```");
+                    sb.AppendLine(head);
+                    sb.AppendLine("```");
+                }
+                if (!string.IsNullOrEmpty(logPath))
+                    sb.AppendLine($"📄 编译日志：{logPath}");
+                sb.AppendLine("💡 若因文档过长失败，可分段生成（如「先写第 1-4 模块，再写第 5-8 模块」）；若因内存不足，请先关闭部分程序后重试。");
+                return sb.ToString();
             }
         }
         catch (Exception ex)

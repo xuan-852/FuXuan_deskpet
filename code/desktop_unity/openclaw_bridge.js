@@ -15,7 +15,7 @@ import { GatewayChatClient } from 'file:///D:/openclaw/node_modules/openclaw/dis
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
-import { writeFileSync, unlinkSync, existsSync, mkdirSync } from 'node:fs';
+import { writeFileSync, unlinkSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, basename, extname, join } from 'node:path';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
@@ -232,6 +232,21 @@ function startHttpServer() {
                         // 清理可能的代码块包裹
                         latexSource = latexSource.replace(/^```(?:latex|tex|)\s*/i, '').replace(/\s*```$/i, '').trim();
                         console.log(`[Bridge] AI generated ${latexSource.length} chars of LaTeX in ${elapsed >= 1000 ? (elapsed/1000).toFixed(1)+'s' : elapsed+'ms'}`);
+
+                        // ★ BUG 修复：校验 AI 生成结果是否为有效 LaTeX 源码。
+                        // 此前 Gateway 生成失败时会返回 "⚠️ Agent couldn't generate a response..."，
+                        // 该文本被直接写入 .tex 导致编译必然失败且报错不明。
+                        if (!/\\documentclass/.test(latexSource)) {
+                            const snippet = latexSource.length > 200 ? latexSource.slice(0, 200) + '…' : latexSource;
+                            console.error(`[Bridge] AI returned invalid LaTeX (${latexSource.length} chars): ${snippet}`);
+                            res.writeHead(502, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({
+                                success: false,
+                                error: 'AI 未能生成有效的 LaTeX 源码（返回内容不以 \\documentclass 开头），可能因文档太长超出生成能力。建议分段生成，或换一种更明确的描述重试。',
+                                ai_response_snippet: snippet
+                            }));
+                            return;
+                        }
                     }
 
                     // ── 选择编译器 ──
@@ -265,24 +280,68 @@ function startHttpServer() {
                     // ── 写 .tex 文件 ──
                     writeFileSync(texPath, latexSource, 'utf-8');
 
+                    // ── 编译前检查可用内存（Windows）──
+                    // ★ BUG 修复：此前内存不足（如仅剩 ~800MB）时 xelatex 启动即崩溃，
+                    //   只留下 .tex 没有 .pdf/.log，报错不明。现在低于阈值直接给出明确提示。
+                    const MIN_FREE_MEM_GB = parseFloat(process.env.LATEX_MIN_FREE_MEM_GB || '1.5');
+                    try {
+                        const memOut = execSync(
+                            `powershell -NoProfile -Command "$os=Get-CimInstance Win32_OperatingSystem; [math]::Round($os.FreePhysicalMemory/1MB,1)"`,
+                            { windowsHide: true, timeout: 15000, encoding: 'utf-8' }
+                        ).trim();
+                        const freeGB = parseFloat(memOut);
+                        if (!isNaN(freeGB) && freeGB < MIN_FREE_MEM_GB) {
+                            console.warn(`[Bridge] Low memory ${freeGB}GB < ${MIN_FREE_MEM_GB}GB, aborting compile`);
+                            res.writeHead(503, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({
+                                success: false,
+                                error: `系统可用内存不足（仅 ${freeGB.toFixed(1)}GB，低于安全阈值 ${MIN_FREE_MEM_GB}GB），长文档编译可能崩溃。请先关闭部分程序释放内存后重试。`,
+                                free_mem_gb: freeGB, min_free_mem_gb: MIN_FREE_MEM_GB
+                            }));
+                            return;
+                        }
+                        console.log(`[Bridge] Free memory OK: ${freeGB}GB (min ${MIN_FREE_MEM_GB}GB)`);
+                    } catch (memErr) {
+                        console.warn(`[Bridge] Memory check skipped: ${memErr.message}`);
+                    }
+
                     // ── 编译 ──
+                    // 长文档 xelatex 可能需要较长时间，超时可由环境变量 LATEX_TIMEOUT_MS 调整（默认 300s）
+                    const COMPILE_TIMEOUT_MS = parseInt(process.env.LATEX_TIMEOUT_MS || '300000', 10);
                     const compileArgs = `-interaction=nonstopmode -halt-on-error -output-directory="${outDir}" "${texPath}"`;
                     const baseNoExt = join(outDir, basename(texPath, '.tex'));
+                    const logPath = baseNoExt + '.log';
 
                     for (let pass = 1; pass <= 2; pass++) {
                         try {
                             execSync(`"${compilerPath}" ${compileArgs}`, {
-                                cwd: outDir, timeout: 120000, windowsHide: true, stdio: 'pipe', encoding: 'utf-8',
+                                cwd: outDir, timeout: COMPILE_TIMEOUT_MS, windowsHide: true, stdio: 'pipe', encoding: 'utf-8',
                             });
                         } catch (e) {
-                            // 提取最后几行错误信息
+                            // 提取错误信息：优先读 .log 文件尾部（比 stderr 更完整）
                             const stderr = (e.stderr || '').trim();
                             const lines = stderr ? stderr.split('\n') : (e.stdout || '').split('\n');
-                            const tail = lines.slice(-10).join('\n').trim();
+                            let tail = lines.slice(-10).join('\n').trim();
+                            try {
+                                if (existsSync(logPath)) {
+                                    const logLines = readFileSync(logPath, 'utf-8').split('\n');
+                                    const logTail = logLines.slice(-40).join('\n').trim();
+                                    if (logTail) tail = logTail;
+                                }
+                            } catch { /* ignore */ }
+
+                            // 智能识别常见失败原因，给出可操作提示
+                            let friendly = `编译失败（第 ${pass} 遍）`;
+                            if (/capacity exceeded|main memory|Memory capacity/i.test(tail)) {
+                                friendly = '文档过长导致 TeX 内存溢出（TeX capacity exceeded）。建议分段生成：例如「先写第 1-4 模块，再写第 5-8 模块」并分别编译。';
+                            } else if (/Undefined control sequence|! LaTeX Error/i.test(tail)) {
+                                friendly = 'LaTeX 语法或宏包错误（可能是缺失 \\end{document} 或宏包冲突）。可读取 .tex 源码检查修正。';
+                            }
+
                             res.writeHead(500, { 'Content-Type': 'application/json' });
                             res.end(JSON.stringify({
-                                success: false, error: `编译失败（第 ${pass} 遍）`,
-                                compiler: compilerPath, log_tail: tail || e.message
+                                success: false, error: friendly,
+                                compiler: compilerPath, log_tail: tail, log_path: logPath
                             }));
                             return;
                         }
