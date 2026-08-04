@@ -126,6 +126,131 @@ async function sendChatAndWait(query) {
     }
 }
 
+// ─── LaTeX 清理工具 ──────────────────────────────────────────────────────────
+// Gateway 可能返回结构化 JSON（text 块数组）或带 ``` 代码块包裹的文本，
+// 统一提取为纯 LaTeX 源码字符串。
+function cleanLatexFence(text) {
+    let raw = (typeof text === 'string') ? text : JSON.stringify(text);
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+            raw = parsed
+                .filter(item => item.type === 'text' && item.text)
+                .map(item => item.text)
+                .join('\n');
+        }
+    } catch { /* 不是 JSON，直接使用 */ }
+    return raw.replace(/^```(?:latex|tex|)\s*/i, '').replace(/\s*```$/i, '').trim();
+}
+
+// ─── 分块生成 LaTeX（AgentWrite 式）──────────────────────────────────────
+// 超长文档一次生成容易超时/截断（日志里曾出现 "Error: Agent run ended before
+// producing a complete result." 的 58 字符残篇）。改为：
+//   1) 第一轮 AI 生成 \documentclass + preamble + 全部 \section 骨架
+//   2) 之后每个 \section 单独请求 AI 填充内容（每节 1-2KB，几秒完成）
+//   3) 拼接成完整源码再编译
+async function generateChunkedLatex(description) {
+    const outlinePrompt = `你是 LaTeX 专家。请根据以下需求，先输出一份完整的「文档骨架」源码。
+
+需求：${description}
+
+骨架要求（只输出 LaTeX 源码）：
+- 以 \\documentclass 开头，中文用 ctexart，英文用 article
+- preamble 包含常用宏包：amsmath、amssymb、graphicx、booktabs、array、xcolor、listings、fancyhdr、enumitem、titlesec、parskip、hyperref、ulem、multicol、float、subcaption、longtable、multirow、caption、upquote（按需）
+- 列出文档所有章节，每个 \\section{章节标题} 后紧跟一行 % 注释说明该节要写什么内容
+- 以 \\begin{document} 开头、\\end{document} 结尾，骨架本身可编译
+- **不要使用 ① ② ③ 等圈号字符（会缺字），用「1.」「2.」或「第一」替代**
+- **只输出 LaTeX 源码，不要任何解释、不要 Markdown 代码块包裹**`;
+
+    const outline = cleanLatexFence(await sendChatAndWait(outlinePrompt));
+    const sectionTitles = [...outline.matchAll(/\\section\{([^}]+)\}/g)].map(m => m[1].trim());
+    console.log(`[Bridge] Chunked mode: outline has ${sectionTitles.length} sections`);
+
+    if (sectionTitles.length === 0) {
+        // 骨架没解析出章节，直接退回使用骨架（保持可编译）
+        return outline;
+    }
+
+    const bodies = [];
+    for (let i = 0; i < sectionTitles.length; i++) {
+        const title = sectionTitles[i];
+        const sectionPrompt = `你是 LaTeX 专家。你正在分块编写一份长文档，现在写其中一节。
+
+文档整体需求：${description}
+文档章节列表：${sectionTitles.map((t, idx) => `${idx + 1}. ${t}`).join('；')}
+
+当前任务：编写第 ${i + 1} 节「${title}」。
+
+要求：
+- 只输出这一节的 LaTeX 内容（以 \\section{${title}} 开头），不要 \\documentclass、不要 preamble、不要 \\begin{document}/\\end{document}
+- 内容充实具体（约 300-800 字正文），可用 \\subsection、列表、表格、代码环境（listings/verbatim）
+- 若有代码示例，直接内嵌在 listings 或 verbatim 环境里，**不要引用外部文件**（如 \\lstinputlisting）
+- **只用基础命令**（\\section/\\subsection/\\textbf/\\emph/\\texttt/\\begin{itemize}/\\begin{enumerate}/\\begin{tabular}/\\begin{figure}/\\underline 等）；**不要用需要额外宏包的命令**（如 \\uline 请用 \\underline 代替，\\sout、\\uwave、\\overbrace 等一律不用）
+- 如果本节确实需要特殊宏包，在节首单独写一行 \\usepackage{宏包名}（会自动提升到 preamble）
+- **不要使用 ① ② ③ 等圈号字符，用「1.」「2.」或「第一」替代**
+- **只输出 LaTeX，不要任何解释、不要 Markdown 代码块包裹**`;
+
+        let sectionTex = null;
+        for (let attempt = 1; attempt <= 2 && !sectionTex; attempt++) {
+            try {
+                sectionTex = cleanLatexFence(await sendChatAndWait(sectionPrompt));
+            } catch (e) {
+                console.error(`[Bridge] Section ${i + 1}「${title}」attempt ${attempt} failed: ${e.message}`);
+            }
+        }
+        if (!sectionTex) {
+            sectionTex = `% [第 ${i + 1} 节「${title}」生成失败，请手动补充]`;
+            console.error(`[Bridge] Section ${i + 1}「${title}」generation failed after retries`);
+        }
+        bodies.push(sectionTex);
+        console.log(`[Bridge] Section ${i + 1}/${sectionTitles.length}「${title}」${sectionTex.length} chars`);
+    }
+
+    // 拼接：骨架头部（去掉 \end{document}）+ 各节正文 + \end{document}
+    // 先把各节声明的 \usepackage 提升到 preamble（去重、删掉节内声明行）
+    const extraPackages = [];
+    for (const b of bodies) {
+        for (const m of b.matchAll(/\\usepackage(?:\[[^\]]*\])?\{[^}]+\}/g)) {
+            if (!extraPackages.includes(m[0])) extraPackages.push(m[0]);
+        }
+    }
+    const cleanedBodies = bodies.map(b => b.replace(/^\s*\\usepackage(?:\[[^\]]*\])?\{[^}]+\}\s*$/gm, '').trim());
+
+    const endIdx = outline.lastIndexOf('\\end{document}');
+    let head = endIdx >= 0 ? outline.slice(0, endIdx) : outline;
+    if (extraPackages.length > 0) {
+        head = head.replace(/\\begin\{document\}/, extraPackages.join('\n') + '\n\n\\begin{document}');
+        console.log(`[Bridge] Promoted ${extraPackages.length} usepackage(s) to preamble: ${extraPackages.join(', ')}`);
+    }
+    return head + '\n\n' + cleanedBodies.join('\n\n') + '\n\n\\end{document}\n';
+}
+
+// ─── 编译前检查外部文件引用 ────────────────────────────────────────────────
+// AI 生成的文档可能引用不存在的代码/图片文件（如 \lstinputlisting{code/gpio_poll.c}），
+// 直接编译必然失败且报错晦涩。这里提前检查并给出明确提示。
+function checkMissingExternalRefs(tex, baseDir) {
+    const patterns = [
+        { cmd: '\\lstinputlisting', re: /\\lstinputlisting(?:\[[^\]]*\])?\{([^}]+)\}/g },
+        { cmd: '\\includegraphics', re: /\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g },
+        { cmd: '\\input',            re: /\\input\{([^}]+)\}/g },
+        { cmd: '\\include',          re: /\\include\{([^}]+)\}/g },
+    ];
+    const missing = [];
+    for (const { cmd, re } of patterns) {
+        for (const m of tex.matchAll(re)) {
+            const ref = m[1].trim();
+            if (!ref || ref.startsWith('http')) continue;
+            // \input{foo} 可能是 foo.tex / foo.sty / foo.cls，都试一下
+            const candidates = ref.includes('.') ? [ref] : [`${ref}.tex`, `${ref}.sty`, `${ref}.cls`];
+            const found = candidates.some(c => {
+                try { return existsSync(join(baseDir, c)); } catch { return false; }
+            });
+            if (!found) missing.push({ cmd, ref });
+        }
+    }
+    return missing;
+}
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 function startHttpServer() {
     const server = createServer(async (req, res) => {
@@ -179,14 +304,20 @@ function startHttpServer() {
 
         // ─── POST /compile_latex ─────────────────────────────────────
         if (path === '/compile_latex' && req.method === 'POST') {
-            let body = '';
-            req.on('data', chunk => body += chunk);
+            // ★ BUG 修复：必须用 Buffer.concat 收集请求体。
+            // 之前用 `body += chunk` 会把每个 TCP 数据块单独转成字符串，
+            // 当描述文本较长被拆成多个块时，跨块边界的 UTF-8 中文字符会被截断成乱码
+            // （日志里 "???????????,?50?" 就是此问题导致的）。
+            const bodyChunks = [];
+            req.on('data', chunk => bodyChunks.push(chunk));
             req.on('end', async () => {
+                const body = Buffer.concat(bodyChunks).toString('utf-8');
                 try {
-                    const { source, description, output_path, compiler: requestedCompiler, title, pin_to_desktop } = JSON.parse(body);
+                    const { source, description, output_path, compiler: requestedCompiler, title, pin_to_desktop, mode } = JSON.parse(body);
 
                     // ── 获取 LaTeX 源码：直接提供或由 AI 生成 ──
                     let latexSource = source && source.trim() ? source : null;
+                    let aiGenerated = false;  // 外部文件引用检查只针对 AI 生成的源码
                     if (!latexSource) {
                         if (!description || !description.trim()) {
                             res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -202,7 +333,18 @@ function startHttpServer() {
                                 return;
                             }
                         }
-                        const prompt = `你是一个 LaTeX 专家。请根据以下需求生成完整的 LaTeX 文档源码。
+                        aiGenerated = true;
+                        // 超长文档自动切分块模式（也可通过 mode: 'chunked' 显式指定）
+                        const wantChunked = (mode === 'chunked')
+                            || /超长|长文档|分块|分段|长篇幅|多章节|几十页|数十页|100页|50页|50 页/i.test(description);
+                        console.log(`[Bridge] Generating LaTeX via AI for: "${description.substring(0, 80)}..."${wantChunked ? ' [chunked]' : ''}`);
+                        const t0 = Date.now();
+                        let aiResponse, elapsed;
+                        if (wantChunked) {
+                            aiResponse = await generateChunkedLatex(description);
+                            elapsed = Date.now() - t0;
+                        } else {
+                            const prompt = `你是一个 LaTeX 专家。请根据以下需求生成完整的 LaTeX 文档源码。
 
 需求：${description}
 
@@ -211,27 +353,13 @@ function startHttpServer() {
 - 中文文档用 ctexart 或 xeCJK，英文用 article
 - 包含 \\begin{document} 和 \\end{document}
 - 结构完整、排版美观
+- 若有代码示例，直接内嵌在 listings/verbatim 环境，**不要引用外部代码文件**（如 \\lstinputlisting）
 - **只输出 LaTeX 源码，不要任何解释、不要 Markdown 代码块包裹**`;
-                        console.log(`[Bridge] Generating LaTeX via AI for: "${description.substring(0, 80)}..."`);
-                        const t0 = Date.now();
-                        const aiResponse = await sendChatAndWait(prompt);
-                        const elapsed = Date.now() - t0;
-                        // 确保返回字符串
-                        let rawText = (typeof aiResponse === 'string') ? aiResponse : JSON.stringify(aiResponse);
-                        // Gateway 可能返回结构化 JSON 格式，提取 text 字段
-                        try {
-                            const parsed = JSON.parse(rawText);
-                            if (Array.isArray(parsed)) {
-                                rawText = parsed
-                                    .filter(item => item.type === 'text' && item.text)
-                                    .map(item => item.text)
-                                    .join('\n');
-                            }
-                        } catch { /* 不是 JSON，直接使用 */ }
-                        latexSource = rawText;
-                        // 清理可能的代码块包裹
-                        latexSource = latexSource.replace(/^```(?:latex|tex|)\s*/i, '').replace(/\s*```$/i, '').trim();
-                        console.log(`[Bridge] AI generated ${latexSource.length} chars of LaTeX in ${elapsed >= 1000 ? (elapsed/1000).toFixed(1)+'s' : elapsed+'ms'}`);
+                            aiResponse = await sendChatAndWait(prompt);
+                            elapsed = Date.now() - t0;
+                        }
+                        latexSource = cleanLatexFence(aiResponse);
+                        console.log(`[Bridge] AI generated ${latexSource.length} chars of LaTeX in ${elapsed >= 1000 ? (elapsed/1000).toFixed(1)+'s' : elapsed+'ms'}${wantChunked ? ' (chunked)' : ''}`);
 
                         // ★ BUG 修复：校验 AI 生成结果是否为有效 LaTeX 源码。
                         // 此前 Gateway 生成失败时会返回 "⚠️ Agent couldn't generate a response..."，
@@ -279,6 +407,25 @@ function startHttpServer() {
 
                     // ── 写 .tex 文件 ──
                     writeFileSync(texPath, latexSource, 'utf-8');
+
+                    // ── 编译前检查外部文件引用（仅 AI 生成的源码）──
+                    // AI 常引用不存在的代码/图片文件（如 \lstinputlisting{code/gpio_poll.c}），
+                    // 直接编译必然失败且报错晦涩，提前检查并给出可操作提示。
+                    if (aiGenerated) {
+                        const missingRefs = checkMissingExternalRefs(latexSource, outDir);
+                        if (missingRefs.length > 0) {
+                            const detail = missingRefs.map(r => `${r.cmd}{${r.ref}}`).join('、');
+                            console.error(`[Bridge] Missing external refs: ${detail}`);
+                            res.writeHead(422, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({
+                                success: false,
+                                error: `AI 生成的文档引用了不存在的文件：${detail}。请重新描述需求，明确要求「代码示例直接内嵌在 listings/verbatim 环境，不要引用外部代码文件」；或自行创建这些文件后重试。`,
+                                missing_refs: missingRefs,
+                                tex_path: texPath
+                            }));
+                            return;
+                        }
+                    }
 
                     // ── 编译前检查可用内存（Windows）──
                     // ★ BUG 修复：此前内存不足（如仅剩 ~800MB）时 xelatex 启动即崩溃，
