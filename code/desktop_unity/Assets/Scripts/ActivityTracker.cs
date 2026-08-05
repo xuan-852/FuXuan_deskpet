@@ -30,6 +30,10 @@ public class ActivityTracker : MonoBehaviour
     [Tooltip("轮询间隔（秒），默认 2 秒")]
     public float pollInterval = 2f;
 
+    [Header("隐私")]
+    [Tooltip("脱敏后注入 AI：过滤窗口标题/浏览器标签中的 URL、邮箱、手机号、密钥等敏感信息")]
+    public bool privacySanitize = true;
+
     // ============================================================
     //  Win32 API
     // ============================================================
@@ -292,8 +296,8 @@ public class ActivityTracker : MonoBehaviour
             StringBuilder sb = new StringBuilder(512);
             GetWindowText(hwnd, sb, sb.Capacity);
             string title = sb.ToString().Trim();
-            // ★ 保留窗口标题、进程名、所在显示器供 AI 注入
-            CurrentWindowTitle = title;
+            // ★ 保留窗口标题、进程名、所在显示器供 AI 注入（默认脱敏敏感信息）
+            CurrentWindowTitle = privacySanitize ? SanitizePrivacy(title) : title;
             CurrentProcessName = procName;
             CurrentMonitorName = GetMonitorName(hwnd);
             _lastCategory = Classify(procName, title);
@@ -458,7 +462,7 @@ public class ActivityTracker : MonoBehaviour
                 int count = 0;
                 foreach (string tab in tabs)
                 {
-                    sb.Append($" {tab}");
+                    sb.Append($" {(privacySanitize ? SanitizePrivacy(tab) : tab)}");
                     count++;
                     if (count >= 10) break; // 最多列 10 个标签
                 }
@@ -715,6 +719,39 @@ public class ActivityTracker : MonoBehaviour
         }
         catch { }
         return "";
+    }
+
+    /// <summary>
+    /// 🔒 隐私脱敏 — 在注入 AI 前过滤窗口标题 / 浏览器标签中的敏感信息：
+    ///   URL 链接、邮箱、手机号、身份证号、密钥/口令（key=xxx, token: xxx 等）
+    ///   同时折叠空白并截断超长文本（防标题塞爆 prompt / 泄露信息）。
+    /// </summary>
+    public static string SanitizePrivacy(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        string t = text;
+        try
+        {
+            // 密钥/口令：password/pwd/token/secret/api_key/key 后接 = 或 : 的值
+            t = System.Text.RegularExpressions.Regex.Replace(
+                t, @"(?i)(password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|session)\\s*[=:]\\s*[^\\s,;]+\\b",
+                m => m.Groups[1].Value + "=[已隐藏]");
+            // URL 链接（含协议）
+            t = System.Text.RegularExpressions.Regex.Replace(t, @"https?://[^\\s]+", "[链接]");
+            // 邮箱
+            t = System.Text.RegularExpressions.Regex.Replace(t, @"[\\w.+-]+@[\\w-]+\\.[\\w.]+\\b", "[邮箱]");
+            // 手机号（大陆 1[3-9]xxxxxxxxx）
+            t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<!\\d)1[3-9]\\d{9}(?!\\d)", "[手机号]");
+            // 身份证号（17 位数字 + 数字/X）
+            t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<!\\d)\\d{17}[\\dXx](?!\\d)", "[证件号]");
+            // 折叠连续空白
+            t = System.Text.RegularExpressions.Regex.Replace(t, @"\\s+", " ").Trim();
+            // 截断超长文本（单条窗口标题/标签上限）
+            if (t.Length > 60)
+                t = t.Substring(0, 60) + "…";
+        }
+        catch { /* 脱敏失败时原样返回，不阻断主流程 */ }
+        return t;
     }
 
     // ============================================================ //

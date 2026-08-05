@@ -19,6 +19,36 @@ public static class ToolRegistry
     /// <summary>已注册的全部工具数量</summary>
     public static int ToolCount => (_syncTools?.Count ?? 0) + (_asyncTools?.Count ?? 0);
 
+    // ⚠️ 危险工具清单 — 执行前必须经用户确认（ToolConfirmManager）
+    // 这些工具会删除数据 / 控制系统 / 关机锁屏，AI 幻觉或 prompt 注入时不能静默执行
+    private static readonly HashSet<string> DangerousTools = new HashSet<string>
+    {
+        "file_delete",     // 删除文件（permanent=true 永久删除）
+        "power",           // 关机 / 重启 / 睡眠
+        "lock_screen",     // 锁定屏幕
+        "run_command",     // 执行系统命令
+        "set_volume",      // 修改系统音量
+        "mute",            // 静音切换
+    };
+
+    /// <summary>危险工具是否需要用户确认</summary>
+    public static bool IsDangerous(string name) => DangerousTools.Contains(name);
+
+    /// <summary>危险操作的中文说明（用于确认气泡展示）</summary>
+    public static string GetDangerDescription(string name)
+    {
+        switch (name)
+        {
+            case "file_delete": return "删除文件/文件夹（permanent=true 时不可恢复）";
+            case "power":       return "关机 / 重启 / 睡眠";
+            case "lock_screen": return "锁定电脑屏幕";
+            case "run_command": return "在系统上执行命令";
+            case "set_volume":  return "修改系统音量";
+            case "mute":        return "切换静音状态";
+            default:            return name;
+        }
+    }
+
     /// <summary>自动发现并注册所有 IPetTool</summary>
     public static void Initialize()
     {

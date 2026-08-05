@@ -95,6 +95,15 @@ public class AutoChat : MonoBehaviour
 
     private void HandleClick()
     {
+        // ⚠️ 危险工具确认：有待确认操作时，点击桌宠 = 允许执行
+        if (ToolConfirmManager.HasPending)
+        {
+            ToolConfirmManager.Resolve(true);
+            if (_bubble != null)
+                _bubble.ShowMessage("✅ 已获准许，施法！", 3f, ChatBubble.MsgPriority.High);
+            return;
+        }
+
         if (_chat == null || _chat.IsWaiting) return;
         if (Time.time - _lastInteractionTime < interactionCooldown) return;
         // 高优消息显示时不打扰

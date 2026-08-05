@@ -87,6 +87,15 @@ public class GpuLoadMonitor : MonoBehaviour
                 _motionAgent.enabled = true;
 
             Debug.Log("[GpuLoadMonitor] 🔄 冷却结束 → 恢复本地 LLM");
+
+            // ★ 游戏退出后自动恢复显示：若窗口此前隐藏到托盘（如游戏中 ESC/托盘隐藏），
+            //   冷却结束后自动弹回桌面，避免用户手动去托盘展开
+            var tray = SystemTrayManager.Instance;
+            if (tray != null && tray.IsMinimizedToTray)
+            {
+                tray.RestoreFromTray();
+                Debug.Log("[GpuLoadMonitor] 🪟 游戏退出 → 自动从托盘恢复显示");
+            }
         }
     }
 }

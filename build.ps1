@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     符玄桌宠 — 标准构建脚本
 .DESCRIPTION
@@ -20,7 +20,8 @@ param(
     [string]$UnityExe = "D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe",
     [string]$LogFile = "D:\Unity\projects\Desktop_per_pro\build_log.txt",
     [switch]$Quick,
-    [switch]$RunTests
+    [switch]$RunTests,
+    [switch]$NoKill
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,6 +50,22 @@ if (-not (Test-Path (Join-Path $ProjectDir "Assets"))) {
     exit 1
 }
 Write-Host "[OK] Project: $ProjectDir"
+
+# ---- Detect running DesktopPet (would lock output exe and fail the build) ----
+$PetProc = Get-Process -Name "DesktopPet" -ErrorAction SilentlyContinue
+if ($PetProc) {
+    $Pids = ($PetProc | ForEach-Object { $_.Id }) -join ", "
+    $Host.UI.RawUI.ForegroundColor = "Yellow"
+    Write-Host "[WARN] DesktopPet 正在运行 (PID: $Pids)，会锁定输出文件导致构建失败"
+    if ($NoKill) {
+        $Host.UI.RawUI.ForegroundColor = "Red"
+        Write-Host "[ERROR] 已加 -NoKill，请先手动关闭 DesktopPet 再构建"
+        exit 1
+    }
+    Write-Host "[BUILD] 自动终止 DesktopPet 进程..."
+    $PetProc | Stop-Process -Force
+    Write-Host "[OK] DesktopPet 已终止"
+}
 
 # ---- Determine build/test mode ----
 if ($RunTests) {

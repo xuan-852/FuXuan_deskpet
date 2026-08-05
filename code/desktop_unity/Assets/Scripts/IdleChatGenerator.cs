@@ -90,6 +90,24 @@ public class IdleChatGenerator : MonoBehaviour
 
     private string ApiKey => ChatConfig.ApiKey;
 
+    /// <summary>
+    /// 是否应抑制云端生成（省 token）：
+    /// - 窗口隐藏到托盘（用户看不见，生成也是浪费 token）
+    /// - 正在玩游戏（GpuLoadMonitor 检测，避免打扰 + 省 token）
+    /// </summary>
+    private bool IsSuppressed()
+    {
+        var tray = SystemTrayManager.Instance;
+        if (tray != null && tray.IsMinimizedToTray)
+            return true;
+
+        var gpu = GpuLoadMonitor.Instance;
+        if (gpu != null && gpu.IsGaming)
+            return true;
+
+        return false;
+    }
+
     // ==================================================================
     //  闲话系统（用于待机气泡）
     // ==================================================================
@@ -98,6 +116,10 @@ public class IdleChatGenerator : MonoBehaviour
     /// <param name="timeContext">时间/天气等上下文描述</param>
     public string GetIdleLine(string timeContext)
     {
+        // ⚠️ 隐藏到托盘 / 游戏中 → 不生成不调 API，直接走本地 fallback
+        if (IsSuppressed())
+            return FALLBACK_IDLE[Random.Range(0, FALLBACK_IDLE.Length)];
+
         // ⚠️ 检测时间段是否变化 — 如果变了，清空旧闲话缓存
         string currentPeriod = ExtractTimePeriod(timeContext);
         if (_idleCache.Count > 0
@@ -128,6 +150,8 @@ public class IdleChatGenerator : MonoBehaviour
     {
         if (_isIdleGenerating) return;
         if (Time.time - _lastIdleGenTime < generationCooldown) return;
+        // ⚠️ 隐藏/游戏中不触发生成（省 token）
+        if (IsSuppressed()) return;
 
         // 记录本次生成对应的时间段
         _idleTimePeriod = ExtractTimePeriod(context);
@@ -197,6 +221,10 @@ public class IdleChatGenerator : MonoBehaviour
     /// <summary>获取一句问候（优先从缓存取）</summary>
     public string GetGreeting(string timeContext)
     {
+        // ⚠️ 隐藏到托盘 / 游戏中 → 不生成不调 API，直接走本地 fallback
+        if (IsSuppressed())
+            return FALLBACK_GREETINGS[Random.Range(0, FALLBACK_GREETINGS.Length)];
+
         // ⚠️ 检测时间段是否变化 — 如果变了，清空旧缓存
         // 防止上午生成的 "早安~" 在中午被取出
         string currentPeriod = ExtractTimePeriod(timeContext);
@@ -232,6 +260,8 @@ public class IdleChatGenerator : MonoBehaviour
     {
         if (_isGreetingGenerating) return;
         if (Time.time - _lastGreetingGenTime < generationCooldown) return;
+        // ⚠️ 隐藏/游戏中不触发生成（省 token）
+        if (IsSuppressed()) return;
 
         // 记录本次生成对应的时间段（用于后续跨时段检测）
         _greetingTimePeriod = ExtractTimePeriod(context);

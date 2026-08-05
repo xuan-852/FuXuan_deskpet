@@ -509,20 +509,31 @@ public static class ToolHelpers
     //  安全校验
     // ================================================================
 
+    // 🔒 允许执行的命令白名单 — 仅保留只读/查看类 + 无害应用启动。
+    // 已移除解释器（powershell/pwsh/cmd/python/node/npm/npx）：
+    //   它们可执行任意代码（如 powershell -c "Remove-Item ..."），风险远大于收益，
+    //   需要脚本能力时应走专门的工具（如 Bridge /compile_latex）。
     public static readonly HashSet<string> AllowedCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "ipconfig", "ping", "tracert", "nslookup", "netstat", "dir", "tree",
-        "systeminfo", "tasklist", "whoami", "ver", "date", "time", "echo",
-        "type", "findstr", "more", "sort",
-        "notepad", "calc", "mspaint", "write",
-        "python", "python3", "node", "npm", "npx",
-        "powershell", "pwsh", "cmd", "where", "which",
+        // 网络诊断（只读）
+        "ipconfig", "ping", "tracert", "nslookup", "netstat",
+        // 系统信息（只读）
+        "systeminfo", "tasklist", "whoami", "ver", "date", "time",
+        // 文件查看（只读）
+        "dir", "tree", "type", "findstr", "more", "sort", "echo",
+        // 无害应用启动
+        "notepad", "calc", "mspaint", "write", "where", "which",
     };
 
     public static bool IsCommandAllowed(string command)
     {
         if (string.IsNullOrEmpty(command)) return false;
         string trimmed = command.TrimStart();
+
+        // 🚫 拒绝组合命令与重定向：& | > < ;  —— 防 "dir & 删文件" 或 "echo x > file" 类绕过
+        if (System.Text.RegularExpressions.Regex.IsMatch(trimmed, "[&|<>;]"))
+            return false;
+
         // 检查首个词
         string first = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
         // 去掉路径符号
@@ -535,16 +546,36 @@ public static class ToolHelpers
     {
         if (string.IsNullOrEmpty(path)) return true;
         string full = Path.GetFullPath(path);
-        // 禁止操作系统关键目录
+
+        // 禁止操作系统关键目录（含 Program Files / 用户 AppData — 装删系统组件/配置文件）
         string[] deniedPrefixes = {
             Environment.GetFolderPath(Environment.SpecialFolder.Windows),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SysWOW64"),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),       // AppData\Roaming
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),  // AppData\Local
         };
         foreach (var denied in deniedPrefixes)
         {
             if (!string.IsNullOrEmpty(denied) && full.StartsWith(denied, StringComparison.OrdinalIgnoreCase))
                 return false;
+        }
+
+        // 禁止驱动器根下的系统隐藏/保留目录（回收站、卷影、恢复、ProgramData 等）
+        string rootPath = Path.GetPathRoot(full); // 如 C:\
+        if (!string.IsNullOrEmpty(rootPath))
+        {
+            string[] deniedSubs = {
+                "$Recycle.Bin", "System Volume Information", "Recovery",
+                "ProgramData", "Boot", "PerfLogs", "Windows.old",
+            };
+            foreach (var sub in deniedSubs)
+            {
+                if (full.StartsWith(rootPath + sub, StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
         }
         return true;
     }

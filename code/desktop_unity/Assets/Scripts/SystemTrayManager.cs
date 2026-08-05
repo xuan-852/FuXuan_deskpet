@@ -239,6 +239,9 @@ public class SystemTrayManager : MonoBehaviour
     // 单例
     private static SystemTrayManager _instance;
 
+    /// <summary>单例访问器（供 GpuLoadMonitor 等组件判断窗口隐藏状态）</summary>
+    public static SystemTrayManager Instance => _instance;
+
     /// <summary>是否已隐藏到托盘</summary>
     public bool IsMinimizedToTray => _minimizedToTray;
 

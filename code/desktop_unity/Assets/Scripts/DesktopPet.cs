@@ -714,6 +714,14 @@ public class DesktopPet : MonoBehaviour
         bool escDown = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
         if (escDown)
         {
+            // ⚠️ 若有危险工具待确认，ESC = 拒绝执行（而不是隐藏窗口）
+            if (ToolConfirmManager.HasPending)
+            {
+                Debug.Log("[DesktopPet] ESC 按下，拒绝危险工具执行");
+                ToolConfirmManager.Resolve(false);
+                return;
+            }
+
             if (_trayManager != null && _trayManager.IsReady)
             {
                 Debug.Log("[DesktopPet] ESC 按下，隐藏到系统托盘");

@@ -16,6 +16,21 @@ public static class OpenClawBridge
 {
     private const string BASE_URL = "http://127.0.0.1:19876";
 
+    /// <summary>
+    /// 桥接鉴权 Token — 与 openclaw_bridge.js 的 BRIDGE_TOKEN 一致。
+    /// 优先读环境变量 BRIDGE_TOKEN（与 JS 端同源配置），缺省时用内置默认值。
+    /// </summary>
+    private static string BridgeToken
+    {
+        get
+        {
+            var env = System.Environment.GetEnvironmentVariable("BRIDGE_TOKEN");
+            return string.IsNullOrEmpty(env)
+                ? "367be203e32a4da345a6859d08298071dc058b78d4bcb203"
+                : env;
+        }
+    }
+
     /// <summary>桥接服务器是否可用（最近一次健康检查结果）</summary>
     public static bool IsAvailable { get; private set; } = false;
 
@@ -39,6 +54,7 @@ public static class OpenClawBridge
         {
             req.timeout = timeoutSeconds;
             req.SetRequestHeader("Accept", "application/json");
+            req.SetRequestHeader("x-bridge-token", BridgeToken);
 
             var op = req.SendWebRequest();
 
@@ -92,6 +108,7 @@ public static class OpenClawBridge
         using (var req = UnityWebRequest.Get(url))
         {
             req.timeout = 3;
+            req.SetRequestHeader("x-bridge-token", BridgeToken);
             var op = req.SendWebRequest();
             while (!op.isDone)
                 await Task.Yield();
@@ -156,6 +173,7 @@ public static class OpenClawBridge
             req.uploadHandler = new UploadHandlerRaw(bodyRaw);
             req.downloadHandler = new DownloadHandlerBuffer();
             req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("x-bridge-token", BridgeToken);
             // 长文档（多章节）走分块生成 + 编译，全程可能 10-20 分钟，180s 会超时。
             req.timeout = 1800;
 

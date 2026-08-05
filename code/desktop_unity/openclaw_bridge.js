@@ -21,7 +21,13 @@ import { tmpdir } from 'node:os';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 const GATEWAY_URL     = process.env.GATEWAY_URL     || 'ws://127.0.0.1:18789';
-const GATEWAY_TOKEN   = process.env.GATEWAY_TOKEN   || '367be203e32a4da345a6859d08298071dc058b78d4bcb203';
+// 🔒 Gateway Token：优先从环境变量读取；未配置时回退到旧默认值并警告（建议尽快轮换并在 PM2/启动脚本中配置）
+const GATEWAY_TOKEN   = process.env.GATEWAY_TOKEN   || (() => {
+    console.warn('[Bridge] ⚠️ GATEWAY_TOKEN 未配置，正在使用内置默认 Token。建议在 PM2/启动脚本中设置环境变量 GATEWAY_TOKEN 并轮换该 Token。');
+    return '367be203e32a4da345a6859d08298071dc058b78d4bcb203';
+})();
+// 🔒 Bridge HTTP 鉴权 Token：Unity 客户端必须携带 x-bridge-token 头（与 GATEWAY_TOKEN 独立，可单独配置）
+const BRIDGE_TOKEN    = process.env.BRIDGE_TOKEN   || GATEWAY_TOKEN;
 const BRIDGE_PORT     = parseInt(process.env.BRIDGE_PORT || '19876', 10);
 const SESSION_KEY     = process.env.SESSION_KEY     || 'agent:main:main';
 const CHAT_TIMEOUT_MS = parseInt(process.env.CHAT_TIMEOUT_MS || '180000', 10);
@@ -531,10 +537,17 @@ function checkMissingExternalRefs(tex, baseDir) {
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 function startHttpServer() {
     const server = createServer(async (req, res) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-        if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+        // 🔒 鉴权：除 /health 外所有请求必须携带 x-bridge-token，防止任意网页/进程滥用
+        //   （避免 CSRF：网页 JS 无法跨域携带自定义头，且下面移除了 CORS 通配头）
+        const authToken = req.headers['x-bridge-token'];
+        if (authToken !== BRIDGE_TOKEN) {
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Unauthorized: missing or invalid x-bridge-token header' }));
+            return;
+        }
+
+        // 不设置任何 CORS 头：浏览器跨域页面将无法读取响应（Unity 原生客户端不受 CORS 限制，不受影响）
+        if (req.method === 'OPTIONS') { res.writeHead(405, { 'Content-Type': 'application/json' }); res.end(); return; }
 
         const u = new URL(req.url, `http://${req.headers.host}`);
         const path = u.pathname;

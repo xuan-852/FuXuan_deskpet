@@ -414,13 +414,35 @@ public class ChatManager : MonoBehaviour
         attempt = _apiRetryCount + 1;
         if (string.IsNullOrEmpty(error) || attempt > 3) return false;
 
-        // 400 Bad Request → 请求格式错误，重试无意义
-        if (error.Contains("400")) return false;
+        // 400 Bad Request → 请求格式错误，重试无意义；附加友好诊断信息
+        if (error.Contains("400"))
+        {
+            _lastError = DiagnoseBadRequest(error);
+            return false;
+        }
         // 401/403 → 鉴权错误，重试无意义
         if (error.Contains("401") || error.Contains("403")) return false;
 
         _apiRetryCount = attempt;
         return true;
+    }
+
+    /// <summary>对 400 Bad Request 生成友好诊断（消息过长 / 工具参数损坏 / 模型限制）</summary>
+    private string DiagnoseBadRequest(string rawError)
+    {
+        int histCount = _history?.Count ?? 0;
+        int bodyLen = 0;
+        try { bodyLen = System.Text.Encoding.UTF8.GetByteCount(BuildRequestBody()); } catch { }
+
+        string extra;
+        if (bodyLen > 180000)
+            extra = "消息体过大（约 " + (bodyLen / 1024) + "KB），建议缩短上下文或清理记忆";
+        else if (bodyLen > 60000)
+            extra = "消息体较大（约 " + (bodyLen / 1024) + "KB），可能超过模型上下文限制";
+        else
+            extra = "工具参数 JSON 可能格式错误，或请求包含模型不支持的字段";
+
+        return $"{rawError} | 诊断: 历史 {histCount} 条 / 请求体约 {bodyLen / 1024}KB，{extra}";
     }
 
     private IEnumerator SendRequestCoroutine()
@@ -572,6 +594,57 @@ public class ChatManager : MonoBehaviour
                 Debug.Log($"[ChatManager] ⚡ 施法: {call.name}({call.arguments})");
 
                 string result;
+
+                // ⚠️ 危险工具 → 必须先经用户确认（防 AI 幻觉 / prompt 注入误删文件、关机等）
+                if (toolInvoker && ToolRegistry.IsDangerous(call.name))
+                {
+                    bool confirmed = false;
+                    bool resolved = false;
+                    string desc = ToolRegistry.GetDangerDescription(call.name);
+
+                    var confirmBubble = FindObjectOfType<ChatBubble>();
+                    if (confirmBubble != null)
+                    {
+                        confirmBubble.ShowMessage(
+                            $"⚠️ 本座欲施「{call.name}」——{desc}。\n点一下本座 = 允许，按 ESC = 拒绝。",
+                            60f, ChatBubble.MsgPriority.High);
+                    }
+
+                    ToolConfirmManager.Request(call.name, call.arguments, desc, ok => { confirmed = ok; resolved = true; });
+
+                    // 等待用户点击 / ESC / 超时（60s 自动拒绝，防止协程永久挂起）
+                    float confirmTimeout = Time.time + 60f;
+                    while (!resolved)
+                    {
+                        if (Time.time > confirmTimeout)
+                        {
+                            ToolConfirmManager.Resolve(false); // 触发回调 → resolved=true, confirmed=false
+                            break;
+                        }
+                        yield return null;
+                    }
+
+                    if (!confirmed)
+                    {
+                        result = "❌ 用户拒绝了此操作";
+                        Debug.Log($"[ChatManager] 🚫 用户拒绝执行: {call.name}");
+                        OnToolResult?.Invoke(call.name, result);
+                        RecordMemoryForTool(call.name, call.arguments, result);
+                        _history.Add(new Entry
+                        {
+                            role = "tool",
+                            content = result,
+                            tool_call_id = call.id,
+                            name = call.name
+                        });
+                        continue;
+                    }
+
+                    Debug.Log($"[ChatManager] ✅ 用户已确认: {call.name}");
+                    if (confirmBubble != null)
+                        confirmBubble.ShowMessage("✅ 已获准许，施法！", 2.5f, ChatBubble.MsgPriority.Normal);
+                }
+
                 if (toolInvoker && toolInvoker.IsCoroutineTool(call.name))
                 {
                     // ★ 看门狗全程有效（不归零 _requestStartTime），卡死时自动超时

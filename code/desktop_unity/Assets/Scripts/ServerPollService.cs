@@ -34,7 +34,8 @@ public class ServerPollService : MonoBehaviour
             var env = System.Environment.GetEnvironmentVariable("DESKTOP_TOKEN");
             if (!string.IsNullOrEmpty(env))
                 return env;
-            return "desktop_secret_token_here"; // 本地后备
+            // 🔒 不再返回明文后备 token：未配置时返回空，由调用方禁用轮询
+            return "";
         }
     }
 
@@ -86,7 +87,14 @@ public class ServerPollService : MonoBehaviour
         _chat = GetComponent<ChatManager>();
         if (_chat == null) _chat = FindObjectOfType<ChatManager>();
 
-        // 启动后马上拉一次
+        // 启动后马上拉一次；未配置 Token 时禁用轮询（避免占位符密钥 401 刷屏）
+        if (string.IsNullOrEmpty(EffectiveToken))
+        {
+            Debug.LogWarning("[ServerPollService] ⚠️ 未配置 DESKTOP_TOKEN（Inspector 字段或环境变量），轮询服务已禁用。");
+            _initialized = false;
+            return;
+        }
+
         _timer = pollInterval;
         _initialized = true;
 
