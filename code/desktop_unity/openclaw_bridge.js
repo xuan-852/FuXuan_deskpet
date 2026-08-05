@@ -88,6 +88,12 @@ function handleGatewayEvent(evt) {
             let content = null;
             if (typeof msg === 'string') {
                 content = msg;
+            } else if (Array.isArray(msg.content)) {
+                // ★ Gateway final 事件的 message.content 是数组
+                //   [{type:'text', text:'...'}]，需展开为纯文本字符串
+                content = msg.content
+                    .map(x => typeof x === 'string' ? x : (x.text || x.content || ''))
+                    .filter(Boolean).join('\n');
             } else if (msg.content) {
                 content = msg.content;
             } else if (Array.isArray(msg.parts) && msg.parts.length > 0) {
@@ -143,9 +149,12 @@ async function sendChatAndWait(query) {
                 idempotencyKey: runId,
             });
 
-            const content = await responsePromise;
-            // ★ 健壮化：即使 resolve 了，若内容仍是 Gateway 元数据 JSON 特征则视为失败
-            if (typeof content !== 'string' || /"(runId|stopReason|sessionKey|agentId|state)"\s*:/.test(content)) {
+            const raw = await responsePromise;
+            // ★ 健壮化：先规范化再校验——Gateway 可能返回字符串或
+            //   [{type:'text',text:'...'}] 数组（cleanLatexFence 统一转纯文本），
+            //   若规范化后仍是元数据 JSON 特征（{runId, stopReason...}）则视为失败
+            const content = cleanLatexFence(raw);
+            if (/"(runId|stopReason|sessionKey|agentId|state)"\s*:/.test(content)) {
                 throw new Error('Response is gateway metadata, not content');
             }
             return content;
@@ -267,7 +276,23 @@ async function generateChunkedLatex(description, compiler = 'xelatex') {
 - **不要使用 ① ② ③ 等圈号字符（会缺字），用「1.」「2.」或「第一」替代**
 - **只输出 LaTeX 源码，不要任何解释、不要 Markdown 代码块包裹**`
 
-    let outline = cleanLatexFence(await sendChatAndWait(outlinePrompt));
+    // ★ 健壮化：骨架请求也加重试（此前骨架 sendChatAndWait 抛错会直接 500，
+    //   15:17 实测骨架偶发返回元数据 JSON 被校验拦截，加 2 次重试避免整次任务失败）
+    let outline = null;
+    for (let attempt = 1; attempt <= 2 && !outline; attempt++) {
+        try {
+            outline = cleanLatexFence(await sendChatAndWait(outlinePrompt));
+            if (typeof outline !== 'string' || outline.trim().length < 50) {
+                console.error(`[Bridge] Outline attempt ${attempt} invalid: ${JSON.stringify(String(outline).slice(0, 80))}`);
+                outline = null;
+            }
+        } catch (e) {
+            console.error(`[Bridge] Outline attempt ${attempt} failed: ${e.message}`);
+        }
+    }
+    if (!outline) {
+        throw new Error('Outline generation failed after retries');
+    }
     let sectionTitles = [...outline.matchAll(/\\section\{([^}]+)\}/g)].map(m => m[1].trim());
     console.log(`[Bridge] Chunked mode: outline has ${sectionTitles.length} sections`);
 
