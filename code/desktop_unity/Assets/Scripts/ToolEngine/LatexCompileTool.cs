@@ -17,9 +17,10 @@ public class LatexCompileTool : AsyncToolBase
     public override string ToolName => "compile_latex";
     public override string ToolDescription =>
         "【专业排版】生成并编译 LaTeX 文档为 PDF。用户说「帮我写一份报告/论文/简历/文档」 " +
-        "且需要 PDF 输出时调用此术式。本座只需需求描述，AI 会自动生成源码并编译。生成位置在 D:\\DesktopPetData\\Documents\\。";
+        "且需要 PDF 输出时调用此术式。本座只需需求描述，AI 会自动生成源码并编译。生成位置在 D:\\DesktopPetData\\Documents\\。 " +
+        "**长文档（多章节/长篇幅/几十页）可以放心交付**：AI 会自动分块逐章生成再拼接编译，不会因太长而失败。";
     public override string ToolParametersJson => ToolSchema.Schema(
-        ToolSchema.Req("description", "string", "文档需求描述，如「帮我写一份关于人工智能发展史的学术报告，约2000字，含摘要和参考文献」"),
+        ToolSchema.Req("description", "string", "文档需求描述。可以写得很详细（标题、章节列表、每章要求、格式偏好、代码示例要求等），如「帮我写一份关于人工智能发展史的学术报告，约2000字，含摘要和参考文献」；如果是长文档请尽量列出章节清单"),
         ToolSchema.Opt("title", "string", "文档标题，用于命名文件夹和文件（如「学术报告」「个人简历」）"),
         ToolSchema.Opt("output", "string", "输出的 .tex 文件路径（可选，默认自动生成）"),
         ToolSchema.Opt("compiler", "string", "编译器：xelatex（默认，中文友好）/ pdflatex / lualatex"),

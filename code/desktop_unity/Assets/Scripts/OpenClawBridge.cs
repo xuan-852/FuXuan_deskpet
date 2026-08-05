@@ -156,7 +156,8 @@ public static class OpenClawBridge
             req.uploadHandler = new UploadHandlerRaw(bodyRaw);
             req.downloadHandler = new DownloadHandlerBuffer();
             req.SetRequestHeader("Content-Type", "application/json");
-            req.timeout = 180;
+            // 长文档（多章节）走分块生成 + 编译，全程可能 10-20 分钟，180s 会超时。
+            req.timeout = 1800;
 
             var op = req.SendWebRequest();
             while (!op.isDone)
