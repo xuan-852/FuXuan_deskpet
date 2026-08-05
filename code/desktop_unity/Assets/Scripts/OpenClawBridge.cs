@@ -18,16 +18,20 @@ public static class OpenClawBridge
 
     /// <summary>
     /// 桥接鉴权 Token — 与 openclaw_bridge.js 的 BRIDGE_TOKEN 一致。
-    /// 优先读环境变量 BRIDGE_TOKEN（与 JS 端同源配置），缺省时用内置默认值。
+    /// 只读环境变量 BRIDGE_TOKEN（与 JS 端同源配置）。
+    /// 缺省时不使用任何内置默认值（历史版本的内置 Token 已泄漏并轮换），直接返回空串禁用桥接。
     /// </summary>
     private static string BridgeToken
     {
         get
         {
             var env = System.Environment.GetEnvironmentVariable("BRIDGE_TOKEN");
-            return string.IsNullOrEmpty(env)
-                ? "367be203e32a4da345a6859d08298071dc058b78d4bcb203"
-                : env;
+            if (string.IsNullOrEmpty(env))
+            {
+                Debug.LogWarning("[OpenClawBridge] ⚠️ 环境变量 BRIDGE_TOKEN 未配置，桥接鉴权将被拒绝。请设置 BRIDGE_TOKEN（与 openclaw_bridge.js / PM2 的 BRIDGE_TOKEN 一致）。");
+                return "";
+            }
+            return env;
         }
     }
 
