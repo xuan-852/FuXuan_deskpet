@@ -35,11 +35,14 @@ public class PoggetAgentTool : IPetTool
 - add_to_container: 将文件添加到收纳盒（需 containerId, paths）
 - remove_from_container: 从收纳盒移除文件（需 containerId, itemId）
 - create_container: 创建新收纳盒（需 title, 可选 targetFolder）
-- organize_desktop: 自动扫描桌面并按类型整理文件";
+- organize_desktop: 自动扫描桌面并按类型整理文件
+- quickpanel_status: 查询快速面板（侧边栏）状态
+
+关于侧边栏/快速面板：Pogget 有快速面板（侧边栏），它是所有收纳盒内容的聚合视图，不单独存储文件。用户问「侧边栏收拾」「侧边栏收纳」时，直接使用 add_to_container（收文件进收纳盒）或 organize_desktop（自动分类整理）即可，效果与侧边栏操作一致；用户想打开侧边栏窗口则用 launch_pogget。";
     public string ToolParametersJson => @"{
   ""type"": ""object"",
   ""properties"": {
-    ""cmd"": { ""type"": ""string"", ""enum"": [""ping"",""list_containers"",""get_container_items"",""add_to_container"",""remove_from_container"",""create_container"",""organize_desktop""], ""description"": ""要执行的操作"" },
+    ""cmd"": { ""type"": ""string"", ""enum"": [""ping"",""list_containers"",""get_container_items"",""add_to_container"",""remove_from_container"",""create_container"",""organize_desktop"",""quickpanel_status""], ""description"": ""要执行的操作"" },
     ""params"": { ""type"": ""object"", ""description"": ""操作参数"", ""properties"": {
       ""containerId"": { ""type"": ""string"", ""description"": ""收纳盒 ID"" },
       ""paths"": { ""type"": ""array"", ""items"": { ""type"": ""string"" }, ""description"": ""要添加的文件路径列表"" },
@@ -139,6 +142,7 @@ public class PoggetAgentTool : IPetTool
                 "add_to_container" => $"\u2705 {resp.message ?? "文件已添加到收纳盒"}",
                 "remove_from_container" => $"\u2705 {resp.message ?? "文件已从收纳盒移除"}",
                 "create_container" => $"\u2705 {resp.message ?? "收纳盒已创建"}",
+                "quickpanel_status" => FormatQuickPanel(resp),
                 "organize_desktop" => FormatOrganize(resp),
                 _ => $"\u2705 {resp.message ?? "操作成功"}"
             };
@@ -151,6 +155,19 @@ public class PoggetAgentTool : IPetTool
         if (resp.result?.containers == null || resp.result.containers.Length == 0) return "\U0001f4e6 暂无收纳盒";
         var sb = new StringBuilder($"\U0001f4e6 共 {resp.result.containers.Length} 个收纳盒：");
         foreach (var c in resp.result.containers) sb.Append($"\n  \u2022 {c.title ?? c.id}");
+        return sb.ToString();
+    }
+
+    private string FormatQuickPanel(PoggetAgentResponse resp)
+    {
+        if (resp.result == null) return $"\u2705 {resp.message ?? "侧边栏查询完成"}";
+        var sb = new StringBuilder($"\U0001f4e6 {resp.message ?? "侧边栏状态"}");
+        if (resp.result.hasQuickPanel.HasValue)
+            sb.Append($"\n  \u2022 是否有侧边栏: {(resp.result.hasQuickPanel.Value ? "有（快速面板）" : "无")}");
+        if (resp.result.configExists.HasValue)
+            sb.Append($"\n  \u2022 配置文件: {(resp.result.configExists.Value ? "存在" : "不存在")}");
+        if (!string.IsNullOrEmpty(resp.result.description))
+            sb.Append($"\n  \u2022 说明: {resp.result.description}");
         return sb.ToString();
     }
 
@@ -185,7 +202,7 @@ public class PoggetAgentTool : IPetTool
     [Serializable] private class PoggetAgentParams { public string containerId; public string[] paths; public int itemId; public string title; public string targetFolder; }
     [Serializable] private class PoggetAgentRequest { public string cmd; public PoggetAgentParams @params; }
     [Serializable] private class PoggetAgentResponse { public bool ok; public string error; public string message; public string version; public PoggetAgentResult result; }
-    [Serializable] private class PoggetAgentResult { public ContainerInfo[] containers; public ItemInfo[] items; public int? totalMoved; public int? skipped; }
+    [Serializable] private class PoggetAgentResult { public ContainerInfo[] containers; public ItemInfo[] items; public int? totalMoved; public int? skipped; public bool? hasQuickPanel; public bool? configExists; public string description; }
     [Serializable] private class ContainerInfo { public string id; public string title; }
     [Serializable] private class ItemInfo { public int id; public string name; public string path; }
 }

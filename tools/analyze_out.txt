@@ -1,0 +1,31 @@
+﻿=== API 璇锋眰澶辫触 鏈€杩?15 鏉?===
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+[MotionTranslator] API 璇锋眰澶辫触: Request timeout
+=== 闂茶瘽/IdleChat 鐩稿叧 鏈€杩?10 鏉?===
+[IdleChatGenerator] 鉁?闂€欑敓鎴愬畬鎴愶紝鏂板 3 鏉?
+[IdleChatGenerator] 鉁?闂€欑敓鎴愬畬鎴愶紝鏂板 3 鏉?
+[IdleChatGenerator] 鉁?闂€欑敓鎴愬畬鎴愶紝鏂板 3 鏉?
+[IdleChatGenerator] 鉁?闂€欑敓鎴愬畬鎴愶紝鏂板 3 鏉?
+[IdleChatGenerator] 鉁?闂€欑敓鎴愬畬鎴愶紝鏂板 3 鏉?
+[IdleChatGenerator] 鉁?闂€欑敓鎴愬畬鎴愶紝鏂板 3 鏉?
+[IdleChatGenerator] 鉁?闂€欑敓鎴愬畬鎴愶紝鏂板 3 鏉?
+[IdleChatGenerator] 鉁?闂€欑敓鎴愬畬鎴愶紝鏂板 3 鏉?
+[IdleChatGenerator] 鉁?闂€欑敓鎴愬畬鎴愶紝鏂板 3 鏉?
+[IdleChatGenerator] 鉁?闂€欑敓鎴愬畬鎴愶紝鏂板 3 鏉?
+=== 鍙嶆€?鐩稿叧 鏈€杩?5 鏉?===
+=== 鏃堕棿鑼冨洿 ===
+Mono path[0] = 'D:/Unity/projects/Desktop_per_pro/Build/DesktopPet_Data/Managed'
+Unable to find style 'downbutton' in skin 'GameSkin' repaint

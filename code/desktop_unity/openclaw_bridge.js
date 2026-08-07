@@ -21,9 +21,28 @@ import { tmpdir } from 'node:os';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 const GATEWAY_URL     = process.env.GATEWAY_URL     || 'ws://127.0.0.1:18789';
-// 🔒 Gateway Token：优先从环境变量读取；未配置时回退到旧默认值并警告（建议尽快轮换并在 PM2/启动脚本中配置）
-const GATEWAY_TOKEN   = process.env.GATEWAY_TOKEN   || (() => {
-    console.warn('[Bridge] ⚠️ GATEWAY_TOKEN 未配置，正在使用内置默认 Token。建议在 PM2/启动脚本中设置环境变量 GATEWAY_TOKEN 并轮换该 Token。');
+// 🔒 Gateway Token：优先从环境变量读取；否则自动从 OpenClaw 配置文件读取
+//   （跟随 gateway 的 token 轮换，避免内置默认值失效导致 8/5 认证失败的复现）；
+//   都拿不到才回退到旧默认值并警告。
+const GATEWAY_TOKEN   = process.env.GATEWAY_TOKEN || (() => {
+    const cfgPath = process.env.OPENCLAW_CONFIG
+        || join(process.env.USERPROFILE || process.env.HOME || '', '.openclaw', 'openclaw.json');
+    try {
+        if (existsSync(cfgPath)) {
+            // strip UTF-8 BOM（PowerShell Set-Content 会写入 BOM，导致 JSON.parse 失败 → 8/7 复现根因）
+            const raw = readFileSync(cfgPath, 'utf-8').replace(/^\uFEFF/, '');
+            const cfg = JSON.parse(raw);
+            const t = cfg?.gateway?.auth?.token;
+            if (t && typeof t === 'string' && t.length >= 16) {
+                console.log(`[Bridge] GATEWAY_TOKEN 已从 ${cfgPath} 自动读取（跟随 Gateway 轮换）`);
+                return t;
+            }
+            console.warn(`[Bridge] ⚠️ ${cfgPath} 中未找到有效的 gateway.auth.token`);
+        }
+    } catch (e) {
+        console.warn(`[Bridge] ⚠️ 读取 ${cfgPath} 失败: ${e.message}`);
+    }
+    console.warn('[Bridge] ⚠️ GATEWAY_TOKEN 未配置且无法从配置文件读取，正在使用内置默认 Token。建议在 PM2/启动脚本中设置环境变量 GATEWAY_TOKEN 并轮换该 Token。');
     return '367be203e32a4da345a6859d08298071dc058b78d4bcb203';
 })();
 // 🔒 Bridge HTTP 鉴权 Token：Unity 客户端必须携带 x-bridge-token 头（与 GATEWAY_TOKEN 独立，可单独配置）

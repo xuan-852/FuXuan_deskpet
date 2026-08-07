@@ -469,6 +469,21 @@ public class SearchFilesTool : IPetTool
         string rootDir = ToolHelpers.JsonRead(argsJson, "root");
         if (string.IsNullOrEmpty(query)) { onResult?.Invoke("❌ 未说要搜什么"); yield break; }
 
+        // ★ 修复（2026-08-05）：递归搜索/进程等待必须移到后台线程，
+        //   否则全盘递归（如 root:"C:\"）会同步阻塞主线程 → 桌宠"卡死"（动画/窗口无响应）。
+        //   协程 ≠ 后台线程，协程内不 yield 的同步代码依然跑在主线程。
+        var task = System.Threading.Tasks.Task.Run(() => DoSearch(query, rootDir));
+        yield return new WaitUntil(() => task.IsCompleted);
+
+        if (task.IsFaulted)
+            onResult?.Invoke($"❌ 搜索时出了岔子：{task.Exception?.InnerException?.Message}");
+        else
+            onResult?.Invoke(task.Result);
+    }
+
+    /// <summary>后台线程执行的实际搜索（无 Unity API，安全）</summary>
+    private static string DoSearch(string query, string rootDir)
+    {
         string esExe = ToolHelpers.FindEverythingCli();
         bool useEverything = esExe != null;
         var results = new List<string>();
@@ -510,7 +525,7 @@ public class SearchFilesTool : IPetTool
                     if (string.IsNullOrEmpty(rootDir))
                         rootDir = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
                     if (Directory.Exists(rootDir))
-                        ToolHelpers.SearchRecursive(rootDir, query, results, 200);
+                        ToolHelpers.SearchRecursive(rootDir, query, results, 200, skipSystemDirs: true);
                 }
                 catch (Exception ex)
                 {
@@ -523,8 +538,7 @@ public class SearchFilesTool : IPetTool
                 string scope = useEverything
                     ? (string.IsNullOrEmpty(rootDir) ? "本座的天眼所及之处" : $"「{rootDir}」")
                     : (string.IsNullOrEmpty(rootDir) ? "桌面" : $"「{rootDir}」");
-                onResult?.Invoke($"🔍 在{scope}中未找到与「{query}」匹配的文件");
-                yield break;
+                return $"🔍 在{scope}中未找到与「{query}」匹配的文件";
             }
 
             string method = useEverything ? "⚡本座以 Everything 天眼通搜" : "🔍本座以递归之法搜";
@@ -533,11 +547,11 @@ public class SearchFilesTool : IPetTool
             sb.AppendLine($"{method}{scope2}，得 {results.Count} 件与「{query}」相关之物：");
             foreach (var f in results)
                 sb.AppendLine($"  📄 {f}");
-            onResult?.Invoke(Truncate(sb.ToString(), 2000));
+            return Truncate(sb.ToString(), 2000);
         }
         catch (Exception e)
         {
-            onResult?.Invoke($"❌ 搜索时出了岔子：{e.Message}");
+            return $"❌ 搜索时出了岔子：{e.Message}";
         }
     }
 

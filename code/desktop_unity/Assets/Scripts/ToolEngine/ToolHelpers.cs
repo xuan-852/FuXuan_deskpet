@@ -339,7 +339,7 @@ public static class ToolHelpers
         return null;
     }
 
-    public static void SearchRecursive(string dir, string query, List<string> results, int maxResults)
+    public static void SearchRecursive(string dir, string query, List<string> results, int maxResults, bool skipSystemDirs = false)
     {
         try
         {
@@ -355,10 +355,63 @@ public static class ToolHelpers
                 if (results.Count >= maxResults) return;
                 try { if (Path.GetFileName(d).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) results.Add(d); }
                 catch { }
-                SearchRecursive(d, query, results, maxResults);
+                // ★ 跳过系统/缓存目录：全盘递归时避免遍历 Windows、AppData、node_modules 等
+                //   巨量目录（既慢又无意义），防止搜索耗时数分钟
+                if (skipSystemDirs && IsSystemDir(Path.GetFileName(d))) continue;
+                SearchRecursive(d, query, results, maxResults, skipSystemDirs);
             }
         }
         catch { }
+    }
+
+    /// <summary>判断目录是否属于系统/缓存目录（全盘搜索时跳过）</summary>
+    public static bool IsSystemDir(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        switch (name.ToLowerInvariant())
+        {
+            // 系统核心
+            case "windows":
+            case "program files":
+            case "program files (x86)":
+            case "programdata":
+            case "$recycle.bin":
+            case "system volume information":
+            case "perflogs":
+            case "recovery":
+            case "msocache":
+            case "intel":
+            case "amd":
+            case "nvidia":
+            case "drivers":
+            case "boot":
+            case "efi":
+            // 用户缓存/AppData（海量小文件，几乎不含用户要找的文件）
+            case "appdata":
+            case "local settings":
+            case "temp":
+            case "cache":
+            case "caches":
+            case "logs":
+            case "log":
+            // 开发/构建产物
+            case "node_modules":
+            case ".git":
+            case ".svn":
+            case ".hg":
+            case "library":
+            case "obj":
+            case ".vs":
+            case ".idea":
+            case ".vscode":
+            case "build":
+            case "dist":
+            case "target":
+            case "bin":
+                return true;
+            default:
+                return false;
+        }
     }
 
     public static string FastFindLink(string rootDir, string keyword)
@@ -456,7 +509,7 @@ public static class ToolHelpers
         {
             if (string.IsNullOrEmpty(rootDir)) rootDir = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
             var results = new List<string>();
-            SearchRecursive(rootDir, query, results, 100);
+            SearchRecursive(rootDir, query, results, 100, skipSystemDirs: true);
             if (results.Count == 0) return $"🔍 在「{rootDir}」中未找到与「{query}」匹配的文件";
             var sb = new StringBuilder();
             sb.AppendLine($"🔍 本座以递归之法搜「{rootDir}」，得 {results.Count} 件与「{query}」相关之物：");
