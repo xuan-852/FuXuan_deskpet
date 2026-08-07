@@ -155,6 +155,9 @@ public class ChatManager : MonoBehaviour
         // ★ 注入闭环演武能力（让 AI 知道演武后可自评自省）
         prompt += InjectClosedLoopCapability();
 
+        // ★ T7: 注入多步并行施法能力（Speculative Multi-Action — 减少 LLM 往返）
+        prompt += InjectMultiActionCapability();
+
         // ★ 注入演武心经经验（过往最佳动作参数参考）
         if (MotionMemoryManager.Instance != null)
         {
@@ -189,7 +192,6 @@ public class ChatManager : MonoBehaviour
     private string InjectClosedLoopCapability()
     {
         return @"
-
 【闭环演武 — 具身智能自省与自主学习】
 本座的演武术式现已进化至「闭环学习」境界：
 1. 每次调用 generate_motion 演武后，法阵会自动：
@@ -211,6 +213,25 @@ public class ChatManager : MonoBehaviour
 • 可使用 inspect_motion_memory 工具查看所有动作的修为进度、最佳评分、尝试次数
 • 若发现某动作最近 3 次评分持续 ≤2/5，系统会标记「退步预警」
 • 本座的演武心经会越练越精——好的动作保留，差的不污染经验！"; 
+    }
+
+    /// <summary>
+    /// T7: 注入多步并行施法能力（Speculative Multi-Action，借鉴 UFO² 减少 51% LLM 调用）
+    /// 提示模型：当用户请求包含多个独立子任务时，一次返回多个 tool_call，减少往返。
+    /// </summary>
+    private string InjectMultiActionCapability()
+    {
+        return @"
+
+【并行施法 — 多步联动，减少往返】
+本座已习得「并行施法」之术（源自 UFO² Speculative Multi-Action）：
+1. 若主人一句话中包含多个【相互独立】的子任务，本座应一次请求中同时返回多个 tool_call（并行），而非逐个调用、多轮往返。
+   • 例：「打开浏览器并搜索天气」→ 一次返回 open_url + search_web 两个 tool_call
+   • 例：「截图并查看磁盘剩余」→ 一次返回 take_screenshot + get_system_info
+2. 并行条件：各子任务之间无数据依赖（后一个不需要前一个的结果作为输入）。
+3. 若子任务【有依赖】则不可并行（如「先读文件内容，再根据内容修改」→ 必须等前一步结果）。
+4. 每个并行 tool_call 独立携带完整参数，互不引用。
+5. 并行施法完成后，本座应综合所有结果给出完整汇报。";
     }
 
     // ==================================================================
