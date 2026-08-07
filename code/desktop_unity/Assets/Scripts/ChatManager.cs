@@ -34,6 +34,13 @@ public class ChatManager : MonoBehaviour
     /// <summary>藏书阁检索结果缓存（注入 SystemPrompt）</summary>
     private string _cachedKnowledgeContext = "";
 
+    // ==================================================================
+    //  测试模式：存在标记文件时跳过所有持久化写入（记忆/人格/反思）
+    //  防止自动化测试消息污染符玄的忆境与人格演化。
+    //  开启方式：在 D:\DesktopPetData\ 下创建空文件 .test_mode
+    // ==================================================================
+    public static bool IsTestMode => System.IO.File.Exists(@"D:\DesktopPetData\.test_mode");
+
     void Awake()
     {
         // ——— 加载 SystemPrompt ———
@@ -290,6 +297,10 @@ public class ChatManager : MonoBehaviour
 
     // ---- 本地意图分类：用于 tools 过滤（由 ClassifyIntent 回调写入）----
     private string _lastIntent = "";
+    /// <summary>T4: 意图分类是否就绪（首轮请求前等待，避免用残留/空意图）</summary>
+    private bool _intentReady = true;
+    /// <summary>T4: 首轮等待意图分类的最长时间（秒），超时回退全量探测</summary>
+    private const float INTENT_WAIT_TIMEOUT = 3f;
     /// <summary>当前 tool 轮次，0 = 第一轮</summary>
     private int _toolRound = 0;
 
@@ -407,12 +418,16 @@ public class ChatManager : MonoBehaviour
         _requestStartTime = Time.time; // 启动看门狗计时
         _onUpdate = onUpdate;
 
+        // ★ T4 修复：重置意图状态，首轮请求必须等待本次分类结果（杜绝残留）
+        _lastIntent = "";
+        _intentReady = false;
+
         // 触发"AI 开始处理"事件（悬浮球显示"思考中…"）
         OnRequestStarted?.Invoke();
 
         StartCoroutine(SendRequestCoroutine());
 
-        // 🧠 功能1：意图/情绪分类（异步，不阻塞对话流）
+        // 🧠 功能1：意图/情绪分类（异步，SendRequestCoroutine 首轮会等待其结果）
         if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
         {
             LocalLLMAgentService.Instance.ClassifyIntent(text.Trim(), intent =>
@@ -422,7 +437,13 @@ public class ChatManager : MonoBehaviour
                     _lastIntent = intent.intent;  // ★ 存下来供 BuildRequestBody 过滤 tools
                     Debug.Log($"[ChatManager] 🏷️ 本地灵识判断: intent={intent.intent}, emotion={intent.emotion}");
                 }
+                _intentReady = true; // ★ 无论成败都标记就绪（失败 → 首轮走全量探测）
             });
+        }
+        else
+        {
+            // 本地模型不可用 → 立即就绪，首轮走全量探测
+            _intentReady = true;
         }
     }
 
@@ -491,8 +512,8 @@ public class ChatManager : MonoBehaviour
             SendMessage(next.text, next.onUpdate);
         }
 
-        // ——— 检查是否需要记忆反思（不阻塞对话流）———
-        if (PetMemory.Instance != null)
+        // ——— 检查是否需要记忆反思（不阻塞对话流；测试模式跳过）———
+        if (PetMemory.Instance != null && !IsTestMode)
         {
             var candidates = PetMemory.Instance.CheckReflection();
             if (candidates != null && candidates.Count >= 2)
@@ -513,6 +534,23 @@ public class ChatManager : MonoBehaviour
         for (int round = 0; round <= MAX_TOOL_ROUNDS; round++)
         {
             _toolRound = round; // ★ 记录轮次，第一轮按意图过滤，后续全量
+
+            // ★ T4 修复：首轮等待本地意图分类结果（最多 INTENT_WAIT_TIMEOUT 秒）
+            //   解决原实现"首帧构建请求体早于异步分类回调"的竞态，避免用残留/空意图
+            if (round == 0 && !_intentReady)
+            {
+                float waitStart = Time.time;
+                while (!_intentReady && Time.time - waitStart < INTENT_WAIT_TIMEOUT)
+                    yield return null;
+                if (!_intentReady)
+                {
+                    // 超时兜底：按无意图处理（全量探测），并标记就绪避免重复等待
+                    _lastIntent = "";
+                    _intentReady = true;
+                    Debug.LogWarning($"[ChatManager] ⏱️ 意图分类超时({INTENT_WAIT_TIMEOUT}s)，首轮回退全量工具");
+                }
+            }
+
             string jsonBody = BuildRequestBody();
             bool hadError = false;
             string fullContent = "";
@@ -1183,7 +1221,7 @@ public class ChatManager : MonoBehaviour
                 break;
         }
 
-        if (!string.IsNullOrEmpty(summary))
+        if (!string.IsNullOrEmpty(summary) && !IsTestMode)
         {
             PetMemory.Instance.AddMemory(summary, topic, "tool");
         }
@@ -1298,6 +1336,7 @@ public class ChatManager : MonoBehaviour
     /// <summary>记录纯文字回复到长期记忆（按重要性过滤）</summary>
     private void RecordConversationMemory(string reply)
     {
+        if (IsTestMode) return; // 测试模式：不写任何对话记忆/摘要/提取
         if (PetMemory.Instance == null || string.IsNullOrEmpty(reply)) return;
 
         _conversationSinceSummary++;
@@ -1475,6 +1514,7 @@ public class ChatManager : MonoBehaviour
     /// </summary>
     private void RecordPersonalityInteraction()
     {
+        if (IsTestMode) return; // 测试模式：不写人格演化
         if (PersonalityManager.Instance == null) return;
 
         // 取用户最后一条消息

@@ -68,11 +68,19 @@
 | T7 | ✅ 生效 | `InjectMultiActionCapability()` 注入 system prompt（独立子任务一次并行返回多个 tool_call）；接收端 `ApiClient` 早已支持多 index 累积（`toolCallIndex` 补空累加器），`ChatManager.DoToolLoop` 的 `foreach` 逐个执行并按 `tool_call_id` 记历史 — 全链路已通 |
 | T6 | ✅ 生效 | `SystemPrompt.txt` 5012→2972 字符（-41%）：删【当前时刻】重复段、【经典台词参考】、【闭环演武】重复段（该段「勿提及评分」铁则已并入 `ChatManager.InjectClosedLoopCapability()` 代码版）；压缩性格/风格/须知/铁则修辞；**所有工具表与 ⚠️ 硬性铁则原样保留** |
 
-### 第二批实测（Player.log 观测要点）
+### 第二批实测数据（2026-08-08 实测验证）
 
-- T4：回环轮请求体 tools 数组应从 55 → 个位数（已用+候选+核心 6）
-- T5：对话 15k 字符后 `_historySummary` 非空，请求体出现【旧事纪要】system 消息
-- T7：多独立子任务时单次响应含 ≥2 个 `tool_calls`（`⚡ 施法: xxx` 连续打出），工具轮次下降
+| # | 实测结果 | 关键日志（Player.log） |
+|---|---|---|
+| T4 | ✅ 首轮 55→27 道术式（-51%）；回环轮 31 道 | `🎯 round=0 意图「command」→ 仅发 27 道术式` / `🎯 round=1 意图「command」→ 仅发 31 道术式` |
+| T5 | ✅ 历史超 15000 字符预算触发裁剪，Ollama 本地摘要成功并注入【旧事纪要】 | `✂️ 历史超字符预算(15000)，裁剪 6 条旧消息` / `📜 旧史摘要: 搜索今日天气和最近考试成绩，同时查看当前时间。` / 随后请求 `usage: prompt=27857`（摘要注入生效，请求体显著增大） |
+| T7 | ✅ 单次响应返回 2 个并行 tool_call | `⚡ 施法: search({"query": "南京 今天 天气"})` + `⚡ 施法: search({"query": "英语四六级 成绩查询"})`（completion=7902 一次双工具） |
+| T6 | ✅ SystemPrompt 5012→2972 字符 | 文件字符数实测 -41% |
+
+**附注（2026-08-08）**：
+1. **T4 竞态修复**：实测发现首轮意图分类结果跨消息残留（上一轮 `command` 意图污染下一轮首轮工具子集）→ 新增 `_intentReady` 标志 + 3s 超时兜底全量：`SendMessage()` 重置 `_intentReady=false`，分类回调成功才置 true，`DoToolLoop()` 首轮等待分类结果
+2. **测试模式开关**：新增 `ChatManager.IsTestMode`（存在 `D:\DesktopPetData\.test_mode` 标记文件即跳过记忆/人格/反思全部持久化写入），防止自动化测试污染符玄忆境与人格演化。实测防污染：3 条测试消息后 pet_memory 28 条无新增、人格 totalInteractions 56 无变化
+3. **防污染清理**：若历史测试已写入数据，用 `tools/clean_test_pollution.cjs`（备份→删测试记忆→回退人格计数→重算 familiarity）
 
 ## 四、验证方法
 

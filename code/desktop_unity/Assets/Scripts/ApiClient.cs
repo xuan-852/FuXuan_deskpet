@@ -173,6 +173,7 @@ public static class ApiClient
         public string toolCallId;    // tool_call id（新增 tool_call 时有值）
         public string toolName;      // function.name
         public string toolArgsPart;  // function.arguments 片段
+        public int toolCallIndex;    // T7: tool_calls 数组下标（并行多 tool_call 时区分），-1 = 无
     }
 
     /// <summary>SSE 流式请求 — 实时接收 token，边收边回调</summary>
@@ -280,41 +281,19 @@ public static class ApiClient
                     onContentDelta?.Invoke(delta.content);
                 }
 
-                if (delta.toolCallId != null)
+                if (delta.toolCallIndex >= 0)
                 {
-                    // DeepSeek 可能分别发 id delta 和 name delta
-                    // 只在同时有 id+非空 name 时才创建新累加器
+                    // T7: 并行多 tool_calls 按 index 累积，缺失位置补空累加器
+                    while (toolCallAcc.Count <= delta.toolCallIndex)
+                        toolCallAcc.Add(new ToolCallAccumulator { id = null, name = null, args = new StringBuilder() });
+
+                    var acc = toolCallAcc[delta.toolCallIndex];
+                    if (!string.IsNullOrEmpty(delta.toolCallId))
+                        acc.id = delta.toolCallId;
                     if (!string.IsNullOrEmpty(delta.toolName))
-                    {
-                        toolCallAcc.Add(new ToolCallAccumulator
-                        {
-                            id = delta.toolCallId,
-                            name = delta.toolName
-                        });
-                    }
-                    // 如果只有 id 没 name（空字符串也算无 name），说明 name 在后面独立 delta 中
-                    // 创建占位累加器，后面由 name 分支更新
-                    else if (toolCallAcc.Count == 0 || toolCallAcc[toolCallAcc.Count - 1].id != delta.toolCallId)
-                    {
-                        toolCallAcc.Add(new ToolCallAccumulator
-                        {
-                            id = delta.toolCallId,
-                            name = ""
-                        });
-                    }
-                    // arguments 片段
-                    if (delta.toolArgsPart != null && toolCallAcc.Count > 0)
-                        toolCallAcc[toolCallAcc.Count - 1].args.Append(delta.toolArgsPart);
-                }
-                else if (delta.toolArgsPart != null && toolCallAcc.Count > 0)
-                {
-                    toolCallAcc[toolCallAcc.Count - 1].args.Append(delta.toolArgsPart);
-                }
-                else if (delta.toolName != null && toolCallAcc.Count > 0)
-                {
-                    var last = toolCallAcc[toolCallAcc.Count - 1];
-                    if (string.IsNullOrEmpty(last.name))
-                        last.name = delta.toolName;
+                        acc.name = delta.toolName;
+                    if (delta.toolArgsPart != null)
+                        acc.args.Append(delta.toolArgsPart);
                 }
             }
         }
@@ -344,11 +323,12 @@ public static class ApiClient
             else
                 result.content = null;
 
-            // tool_calls
+            // tool_calls（T7: 解析 index，支持并行多 tool_call）
             var toolCalls = delta["tool_calls"] as JArray;
             if (toolCalls != null && toolCalls.Count > 0)
             {
                 var tc = toolCalls[0];
+                result.toolCallIndex = tc["index"]?.Value<int>() ?? 0;
                 result.toolCallId = tc["id"]?.ToString();
                 var fn = tc["function"];
                 if (fn != null)
@@ -356,6 +336,10 @@ public static class ApiClient
                     result.toolName = fn["name"]?.ToString();
                     result.toolArgsPart = fn["arguments"]?.ToString();
                 }
+            }
+            else
+            {
+                result.toolCallIndex = -1;
             }
         }
         catch
