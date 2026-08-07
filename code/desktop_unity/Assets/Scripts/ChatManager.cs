@@ -92,11 +92,10 @@ public class ChatManager : MonoBehaviour
         // PetMemory.CheckReflection() → DoReflection()（DeepSeek 提炼）→ CommitReflection()。
     }
 
-    /// <summary>构建最终 SystemPrompt（注入时间 + 长期记忆 + 行为观测）</summary>
+    /// <summary>构建最终 SystemPrompt（注入长期记忆 + 行为观测）</summary>
     private string BuildSystemPrompt()
     {
         string prompt = _systemPromptTemplate;
-        prompt = prompt.Replace("{current_time}", DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
 
         // 注入长期记忆
         if (PetMemory.Instance != null)
@@ -163,6 +162,10 @@ public class ChatManager : MonoBehaviour
             if (!string.IsNullOrEmpty(motionMemories))
                 prompt += "\n" + motionMemories;
         }
+
+        // ★ 当前时刻追加到末尾（保持静态前缀不变 → 命中 DeepSeek 上下文缓存）
+        prompt += "\n\n【当前时刻】" + DateTime.Now.ToString("yyyy-MM-dd HH:mm") +
+                  "（主人电脑的本地时间。用法阵术式填入时辰时，务必以此刻为准推算。）";
 
         return prompt;
     }

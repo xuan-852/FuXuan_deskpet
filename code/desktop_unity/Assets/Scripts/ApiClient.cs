@@ -50,6 +50,7 @@ public static class ApiClient
             if (req.result == UnityWebRequest.Result.Success)
             {
                 onSuccess?.Invoke(req.downloadHandler.text);
+                LogUsage(req.downloadHandler.text);
             }
             else
             {
@@ -60,6 +61,42 @@ public static class ApiClient
                 onError?.Invoke(errMsg);
             }
         }
+    }
+
+    // ================================================================
+    //  用量观测（T8）— 解析 usage 缓存命中信息并打日志
+    // ================================================================
+
+    /// <summary>从 DeepSeek 响应中提取 usage 缓存命中摘要；无 usage 字段时返回 null</summary>
+    public static string ExtractUsageSummary(string json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try
+        {
+            var root = JObject.Parse(json);
+            var usage = root["usage"];
+            if (usage == null || usage.Type == JTokenType.Null) return null;
+
+            long hit = usage["prompt_cache_hit_tokens"]?.Value<long>() ?? 0;
+            long miss = usage["prompt_cache_miss_tokens"]?.Value<long>() ?? 0;
+            long prompt = usage["prompt_tokens"]?.Value<long>() ?? (hit + miss);
+            long completion = usage["completion_tokens"]?.Value<long>() ?? 0;
+            double hitRate = (hit + miss) > 0 ? (double)hit / (hit + miss) * 100.0 : 0.0;
+
+            return $"prompt={prompt} (cache_hit={hit} miss={miss} 命中率={hitRate:F1}%) completion={completion}";
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>响应中带 usage 时打日志（Debug.Log，用于观察缓存命中）</summary>
+    public static void LogUsage(string responseJson)
+    {
+        string summary = ExtractUsageSummary(responseJson);
+        if (summary != null)
+            Debug.Log($"[ApiClient] 💰 usage: {summary}");
     }
 
     // ================================================================
@@ -232,6 +269,10 @@ public static class ApiClient
                 if (data == "[DONE]") continue;
 
                 var delta = ParseStreamDelta(data);
+
+                // T8：流式最后一块常带 usage（choices 为空），记录缓存命中
+                if (data.IndexOf("\"usage\"", StringComparison.Ordinal) >= 0)
+                    LogUsage(data);
 
                 if (!string.IsNullOrEmpty(delta.content))
                 {

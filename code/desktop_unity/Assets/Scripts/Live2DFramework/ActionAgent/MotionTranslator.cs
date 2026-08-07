@@ -26,7 +26,8 @@ public static class MotionTranslator
     private const string API_URL = "https://api.deepseek.com/chat/completions";
     private const string MODEL = "deepseek-v4-flash";
     private const float TEMPERATURE = 0.3f;
-    private const int TIMEOUT = 30;
+    private const int TIMEOUT = 60;   // 原 30s 超时导致 40 次请求失败，提高到 60s
+    private const int MAX_TOKENS = 1500; // 限制输出，避免长动作描述产生超大响应
 
     // ──────────────────────────────────────────────
     //  公开入口
@@ -65,8 +66,9 @@ public static class MotionTranslator
             yield break;
         }
 
-        // ——— 1. 构建 body schema 字符串 ———
-        string bodySchema = BuildBodySchema(mapper);
+        // ——— 1. 构建 body schema 字符串（按动作描述裁剪部位，减小请求体）———
+        string bodySchema = BuildBodySchema(mapper, description);
+        Debug.Log($"[MotionTranslator] 📦 schema 大小: {bodySchema.Length} 字符 (描述: \"{description}\")");
 
         // ——— 1b. 注入运动记忆（自主闭环学习）———
         string motionMemories = GetMotionMemories();
@@ -183,6 +185,7 @@ public static class MotionTranslator
             if (req.result == UnityWebRequest.Result.Success)
             {
                 string responseText = req.downloadHandler.text;
+                ApiClient.LogUsage(responseText); // T8: 记录缓存命中
                 MotionPlanner.MotionPlan plan = ParseResponse(responseText, description);
                 if (plan != null && plan.KeyFrames.Count > 0)
                 {
@@ -335,11 +338,57 @@ public static class MotionTranslator
         }
     }
 
-    private static string BuildBodySchema(Live2DParameterMapper mapper)
+    // ── 动作描述 → 相关部位关键词映射（T2：按描述裁剪 schema，减请求体）──
+    // 规则格式：第 0 项为部位名（逗号分隔），后续项为关键词。
+    private static readonly string[][] _schemaFilterRules =
+    {
+        new[] { "ARMS,HANDS,FINGERS", "手", "挥", "指", "招", "叉腰", "捂", "抱", "推", "拉", "举", "抬", "伸", "拳", "鼓掌", "比心", "v字", "wave", "hand", "arm", "point", "beckon", "clap", "pray", "grab", "raise", "挥手", "摆手", "拍手", "招手" },
+        new[] { "HEAD,EYES,BROWS,MOUTH", "头", "点", "摇", "歪", "看", "眨眼", "眼", "眉", "嘴", "笑", "哭", "生气", "惊讶", "撅", "嘟", "head", "eye", "blink", "smile", "look", "nod", "tilt", "surprised", "吐舌", "眯" },
+        new[] { "LEGS,BODY", "腿", "跳", "走", "转身", "鞠躬", "蹲", "坐", "跪", "踢", "leg", "jump", "walk", "bow", "crouch", "sit", "kneel", "spin", "turn", "弯腰", "扭" },
+    };
+
+    // ── 始终保留的基础部位（表情/头部几乎总需要）──
+    private static readonly string[] _schemaBaseParts = { "HEAD", "EYES", "BROWS", "MOUTH", "BODY" };
+
+    /// <summary>根据动作描述选择相关部位；无法匹配时返回 null 表示全量保留</summary>
+    private static HashSet<string> SelectRelevantParts(string description)
+    {
+        if (string.IsNullOrEmpty(description)) return null;
+
+        var selected = new HashSet<string>();
+        bool anyHit = false;
+        string lower = description.ToLowerInvariant();
+
+        foreach (var rule in _schemaFilterRules)
+        {
+            string[] parts = rule[0].Split(',');
+            for (int i = 1; i < rule.Length; i++)
+            {
+                string kw = rule[i].ToLowerInvariant();
+                if (lower.Contains(kw))
+                {
+                    foreach (string p in parts) selected.Add(p);
+                    anyHit = true;
+                    break; // 本规则已命中，不再检查其余关键词
+                }
+            }
+        }
+
+        if (!anyHit) return null; // 无关键词命中 → 全量 schema（安全回退）
+
+        // 基础表情部位始终保留
+        foreach (string b in _schemaBaseParts) selected.Add(b);
+        return selected;
+    }
+
+    private static string BuildBodySchema(Live2DParameterMapper mapper, string description = null)
     {
         // 确保视觉标定和中文名已加载
         LoadVisualDescriptions();
         LoadChineseNames();
+
+        // T2：按动作描述裁剪部位（null = 全量）
+        HashSet<string> relevantParts = SelectRelevantParts(description);
 
         var parts = new Dictionary<string, List<(string name, float min, float max, float def)>>();
 
@@ -348,6 +397,7 @@ public static class MotionTranslator
             if (!mapper.TryGetRange(semantic, out var range)) continue;
             string part = GetBodyPartName(semantic);
             if (_schemaExcludedParts.Contains(part)) continue;
+            if (relevantParts != null && !relevantParts.Contains(part)) continue;
             if (!parts.ContainsKey(part))
                 parts[part] = new List<(string, float, float, float)>();
             parts[part].Add((semantic, range.Min, range.Max, range.Default));
@@ -430,6 +480,7 @@ public static class MotionTranslator
         sb.Append('{');
         sb.Append("\"model\":\"").Append(MODEL).Append("\",");
         sb.Append("\"temperature\":").Append(TEMPERATURE.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)).Append(',');
+        sb.Append("\"max_tokens\":").Append(MAX_TOKENS).Append(',');
         sb.Append("\"messages\":[");
         sb.Append("{\"role\":\"system\",\"content\":\"").Append(EscapeJson(systemPrompt)).Append("\"},");
         sb.Append("{\"role\":\"user\",\"content\":\"").Append(EscapeJson(userPrompt)).Append("\"}");
