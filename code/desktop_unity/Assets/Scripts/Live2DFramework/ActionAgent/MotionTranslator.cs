@@ -27,7 +27,9 @@ public static class MotionTranslator
     private const string MODEL = "deepseek-v4-flash";
     private const float TEMPERATURE = 0.3f;
     private const int TIMEOUT = 60;   // 原 30s 超时导致 40 次请求失败，提高到 60s
-    private const int MAX_TOKENS = 1500; // 限制输出，避免长动作描述产生超大响应
+    // 注意：deepseek-v4 默认 thinking enabled，思考会占用 max_tokens 配额导致 content 为空。
+    // MotionTranslator 输出结构化 JSON，不需要推理，故在请求体中显式禁用 thinking（见 BuildRequestBody）。
+    private const int MAX_TOKENS = 1200; // JSON 输出足够；禁用 thinking 后不会被打断
 
     // ──────────────────────────────────────────────
     //  公开入口
@@ -480,6 +482,8 @@ public static class MotionTranslator
         sb.Append('{');
         sb.Append("\"model\":\"").Append(MODEL).Append("\",");
         sb.Append("\"temperature\":").Append(TEMPERATURE.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)).Append(',');
+        // 禁用 thinking：结构化 JSON 输出不需要推理，且 thinking 会占满 max_tokens 导致 content 为空
+        sb.Append("\"thinking\":{\"type\":\"disabled\"},");
         sb.Append("\"max_tokens\":").Append(MAX_TOKENS).Append(',');
         sb.Append("\"messages\":[");
         sb.Append("{\"role\":\"system\",\"content\":\"").Append(EscapeJson(systemPrompt)).Append("\"},");
