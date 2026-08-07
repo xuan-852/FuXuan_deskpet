@@ -59,6 +59,21 @@
 | **T7** | Speculative Multi-Action 批量化 | `ChatManager.cs` | 一次预测 2-3 步工具调用 | 工具循环 -51% |
 | **T6** | 固定段 LLMLingua 离线压缩（兜底） | 静态 prompt | 视第一批效果再定 | 4621→~1500 |
 
+### ✅ 第二批完成情况（2026-08-07 已提交 `bad7487` + `5f0a048` + `77645d4`）
+
+| # | 结果 | 说明 |
+|---|---|---|
+| T4 | ✅ 生效 | `BuildToolSubsetForRound()`：首轮有意图→意图候选（空=纯对话）；首轮无意图→全量；后续回环→已用工具∪意图候选∪CoreToolSubset（play_action/set_expression/stop_action/generate_motion/get_system_info/get_mouse_pos），只保留 `ToolRegistry.HasTool` 存在项 |
+| T5 | ✅ 生效 | `TrimHistory()` 双策略：①60 条上限 ②`HISTORY_CHAR_BUDGET=15000` 字符预算，cutEnd 向前对齐最近 user 消息（防切断 tool_calls↔tool 配对→API 400）；被裁旧史取最近 8 条 user 消息经 Ollama `SummarizeConversation` 摘要后以【旧事纪要】system 消息注入 |
+| T7 | ✅ 生效 | `InjectMultiActionCapability()` 注入 system prompt（独立子任务一次并行返回多个 tool_call）；接收端 `ApiClient` 早已支持多 index 累积（`toolCallIndex` 补空累加器），`ChatManager.DoToolLoop` 的 `foreach` 逐个执行并按 `tool_call_id` 记历史 — 全链路已通 |
+| T6 | ⏸ 待定 | 静态 prompt 兜底压缩，视运行实测效果再决定是否做 |
+
+### 第二批实测（Player.log 观测要点）
+
+- T4：回环轮请求体 tools 数组应从 55 → 个位数（已用+候选+核心 6）
+- T5：对话 15k 字符后 `_historySummary` 非空，请求体出现【旧事纪要】system 消息
+- T7：多独立子任务时单次响应含 ≥2 个 `tool_calls`（`⚡ 施法: xxx` 连续打出），工具轮次下降
+
 ## 四、验证方法
 
 1. **构建**: `build.ps1`（或 build-current 任务）重建桌宠
