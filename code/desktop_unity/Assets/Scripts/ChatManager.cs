@@ -929,29 +929,25 @@ public class ChatManager : MonoBehaviour
 
         body["messages"] = msgs;
 
-        // ——— 附加 tools 定义（按意图过滤） ———
+        // ——— 附加 tools 定义（按意图过滤 + 回环子集，控制体积） ———
         if (enableTools && toolInvoker != null)
         {
             string toolsJson;
+            string[] subset = BuildToolSubsetForRound();
 
-            // 第一轮按意图过滤，后续回环发全部工具（工具执行结果可能需要其他类工具）
-            if (_toolRound == 0 && !string.IsNullOrEmpty(_lastIntent)
-                && IntentToolMap.TryGetValue(_lastIntent, out var allowed))
+            if (subset != null && subset.Length > 0)
             {
-                if (allowed.Length > 0)
-                {
-                    toolsJson = toolInvoker.GetToolsJson(allowed);
-                    Debug.Log($"[ChatManager] 🎯 意图「{_lastIntent}」→ 仅发 {allowed.Length} 道术式");
-                }
-                else
-                {
-                    toolsJson = "[]"; // 闲聊/情感 → 不发任何工具
-                    Debug.Log($"[ChatManager] 💬 意图「{_lastIntent}」→ 纯对话，不发 tools");
-                }
+                toolsJson = toolInvoker.GetToolsJson(subset);
+                Debug.Log($"[ChatManager] 🎯 round={_toolRound} 意图「{_lastIntent}」→ 仅发 {subset.Length} 道术式");
             }
-            else
+            else if (subset != null) // 空数组 = 纯对话
             {
-                toolsJson = toolInvoker.GetToolsJson(); // 全部工具（首轮无分类/后续回环）
+                toolsJson = "[]"; // 闲聊/情感 → 不发任何工具
+                Debug.Log($"[ChatManager] 💬 意图「{_lastIntent}」→ 纯对话，不发 tools");
+            }
+            else // null = 首轮无分类，发全量保留探测能力
+            {
+                toolsJson = toolInvoker.GetToolsJson();
             }
 
             body["tools"] = JArray.Parse(toolsJson);
@@ -959,6 +955,60 @@ public class ChatManager : MonoBehaviour
 
         body["stream"] = true;
         return body.ToString(Newtonsoft.Json.Formatting.None);
+    }
+
+    // ==================================================================
+    //  T4: 工具子集构建（回环瘦身，不再全量 55 工具）
+    // ==================================================================
+
+    /// <summary>回环核心工具：任何对话/动作收尾都可能需要，始终保留</summary>
+    private static readonly string[] CoreToolSubset =
+    {
+        "play_action", "set_expression", "stop_action", "generate_motion",
+        "get_system_info", "get_mouse_pos"
+    };
+
+    /// <summary>
+    /// 构建当前轮次的工具子集：
+    /// - 首轮有意图 → 意图候选（空 = 纯对话）
+    /// - 后续回环 → 已用工具 ∪ 意图候选 ∪ 核心工具（不再全量 55，体积 -60%）
+    /// - 首轮无意图 → null（全量探测，且全量列表按名排序固定 → 缓存可命中）
+    /// </summary>
+    private string[] BuildToolSubsetForRound()
+    {
+        // 首轮有意图：按意图过滤（原有逻辑）
+        if (_toolRound == 0 && !string.IsNullOrEmpty(_lastIntent)
+            && IntentToolMap.TryGetValue(_lastIntent, out var allowed))
+        {
+            return allowed;
+        }
+
+        // 首轮无意图：null = 全量
+        if (_toolRound == 0)
+        {
+            return null;
+        }
+
+        // 后续回环：已用工具 + 意图候选 + 核心工具
+        var names = new HashSet<string>(CoreToolSubset);
+
+        foreach (var e in _history)
+        {
+            if (e.role == "tool" && !string.IsNullOrEmpty(e.name))
+                names.Add(e.name);
+        }
+        if (!string.IsNullOrEmpty(_lastIntent) && IntentToolMap.TryGetValue(_lastIntent, out var allowed2))
+        {
+            foreach (var n in allowed2) names.Add(n);
+        }
+
+        // 只保留已注册工具，避免 schema 引用不存在的工具
+        var result = new List<string>();
+        foreach (var n in names)
+        {
+            if (ToolRegistry.HasTool(n)) result.Add(n);
+        }
+        return result.ToArray();
     }
 
     // ==================================================================
