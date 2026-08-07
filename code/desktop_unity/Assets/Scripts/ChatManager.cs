@@ -255,6 +255,9 @@ public class ChatManager : MonoBehaviour
     private string _lastError = "";
     private System.Action _onUpdate;
 
+    // ---- T5: 旧史摘要（被裁剪历史的本地 Ollama 摘要，缓存后注入保持上下文连续）----
+    private string _historySummary = "";
+
     // ---- 请求看门狗：防止 API 卡死永久锁住 _isWaiting ----
     private float _requestStartTime = 0f;
     private const float REQUEST_TIMEOUT = 600f; // 600 秒（10分钟）总超时，覆盖多轮工具链（含 GLM-4V 180s）
@@ -407,6 +410,8 @@ public class ChatManager : MonoBehaviour
     private const int MAX_TOOL_ROUNDS = 10; // 防止无限循环（5->10: 复杂任务如"读文件→改文件→编译"需多轮）
     /// <summary>历史消息最大条数，超出时裁剪最早的（保留最近 N 条）</summary>
     private const int MAX_HISTORY_ENTRIES = 60;
+    /// <summary>T5: 历史字符预算（中文约 1 字符≈1 token），超出部分裁剪并走本地摘要</summary>
+    private const int HISTORY_CHAR_BUDGET = 15000;
 
     /// <summary>API 自动重试计数（每次新消息重置）</summary>
     private int _apiRetryCount = 0;
@@ -899,6 +904,17 @@ public class ChatManager : MonoBehaviour
             ["role"] = "system",
             ["content"] = sysPrompt
         });
+
+        // T5: 旧史摘要（被裁剪历史的本地摘要）作为独立 system 消息注入
+        // 位置固定、内容缓存 → 不破坏前缀缓存命中
+        if (!string.IsNullOrEmpty(_historySummary))
+        {
+            msgs.Add(new JObject
+            {
+                ["role"] = "system",
+                ["content"] = "【旧事纪要】此前对话的摘要（非当前输入，仅作背景）：" + _historySummary
+            });
+        }
 
         // history
         for (int i = 0; i < _history.Count; i++)
@@ -1658,16 +1674,94 @@ public class ChatManager : MonoBehaviour
     //  工具
     // ==================================================================
 
-    /// <summary>裁剪旧历史：超出 MAX_HISTORY_ENTRIES 时移除最早的对话轮次
-    /// 保留最近 N 条，避免 token 无限增长</summary>
+    /// <summary>裁剪旧历史：双重策略（条数上限 + 字符预算），被裁部分走本地摘要</summary>
     private void TrimHistory()
     {
-        if (_history.Count <= MAX_HISTORY_ENTRIES) return;
-        // 计算需要移除的条数（对齐到最近的 user/assistant 对）
-        int removeCount = _history.Count - MAX_HISTORY_ENTRIES;
-        // 最少保留 system 消息（如果有的话）
-        _history.RemoveRange(0, removeCount);
-        Debug.Log($"[ChatManager] ✂️ 历史已达上限({MAX_HISTORY_ENTRIES})，裁剪了 {removeCount} 条旧消息");
+        // ── 策略 1：条数上限（保留最近 N 条，防止 token 无限增长）──
+        if (_history.Count > MAX_HISTORY_ENTRIES)
+        {
+            int removeCount = _history.Count - MAX_HISTORY_ENTRIES;
+            _history.RemoveRange(0, removeCount);
+            Debug.Log($"[ChatManager] ✂️ 历史已达上限({MAX_HISTORY_ENTRIES})，裁剪了 {removeCount} 条旧消息");
+        }
+
+        // ── 策略 2：字符预算（超出 HISTORY_CHAR_BUDGET 时裁掉最旧的并摘要）──
+        // 遍历统计累计字符数；超过预算时，将「之前的所有完整轮次」裁掉。
+        // 安全边界：裁剪点对齐到最近一个 user 消息（保留区从 user 开始），
+        // 避免切断 assistant tool_calls ↔ tool 结果配对导致 API 400。
+        int totalChars = 0;
+        int cutEnd = 0; // 安全裁剪终点（此索引之前全部移除），0 = 不裁
+        for (int i = 0; i < _history.Count; i++)
+        {
+            var e = _history[i];
+            totalChars += (e.content?.Length ?? 0) + (e.toolCallsJson?.Length ?? 0);
+            if (totalChars > HISTORY_CHAR_BUDGET)
+            {
+                cutEnd = i;
+                break;
+            }
+        }
+
+        if (cutEnd > 1)
+        {
+            // 向前对齐到最近的 user 消息：保留区从 user 开始，其之前的 tool 链完整留在被裁部分
+            int safe = cutEnd;
+            while (safe > 0 && _history[safe - 1].role != "user") safe--;
+            // 极端情况（裁剪点附近全是工具链、没有 user）：对齐到最近 assistant 之后
+            if (safe == 0)
+            {
+                safe = cutEnd;
+                while (safe > 0 && _history[safe - 1].role != "assistant") safe--;
+            }
+            cutEnd = safe;
+
+            if (cutEnd > 1)
+            {
+                // 收集被裁的用户消息做摘要（只取 user，避免重复/过长）
+                var trimmedTexts = new List<string>();
+                for (int i = 0; i < cutEnd; i++)
+                {
+                    if (_history[i].role == "user")
+                        trimmedTexts.Add(_history[i].content ?? "");
+                }
+
+                _history.RemoveRange(0, cutEnd);
+                Debug.Log($"[ChatManager] ✂️ 历史超字符预算({HISTORY_CHAR_BUDGET})，裁剪 {cutEnd} 条旧消息");
+
+                // 异步本地摘要（免费 Ollama），更新缓存；失败则回退为简单截断
+                SummarizeTrimmedHistory(trimmedTexts);
+            }
+        }
+    }
+
+    /// <summary>用本地模型（如可用）把被裁剪的旧历史压成一句摘要，失败则简单截断</summary>
+    private void SummarizeTrimmedHistory(List<string> trimmedTexts)
+    {
+        if (trimmedTexts == null || trimmedTexts.Count == 0) return;
+
+        // 只取最近几条，控制摘要输入体积
+        int take = Math.Min(trimmedTexts.Count, 8);
+        var recent = trimmedTexts.GetRange(trimmedTexts.Count - take, take);
+        string text = string.Join(" | ", recent);
+        if (text.Length > 600) text = text.Substring(text.Length - 600);
+
+        if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
+        {
+            LocalLLMAgentService.Instance.SummarizeConversation(text, (ok, summary) =>
+            {
+                if (ok && !string.IsNullOrEmpty(summary))
+                {
+                    _historySummary = summary;
+                    Debug.Log($"[ChatManager] 📜 旧史摘要: {summary}");
+                }
+            });
+        }
+        else
+        {
+            // 回退：简单截断
+            _historySummary = text.Length > 80 ? text.Substring(0, 80) + "…" : text;
+            Debug.Log($"[ChatManager] 📜 旧史摘要(本地截断): {_historySummary}");
+        }
     }
 
     /// <summary>清空对话历史</summary>
