@@ -41,6 +41,15 @@
 | **T3** | 加 `max_tokens:1000` + 超时 30→60s | `MotionTranslator.cs` | 输出可控、减少超时 | 消灭 40 次超时白烧 |
 | **T8** | `usage.prompt_cache_hit_tokens` 打日志 | 所有 DeepSeek 调用点 | 解析响应 usage 字段记录命中 | 可观测缓存命中率，验证 T1 |
 
+### ✅ 第一批完成情况（2026-08-07 已提交 `a78e62c` + `52f9cec`）
+
+| # | 结果 | 实测数据（Player.log） |
+|---|---|---|
+| T1 | ✅ 生效 | 主聊天缓存命中率 23.9%→33.9%→**98.6%**→98.5% |
+| T2 | ✅ 生效 | schema 2543~5435 字符（原 ~13k tokens，降 60-80%）；翻译成功 |
+| T3 | ✅ 生效 | 无超时失败；**追加修复**：deepseek-v4-flash 是推理模型，`thinking` 默认开启会占满 max_tokens 导致 `content=""` → MotionTranslator 请求体显式 `"thinking":{"type":"disabled"}` + `max_tokens:1200`（`52f9cec`），翻译全部恢复，completion 394-560 |
+| T8 | ✅ 生效 | usage 日志正常输出命中率 |
+
 ### 第二批（结构性，本周内）
 
 | # | 任务 | 改动文件 | 说明 | 预期收益 |
