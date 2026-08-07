@@ -66,7 +66,7 @@
 | T4 | ✅ 生效 | `BuildToolSubsetForRound()`：首轮有意图→意图候选（空=纯对话）；首轮无意图→全量；后续回环→已用工具∪意图候选∪CoreToolSubset（play_action/set_expression/stop_action/generate_motion/get_system_info/get_mouse_pos），只保留 `ToolRegistry.HasTool` 存在项 |
 | T5 | ✅ 生效 | `TrimHistory()` 双策略：①60 条上限 ②`HISTORY_CHAR_BUDGET=15000` 字符预算，cutEnd 向前对齐最近 user 消息（防切断 tool_calls↔tool 配对→API 400）；被裁旧史取最近 8 条 user 消息经 Ollama `SummarizeConversation` 摘要后以【旧事纪要】system 消息注入 |
 | T7 | ✅ 生效 | `InjectMultiActionCapability()` 注入 system prompt（独立子任务一次并行返回多个 tool_call）；接收端 `ApiClient` 早已支持多 index 累积（`toolCallIndex` 补空累加器），`ChatManager.DoToolLoop` 的 `foreach` 逐个执行并按 `tool_call_id` 记历史 — 全链路已通 |
-| T6 | ⏸ 待定 | 静态 prompt 兜底压缩，视运行实测效果再决定是否做 |
+| T6 | ✅ 生效 | `SystemPrompt.txt` 5012→2972 字符（-41%）：删【当前时刻】重复段、【经典台词参考】、【闭环演武】重复段（该段「勿提及评分」铁则已并入 `ChatManager.InjectClosedLoopCapability()` 代码版）；压缩性格/风格/须知/铁则修辞；**所有工具表与 ⚠️ 硬性铁则原样保留** |
 
 ### 第二批实测（Player.log 观测要点）
 
