@@ -1,6 +1,6 @@
 # 符玄桌面灵伴 — 技术报告
 
-> 文档版本: N38 · 最后更新: 2026-08-02（**按代码真相重写版**）
+> 文档版本: N40 · 最后更新: 2026-08-08（**按代码真相重写版**，含 N39 修复与 T1-T8 Token 优化）
 > 本报告全部数字与表述均以 `code/desktop_unity/Assets/Scripts/` 下的真实代码为准，
 > 旧版报告的过时描述（40+ 工具、5 轮回环、15 组件、双模型等）已全部修正。
 
@@ -38,7 +38,7 @@
 ### 1.1 项目目标
 
 开发运行于 Windows 桌面的 AI 驱动 Live2D 虚拟角色桌面宠物，具备：
-- 自然语言对话 + **52 个工具**调用能力（10 轮回环）
+- 自然语言对话 + **55 个工具**调用能力（10 轮回环，首轮意图子集 27 个）
 - Live2D 实时表情动作 + LLM 动态动作生成
 - 环境感知 + 人格演化 + 长期记忆
 - 桌面物理交互 + 系统集成
@@ -64,10 +64,10 @@
 |------|------|
 | 渲染帧率 | 20-60fps（三档自适应降档） |
 | AI 响应延迟 | 1-5s（网络 + 工具轮次） |
-| 注册工具 | **52 个**（10 个工具文件，插件式自动发现） |
+| 注册工具 | **55 个**（9 个工具文件，插件式自动发现；N40 按意图注入子集） |
 | 工具回环 | 最多 **10 轮**（`MAX_TOOL_ROUNDS=10`） |
 | 内存管理 | 800MB GC / 1.2GB 强制 GC |
-| 动作模板 | 10 种硬编码模板 + 6 种曲线（含 Bounce） |
+| 动作模板 | 10 种硬编码模板 + 6 种插值曲线（Linear/Smooth/EaseOut/EaseIn/Hold/Bounce） |
 | 空闲动作 | 9 种 JSON 配置驱动（7 参数化 + 2 硬编码特效） |
 | 记忆系统 | 3 层 JSON 持久化（输出 4 层格式化） |
 | 人格维度 | 五维人格 + 三维关系 |
@@ -95,7 +95,7 @@
 │   GpuLoadMonitor · KnowledgeBaseManager                 │
 ├──────────────────────────────────────────────────────────┤
 │                    具身层                                 │
-│   ActionAgent/ (16 组件) · MotionAgent                   │
+│   ActionAgent/ (15 文件) · MotionAgent                  │
 │   MotionTranslator · MotionPlanner · MotionGenerator     │
 │   MotionMemoryManager · SafetyValidator                  │
 │   DualModelValidator · VisionMotionVerifier              │
@@ -109,7 +109,7 @@
 │                    系统层                                 │
 │   WindowOverlay (DWM) · SystemTrayManager               │
 │   ReminderManager · ServerPollService · OpenClawBridge  │
-│   ToolEngine (10 文件 · 52 工具) · Mutex                │
+│   ToolEngine (9 工具文件 + 7 基础设施 · 55 工具) · Mutex │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -139,7 +139,7 @@
 ```
 用户输入 → ChatManager
   → DeepSeek Chat API (Function Calling, SSE 流式)
-    → ToolEngine/ (插件式工具调度, 52 工具)
+    → ToolEngine/ (插件式工具调度, 55 工具, N40 子集注入)
       → 最多 10 轮回环 (MAX_TOOL_ROUNDS=10)
         → 600s 看门狗 (含 GLM 180s 视觉)
         → 句子队列逐句显示 (2.5s 间隔)
@@ -147,8 +147,10 @@
 
 **可靠性机制**：
 - 自动重试：最多 3 次，400/401/403 不重试
-- 历史裁剪：`MAX_HISTORY_ENTRIES=60`
+- 历史裁剪：`MAX_HISTORY_ENTRIES=60` + **N40 历史 15000 字符预算**（超预算用 Ollama 摘要压缩）
 - 意图过滤：本地 Ollama 分类（chat/emotion/command/knowledge/operation），chat/emotion 不发工具，其余按白名单过滤
+- **N40 工具子集（T4）**：首轮有意图→27 个相关工具 / 无意图→纯对话；回环轮→已用工具 ∪ 意图候选 ∪ CoreToolSubset（play_action/set_expression/stop_action/generate_motion/get_system_info/get_mouse_pos）
+- **N40 Speculative Multi-Action（T7）**：回复含多段动作标记时预展开，一次请求驱动连续动作
 - 消息队列：等待时不丢输入
 
 ### 3.2 言出法随 — 内嵌动作标记
@@ -168,12 +170,12 @@ AI 回复文本中嵌入标记，无需 tool_call 即同步触发表情动作：
 每次对话动态注入，按顺序：
 人格 → ActivityTracker 摘要 → 当前窗口 → 多窗口 → 浏览器标签 → ParameterKnowledgeProvider（Live2D 参数语义知识）→ 闭环演武说明 → MotionMemoryManager（演武心经）
 
-> ⚠️ 知识库检索上下文由 `KnowledgeBaseManager.GetFormattedContext()` 提供，但该方法是 **STUB 恒返回 ""**，即知识库内容当前未实际注入对话。
+> ✅ **N39 已修复**：知识库检索上下文由 `KnowledgeBaseManager.GetFormattedContext()` 提供，现返回 `LastFormattedContext` 缓存（`SearchAndFormat` 协程填充），知识库内容已实际注入对话上下文。
 
 ### 3.4 自动闲聊与反思
 
 - `IdleChatGenerator` 批量预生成闲话/问候 → `ProactiveMessageScheduler` 调度显示。支持时间/天气特化、记忆注入。
-- ⚠️ 反思机制未驱动：`ChatManager.OnReflectRequest` 回调恒为 null。
+- ✅ **N39 已修复**：反思机制已接线 `ChatManager.CheckReflection → DoReflection（DeepSeek 提炼）→ CommitReflection`，死回调 `OnReflectRequest` 已删除。
 
 ---
 
@@ -183,65 +185,66 @@ AI 回复文本中嵌入标记，无需 tool_call 即同步触发表情动作：
 
 ```
 IPetTool (接口) + ToolSchema (参数 Schema)
-  ↑ 实现 (10 个工具文件 · 52 工具)
+  ↑ 实现 (9 个工具文件 + 7 个基础设施 .cs · 共 55 工具)
 ToolRegistry (反射自动发现 + 调度)
   ↑ 委托
 AsyncToolBase (异步/协程工具基类)
   ↑ ChatManager 调用
 ```
 
-### 4.2 工具分类（真实注册名）
+### 4.2 工具分类（真实注册名，55 个）
 
-| 文件 | 代表工具 | 类别 |
-|------|----------|------|
-| WebSystemTools.cs | `search_web`, `open_url`, `set_volume`, `mute`, `notify`, `lock_screen`, `power`, `get_system_info`, `get_clipboard`, `set_clipboard`, `open_app`, `open_folder`, `search_files` | 观星/传音/封印/洞观/开阵 |
-| VisionKnowledgeTools.cs | `take_screenshot` | 摄形（截图 + GLM 分析） |
-| MemoryTools.cs | `inspect_personality`, `inspect_motion_memory` | 忆境术 |
-| ReminderTools.cs | `set_reminder`, `query_reminders`, `mark_reminder_done`, `delete_reminder` | 卜算记事簿 |
-| AcademicTools.cs | `query_exams`, `query_scores`, `query_schedule`, `query_user_status` | 卜算传讯 |
-| KnowledgeTools.cs | `knowledge_search`, `knowledge_index` | 藏书阁 RAG |
-| BodyTools.cs | `explore_body`, `explore_body_vision`, `self_review`, `run_verification`, `vis_verify` | 自省/视觉验证 |
-| MotionCoroutineTools.cs | `play_action`, `stop_action`, `generate_motion` | 演武术式（异步） |
-| PoggetTool.cs / PoggetAgentTool.cs | `launch_pogget`, `pogget_agent` | 启动 Pogget / Agent IPC |
-| LatexCompileTool.cs | `compile_latex` | 问天录（经 OpenClawBridge） |
+| 文件 | 工具数 | 代表工具 | 类别 |
+|------|--------|----------|------|
+| WebSystemTools.cs | 14 | `search_web`, `open_url`, `search`, `open_app`, `open_folder`, `get_system_info`, `lock_screen`, `set_volume`, `mute`, `get_mouse_pos`, `list_files`, `notify`, `run_command`, `power` | 观星/封印/洞观/开阵 |
+| ClipboardFileTools.cs | 14 | `get_clipboard`, `set_clipboard`, `get_weather`, `file_open`, `file_move`, `file_copy`, `file_delete`, `file_rename`, `file_info`, `file_create`, `dir_create`, `file_read`, `search_files`, `search_file` | 传音/摄形/调音/文件 |
+| ReminderAcademicTools.cs | 8 | `set_reminder`, `query_reminders`, `mark_reminder_done`, `delete_reminder`, `query_exams`, `query_scores`, `query_schedule`, `query_user_status` | 卜算记事簿/传讯 |
+| Live2DSyncTools.cs | 7 | `set_expression`, `play_action`, `stop_action`, `inspect_motion_memory`, `inspect_personality`, `explore_body`, `control_body` | 演武/表情/动作 |
+| VisionKnowledgeTools.cs | 4 | `take_screenshot`, `knowledge_search`, `knowledge_index`, `openclaw_search` | 摄形/藏书阁 RAG/OpenClaw |
+| MotionCoroutineTools.cs | 5 | `generate_motion`, `explore_body_vision`, `run_verification`, `vis_verify`, `self_review` | 异步动作生成(协程)/视觉验证 |
+| PoggetTool.cs | 1 | `launch_pogget` | 启动 Pogget |
+| PoggetAgentTool.cs | 1 | `pogget_agent`（8 子命令：ping/list_containers/get_container_items/add_to_container/remove_from_container/create_container/organize_desktop/quickpanel_status） | Agent IPC |
+| LatexCompileTool.cs | 1 | `compile_latex` | 问天录（经 OpenClawBridge） |
 
-> ⚠️ 旧文档的工具名（`open_web`/`capture_screen`/`send_notification`/`reminder_*` 等）**均已不存在**，以本表为准。
+> ⚠️ 旧文档的工具名与文件（`MemoryTools.cs`/`ReminderTools.cs`/`AcademicTools.cs`/`KnowledgeTools.cs`/`BodyTools.cs`、`open_web`/`capture_screen`/`send_notification`/`reminder_*` 等）**均已不存在**，以本表为准。
+> N40（T4）：ChatManager 每轮只注入意图相关工具子集（55→27），见 §3.1。
 
 ### 4.3 关键工具列表（已核实存在）
 
-| 工具 ID | 名称 | 能力 |
-|---------|------|------|
-| #1 | `get_time` | 当前时间 |
-| #2 | `open_url` | 打开网页 |
-| #3 | `search_web` / `openclaw_search` | 搜索信息 |
-| #4 | `get_weather` | 查天气 |
-| #5 | `take_screenshot` | 截图 + GLM 分析 |
-| #6 | `set_volume` / `mute` | 音量 |
-| #7 | `set_reminder` / `query_reminders` / `mark_reminder_done` / `delete_reminder` | 便签管理 |
-| #8 | `power` | 关机/重启/睡眠 |
-| #9 | `lock_screen` | 锁屏 |
-| #10 | `get_clipboard` / `set_clipboard` | 剪贴板 |
-| #11 | `get_system_info` | 系统信息 |
-| #12 | `search_files` | 文件搜索（Everything） |
-| #13 | `open_app` / `open_folder` | 启动应用 |
-| #14 | `inspect_personality` / `inspect_motion_memory` | 自省 |
-| #15 | `notify` | 桌面推送 |
-| #16 | `query_exams/scores/schedule/user_status` | 学业查询 |
-| #17 | `play_action` / `stop_action` | 表情动作 |
-| #18 | `generate_motion` | LLM 动作生成 |
-| #19 | `knowledge_search` / `knowledge_index` | RAG 知识库 |
-| #20 | `explore_body` / `explore_body_vision` / `self_review` / `run_verification` / `vis_verify` | 自省/验证 |
-| #21 | `launch_pogget` / `pogget_agent` | Pogget 集成 |
-| #22 | `compile_latex` | LaTeX 编译 |
+| # | 工具 ID | 能力 |
+|---|---------|------|
+| 1 | `search_web` / `search` / `openclaw_search` | 搜索（OpenClaw Bridge 优先，Everything 回退） |
+| 2 | `open_url` | 打开网页 |
+| 3 | `get_weather` | 查天气 |
+| 4 | `take_screenshot` | 截图 + GLM 分析 |
+| 5 | `set_volume` / `mute` | 音量 |
+| 6 | `set_reminder` / `query_reminders` / `mark_reminder_done` / `delete_reminder` | 便签管理 |
+| 7 | `power` | 关机/重启/睡眠 |
+| 8 | `lock_screen` | 锁屏 |
+| 9 | `get_clipboard` / `set_clipboard` | 剪贴板 |
+| 10 | `get_system_info` / `get_mouse_pos` / `list_files` | 系统/鼠标/文件列表 |
+| 11 | `search_files` / `search_file` | 文件搜索（Everything） |
+| 12 | `open_app` / `open_folder` | 启动应用/打开文件夹 |
+| 13 | `inspect_personality` / `inspect_motion_memory` | 自省 |
+| 14 | `notify` / `run_command` | 桌面推送/执行命令 |
+| 15 | `query_exams` / `query_scores` / `query_schedule` / `query_user_status` | 学业查询 |
+| 16 | `file_open` / `file_move` / `file_copy` / `file_delete` / `file_rename` / `file_info` / `file_create` / `dir_create` / `file_read` | 文件操作 |
+| 17 | `set_expression` / `play_action` / `stop_action` / `explore_body` / `control_body` | 表情动作 |
+| 18 | `generate_motion` / `explore_body_vision` / `run_verification` / `vis_verify` / `self_review` | LLM 动作生成/自省验证 |
+| 19 | `knowledge_search` / `knowledge_index` | RAG 知识库 |
+| 20 | `launch_pogget` / `pogget_agent` | Pogget 集成 |
+| 21 | `compile_latex` | LaTeX 编译 |
+
+> ⚠️ **代码中不存在的旧文档工具**：`get_time`（时间由 SystemPrompt 注入，非工具）、`get_pet_status`、`get_system_status`、`show_reminder`、`send_notification`、`write_note`、`messenger`、`write_memory`、`get_memories`、`start_conversation`。
 
 ---
 
 ## 5. 具身动作系统
 
-### 5.1 ActionAgent 架构 (16 组件)
+### 5.1 ActionAgent 架构 (15 文件)
 
 ```
-ActionAgent/
+ActionAgent/ (Live2DFramework/ActionAgent/, 共 15 文件)
 ├── MotionAgent.cs           # 自主动作决策引擎（tick 驱动）
 ├── MotionPlanner.cs         # 10 模板 + 6 曲线 + 3 阶段
 ├── MotionTranslator.cs      # LLM 自然语言→关键帧（10 规则 + 10 特殊模式）
@@ -253,9 +256,13 @@ ActionAgent/
 ├── PersonalityManager.cs    # 人格演化
 ├── EmotionState.cs          # 情绪模型
 ├── IdleActionScheduler.cs   # 空闲动作调度
-├── AutoMotionCollector.cs   # ⚠️ [Obsolete] 死代码
-└── ...                      # 辅助组件（共 16 文件）
+├── MotionVerifier.cs        # 参数一致性校验
+├── LocalLLMClient.cs        # Ollama 本地决策回退
+├── GpuLoadMonitor.cs        # GPU 负载检测
+└── ActionReferenceManager.cs # 动作引用管理
 ```
+
+> ✅ **N39 已删除**：`AutoMotionCollector.cs` 死代码（文件 + meta + 自动添加逻辑一并移除，现 ActionAgent 仅 15 文件）。
 
 ### 5.2 决策循环
 
@@ -268,7 +275,7 @@ MotionAgent tick (High 4s / Med 8s / Low 15s / Sleep 30s)
       → 动作/表情/等待
 ```
 
-> ⚠️ BUG-1：`MotionAgent.IsSleepTime()` 硬编码返回 false，睡眠时段调度失效。
+> ✅ **N39 已修复（BUG-1）**：`MotionAgent.IsSleepTime()` 现按真实凌晨 1~7 点判断（`testMode` 下跳过），睡眠时段调度生效。
 
 ### 5.3 MotionTranslator
 
@@ -278,14 +285,14 @@ MotionAgent tick (High 4s / Med 8s / Low 15s / Sleep 30s)
 - 身体分组 Schema：HEAD / EYES / BROWS / MOUTH / ARMS / HANDS / FINGERS / LEGS / BODY
 - 参数富化：自动补全关联肢体
 - VERIFIED FEEDBACK：上次失败案例自动反馈给 LLM
-- ⚠️ BUG-7：示例参数 `arm_right_upper: 0.8` 与规则 15-25° 矛盾
+- ✅ **N39 已修复（BUG-7）**：示例参数已改为角度制（20~28 度），与规则 15-25° 一致
 
 ### 5.4 MotionPlanner
 
-10 种硬编码模板（挥手/点头/摇头/鞠躬/伸懒腰/叉腰/捂脸/指/招手/合十）+ 6 种插值曲线：
-**Linear / EaseIn / EaseOut / EaseInOut / Cosine / Sine / Bounce**（共 7 种，含 Bounce）
+10 种硬编码模板（挥手/点头/摇头/鞠躬/伸懒腰/叉腰/捂脸/指/招手/合十）+ 6 种插值曲线（`InterpolationType`）：
+**Linear / Smooth / EaseOut / EaseIn / Hold / Bounce**
 
-3 阶段计划：淡入 → 保持 → 回归；6 种表情模板。
+3 阶段计划：淡入 → 保持 → 回归；6 种表情模板（happy/sad 等）。
 
 ### 5.5 MotionAgent 密度控制
 
@@ -327,7 +334,7 @@ generate_motion
 | 盲探索 | GLM 描述姿态 | 发现新动作 |
 | 自评闭环 | 播放后截图 → 追加回复 | 实时反馈 |
 
-> ⚠️ BUG-5：`DualModelValidator` 名不副实，qwenScore 恒 0，实际仅 GLM-4V 单模型。
+> ✅ **N39 已修复（BUG-5）**：`DualModelValidator` 回调签名简化为 4 参，删除恒 0 的 `qwenScore` 参数（文件仍名 Dual，实际仅 GLM-4V 单模型）。
 
 ### 6.3 MotionMemoryManager
 
@@ -397,7 +404,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 | 🌙 夜晚 | 困倦 | EyeLOpen 垂 +0.07 |
 
 > ⚠️ 3D 渲染不可用：`HybridRenderer` 的 3D 分支为 TODO，恒走 Live2D；
-> `Model3DRenderer` 注释称绿幕抠像，但实际渲染纯黑背景（矛盾待修）。
+> `Model3DRenderer` 注释称绿幕抠像，但实际渲染纯黑背景（注释与实现矛盾，3D 分支未落地故保留待处理）。
 > 默认空闲表情为 "surprise"（非文档所称 "curious"）。
 
 ---
@@ -447,8 +454,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 | GPU 监控 | PerformanceCounter | 5s | GpuLoadMonitor 游戏检测 |
 | 系统性能 | PerformanceCounter | 5s | CPU/GPU/内存监控 |
 
-> ⚠️ BUG-3：`GatherContext()` 注释称农历月相，实际用 `now.Day` 公历。
-> ⚠️ BUG-4：`ActivityTracker.UpdateInteractionTime()` 为空实现。
+> ✅ **N39 已修复（BUG-3/4）**：`GatherContext()` 改用 `ChineseLunisolarCalendar` 计算真实农历日期→月相；`ActivityTracker.LastActivityTime` + `MotionAgent.UpdateInteractionTime()` 已接线（鼠标移动检测）。
 
 ---
 
@@ -464,7 +470,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 
 存储结构：`entries + coreFacts + conversationSummary`；格式化输出为 4 层（核心事实→近日印象→Top5→最近3条）。
 
-> ⚠️ 反思未驱动：记忆重要性评估/反思提炼依赖 `OnReflectRequest` 回调，当前恒 null。
+> ✅ **N39 已修复**：反思已接线——`ChatManager.CheckReflection`（L518）→ `DoReflection`（DeepSeek 提炼）→ `CommitReflection`，记忆重要性评估/反思提炼已实际驱动。
 
 ### 10.2 人格演化系统
 
@@ -487,7 +493,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 - Ollama 嵌入（nomic-embed-text）→ 语义检索
 - 25+ 文件类型分块索引
 - `knowledge_base.json` 持久化
-- ⚠️ `GetFormattedContext()` 为 STUB 恒返回 ""，知识库内容未实际注入对话上下文
+- ✅ **N39 已修复**：`GetFormattedContext()` 返回 `LastFormattedContext` 缓存（`SearchAndFormat` 协程填充），知识库内容已注入对话上下文
 
 ---
 
@@ -593,60 +599,60 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 
 ---
 
-## 16. 已知偏差与 Bug（代码真相审计 2026-08-02）
+## 16. 已知偏差与 Bug（代码真相审计 2026-08-02 · N39 已修复）
 
 > 本节为 2026-08-02 代码真相审计（详见 `code-truth-architecture.md`）的核心交付物：
-> 16 项「文档 vs 代码」偏差 + 9 个已确认 Bug。**本报告其余章节已按代码真相重写**，
+> 16 项「文档 vs 代码」偏差 + 9 个已确认 Bug。**9 个 Bug 已于 N39（2026-08-02）全部修复**，
 > 下列偏差记录了旧文档曾经的错误表述，供追溯。
 
 ### 16.1 文档 vs 代码偏差总表（16 项）
 
-| # | 旧文档陈述 | 代码真相 | 严重度 |
-|---|---|---|---|
-| 1 | 工具回环 5 轮 | `MAX_TOOL_ROUNDS = 10` | 高 |
-| 2 | ToolEngine 6 文件 | 10+ 文件、52 工具（Pogget/LaTeX/Schema/AsyncBase 未列） | 高 |
-| 3 | ActionAgent 15 组件 | 16 文件 | 低 |
-| 4 | "11 规则 + 12 特殊模式" | **10 规则 + 10 特殊（9 姿势，捂脸重复）** | 中 |
-| 5 | 曲线含 "BounceEaseOut" | 实际为 `Bounce` | 低 |
-| 6 | 双模型校验（Qwen+GLM） | 单 GLM-4V（Qwen-VL 已删，qwenScore 恒 0） | 高 |
-| 7 | "36 个核心脚本" | 顶层 33 + 子目录 ~50 | 中 |
-| 8 | 知识库同步上下文 | `GetFormattedContext()` 是 STUB 恒返回 "" | 高 |
-| 9 | 反思机制驱动 | `OnReflectRequest` 回调恒 null | 高 |
-| 10 | 3D 渲染可用 | HybridRenderer TODO，强制 Live2D | 中 |
-| 11 | 绿幕抠像 | 实际纯黑背景（注释与代码矛盾） | 低 |
-| 12 | 多屏支持 | `isMultiMonitor` 恒 false | 中 |
-| 13 | 动态分辨率降级 | `GetResolutionScale` 恒 1.0f | 低 |
-| 14 | 默认表情 "curious" | 默认 "surprise" | 低 |
-| 15 | 天气源 QWeather 主 | **默认 wttr.in**（cityCode="Nanjing"），QWeather 可选 | 中 |
-| 16 | AutoMotionCollector 活动采集 | [Obsolete] 死代码 331 行 | 中 |
+| # | 旧文档陈述 | 代码真相 | 严重度 | 状态 |
+|---|---|---|---|---|
+| 1 | 工具回环 5 轮 | `MAX_TOOL_ROUNDS = 10` | 高 | 已修正 |
+| 2 | ToolEngine 6 文件 | 9 工具文件 + 7 基础设施 = 16 .cs、55 工具（N40 修正 52→55） | 高 | 已修正 |
+| 3 | ActionAgent 15 组件 | 15 文件（N39 删 AutoMotionCollector 后 16→15） | 低 | 已修正 |
+| 4 | "11 规则 + 12 特殊模式" | **10 规则 + 10 特殊（9 姿势，捂脸重复）** | 中 | 已修正 |
+| 5 | 曲线含 "BounceEaseOut" | 实际为 `Bounce`（共 6 种：Linear/Smooth/EaseOut/EaseIn/Hold/Bounce） | 低 | 已修正 |
+| 6 | 双模型校验（Qwen+GLM） | 单 GLM-4V（Qwen-VL 已删，qwenScore 已删） | 高 | N39 已修复 |
+| 7 | "36 个核心脚本" | 顶层 33 + 子目录 ~50（合计 84 文件/36,356 行） | 中 | 已修正 |
+| 8 | 知识库同步上下文 | `GetFormattedContext()` STUB 恒 "" → N39 已修复（返回 LastFormattedContext 缓存） | 高 | N39 已修复 |
+| 9 | 反思机制驱动 | `OnReflectRequest` 恒 null → N39 已接线（CheckReflection→DoReflection） | 高 | N39 已修复 |
+| 10 | 3D 渲染可用 | HybridRenderer TODO，强制 Live2D | 中 | 已修正 |
+| 11 | 绿幕抠像 | 实际纯黑背景（注释与代码矛盾） | 低 | 已修正 |
+| 12 | 多屏支持 | `isMultiMonitor` 恒 false | 中 | 已修正 |
+| 13 | 动态分辨率降级 | `GetResolutionScale` 恒 1.0f | 低 | 已修正 |
+| 14 | 默认表情 "curious" | 默认 "surprise" | 低 | 已修正 |
+| 15 | 天气源 QWeather 主 | **默认 wttr.in**（cityCode="Nanjing"），QWeather 可选 | 中 | 已修正 |
+| 16 | AutoMotionCollector 活动采集 | [Obsolete] 死代码 → **N39 已删除** | 中 | N39 已修复 |
 
-### 16.2 已确认 Bug 清单（9 个）
+### 16.2 已确认 Bug 清单（9 个，N39 全部修复）
 
-| # | 位置 | 问题 | 影响 |
-|---|---|---|---|
-| BUG-1 | `MotionAgent.cs` L369 | `IsSleepTime()` 硬编码 `return false`（debug 跳过注释未删） | 睡眠时段密度永远不触发 |
-| BUG-2 | `MotionAgent.cs` | `ExecuteMotion` 播放**前**加 AI 锁（L985），`ExecuteCombo` 播放**后**加锁（L1062） | 锁序不一致，连招期间 AI 可能插话 |
-| BUG-3 | `MotionAgent.cs` | `GatherContext()` 注释称农历月相，实际用 `now.Day` 公历 | 月相感知名不符实 |
-| BUG-4 | `ActivityTracker.cs` | `UpdateInteractionTime()` 空实现 | 交互时间未更新 |
-| BUG-5 | `DualModelValidator.cs` | 名为 "Dual" 实为单 GLM-4V（Qwen-VL 已移除） | 双模型校验名存实亡 |
-| BUG-6 | `AutoMotionCollector.cs` | [Obsolete] 死代码 331 行未删 | 维护负担 |
-| BUG-7 | `MotionTranslator.cs` | 示例用 `arm_right_upper: 0.8`，与规则 "15-25 度" 矛盾 | 可能误导 LLM 输出 |
-| BUG-8 | `MotionTranslator.cs` | 文档称 "11 规则+12 特殊"，实际 10+10 | 文档错误 |
-| BUG-9 | `MotionPlanner.cs` | 文档称曲线含 "BounceEaseOut"，实际 `Bounce` | 文档错误 |
+| # | 位置 | 问题 | 影响 | 状态 |
+|---|---|---|---|---|
+| BUG-1 | `MotionAgent.cs` | `IsSleepTime()` 硬编码 `return false`（debug 跳过注释未删） | 睡眠时段密度永远不触发 | ✅ N39 已修复 |
+| BUG-2 | `MotionAgent.cs` | `ExecuteMotion` 播放**前**加 AI 锁（L985），`ExecuteCombo` 播放**后**加锁（L1062） | 锁序不一致，连招期间 AI 可能插话 | ✅ N39 已修复 |
+| BUG-3 | `MotionAgent.cs` | `GatherContext()` 注释称农历月相，实际用 `now.Day` 公历 | 月相感知名不符实 | ✅ N39 已修复 |
+| BUG-4 | `ActivityTracker.cs` | `UpdateInteractionTime()` 空实现 | 交互时间未更新 | ✅ N39 已修复 |
+| BUG-5 | `DualModelValidator.cs` | 名为 "Dual" 实为单 GLM-4V（Qwen-VL 已移除） | 双模型校验名存实亡 | ✅ N39 已修复 |
+| BUG-6 | `AutoMotionCollector.cs` | [Obsolete] 死代码 331 行未删 | 维护负担 | ✅ N39 已删除 |
+| BUG-7 | `MotionTranslator.cs` | 示例用 `arm_right_upper: 0.8`，与规则 "15-25 度" 矛盾 | 可能误导 LLM 输出 | ✅ N39 已修复 |
+| BUG-8 | `MotionTranslator.cs` | 文档称 "11 规则+12 特殊"，实际 10+10 | 文档错误 | ✅ N39 已澄清 |
+| BUG-9 | `MotionPlanner.cs` | 文档称曲线含 "BounceEaseOut"，实际 `Bounce` | 文档错误 | ✅ N39 已澄清 |
 
-### 16.3 修复优先级
+### 16.3 修复记录（N39，2026-08-02）
 
-| 优先级 | 项 | 理由 |
+| 优先级 | 项 | 修复方式 |
 |---|---|---|
-| P0 | BUG-1 `IsSleepTime()` | 睡眠调度完全失效 |
-| P0 | BUG-2 `ExecuteCombo` 锁序 | 连招期间 AI 插话破坏演出 |
-| P1 | 偏差 #9 反思未接线 | 记忆系统核心闭环缺失 |
-| P1 | 偏差 #8 知识库 STUB | RAG 未注入对话 |
-| P1 | BUG-5 双模型名不副实 | 改名或补回 Qwen-VL |
-| P2 | BUG-3/4/6/7 | 感知/死代码/文档示例修正 |
+| P0 | BUG-1 `IsSleepTime()` | 真实凌晨 1~7 点判断 + testMode 保护 |
+| P0 | BUG-2 `ExecuteCombo` 锁序 | AI 锁移至播放前（与 ExecuteMotion 一致） |
+| P1 | 偏差 #9 反思未接线 | CheckReflection→DoReflection 接线，死回调 OnReflectRequest 删除 |
+| P1 | 偏差 #8 知识库 STUB | GetFormattedContext 返回 LastFormattedContext 缓存 |
+| P1 | BUG-5 双模型名不副实 | 回调签名简化 4 参，删除恒 0 qwenScore |
+| P2 | BUG-3/4/6/7 | 农历月相 / 交互时间接线 / 死代码删除 / 示例改角度 |
 | P2 | 偏差 #10-16 | 文档如实标注能力边界 |
 
-> 修复顺序：先文档后代码（文档重写完成后再进入 Bug 修复阶段）。
+> **N40 后续（2026-08-07，T1-T8 Token 优化）**：时间戳缓存 98.6% 命中 / body schema 精简 / max_tokens 1200+thinking off / 工具子集 55→27 / 历史 15000 字符预算 + Ollama 摘要 / SystemPrompt -41% / Speculative Multi-Action / usage 日志。详见 `code-truth-architecture.md`。
 
 ---
 
@@ -659,6 +665,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
   DEEPSEEK_API_KEY → ChatManager / IdleChatGenerator / MotionTranslator
   GLM_API_KEY       → ToolEngine / VisionMotionVerifier
   QWEATHER_API_KEY  → TimeWeatherController（可选，默认 wttr.in）
+  BRIDGE_TOKEN      → OpenClawBridge 鉴权（64 字符，fallback GATEWAY_TOKEN）
 
 JSON 持久化 (D:\DesktopPetData\):
   pet_config.json       pet_memory.json        reminders.json

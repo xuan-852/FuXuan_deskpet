@@ -169,7 +169,7 @@
 
 | # | 任务 | 借鉴 | 说明 |
 |---|---|---|---|
-| 5.1 | **Speculative Multi-Action** | UFO²（-51% LLM 调用） | ChatManager 工具循环：分析"上一轮结果 → 预测接下来 2-3 步工具"一次请求返回，减少往返 |
+| 5.1 | **Speculative Multi-Action** | UFO²（-51% LLM 调用） | ✅ **N40 T7 已完成**（2026-08-07 `77645d4`）：一次请求返回多个独立 tool_call，单次响应双工具实测（completion=7902）；后续可做「预测 2-3 步工具」深度批量化 |
 | 5.2 | **任务执行轨迹库** | UFO² Knowledge Substrate | 把成功/失败的 `openclaw_task` 记录存入 RAG，后续同类任务直接参考（类似 MotionMemory 对动作的机制） |
 | 5.3 | 任务模板 | AutoGPT Build | 高频任务（查成绩/看更新/编译论文）预置模板，`openclaw_task` 只传模板名 + 参数 |
 

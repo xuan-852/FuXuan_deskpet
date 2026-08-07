@@ -1,9 +1,9 @@
 # 项目任务清单
 
-> 文件版本: N38 · 最后更新: 2026-08-02（按代码真相审计修订）
+> 文件版本: N40 · 最后更新: 2026-08-08（按代码真相审计修订，含 N39 修复与 T1-T8 Token 优化）
 >
 > 图例: ✅ 已完成 / 🔧 已优化 / 🐛 已修复 / ⏳ 待办 / 💡 待研究 / ❌ 已废弃
-> ⚠️ 数字修正: 工具回环 5→**10 轮**、工具集 40+→**52 个**、MotionTranslator "11 规则+12 特殊"→**10+10**
+> ⚠️ 数字修正: 工具回环 5→**10 轮**、工具集 40+→**52 个**→**55 个（N40）**、MotionTranslator "11 规则+12 特殊"→**10+10**
 
 ---
 
@@ -134,16 +134,20 @@
 | ✅ | 自动闲聊 | IdleChatGenerator + Scheduler |
 | ✅ | 主动消息调度 | ProactiveMessageScheduler |
 
-### ToolEngine 工具集 (52 个, 10+ 文件)
+### ToolEngine 工具集 (55 个, 9 个工具文件 + 7 个基础设施 .cs)
 | 状态 | 分类 | 工具数 | 说明 |
 |------|------|--------|------|
-| ✅ | WebSystemTools | 11 | 观星/封印/洞观/开阵 |
-| ✅ | ClipboardFileTools | 18 | 传音/摄形/调音/文件 |
+| ✅ | WebSystemTools | **14** | 观星/封印/洞观/开阵（含 run_command / notify / power） |
+| ✅ | ClipboardFileTools | **14** | 传音/摄形/调音/文件（含 dir_create / file_read） |
 | ✅ | ReminderAcademicTools | 8 | 卜算记事簿/传讯 |
 | ✅ | Live2DSyncTools | 7 | 演武/表情/动作 |
 | ✅ | VisionKnowledgeTools | 4 | 视觉分析/知识库 |
 | ✅ | MotionCoroutineTools | 5 | 异步动作生成(协程) |
-| ✅ | Pogget / 其他 | 3+ | PoggetTool / PoggetAgentTool / LatexCompileTool 等 |
+| ✅ | Pogget / 其他 | **3** | PoggetTool(launch_pogget) / PoggetAgentTool(pogget_agent, 8 子命令) / LatexCompileTool(compile_latex) |
+
+> **N40 修正**：旧文档称 WebSystemTools 11 / ClipboardFileTools 18 / 合计 52，实测为 **14+14+8+7+4+5+3 = 55**。
+> **N40 工具子集（T4）**：首轮对话只注入意图相关子集（55→27），回环轮按已用工具∪候选∪CoreToolSubset。
+> **代码中不存在的旧文档工具**：get_time / get_memories / write_memory / start_conversation / messenger / write_note / send_notification / get_pet_status / get_system_status / show_reminder。
 
 ### 上下文注入
 | 状态 | 项目 | 说明 |
@@ -152,8 +156,9 @@
 | ✅ | 前台活动 | ActivityTracker 分类 |
 | ✅ | 长期记忆 | PetMemory 三层读取 |
 | ✅ | 人格状态 | 五维 + 三维关系 |
-| ⚠️ | 知识库上下文 | `GetFormattedContext()` 是 STUB 恒返回 ""（RAG 未注入对话，待接线） |
+| ✅ | 知识库上下文 | **N39 已修复**：`GetFormattedContext()` 改为返回 `LastFormattedContext` 缓存（协程 `SearchAndFormat` 填充），同步 API 返回最近检索结果 |
 | ✅ | 闭环能力 | 演武/言出法随说明 |
+| ✅ | Token 优化（N40） | 时间戳挪尾部（缓存命中 98.6%）、SystemPrompt 5012→2972 字符、历史 15000 字符预算 + Ollama 摘要 |
 
 ---
 
@@ -192,11 +197,11 @@
 | 状态 | 项目 | 说明 |
 |------|------|------|
 | ✅ | PetMemory 三层 | 核心(≤5) + 重要(Top-20) + 近期(≤10) |
-| ⚠️ | 重要性排序 | LLM 评分 1-100，≥30 触发反思；但 `OnReflectRequest` 回调恒 null，反思未实际驱动 |
+| ✅ | 重要性排序 | LLM 评分 1-100，≥30 触发反思；**N39 已接线**：`CheckReflection → DoReflection（DeepSeek 提炼）→ CommitReflection`，死回调 `OnReflectRequest` 已删除 |
 | ✅ | 人格五维 | diligence/warmth/playfulness/confidence/curiosity |
 | ✅ | 三维关系 | 信任/亲密/熟悉度(对数增长) |
 | ✅ | 人格↔情绪联动 | 五维×权重 → EmotionState |
-| ⚠️ | 无交互回归 | `DriftTowardNeutral()` 存在但 ActionAgent 内无调用者 |
+| ⚠️ | 无交互回归 | `DriftTowardNeutral()` 存在但 ActionAgent 内无调用者（保持现状） |
 | ✅ | KnowledgeBase | Ollama 嵌入(nomic-embed-text)语义检索 |
 | ✅ | 知识库 25+ 格式 | 分块索引 JSON 持久化 |
 | ✅ | 持久化目录 | `D:\DesktopPetData\` 7 个 JSON + Documents/ + ActionRefs/ + glm_collages/ |
@@ -227,7 +232,9 @@
 | ✅ | Gateway ChatClient | WebSocket 实时搜索 |
 | ✅ | 180s 超时 | 健康检查 |
 | ✅ | 工具注册 | `openclaw_search` |
-| ✅ | PM2 统一管理 | server/ecosystem.config.js |
+| ✅ | PM2 统一管理 | server/ecosystem.config.js（进程名 openclaw-bridge） |
+| ✅ | 环境变量鉴权（N39+） | 请求头 `x-bridge-token`：优先 `BRIDGE_TOKEN`（系统级 64 字符），fallback `GATEWAY_TOKEN`（自动从 openclaw.json 读取，含 BOM strip）；C# 侧同源读取 |
+| ✅ | 端点现状 | `/search`、`/health`、`/compile_latex`（**无 /task**，roadmap 规划未落地） |
 
 ---
 
@@ -263,15 +270,15 @@
 
 | 优先级 | 问题 | 影响 | 状态 |
 |--------|------|------|------|
-| � 高 | BUG-1 `MotionAgent.IsSleepTime()` 恒 false | 睡眠时段密度永远不触发 | 🐛 待修 |
-| 🔴 高 | BUG-2 `ExecuteCombo` 播放后才加 AI 锁 | 连招期间 AI 可能插话 | 🐛 待修 |
-| 🔴 高 | 反思机制未接线（OnReflectRequest 恒 null） | 记忆系统核心闭环缺失 | 🐛 待修 |
-| 🔴 高 | 知识库 STUB（GetFormattedContext 恒 ""） | RAG 未注入对话 | 🐛 待修 |
-| 🟡 中 | BUG-3 月相实为公历（now.Day） | 感知名不符实 | 🐛 待修 |
-| 🟡 中 | BUG-4 `UpdateInteractionTime()` 空实现 | 交互时间未更新 | 🐛 待修 |
-| 🟡 中 | BUG-5 DualModelValidator 名不副实 | 单 GLM-4V，qwenScore 恒 0 | 🐛 待修 |
-| 🟡 中 | BUG-6 AutoMotionCollector 死代码 331 行 | 维护负担 | 🐛 待删 |
-| 🟡 中 | BUG-7 示例与规则矛盾（arm_right_upper: 0.8 vs 15-25°） | 可能误导 LLM | 🐛 待修 |
+| 🔴 高 | BUG-1 `MotionAgent.IsSleepTime()` 恒 false | 睡眠时段密度永远不触发 | 🐛 **N39 已修复**（凌晨 1~7 点判断，testMode 保护） |
+| 🔴 高 | BUG-2 `ExecuteCombo` 播放后才加 AI 锁 | 连招期间 AI 可能插话 | 🐛 **N39 已修复**（锁移播放前，与 ExecuteMotion 一致） |
+| 🔴 高 | 反思机制未接线（OnReflectRequest 恒 null） | 记忆系统核心闭环缺失 | 🐛 **N39 已修复**（CheckReflection→DoReflection 接线，死回调删除） |
+| 🔴 高 | 知识库 STUB（GetFormattedContext 恒 ""） | RAG 未注入对话 | 🐛 **N39 已修复**（返回 LastFormattedContext 缓存） |
+| 🟡 中 | BUG-3 月相实为公历（now.Day） | 感知名不符实 | 🐛 **N39 已修复**（ChineseLunisolarCalendar 真实农历→月相） |
+| 🟡 中 | BUG-4 `UpdateInteractionTime()` 空实现 | 交互时间未更新 | 🐛 **N39 已修复**（ActivityTracker.LastActivityTime + 鼠标移动检测） |
+| 🟡 中 | BUG-5 DualModelValidator 名不副实 | 单 GLM-4V，qwenScore 恒 0 | 🐛 **N39 已修复**（回调签名简化 4 参，删除恒 0 qwen 参数） |
+| 🟡 中 | BUG-6 AutoMotionCollector 死代码 331 行 | 维护负担 | 🐛 **N39 已删除**（文件 + meta + 自动添加逻辑） |
+| 🟡 中 | BUG-7 示例与规则矛盾（arm_right_upper: 0.8 vs 15-25°） | 可能误导 LLM | 🐛 **N39 已修复**（示例改角度 20~28） |
 | 🟡 中 | 默认表情 "surprise"（非文档 "curious"） | 文档/代码不一致 | 📝 已记录 |
 | 🟡 中 | Z 顺序问题 | 透明间隙中其他窗口 | 💡 待研究 |
 | 🟢 低 | 动作过渡衔接生硬 | 流畅度 | 🔧 持续 |
@@ -279,7 +286,8 @@
 | 🟢 低 | 服务端需手动启动 | 依赖管理 | 💡 待后续 |
 | 🟢 低 | 半透明特效 DWM 限制 | 视觉受限 | 💡 待研究 |
 
-> 完整审计：9 个已确认 Bug + 16 项文档偏差，详见 `code-truth-architecture.md` 与 `report.md` 第 16 章。
+> 完整审计：9 个已确认 Bug（**N39 已全部修复或澄清**）+ 16 项文档偏差，详见 `code-truth-architecture.md` 与 `report.md` 第 16 章。
+> **遗留项（规划中能力，勿在文档中宣称可用）**：3D 渲染（HybridRenderer TODO）、多屏支持（isMultiMonitor 恒 false）、动态分辨率降级（GetResolutionScale 恒 1.0）。
 
 ---
 
@@ -589,7 +597,7 @@ public class ParameterVisionScanner : MonoBehaviour
 | 委屈 (id=6) | switch-case ~30行 | ActionPreset JSON |
 | 法阵 (id=7) | `UpdateMagicCircle()` ~350行 | 保留硬编码（复杂时序+弹簧物理飘动） |
 | 害羞 (id=8) | switch-case ~20行 | ActionPreset JSON (已有 blush.json) |
-| 困惑 (id=11) | switch-case ~20行 | ActionPreset JSON (已有 confuse.json) |
+| 困惑 (id=9) | switch-case ~20行 | ActionPreset JSON (已有 confuse.json) |
 | 走路犯困表情 | `UpdateWalkExpression()` ~50行 | MotionGenerator 生成 |
 | 拖拽挣扎 | 硬编码 ~80行 | MotionGenerator 生成 |
 

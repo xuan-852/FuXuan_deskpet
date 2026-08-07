@@ -2,17 +2,17 @@
 
 <div align="center">
 
-![版本](https://img.shields.io/badge/版本-N37%2B-blue)
+![版本](https://img.shields.io/badge/版本-N40-blue)
 ![引擎](https://img.shields.io/badge/引擎-Tuanjie%202022.3.62t7-purple)
 ![平台](https://img.shields.io/badge/平台-Windows%2064位-green)
 ![Live2D](https://img.shields.io/badge/Live2D-Cubism%205--r.4-orange)
 ![AI](https://img.shields.io/badge/AI-DeepSeek%20Chat%20%7C%20GLM--4V-red)
 ![本地LLM](https://img.shields.io/badge/本地LLM-Ollama%20Qwen2.5-yellow)
-![工具](https://img.shields.io/badge/工具-52-blue)
+![工具](https://img.shields.io/badge/工具-55-blue)
 
 **「穷观妙算，天机尽显。」** — 仙舟「罗浮」太卜司之首，符玄大人驾临您的桌面。
 
-> ⚠️ **本文档已按「代码真相审计」重写（2026-08-02）**：所有数字与表述均以
+> ⚠️ **本文档已按「代码真相审计」重写（2026-08-02）并随 N39/N40 修订（2026-08-08）**：所有数字与表述均以
 > `code/desktop_unity/Assets/Scripts/` 下的真实代码为准，旧版文档的过时描述已修正。
 > 权威架构参照见 [`project_brief/code-truth-architecture.md`](project_brief/code-truth-architecture.md)。
 
@@ -26,7 +26,7 @@
 
 | 维度 | 能力 |
 |------|------|
-| 💬 **AI 对话** | DeepSeek Chat + Function Calling，**52 个工具，最多 10 轮回环**，意图过滤 + 600s 看门狗 |
+| 💬 **AI 对话** | DeepSeek Chat + Function Calling，**55 个工具，最多 10 轮回环**，意图过滤 + 600s 看门狗（N40 起按意图注入工具子集 55→27） |
 | 🎭 **表情动作** | Live2D 参数化动画 + LLM 实时动作生成 + GLM-4V 视觉自评闭环 |
 | 🧠 **记忆人格** | 三层长期记忆 + 五维人格演化 + 三维关系模型 |
 | 🌤️ **环境感知** | 前台活动 / 浏览器标签 / 时间天气 / 系统性能 |
@@ -46,12 +46,16 @@ setx DEEPSEEK_API_KEY "sk-your-key-here"
 setx GLM_API_KEY "your-glm-key-here"
 # 和风天气（可选 — 精准天气；代码默认使用 wttr.in，cityCode=Nanjing）
 setx QWEATHER_API_KEY "your-qweather-key-here"
-# OpenClaw Bridge 认证（可选）
-setx DESKTOP_TOKEN "your-bridge-token-here"
+# OpenClaw Bridge 认证（可选 — 搜索/LaTeX 编译网关）
+setx BRIDGE_TOKEN "your-bridge-token-here"
+# 服务端轮询（可选 — 便签同步到本地服务）
+setx DESKTOP_TOKEN "your-server-token-here"
 ```
 
 > ⚠ 设完后需**重启 VS Code / 重新登录**使环境变量生效。
 > 配置统一读取自 `ChatConfig.cs`（仅环境变量，附 `.cs.example` 模板，密钥不入库）。
+> 环境变量名以代码为准：OpenClaw Bridge 用 `BRIDGE_TOKEN`（fallback 自动读 `GATEWAY_TOKEN`），
+> `DESKTOP_TOKEN` 仅用于 ServerPollService 便签轮询（`localhost:3000`）。
 
 ### 构建 & 运行
 
@@ -100,11 +104,11 @@ setx DESKTOP_TOKEN "your-bridge-token-here"
 │  GpuLoadMonitor · KnowledgeBaseManager                    │
 ├────────────────────────────────────────────────────────────┤
 │                    具身层                                   │
-│  ActionAgent/ (16 组件)                                    │
+│  ActionAgent/ (15 文件)                                    │
 │  MotionAgent · MotionTranslator · MotionPlanner            │
 │  MotionGenerator · MotionMemoryManager · SafetyValidator   │
-│  DualModelValidator(单GLM) · VisionMotionVerifier          │
-│  PersonalityManager · EmotionState · IdleActionScheduler   │
+│  VisionMotionVerifier(单GLM) · PersonalityManager         │
+│  EmotionState · IdleActionScheduler                        │
 ├────────────────────────────────────────────────────────────┤
 │                    物理与渲染层                              │
 │  DesktopPet (物理引擎) · DragHandler (交互)                 │
@@ -114,7 +118,7 @@ setx DESKTOP_TOKEN "your-bridge-token-here"
 │                    系统层                                   │
 │  WindowOverlay (DWM透明) · SystemTrayManager               │
 │  ReminderManager · ServerPollService · OpenClawBridge     │
-│  ToolEngine (10 文件 · 52 工具)                           │
+│  ToolEngine (9 工具文件 + 7 基础设施 · 55 工具)            │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -132,7 +136,7 @@ setx DESKTOP_TOKEN "your-bridge-token-here"
 MotionAgent ──→ MotionTranslator ──→ MotionPlanner ──→ MotionGenerator
 (感知/决策)    (DeepSeek 关键帧)     (10 模板/6 曲线)   (插值播放)
      ↑                                                      │
-     │    MotionMemoryManager ←── DualModelValidator ←──────┘
+     │    MotionMemoryManager ←── VisionMotionVerifier ←────┘
      │    (30 条 + 负反馈)      (GLM-4V 多帧拼图评分·单模型)
      └────────────────────────────────────────────────────────┘
 ```
@@ -143,7 +147,7 @@ MotionAgent ──→ MotionTranslator ──→ MotionPlanner ──→ MotionG
 
 ### 🤖 AI 对话系统
 
-基于 **DeepSeek Chat API** 的 Function Calling 体系，通过 `ToolEngine/IPetTool` 插件接口自动发现并注册 **52 个工具**（10 个工具文件），支持最多 **10 轮** 回环调用。
+基于 **DeepSeek Chat API** 的 Function Calling 体系，通过 `ToolEngine/IPetTool` 插件接口自动发现并注册 **55 个工具**（9 个工具文件 + 7 个基础设施 .cs），支持最多 **10 轮** 回环调用。
 
 | 类别 | 工具（真实注册名） | 能力 |
 |------|------|------|
@@ -168,7 +172,7 @@ MotionAgent ──→ MotionTranslator ──→ MotionPlanner ──→ MotionG
 - **意图过滤**：本地 Ollama 分类（chat/emotion/command/knowledge/operation），chat/emotion 不发工具，其余按白名单过滤
 - **看门狗**：单次请求总超时 600s，覆盖多轮工具链（含 GLM-4V 180s）
 - **自动重试**：最多 3 次，400/401/403 不重试
-- **历史裁剪**：最多保留 60 条
+- **历史裁剪**：60 条上限 + **N40 T5** 15000 字符预算（`HISTORY_CHAR_BUDGET`），被裁旧消息经 Ollama 摘要后以【旧事纪要】注入
 - **打字机逐句显示**（2.5s 间隔）、**消息队列**（等待时不丢输入）
 - **上下文注入**：时间/天气/前台活动/多窗口/浏览器标签/记忆/人格/身体参数知识/闭环能力/演武心经
 
@@ -201,7 +205,7 @@ MotionAgent ──→ MotionTranslator ──→ MotionPlanner ──→ MotionG
 
 ---
 
-### 🎭 动作系统 — ActionAgent（16 组件）
+### 🎭 动作系统 — ActionAgent（15 文件）
 
 #### 空闲动作
 9 种 JSON 配置驱动（id 1--9：歪头/微笑/挑眉/星辉*/伸懒腰/委屈/法阵*/害羞/困惑，*为硬编码特效），天气/时段动态调权。
@@ -217,7 +221,7 @@ MotionAgent ──→ MotionTranslator ──→ MotionPlanner ──→ MotionG
 - **决策循环**：等待 → ShouldDecide → GatherContext → DecideWithLLM / FallbackDecide → ExecuteDecision
 - **本地 LLM**：Ollama Qwen2.5，连续 3 次失败回退概率模式
 - **GPU 监控**：检测游戏自动暂停，退出后 30s 冷却恢复
-- ⚠️ **已知 Bug**：`IsSleepTime()` 硬编码返回 false，睡眠时段调度失效（待修）
+- ⚠️ ~~**已知 Bug**：`IsSleepTime()` 硬编码返回 false~~ **N39 已修复**：恢复真实睡眠判断（凌晨 1~7 点），保留 `testMode` 测试保护
 
 #### MotionTranslator — LLM 动作翻译
 自然语言 → Live2D 关键帧序列（DeepSeek, temp=0.3）
@@ -228,13 +232,13 @@ MotionAgent ──→ MotionTranslator ──→ MotionPlanner ──→ MotionG
 
 #### MotionPlanner + MotionGenerator
 - 10 种硬编码模板（挥手/点头/摇头/鞠躬/伸懒腰/叉腰/捂脸/指/招手/合十）
-- 6 种插值曲线（Linear/EaseIn/EaseOut/EaseInOut/Cosine/Sine + `Bounce`）
+- 6 种插值曲线（**Linear/Smooth/EaseOut/EaseIn/Hold/Bounce**，代码实测）
 - 3 阶段计划：淡入 / 保持 / 回归
 - 6 种表情模板
 
 #### 闭环视觉验证
-- **DualModelValidator**：GLM-4V 对动作 20/40/60/80% 截图合成 2×2 拼图评分（1-5 分）
-  - ⚠️ 名为「双模型」实为**单 GLM-4V**（Qwen-VL 已移除），passThreshold=3，拼图存 `glm_collages/`（上限 50）
+- **VisionMotionVerifier**：GLM-4V 对动作 20/40/60/80% 截图合成 2×2 拼图评分（1-5 分）
+  - ⚠️ 旧文档称「DualModelValidator 双模型」，实测为**单 GLM-4V**（Qwen-VL 已移除），N39 已简化回调签名（4 参）并删除恒 0 的 qwenScore；passThreshold=3，拼图存 `glm_collages/`（上限 50）
 - **自评闭环**：`generate_motion` 播放完毕自动截图 → GLM 评分 → 追加到回复
 
 #### MotionMemoryManager — 闭环学习核心
@@ -263,7 +267,7 @@ MotionAgent ──→ MotionTranslator ──→ MotionPlanner ──→ MotionG
 | 长期记忆 | 3 层 JSON 持久化 | 存储 entries+coreFacts+conversationSummary；**输出为 4 层**（核心事实→近日印象→Top5→最近3条） |
 | 知识库 | Ollama 嵌入语义检索 | `nomic-embed-text` + 余弦 TopK，25+ 文件类型分块索引 |
 | 人格 | 五维 + 三维关系 | 跨会话连续演化 |
-| 反思 | ⚠️ **未接线** | `ChatManager.OnReflectRequest` 回调恒 null，反思机制实际未驱动 |
+| 反思 | ✅ **N39 已接线** | ~~`ChatManager.OnReflectRequest` 回调恒 null~~ → `CheckReflection → DoReflection（DeepSeek 提炼）→ CommitReflection` 接线，死回调已删除 |
 
 ### 🧬 人格演化系统
 
@@ -367,13 +371,13 @@ D:\Unity\projects\Desktop_per_pro\            # 项目仓库根
 │   ├── Assets/
 │   │   ├── Scripts/
 │   │   │   ├── *.cs                          # 顶层 33 个 + 子目录约 50 个脚本
-│   │   │   ├── ToolEngine/                   # 插件式工具系统（10+ 文件，52 工具）
+│   │   │   ├── ToolEngine/                   # 插件式工具系统（16 文件：9 工具 + 7 基础设施，55 工具）
 │   │   │   │   ├── ITool.cs / ToolSchema.cs  # 接口 + 参数 Schema
 │   │   │   │   ├── ToolRegistry.cs           # 反射发现 + 调度
 │   │   │   │   ├── ToolHelpers.cs            # 公用辅助
 │   │   │   │   ├── AsyncToolBase.cs          # 异步工具基类
-│   │   │   │   └── *Tools.cs                 # Web/Vision/Memory/Reminder/Knowledge/Body/Pogget/Latex
-│   │   │   ├── ActionAgent/                  # 闭环动作引擎（16 文件）
+│   │   │   │   └── *Tools.cs                 # Web/Clipboard/Reminder/Live2D/Vision/Motion/Pogget/Latex
+│   │   │   ├── ActionAgent/                  # 闭环动作引擎（15 文件）
 │   │   │   ├── Editor/                       # 编辑器工具（7 文件）
 │   │   │   └── Live2DFramework/
 │   │   │       ├── ActionPresets/            # 预设（6 文件）
@@ -425,12 +429,12 @@ JSON 持久化 (D:\DesktopPetData\，DataPathConfig.cs 硬编码):
 
 详见 [`project_brief/code-truth-architecture.md`](project_brief/code-truth-architecture.md)：
 
-1. 工具回环为 **10 轮**（非 5 轮）；工具 **52 个 / 10 文件**（非 40+ / 6 文件）
-2. ActionAgent 为 **16 文件**（非 15）；MotionTranslator 为 **10 规则 + 10 特殊**（非 11+12）
-3. 插值曲线为 **Bounce**（非 BounceEaseOut）；天气默认 **wttr.in**（非 QWeather 优先）
-4. **DualModelValidator 仅 GLM-4V**（Qwen-VL 已删，qwenScore 恒 0）；`OnReflectRequest` 回调恒 null（反思未驱动）
-5. `KnowledgeBaseManager.GetFormattedContext()` 为 STUB 恒返回 ""；`GetResolutionScale` 恒 1.0；`isMultiMonitor` 恒 false；3D 渲染不可用；`AutoMotionCollector` 为 [Obsolete] 死代码
-6. 已确认 **9 个 Bug**（BUG-1~BUG-9），见审计文档第 5 节
+1. 工具回环为 **10 轮**（非 5 轮）；注册工具 **55 个 / 16 文件**（9 工具文件 + 7 基础设施，非 40+ / 6 文件）
+2. ActionAgent 为 **15 文件**；MotionTranslator 为 **10 规则 + 10 特殊**（非 11+12）
+3. 插值曲线为 **Bounce**（共 6 种：Linear/Smooth/EaseOut/EaseIn/Hold/Bounce）；天气默认 **wttr.in**
+4. **N39 已修复**：`OnReflectRequest` 反思已接线（CheckReflection→DoReflection→CommitReflection）；`DualModelValidator` 已简化为 `VisionMotionVerifier`（单 GLM-4V，回调 4 参）
+5. **N39 已修复**：`KnowledgeBaseManager.GetFormattedContext()` 已实现（LastFormattedContext 缓存）；`isMultiMonitor` 恒 false（规划中）；3D 渲染不可用；`AutoMotionCollector` 已删除
+6. 已确认 **9 个 Bug（BUG-1~BUG-9）已全部修复（N39）**，见审计文档第 5 节
 
 ---
 

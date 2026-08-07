@@ -4,6 +4,36 @@
 
 ---
 
+## N40 (2026-08-05 ~ 08-08)
+
+### 🔒 安全加固（08-05，`b17ad84` + `91d2c32`）
+
+- **危险工具确认机制**：高风险工具统一走 `ToolConfirmManager`（点击宠物允许 / ESC 拒绝 / 60s 超时拒绝）
+- **命令与路径白名单收紧**（`ToolHelpers.cs`）；隐私脱敏；构建防锁
+- **Bridge 鉴权**：OpenClawBridge 移除内置旧 Token 回退——**只读环境变量 `BRIDGE_TOKEN`**（与 `openclaw_bridge.js` / PM2 同源），未配置时禁用桥接；旧 Token 已泄漏并轮换
+- **桥修复**：Gateway final 事件 `message.content` 是数组——展开为字符串再校验，修复骨架阶段误判元数据失败；分块生成健壮化（拦截元数据 JSON 混入/响应错位丢节）
+
+### ⚡ Token 优化 T1–T8 全部完成（08-07~08，`a78e62c` + `52f9cec` + `bad7487` + `5f0a048` + `77645d4` + `807290e` + `0b7480c`）
+
+> 依据 `project_brief/token-optimization-plan.md`，2026-08-07 token 审计后按 ROI 分批执行。
+
+| # | 优化 | 实测效果 |
+|---|---|---|
+| T1 | 时间戳移到 SystemPrompt 末尾（固定前缀命中缓存） | 缓存命中率 23.9%→33.9%→**98.6%** |
+| T2 | MotionTranslator body schema 按描述裁剪部位 | 2543~5435 字符（原 ~13k tokens，降 60-80%） |
+| T3 | `max_tokens:1200` + 超时 30→60s + **`thinking` 显式禁用**（deepseek-v4-flash 推理模型默认 thinking 占满 max_tokens 致 `content=""`） | 40 次超时全消灭，翻译恢复，completion 394-560 |
+| T4 | 工具回环按意图注入子集（首轮 55→27，回环轮 31） | 首轮 -51%，多轮对话 -60% |
+| T5 | 历史 15000 字符预算 + Ollama 旧史摘要注入【旧事纪要】 | 对话中段收敛，防 tool_calls↔tool 配对切断（API 400） |
+| T6 | SystemPrompt 5012→2972 字符（-41%），删重复段（当前时刻/经典台词/闭环演武并入代码版） | 静态段瘦身 |
+| T7 | Speculative Multi-Action（UFO² 思路）：一次返回多个独立 tool_call | 单次响应双工具（completion=7902） |
+| T8 | `usage.prompt_cache_hit_tokens` 打日志 | 命中率可观测 |
+
+- **T4 竞态修复**（`0b7480c`，08-08）：工具子集构建加竞态保护 + 第二批实测验证 + 测试模式开关
+
+**工具数核实**：注册工具全量清点为 **55 个（9 个工具文件 + 7 个基础设施 .cs）**，随 N40 文档修订统一更新。
+
+---
+
 ## N39 (2026-08-02)
 
 ### 🔧 代码修复（N38 审计出的 9 个 Bug + 2 项结构性偏差）

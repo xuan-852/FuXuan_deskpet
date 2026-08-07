@@ -1,6 +1,7 @@
 # 具身智能验证协议 — Embodied AI Verification Protocol
 
 > 文件版本: N38 · 最后更新: 2026-08-02（按代码真相审计修订）
+> N40 注记（2026-08-08）：本协议为验证方法与历史数据存档，N39 修复（BUG-7 招手示例角度 20~28、DualModelValidator 回调简化）与 N40 Token 优化（T2 部位裁剪 schema）不改变协议结构，本节历史评分保留。
 > 验证对象: MotionPlanner (10 模板) + MotionTranslator (LLM 任意动作翻译)
 > ⚠️ 数字修正: 通用规则 11→**10 条**，SPECIAL PATTERNS 12→**10 种（9 姿势，捂脸重复）**
 

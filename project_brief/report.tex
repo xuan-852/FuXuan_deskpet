@@ -66,7 +66,7 @@
 
 \title{\vspace{-2cm}符玄桌面宠物 --- 技术文档}
 \author{符玄桌宠项目}
-\date{N38 · 2026-08-02}
+\date{N40 · 2026-08-08}
 
 \begin{document}
 
@@ -74,14 +74,17 @@
 \thispagestyle{empty}
 
 \begin{abstract}
-本文档为符玄桌面宠物项目的完整技术报告（N38，2026-08-02 按代码真相审计修订）。项目基于 Tuanjie 2022.3.62t7（团结引擎）与 Live2D Cubism SDK 5-r.4，
-构建了一个运行于 Windows 桌面的 AI 驱动虚拟角色。系统深度集成 DeepSeek Chat API（含 Function Calling 52 个工具）、
+本文档为符玄桌面宠物项目的完整技术报告（N40，2026-08-08 按代码真相审计修订）。项目基于 Tuanjie 2022.3.62t7（团结引擎）与 Live2D Cubism SDK 5-r.4，
+构建了一个运行于 Windows 桌面的 AI 驱动虚拟角色。系统深度集成 DeepSeek Chat API（含 Function Calling 55 个工具）、
 GLM-4V 多模态视觉模型、Ollama 本地 LLM 实时决策引擎、本地知识库（RAG）以及多层级感知与记忆系统。
 核心亮点是\textbf{具身智能闭环}——从感知、决策、执行到视觉验证与记忆学习的完整循环。
 
-N38 代码真相审计确认：工具回环为 10 轮（\texttt{MAX\_TOOL\_ROUNDS=10}），工具集 52 个（10+ 文件），
-MotionTranslator 规则为 10 条 + 10 种 SPECIAL PATTERNS（9 姿势，捂脸重复），天气源默认 wttr.in（QWeather 可选），
-"DualModelValidator" 名存实亡（仅 GLM-4V）。9 个已确认 Bug 详见第 13 章。
+N39（2026-08-02）已修复全部 9 个审计 Bug（IsSleepTime 真实睡眠判断、ExecuteCombo 锁时序、农历月相、交互时间接线、
+DualModelValidator 清理、AutoMotionCollector 死代码删除、示例角度修正、反思机制接线、知识库缓存注入）。
+N40（2026-08-07）完成 T1--T8 Token 优化：工具集 52→55 全量核实、工具子集按意图注入（55→27）、
+历史 15000 字符预算 + Ollama 摘要、SystemPrompt -41\%、Speculative Multi-Action、usage 日志。
+工具回环为 10 轮（\texttt{MAX\_TOOL\_ROUNDS=10}），MotionTranslator 规则为 10 条 + 10 种 SPECIAL PATTERNS（9 姿势，捂脸重复），
+天气源默认 wttr.in（QWeather 可选）。详见第 13 章。
 \end{abstract}
 
 \tableofcontents
@@ -105,7 +108,7 @@ MotionTranslator 规则为 10 条 + 10 种 SPECIAL PATTERNS（9 姿势，捂脸�
     \item \textbf{引擎}：Tuanjie 2022.3.62t7（团结引擎）
     \item \textbf{角色渲染}：Live2D Cubism SDK 5-r.4（参数化变形 + 实时物理模拟）
     \item \textbf{3D 渲染}：Unity Animator + FBX（预留混合渲染框架，3D 模型尚未接入）
-    \item \textbf{AI 对话}：DeepSeek Chat API + Function Calling（52 个法术工具，10+ 文件）
+    \item \textbf{AI 对话}：DeepSeek Chat API + Function Calling（55 个法术工具，9 个工具文件 + 7 个基础设施 .cs）
     \item \textbf{视觉模型}：GLM-4V（智谱）--- 截图分析 + 多帧拼图动作视觉验证（单模型）
     \item \textbf{本地决策}：Ollama + qwen2.5:3b（MotionAgent 实时动作决策）
     \item \textbf{本地知识库}：Ollama + nomic-embed-text（RAG 语义检索）
@@ -125,7 +128,7 @@ MotionTranslator 规则为 10 条 + 10 种 SPECIAL PATTERNS（9 姿势，捂脸�
     \item AI 响应延迟：1--5\,s（取决于网络与工具调用轮次）
     \item 内存管理：800\,MB 触发 GC，1200\,MB 强制 GC
     \item 系统内存监控：85\% 预警 GC，93\% 紧急降质
-    \item 工具调用：52 注册工具（10+ 文件），最多 10 轮回环（\texttt{MAX\_TOOL\_ROUNDS=10}）
+    \item 工具调用：55 注册工具（9 个工具文件，插件式自动发现），最多 10 轮回环（\texttt{MAX\_TOOL\_ROUNDS=10}）；N40 按意图注入工具子集（55→27）
     \item 空闲动作：9 种 JSON 配置驱动（7 参数化 + 2 硬编码特效）
     \item 运动记忆：上限 30 条，负反馈 10 条，无望检测 5 次
     \item 动作验证：GLM-4V 四帧拼图评分 + 三级测试验证
@@ -299,9 +302,10 @@ Camera.backgroundColor = new Color(0, 0, 0, 0);
 
 \subsubsection{Function Calling 架构}
 
-52 个注册工具（10+ 文件）通过 JSON Schema 暴露给 DeepSeek，覆盖网页搜索、截图分析、
-系统控制、文件搜索（Everything 毫秒级）、便签管理、课表查询、动作/表情播放、
-长期记忆操作、本地知识库检索与索引、应用/文件夹启动、用户状态查询等。
+55 个注册工具（9 个工具文件）通过 JSON Schema 暴露给 DeepSeek，覆盖网页搜索、截图分析、
+系统控制、文件操作与搜索（Everything 毫秒级）、便签管理、课表查询、动作/表情播放、
+动作生成与视觉验证、本地知识库检索与索引、应用/文件夹启动、Pogget 集成、LaTeX 编译等。
+N40（T4）起按意图注入工具子集：首轮有意图→27 个相关工具，回环轮→已用工具∪意图候选∪CoreToolSubset（6 个）。
 
 \subsubsection{多轮工具调用循环}
 
@@ -313,7 +317,7 @@ SendMessage()
       ├── 1. 发送请求（含 system prompt + 历史）
       ├── 2. 解析 response (Newtonsoft.Json)
       ├── 3. 如果有 tool_calls:
-      │     ├── 检查 round < 5
+      │     ├── 检查 round < 10
       │     ├── 遍历 tool_calls:
       │     │     ├── IsCoroutineTool()? -> 协程异步执行
       │     │     └── 同步工具 -> Execute()
@@ -336,7 +340,7 @@ SendMessage()
 \subsection{工具索引}
 
 \begin{longtable}{lll}
-\caption{工具列表（52 个）\label{tab:tools}}\\\toprule
+\caption{工具列表（55 个，9 个工具文件）\label{tab:tools}}\\\toprule
 \textbf{工具} & \textbf{功能} & \textbf{类型} \\
 \midrule
 \endfirsthead
@@ -347,41 +351,47 @@ SendMessage()
 \endhead
 \bottomrule
 \endfoot
-get\_time & 获取当前时间 & 同步 \\
-open\_url & 打开网页/文件/文件夹 & 同步 \\
+\multicolumn{3}{l}{\textbf{WebSystemTools.cs（14）}} \\
+search\_web & 联网搜索（OpenClaw Bridge） & 同步 \\
+open\_url & 打开网页 & 同步 \\
+search & 本地搜索 & 同步 \\
 open\_app & 通过 PATH/StartMenu 启动应用 & 同步 \\
-search\_web & 联网搜索（Bing） & 同步 \\
-get\_weather & 查询天气 & 同步 \\
-take\_screenshot & 截屏 + GLM-4V 分析 & 协程异步 \\
-set\_volume / mute & 音量控制 & 同步 \\
+open\_folder & 打开资源管理器 & 同步 \\
 get\_system\_info & 获取系统信息 & 同步 \\
 lock\_screen & 锁屏 & 同步 \\
-system\_power & 关机/重启/睡眠 & 同步（需确认） \\
-run\_command & 执行 CMD & 同步（需确认） \\
-get\_clipboard / set\_clipboard & 剪贴板读写 & 同步 \\
-get\_memories / write\_memory & 长期记忆操作 & 同步 \\
-start\_conversation & 发起聊天 & 同步 \\
-messenger & 模拟回复 & 同步 \\
-write\_note & 写便签 & 同步 \\
-send\_notification & 桌面通知 & 同步 \\
-notify & 推送通知（Server酱³） & 同步 \\
-get\_pet\_status & 获取宠物状态 & 同步 \\
+set\_volume / mute & 音量控制 & 同步 \\
 get\_mouse\_pos & 获取鼠标坐标 & 同步 \\
 list\_files & 列出目录文件 & 同步 \\
+notify & 推送通知 & 同步 \\
+run\_command & 执行 CMD & 同步 \\
+power & 关机/重启/睡眠 & 同步 \\
+\multicolumn{3}{l}{\textbf{ClipboardFileTools.cs（14）}} \\
+get\_clipboard / set\_clipboard & 剪贴板读写 & 同步 \\
+get\_weather & 查询天气 & 同步 \\
+file\_open / file\_move / file\_copy / file\_delete & 文件操作 & 同步 \\
+file\_rename / file\_info / file\_create / file\_read & 文件操作 & 同步 \\
+dir\_create & 创建目录 & 同步 \\
+search\_files / search\_file & 文件搜索（Everything） & 同步/异步 \\
+\multicolumn{3}{l}{\textbf{ReminderAcademicTools.cs（8）}} \\
+set\_reminder / query\_reminders / mark\_reminder\_done / delete\_reminder & 便签管理 & 同步 \\
+query\_exams / query\_scores / query\_schedule / query\_user\_status & 学业查询 & 协程异步 \\
+\multicolumn{3}{l}{\textbf{Live2DSyncTools.cs（7）}} \\
 set\_expression & 切换面部表情 & 同步 \\
 play\_action / stop\_action & 播放/停止动作 & 同步 \\
-open\_folder & 打开资源管理器 & 同步 \\
-query\_exams & 查询考试安排 & 协程异步 \\
-query\_scores & 查询成绩 & 协程异步 \\
-query\_schedule & 查询课表 & 协程异步 \\
-query\_user\_status & 查询学业概览 & 协程异步 \\
-search\_files & 全盘文件搜索（Everything） & 协程异步 \\
-inspect\_motion\_memory & 查看动作记忆 & 同步 \\
-generate\_motion & LLM 生成自定义动作 & 协程异步 \\
-get\_system\_status & 获取系统状态 & 同步 \\
-show\_reminder / delete\_reminder & 便签管理 & 同步 \\
+inspect\_motion\_memory / inspect\_personality & 自省 & 同步 \\
+explore\_body / control\_body & 身体参数探索/控制 & 同步 \\
+\multicolumn{3}{l}{\textbf{VisionKnowledgeTools.cs（4）}} \\
+take\_screenshot & 截屏 + GLM-4V 分析 & 协程异步 \\
 knowledge\_search & 藏书阁语义检索（本地 RAG） & 协程异步 \\
 knowledge\_index & 索引文件/文件夹到藏书阁 & 协程异步 \\
+openclaw\_search & OpenClaw 搜索 & 同步 \\
+\multicolumn{3}{l}{\textbf{MotionCoroutineTools.cs（5）}} \\
+generate\_motion & LLM 生成自定义动作 & 协程异步 \\
+explore\_body\_vision / run\_verification / vis\_verify / self\_review & 视觉验证/自评 & 协程异步 \\
+\multicolumn{3}{l}{\textbf{其他（3）}} \\
+launch\_pogget & 启动 Pogget & 同步 \\
+pogget\_agent & Pogget Agent IPC（8 子命令，含 quickpanel\_status） & 同步 \\
+compile\_latex & LaTeX 编译（经 OpenClawBridge） & 同步 \\
 \bottomrule
 \end{longtable}
 
@@ -469,13 +479,12 @@ High & AI 主动回复 & 不可被任何消息覆盖 \\
 6 & 委屈 & 6 & JSON \\
 7 & 法阵展开 & 4 & 硬编码 \\
 8 & 害羞 & 6 & JSON \\
-9 & 困惑 & 0 & JSON（AI 仅用）\\
-10 & 爱心 & 5 & JSON \\
-11 & 哭 & 4 & JSON \\
-12 & 心跳 & 5 & JSON \\
+9 & 困惑 & 0 & JSON（AI 仅用） \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+> N40 修正：空闲动作为 9 种（id 1--9）。旧文档所称爱心/哭/心跳（id 10--12）不在 \texttt{idle\_actions.json} 中；\texttt{ActionPresets/} 另有 11 个动作预设 JSON（blush/brow/confuse/cry/heart\_eyes/magic\_circle/money/smile/star\_spin/stretch/tilt）供工具与硬编码动作调用。
 
 \subsubsection{插值曲线}
 
@@ -508,7 +517,7 @@ High & AI 主动回复 & 不可被任何消息覆盖 \\
 
 \subsubsection{SPECIAL PATTERNS}
 
-内嵌在 System Prompt 中的姿势模板，帮助 DeepSeek 准确生成常见姿势（N38 实测：10 条，9 个独特姿势 + 捂脸重复）：
+内嵌在 System Prompt 中的姿势模板，帮助 DeepSeek 准确生成常见姿势（N40 代码实测：10 条，9 个独特姿势 + 捂脸重复）：
 
 \begin{table}[H]
 \centering
@@ -604,7 +613,7 @@ V2.3+ 对验证系统进行了重要精简：
 
 \subsection{VisionMotionVerifier --- GLM-4V 多帧拼图评分}
 
-> \textbf{N38 修正}：旧文档称 \texttt{DualModelValidator}（双模型），实测该类的 Qwen-VL 已删除、qwenScore 恒 0，实际为\textbf{单模型} \texttt{VisionMotionVerifier}（GLM-4V 付费模型，180s 超时，55\% 截图采样）。
+> \textbf{N40 修正}：旧文档称 \texttt{DualModelValidator}（双模型），实测该类 Qwen-VL 已删除、qwenScore 恒 0；N39 已简化回调签名（4 参）并删除恒 0 的 qwenScore 参数。实际为\textbf{单模型} \texttt{VisionMotionVerifier}（GLM-4V 付费模型，180s 超时，55\% 截图采样）。
 
 \begin{lstlisting}[style=csharp,caption={多帧拼图验证核心},label={lst:collage}]
 // 1. 动作播放期间在 20%/40%/60%/80% 进度截图
@@ -744,7 +753,7 @@ UI Automation API 读取主流浏览器标签页标题（Chrome/Edge/Firefox/Ope
 
 \subsection{时间与天气系统 (TimeWeatherController)}
 
-天气源：\textbf{wttr.in 默认}（cityCode=\"Nanjing\"），QWeather 可选（需 Key）。（N38 修正：非旧文档所述"QWeather 优先"。）
+天气源：\textbf{wttr.in 默认}（cityCode=\"Nanjing\"），QWeather 可选（需 Key）。（N40 修正：非旧文档所述"QWeather 优先"。）
 AI 天气语录：DeepSeek 批量生成符玄风格天气台词，按天气类型缓存。
 
 \subsubsection{AI 天气语录}
@@ -788,7 +797,9 @@ MoveLeftTime（权重 1）/ MoveRightTime（权重 1）/ StopTime（权重 6）�
 
 \subsection{多显示器支持}
 
-通过 \texttt{VirtualScreen} 获取完整桌面区域，物理边界自动适配多显示器环境。
+> ⚠️ N40 注记：旧文档称"通过 \texttt{VirtualScreen} 获取完整桌面区域，物理边界自动适配"，
+> 代码实测 \texttt{WindowOverlay.isMultiMonitor} 恒为 \texttt{false}（仅用 \texttt{SM\_CXSCREEN} 主屏尺寸），
+> 跨屏行走/多屏边界适配为规划中能力（见 roadmap Phase 4.4）。
 
 \subsection{睡眠唤醒检测}
 
@@ -853,38 +864,40 @@ Low & 20\,fps & 50\% & FPS < 30 或 CPU/GPU > 92\% \\
 支持 \texttt{-Quick} 参数仅验证编译。构建后验证检查关键文件与日志关键字。
 
 % ═══════════════════════════════════════════
-\section{已知问题与 Bug（N38 审计）}
+\section{已知问题与 Bug（N38 审计 · N39 已全部修复）}
 
-N38 代码真相审计确认 9 个已核实 Bug，按修复优先级排列：
+N38（2026-08-02）代码真相审计确认 9 个已核实 Bug，\textbf{N39（同日）已全部修复}；另有三项结构性偏差中两项已接线修复：
 
 \begin{table}[H]
 \centering
-\caption{已知 Bug 与修复优先级}
+\caption{已知 Bug 与修复状态}
 \label{tab:bugs}
-\begin{tabular}{llp{8cm}}
+\begin{tabular}{lllp{7cm}}
 \toprule
-\textbf{编号} & \textbf{优先级} & \textbf{问题} \\
+\textbf{编号} & \textbf{优先级} & \textbf{状态} & \textbf{问题} \\
 \midrule
-BUG-1 & P0 & \texttt{MotionAgent.IsSleepTime()} 恒返回 false（硬编码），睡眠检测失效 \\
-BUG-2 & P0 & \texttt{ExecuteCombo} 在动作播放后才加 AI 锁（锁时序错误） \\
-BUG-3 & P1 & \texttt{GatherContext()} 注释称农历月相，实际用公历 \texttt{now.Day} \\
-BUG-4 & P1 & \texttt{ActivityTracker.UpdateInteractionTime()} 空实现 \\
-BUG-5 & P1 & DualModelValidator 名不副实（Qwen-VL 已删，qwenScore 恒 0） \\
-BUG-6 & P2 & AutoMotionCollector 死代码（[Obsolete] 331 行） \\
-BUG-7 & P2 & MotionTranslator 示例 \texttt{arm\_right\_upper: 0.8} 与规则 15--25° 矛盾 \\
-BUG-8 & P2 & 文档称 11 规则 + 12 特殊，实际 10 规则 + 10 特殊 \\
-BUG-9 & P2 & 文档称 BounceEaseOut，实际曲线名为 Bounce \\
+BUG-1 & P0 & ✅ 已修复 & \texttt{MotionAgent.IsSleepTime()} 恒返回 false（硬编码），睡眠检测失效 \\
+BUG-2 & P0 & ✅ 已修复 & \texttt{ExecuteCombo} 在动作播放后才加 AI 锁（锁时序错误） \\
+BUG-3 & P1 & ✅ 已修复 & \texttt{GatherContext()} 注释称农历月相，实际用公历 \texttt{now.Day} \\
+BUG-4 & P1 & ✅ 已修复 & \texttt{ActivityTracker.UpdateInteractionTime()} 空实现 \\
+BUG-5 & P1 & ✅ 已修复 & DualModelValidator 名不副实（Qwen-VL 已删，qwenScore 恒 0） \\
+BUG-6 & P2 & ✅ 已删除 & AutoMotionCollector 死代码（[Obsolete] 331 行） \\
+BUG-7 & P2 & ✅ 已修复 & MotionTranslator 示例 \texttt{arm\_right\_upper: 0.8} 与规则 15--25° 矛盾 \\
+BUG-8 & P2 & ✅ 已澄清 & 文档称 11 规则 + 12 特殊，实际 10 规则 + 10 特殊 \\
+BUG-9 & P2 & ✅ 已澄清 & 文档称 BounceEaseOut，实际曲线名为 Bounce \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-另有三项结构性偏差（非 Bug）：
+另有三项结构性偏差：
 
 \begin{itemize}
-    \item 反思回调 \texttt{ChatManager.OnReflectRequest} 恒为 null（反思未接线）
-    \item \texttt{KnowledgeBaseManager.GetFormattedContext()} 为 STUB，恒返回空字符串
-    \item 天气源默认 wttr.in（QWeather 为可选，非优先）
+    \item 反思回调 \texttt{ChatManager.OnReflectRequest} 恒为 null（反思未接线）\textbf{→ N39 已修复}：\texttt{CheckReflection → DoReflection（DeepSeek 提炼）→ CommitReflection} 接线，死回调已删除
+    \item \texttt{KnowledgeBaseManager.GetFormattedContext()} 为 STUB，恒返回空字符串\textbf{→ N39 已修复}：返回 \texttt{LastFormattedContext} 缓存（\texttt{SearchAndFormat} 协程填充）
+    \item 天气源默认 wttr.in（QWeather 为可选，非优先）\textbf{→ 文档已修正}
 \end{itemize}
+
+N40（2026-08-07）Token 优化 T1--T8 全部完成：时间戳尾部缓存（命中率 98.6\%）、body schema 精简（2543--5435 字符）、\texttt{max\_tokens: 1200} + thinking disabled、工具子集 55→27、历史 15000 字符预算 + Ollama 摘要、SystemPrompt 5012→2972 字符（-41\%）、Speculative Multi-Action、usage 日志。
 
 % ═══════════════════════════════════════════
 \section{版本路线图}
@@ -905,7 +918,9 @@ V2.2 & 2026-07 & 悬浮球辐射菜单 + BallPanel 面板系统 \\
 V2.3 & 2026-07 & 报告面板复制按钮；MotionAgent 自主动作决策 \\
 \textbf{V2.3+} & \textbf{2026-07-13} & \textbf{移除 Qwen-VL + 多帧拼图评分；Newtonsoft.Json 迁移；GpuLoadMonitor 游戏检测；SafetyValidator 安全校验；闭环学习 P0 修复；MotionAgent 架构清理} \\
 \textbf{V2.4} & \textbf{2026-07-14} & \textbf{藏书阁 — 本地知识库 RAG 系统（KnowledgeBaseManager）；Ollama nomic-embed-text 语义检索；knowledge\_search / knowledge\_index 工具} \\
-\textbf{N38} & \textbf{2026-08-02} & \textbf{代码真相审计：52 工具 / 10 轮回环 / 10+10 规则 / Bounce 曲线 / wttr.in 默认 / 单 GLM 模型；确认 9 个 Bug（IsSleepTime 恒 false、ExecuteCombo 锁时序、GetFormattedContext STUB、OnReflectRequest 恒 null 等）；修复优先级 P0--P2 已排定} \\
+\textbf{N38} & \textbf{2026-08-02} & \textbf{代码真相审计：52 工具 / 10 轮回环 / 10+10 规则 / Bounce 曲线 / wttr.in 默认 / 单 GLM 模型；确认 9 个 Bug（IsSleepTime 恒 false、ExecuteCombo 锁时序、GetFormattedContext STUB、OnReflectRequest 恒 null 等）} \\
+\textbf{N39} & \textbf{2026-08-02} & \textbf{修复全部 9 个 Bug：真实睡眠判断 / ExecuteCombo 锁时序 / 农历月相 / 交互时间接线 / DualModelValidator 清理 / AutoMotionCollector 删除 / 示例角度 / 反思接线 / 知识库缓存注入} \\
+\textbf{N40} & \textbf{2026-08-07} & \textbf{Token 优化 T1--T8 全部完成：工具集 52→55 全量核实 / 工具子集按意图注入 55→27 / 历史 15000 字符预算 + Ollama 摘要 / SystemPrompt -41\% / Speculative Multi-Action / usage 日志；补充 BRIDGE\_TOKEN 鉴权与 quickpanel\_status 子命令} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -927,6 +942,7 @@ DEEPSEEK\_API\_KEY & 是 & DeepSeek Chat API + MotionTranslator \\
 GLM\_API\_KEY & 是 & GLM-4V 截图分析与多帧动作验证 \\
 QWEATHER\_API\_KEY & 否 & 和风天气数据源 \\
 SERVERCHAN\_SENDKEY & 否 & Server酱³ 推送 \\
+BRIDGE\_TOKEN & 否 & OpenClaw Bridge 鉴权（64 字符；fallback 自动读 GATEWAY\_TOKEN） \\
 \bottomrule
 \end{tabular}
 \end{table}
