@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![版本](https://img.shields.io/badge/版本-N40-blue)
+![版本](https://img.shields.io/badge/版本-N41-blue)
 ![引擎](https://img.shields.io/badge/引擎-Tuanjie%202022.3.62t7-purple)
 ![平台](https://img.shields.io/badge/平台-Windows%2064位-green)
 ![Live2D](https://img.shields.io/badge/Live2D-Cubism%205--r.4-orange)
@@ -12,7 +12,7 @@
 
 **「穷观妙算，天机尽显。」** — 仙舟「罗浮」太卜司之首，符玄大人驾临您的桌面。
 
-> ⚠️ **本文档已按「代码真相审计」重写（2026-08-02）并随 N39/N40 修订（2026-08-08）**：所有数字与表述均以
+> ⚠️ **本文档已按「代码真相审计」重写（2026-08-02）并随 N39/N40/N41 修订（2026-08-09）**：所有数字与表述均以
 > `code/desktop_unity/Assets/Scripts/` 下的真实代码为准，旧版文档的过时描述已修正。
 > 权威架构参照见 [`project_brief/code-truth-architecture.md`](project_brief/code-truth-architecture.md)。
 
@@ -27,7 +27,7 @@
 | 维度 | 能力 |
 |------|------|
 | 💬 **AI 对话** | DeepSeek Chat + Function Calling，**55 个工具，最多 10 轮回环**，意图过滤 + 600s 看门狗（N40 起按意图注入工具子集 55→27） |
-| 🎭 **表情动作** | Live2D 参数化动画 + LLM 实时动作生成 + GLM-4V 视觉自评闭环 |
+| 🎭 **表情动作** | Live2D 参数化动画 + LLM 实时动作生成 + GLM-4V 视觉自评闭环 + **像素表情包**（9 种脸部表情帧 + 符号徽章） |
 | 🧠 **记忆人格** | 三层长期记忆 + 五维人格演化 + 三维关系模型 |
 | 🌤️ **环境感知** | 前台活动 / 浏览器标签 / 时间天气 / 系统性能 |
 | 📋 **日程管理** | 便签/提醒 + 课表成绩查询 + 三级推送链路 |
@@ -166,10 +166,12 @@ MotionAgent ──→ MotionTranslator ──→ MotionPlanner ──→ MotionG
 | 🧠 忆境术 | `inspect_personality`, `inspect_motion_memory` | 人格自省 + 演武心经查看 |
 | 📚 藏书阁 | `knowledge_search`, `knowledge_index` | 本地 RAG 语义检索 |
 | 🕵️ 自省术 | `explore_body`, `explore_body_vision`, `self_review`, `run_verification`, `vis_verify` | 参数探索 + 视觉验证 |
-| 💬 言出法随 | `【表情:开心】` / `【动作:伸懒腰】` | 回复文本内嵌动作标记 |
+| 💬 言出法随 | `【表情:开心】` / `【动作:伸懒腰】` | 回复文本内嵌动作标记 → Live2D 脸部表情 + 像素画同步表情 |
+| 🚫 颜文字禁绝 | SystemPrompt 明令禁止 + 代码兜底 | 模型若输出颜文字 → 自动翻译为表情动作并从文本剥离 |
 
 **核心机制**：
 - **意图过滤**：本地 Ollama 分类（chat/emotion/command/knowledge/operation），chat/emotion 不发工具，其余按白名单过滤
+- **颜文字兜底（N41）**：SystemPrompt 禁止输出颜文字；即便模型违规输出 `(T_T)`、`(^▽^)` 等，`StripKaomoji` 也会翻译为 Live2D 脸部表情 + 像素表情帧并剥除文本，气泡只显示纯净话语
 - **看门狗**：单次请求总超时 600s，覆盖多轮工具链（含 GLM-4V 180s）
 - **自动重试**：最多 3 次，400/401/403 不重试
 - **历史裁剪**：60 条上限 + **N40 T5** 15000 字符预算（`HISTORY_CHAR_BUDGET`），被裁旧消息经 Ollama 摘要后以【旧事纪要】注入
@@ -316,6 +318,8 @@ MotionAgent ──→ MotionTranslator ──→ MotionPlanner ──→ MotionG
 | 📋 **右侧面板 RightPanel** | `~`键 / 鼠标划过右边缘 | 220px Widgets（聊/设/签/告） |
 | 💬 **古风气泡 ChatBubble** | AI 回复/提醒/闲话 | OnGUI 手绘圆角 + 12 星点 |
 | 📥 **底部输入栏** | 自动显示 | Windows 搜索风格 0.5s 淡入 |
+| 🧩 **像素表情包**（N41） | AI 回复 `【表情:xxx】` | 17×24 像素形象 → ×4 显示，9 种脸部表情帧（happy/angry/sad/surprise/confused/sleepy/blush/love/tear），呼吸浮动 + 点击/回复跳跃 + 眨眼，表情激活时右上角弹出符号徽章（爱心/感叹号/问号/Z/三点，4 秒） |
+| 🎭 **Live2D 脸部表情** | 同上 | `PlayExpression` 驱动脸部参数（眯眼/微笑/垂眼等），与像素画同步触发 |
 
 **优先级系统**：High(AI 回复) > Normal(提醒) > Low(闲话)
 
@@ -440,11 +444,12 @@ JSON 持久化 (D:\DesktopPetData\，DataPathConfig.cs 硬编码):
 
 ## 📜 版本历史
 
-完整历史见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **N37**：
+完整历史见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **N41**：
 
 | 版本 | 日期 | 亮点 |
 |------|------|------|
-| **N37** | 2026-07-26 | 言出法随（文本内嵌动作标记）、ToolEngine 插件化、OpenClaw Bridge 搜索网关、Pogget 集成 |
+| **N41** | 2026-08-09 | 像素表情包（9 种脸部表情帧 + 徽章方向修复）+ 颜文字禁绝（SystemPrompt 明令禁止 + 代码兜底翻译为表情动作） |
+| N37 | 2026-07-26 | 言出法随（文本内嵌动作标记）、ToolEngine 插件化、OpenClaw Bridge 搜索网关、Pogget 集成 |
 | N36 | 2026-07 | ToolCallInvoker 4065 行 → 插件化 ToolEngine，动态工具发现/注册 |
 | N35 | 2026-07 | 移除 Qwen-VL，GLM-4V 多帧拼图视觉验证定型 |
 | N34 | 2026-07 | MotionTranslator SPECIAL PATTERNS 优化 |

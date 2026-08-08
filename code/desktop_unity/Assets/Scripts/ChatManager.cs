@@ -1660,6 +1660,9 @@ public class ChatManager : MonoBehaviour
 
         string result = text;
 
+        // 0) 颜文字兜底清理（所有调用路径都无颜文字残留）
+        result = StripKaomojiText(result);
+
         // 1) 剥离内嵌标记（与 StripAndExecuteActions 的正则一致，但不执行动作）
         result = Regex.Replace(result, @"【表情[:：]([^】]+)】", "");
         result = Regex.Replace(result, @"【动作[:：]([^】]+)】", "");
@@ -1708,6 +1711,9 @@ public class ChatManager : MonoBehaviour
         if (renderer == null) return CleanDisplayText(text); // 无渲染器：仅做纯文本清理
 
         string result = text;
+
+        // 0) 颜文字兜底：模型未守规输出颜文字 → 翻译为表情动作并从文本移除
+        result = StripKaomoji(result);
 
         // 1) 【表情:xxx】— 精确表情标记
         result = Regex.Replace(result, @"【表情[:：]([^】]+)】", match =>
@@ -1789,6 +1795,65 @@ public class ChatManager : MonoBehaviour
             case "法阵": case "画阵": case "绘制法阵": case "施法": return "magic_circle";
             default: return cn;
         }
+    }
+
+    // ==================================================================
+    //  颜文字兜底：模型未守规输出颜文字时，翻译为表情动作并从文本移除
+    //  （Live2D 脸部表情 + 像素画表情帧，正是用户想要的接收表情信息后的表现）
+    // ==================================================================
+
+    /// <summary>常见颜文字 → 表情名（顺序敏感：love 的 ♡ 需先于 happy 的 (´▽｀)）</summary>
+    private static readonly (string[] patterns, string emote)[] KAOMOJI_MAP = new (string[], string)[]
+    {
+        (new[] { "♡", "♥", "❤", "(´▽｀)♡" }, "love"),
+        (new[] { "(T_T)", "(T-T)", "(;_;)", "(;﹏;)", "QAQ", "ToT", "TAT" }, "sad"),
+        (new[] { "(T﹏T)", "(´;ω;`)", "(;ω;)" }, "tear"),
+        (new[] { "(^▽^)", "(^_^)", "(^-^)", "(≧▽≦)", "(*^▽^*)", "(＾▽＾)", "(≧ω≦)", "(◕‿◕)" }, "happy"),
+        (new[] { "(╬▔皿▔)", "(>_<)", "(｀⌒´)", "(╬￣皿￣)", "(σ-`д´σ)" }, "angry"),
+        (new[] { "(⊙o⊙)", "(o_O)", "(°Д°)", "(°口°)" }, "surprise"),
+        (new[] { "(・_・?)", "(?_?)" }, "confused"),
+        (new[] { "(´-ω-`)", "(￣o￣)", "(´～｀)" }, "sleepy"),
+        (new[] { "(⁄ ⁄•⁄ω⁄•⁄ ⁄)", "(//▽//)", "(〃∀〃)" }, "blush"),
+    };
+
+    /// <summary>从文本中移除所有颜文字（纯清理，不触发表情；供 CleanDisplayText 兜底）</summary>
+    private static string StripKaomojiText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        string result = text;
+        foreach (var (patterns, _) in KAOMOJI_MAP)
+        {
+            foreach (var p in patterns)
+                result = result.Replace(p, "");
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 颜文字 → 表情动作（带触发）：模型输出颜文字时，
+    /// 执行 Live2D 脸部表情 PlayExpression + 广播 OnExpressionTag（像素画表情帧/徽章），
+    /// 再把颜文字从文本中移除，气泡只显示纯净话语。
+    /// </summary>
+    private string StripKaomoji(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var renderer = FindObjectOfType<Live2DRenderer>();
+        string result = text;
+        foreach (var (patterns, emote) in KAOMOJI_MAP)
+        {
+            foreach (var p in patterns)
+            {
+                string cleaned = result.Replace(p, "");
+                if (cleaned.Length != result.Length)
+                {
+                    if (renderer != null) renderer.PlayExpression(emote);
+                    OnExpressionTag?.Invoke(emote); // ★ 广播表情：像素画表情帧 + 徽章
+                    Debug.Log($"[ChatManager] 🎭 颜文字兜底: {p} → {emote}");
+                    result = cleaned;
+                }
+            }
+        }
+        return result;
     }
 
     /// <summary>尝试将自然语言描述匹配到已知表达式或动作</summary>

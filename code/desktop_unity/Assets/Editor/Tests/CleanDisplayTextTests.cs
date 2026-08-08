@@ -56,6 +56,15 @@ public class CleanDisplayTextTests
     }
 
     [Test]
+    public void Strip_Kaomoji()
+    {
+        // 颜文字兜底清理：模型违规输出颜文字 → 文本剥除（表情动作由 StripKaomoji 触发）
+        Assert.AreEqual("本座泪目了。", ChatManager.CleanDisplayText("(T_T) 本座泪目了。"));
+        Assert.AreEqual("心情大好", ChatManager.CleanDisplayText("(*^▽^*) 心情大好"));
+        Assert.AreEqual("竟敢如此", ChatManager.CleanDisplayText("(╬▔皿▔) 竟敢如此"));
+    }
+
+    [Test]
     public void Strip_ActionMarker()
     {
         Assert.AreEqual("本座乏了。", ChatManager.CleanDisplayText("【动作:伸懒腰】本座乏了。"));

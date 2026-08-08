@@ -4,6 +4,23 @@
 
 ---
 
+## N41 (2026-08-09)
+
+### 🧩 像素表情包（`RightPanel.cs`）
+
+- **9 种脸部表情帧**：`LoadMascotEmote` 在 17×24 像素形象上重绘脸部（happy 眯眼笑 / angry 怒眉抿嘴 / sad 泪滴 / surprise 大眼 O 嘴 / confused 挑眉歪嘴 / sleepy 闭眼哈欠 / blush 大红脸 / love 微笑腮红 / tear 泪汪汪），×4 Point 放大显示
+- **坐标修复**：所有表情帧 `Set(列,行)` 坐标反写 bug 修正（之前 `Set(行,列)` 导致修改落在头发区），Python 复刻脚本（`tools/gen_mascot_emotes.py`）diff 验证全部落在脸部
+- **徽章方向修复**：`GetEmblemTex` 手工点阵写入纹理时行序与 PNG 相反导致 GUI 上下颠倒——`SetPixel(x, rows.Length-1-y)` 行反转后爱心/感叹号/问号/Z 方向正确
+- **love 删爱心眼**：6px 爱心眼太小糊脸挡眼，删除，只保留微笑嘴 + 脸颊粉，爱心由右上角徽章表达
+
+### 🚫 颜文字禁绝（`SystemPrompt.txt` + `ChatManager.cs`）
+
+- SystemPrompt 明令禁止输出颜文字/emoji（如 `(T_T)`、`(^▽^)`、QAQ），情绪一律用 `【表情:xxx】` 表达
+- **代码兜底**：即便模型违规输出，`StripKaomoji` 将常见颜文字翻译为 Live2D 脸部表情（`PlayExpression`）+ 像素表情帧（`OnExpressionTag`）并剥除文本，气泡只显示纯净话语
+- 覆盖所有显示路径：逐句流式 + 完整回复均经 `StripAndExecuteActions` 处理
+
+---
+
 ## N40 (2026-08-05 ~ 08-08)
 
 ### 🔒 安全加固（08-05，`b17ad84` + `91d2c32`）
