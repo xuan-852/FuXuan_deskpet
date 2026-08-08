@@ -618,7 +618,14 @@ public class RightPanel : MonoBehaviour
                 avatarRect = new Rect(logViewW - 8f - avatarSize, yCursor + 2f, avatarSize, avatarSize);
                 bubbleRect = new Rect(avatarRect.x - 8f - bubbleW, yCursor, bubbleW, bubbleH);
                 GUI.DrawTexture(avatarRect, _userAvatarTex);
-                GUI.Label(avatarRect, "我", _userAvatarStyle);
+                // ★ 中文基线修正：雅黑等字体的 MiddleCenter 对中文视觉中心偏左下，
+                //   按头像尺寸比例向右上补偿（实测 26px 头像约偏 -3px x / +5px y）
+                float avatarTextOffX = avatarSize * 0.12f;
+                float avatarTextOffY = -avatarSize * 0.20f;
+                GUI.Label(
+                    new Rect(avatarRect.x + avatarTextOffX, avatarRect.y + avatarTextOffY,
+                             avatarRect.width, avatarRect.height),
+                    "我", _userAvatarStyle);
             }
             else
             {

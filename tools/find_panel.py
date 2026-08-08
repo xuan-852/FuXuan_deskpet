@@ -64,9 +64,11 @@ def main() -> int:
     for y in range(h):
         row_density.append(sum(1 for x in range(0, w, step) if is_panel_px(px[x, y])))
 
-    # 阈值：紫色密度需明显高于"无面板"情况
-    col_th = max(10, int(h / step * 0.12))
-    row_th = max(10, int(w / step * 0.12))
+    # 阈值：低阈值（约 2% 行列密度）检测【完整】面板。
+    # ★ 早期用 12% 只抓到"气泡密集区"，大窗口下会漏掉面板下半部
+    #   （输入框/用户气泡区域），导致裁剪不完整、用户气泡被切掉。
+    col_th = max(3, int(h / step * 0.02))
+    row_th = max(3, int(w / step * 0.02))
     col_runs = merge(find_runs(col_density, col_th))
     row_runs = merge(find_runs(row_density, row_th))
 
