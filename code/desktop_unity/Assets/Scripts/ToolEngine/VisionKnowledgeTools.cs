@@ -261,3 +261,55 @@ public class OpenClawSearchTool : IPetTool
             onResult?.Invoke(task.Result);
     }
 }
+
+// ================================================================
+//  太卜神行法 — OpenClaw 通用任务外包（浏览器操作/定时/执行等多步任务）
+// ================================================================
+
+public class OpenClawTaskTool : IPetTool
+{
+    public string ToolName => "openclaw_task";
+    public string ToolDescription => "【太卜神行法】让本座将复杂多步任务外包给 OpenClaw 智能体执行——包括浏览器操作（登录网页/填表/点击/抓取页面数据）、定时任务、代码执行、多步调研汇总等。当任务需要「打开网站并操作」「持续监测某页面」「多步流程」时使用，比 openclaw_search 更强。注意：此为最终工具，调用后直接返回任务结果，请勿再调用其它工具！";
+    public string ToolParametersJson => ToolSchema.Schema(
+        ToolSchema.Req("task", "string", "要执行的任务描述（自然语言，写清楚目标和步骤，如「打开 B 站搜索 明日方舟 本周播放最高的视频并返回前5个」）"),
+        ToolSchema.Opt("mode", "string", "执行模式：agent（默认，OpenClaw 自行选工具）/ browser（引导用浏览器操作）"),
+        ToolSchema.Opt("timeout_seconds", "integer", "等待结果超时秒数（默认 300，上限 900）")
+    );
+    public bool IsAsync => true;
+
+    public string Execute(string argsJson) => "⏳ 太卜神行法发动中……";
+
+    public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
+    {
+        string task = ToolHelpers.JsonRead(argsJson, "task");
+        if (string.IsNullOrEmpty(task)) task = ToolHelpers.JsonRead(argsJson, "description");
+        if (string.IsNullOrEmpty(task))
+        {
+            onResult?.Invoke("❌ 请告诉本座要执行什么任务");
+            yield break;
+        }
+
+        string mode = ToolHelpers.JsonRead(argsJson, "mode");
+        if (string.IsNullOrEmpty(mode)) mode = "agent";
+
+        string timeoutStr = ToolHelpers.JsonRead(argsJson, "timeout_seconds");
+        int timeoutSec = 300;
+        if (!string.IsNullOrEmpty(timeoutStr) && int.TryParse(timeoutStr, out int parsed))
+            timeoutSec = Mathf.Clamp(parsed, 30, 900);
+
+        // 在后台线程运行（避免阻塞主线程）
+        var taskRunner = Task.Run(async () =>
+        {
+            bool healthy = await OpenClawBridge.CheckHealthAsync();
+            if (!healthy) return $"❌ 太卜神行法无法发动：未检测到通神阵法（{OpenClawBridge.LastError}）。请先运行 openclaw_bridge.js 启动桥接服务器。";
+            return await OpenClawBridge.ExecuteTaskAndWaitAsync(task, mode, timeoutSec);
+        });
+
+        yield return new WaitUntil(() => taskRunner.IsCompleted);
+
+        if (taskRunner.IsFaulted)
+            onResult?.Invoke($"❌ 任务执行出错: {taskRunner.Exception?.InnerException?.Message}");
+        else
+            onResult?.Invoke(taskRunner.Result);
+    }
+}

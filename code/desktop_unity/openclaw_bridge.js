@@ -143,7 +143,7 @@ function handleGatewayEvent(evt) {
 }
 
 // ─── Send Chat and Wait ──────────────────────────────────────────────────────
-async function sendChatAndWait(query) {
+async function sendChatAndWait(query, timeoutMs = CHAT_TIMEOUT_MS) {
     if (!chatClient || !connected) {
         throw new Error('Gateway not connected');
     }
@@ -161,7 +161,7 @@ async function sendChatAndWait(query) {
             const timeout = setTimeout(() => {
                 waiters.delete(SESSION_KEY);
                 reject(new Error('Response timeout'));
-            }, CHAT_TIMEOUT_MS);
+            }, timeoutMs);
 
             waiters.set(SESSION_KEY, { resolve, reject, timeout });
         });
@@ -170,7 +170,7 @@ async function sendChatAndWait(query) {
             await chatClient.client.request('chat.send', {
                 sessionKey: SESSION_KEY,
                 message: query,
-                timeoutMs: CHAT_TIMEOUT_MS,
+                timeoutMs: timeoutMs,
                 idempotencyKey: runId,
             });
 
@@ -194,6 +194,70 @@ async function sendChatAndWait(query) {
     } finally {
         release();
     }
+}
+
+// ─── 通用任务外包（后台执行，供 /task 端点使用）───────────────────────────
+// taskStore: Map<taskId, { id, status, mode, task, result, error, createdAt }>
+// status: queued → running → done | error | cancelled
+// 复用 sendChatAndWait 的全局串行锁：后台任务与 /search 请求天然排队，不会错位
+const taskStore = new Map();
+
+function buildTaskPrompt(taskText, mode) {
+    if (mode === 'browser') {
+        return `【桌面助手·浏览器模式】请使用你的浏览器工具（browser）完成以下任务，完成后用中文简洁总结结果：\n\n${taskText}`;
+    }
+    return `【桌面助手·任务模式】请使用你拥有的工具（浏览器/搜索/定时/文件/命令等）完成以下任务。涉及系统命令、文件写操作、浏览器提交等敏感操作前先向用户说明。完成后用中文简洁总结结果：\n\n${taskText}`;
+}
+
+function startTask(taskText, mode, timeoutMs) {
+    const id = randomUUID();
+    const entry = {
+        id,
+        status: 'queued',
+        mode,
+        task: taskText,
+        result: null,
+        error: null,
+        createdAt: Date.now(),
+    };
+    taskStore.set(id, entry);
+
+    // 后台执行（sendChatAndWait 自带串行锁，自动排队等待前序请求完成）
+    (async () => {
+        try {
+            if (entry.status === 'cancelled') return;
+            entry.status = 'running';
+            const prompt = buildTaskPrompt(taskText, mode);
+            const result = await sendChatAndWait(prompt, timeoutMs);
+            if (entry.status === 'cancelled') return; // 取消后丢弃结果
+            entry.status = 'done';
+            entry.result = result;
+        } catch (err) {
+            if (entry.status === 'cancelled') return; // 取消引发的中断不算错误
+            entry.status = 'error';
+            entry.error = err.message;
+        }
+    })();
+
+    return entry;
+}
+
+function cancelTask(taskId) {
+    const entry = taskStore.get(taskId);
+    if (!entry) return { ok: false, error: `task ${taskId} not found` };
+    if (entry.status === 'done' || entry.status === 'error') {
+        return { ok: false, error: `task already ${entry.status}` };
+    }
+    if (entry.status === 'running' && waiters.has(SESSION_KEY)) {
+        // 中断在途的 gateway 等待（全局串行锁保证同一时刻只有一个在途请求）
+        const w = waiters.get(SESSION_KEY);
+        clearTimeout(w.timeout);
+        waiters.delete(SESSION_KEY);
+        w.reject(new Error('Task cancelled'));
+    }
+    entry.status = 'cancelled';
+    entry.error = 'cancelled by user';
+    return { ok: true };
 }
 
 // ─── LaTeX 清理工具 ──────────────────────────────────────────────────────────
@@ -608,6 +672,79 @@ function startHttpServer() {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: false, error: err.message }));
             }
+            return;
+        }
+
+        // ─── 通用任务外包（OpenClaw 当"手"）────────────────────────
+        // POST /task            {task, mode?, timeoutMs?} → 立即返回 task_id（后台执行）
+        // GET  /task/{id}       → 轮询 {status, result?, error?}
+        // POST /task/{id}/cancel → 取消（排队任务直接跳过；在途任务中断等待）
+        if (path === '/task' && req.method === 'POST') {
+            const bodyChunks = [];
+            req.on('data', chunk => bodyChunks.push(chunk));
+            req.on('end', () => {
+                try {
+                    const body = JSON.parse(Buffer.concat(bodyChunks).toString('utf-8') || '{}');
+                    const task = (body.task || '').trim();
+                    if (!task) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: '缺少 task 字段' }));
+                        return;
+                    }
+                    if (!connected) {
+                        connect_().catch(err => {
+                            res.writeHead(503, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: false, error: `Connection failed: ${err.message}` }));
+                        });
+                        return;
+                    }
+                    const entry = startTask(task, body.mode || 'agent', parseInt(body.timeoutMs || CHAT_TIMEOUT_MS, 10));
+                    console.log(`[Bridge] Task ${entry.id} queued (mode=${entry.mode}, timeout=${entry.timeoutMs}ms): "${task.substring(0, 80)}..."`);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true, task_id: entry.id, status: entry.status }));
+                } catch (err) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: err.message }));
+                }
+            });
+            return;
+        }
+
+        if (path.startsWith('/task/')) {
+            const rest = path.slice('/task/'.length);
+            const slashIdx = rest.indexOf('/');
+            const taskId = slashIdx >= 0 ? rest.slice(0, slashIdx) : rest;
+            const action = slashIdx >= 0 ? rest.slice(slashIdx + 1) : '';
+
+            if (taskId && action === '' && req.method === 'GET') {
+                const entry = taskStore.get(taskId);
+                if (!entry) {
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: `task ${taskId} not found` }));
+                    return;
+                }
+                const resp = { success: true, task_id: taskId, status: entry.status };
+                if (entry.result != null) resp.result = entry.result;
+                if (entry.error) resp.error = entry.error;
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(resp));
+                return;
+            }
+
+            if (taskId && action === 'cancel' && req.method === 'POST') {
+                const r = cancelTask(taskId);
+                if (!r.ok) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: r.error }));
+                    return;
+                }
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, task_id: taskId, status: 'cancelled' }));
+                return;
+            }
+
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: 'Unknown /task route' }));
             return;
         }
 

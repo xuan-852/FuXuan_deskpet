@@ -29,6 +29,7 @@ public static class ToolRegistry
         "run_command",     // 执行系统命令
         "set_volume",      // 修改系统音量
         "mute",            // 静音切换
+        "openclaw_task",   // 外包给 OpenClaw 的任务可能含浏览器操作/命令执行等
     };
 
     /// <summary>危险工具是否需要用户确认</summary>
@@ -45,6 +46,7 @@ public static class ToolRegistry
             case "run_command": return "在系统上执行命令";
             case "set_volume":  return "修改系统音量";
             case "mute":        return "切换静音状态";
+            case "openclaw_task": return "外包给 OpenClaw 智能体执行任务（可能涉及浏览器操作、命令执行）";
             default:            return name;
         }
     }

@@ -210,4 +210,196 @@ public static class OpenClawBridge
             }
         }
     }
+
+    /// <summary>当前是否有在途任务（提交后未完成）</summary>
+    public static bool IsBusy { get; private set; } = false;
+
+    /// <summary>最近提交的任务 ID</summary>
+    public static string LastTaskId { get; private set; } = "";
+
+    /// <summary>
+    /// 提交任务给 OpenClaw Agent 执行（异步，后台运行）。
+    /// 返回 task_id，之后用 PollTaskAsync 轮询状态、CancelTaskAsync 取消。
+    /// </summary>
+    /// <param name="task">任务描述（自然语言，如「查一下 B 站本周热门视频 TOP5」）</param>
+    /// <param name="mode">执行模式：agent（默认，OpenClaw 自行选择工具）/ browser（引导使用浏览器）</param>
+    /// <param name="timeoutMs">网关等待超时（毫秒，默认 180000）</param>
+    /// <returns>task_id；失败返回空串并设置 LastError</returns>
+    public static async Task<string> SubmitTaskAsync(string task, string mode = "agent", int timeoutMs = 180000)
+    {
+        if (string.IsNullOrWhiteSpace(task))
+        {
+            LastError = "未提供任务描述";
+            return "";
+        }
+
+        string url = $"{BASE_URL}/task";
+        var payload = new JObject
+        {
+            ["task"] = task,
+            ["mode"] = mode,
+            ["timeoutMs"] = timeoutMs
+        };
+        string jsonBody = payload.ToString(Newtonsoft.Json.Formatting.None);
+
+        using (var req = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
+            req.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("x-bridge-token", BridgeToken);
+            req.timeout = 15; // 提交只做入队，快速返回
+
+            var op = req.SendWebRequest();
+            while (!op.isDone)
+                await Task.Yield();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                LastError = req.error;
+                IsAvailable = false;
+                return "";
+            }
+
+            string raw = req.downloadHandler?.text ?? "{}";
+            try
+            {
+                var obj = JObject.Parse(raw);
+                bool success = obj["success"]?.Value<bool>() ?? false;
+                if (!success)
+                {
+                    LastError = obj["error"]?.ToString() ?? "任务提交失败";
+                    return "";
+                }
+
+                string taskId = obj["task_id"]?.ToString();
+                LastTaskId = taskId;
+                LastError = "";
+                return taskId ?? "";
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                return "";
+            }
+        }
+    }
+
+    /// <summary>
+    /// 轮询任务状态
+    /// </summary>
+    /// <param name="taskId">任务 ID</param>
+    /// <returns>JSON 字符串：{"success":true,"status":"running|done|error|cancelled","result":"...","error":"..."}</returns>
+    public static async Task<string> PollTaskAsync(string taskId)
+    {
+        if (string.IsNullOrEmpty(taskId))
+            return "{\"success\":false,\"error\":\"task_id 为空\"}";
+
+        string url = $"{BASE_URL}/task/{UnityWebRequest.EscapeURL(taskId)}";
+        using (var req = UnityWebRequest.Get(url))
+        {
+            req.timeout = 10;
+            req.SetRequestHeader("x-bridge-token", BridgeToken);
+            var op = req.SendWebRequest();
+            while (!op.isDone)
+                await Task.Yield();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                LastError = req.error;
+                return $"{{\"success\":false,\"error\":\"{req.error}\"}}";
+            }
+            return req.downloadHandler?.text ?? "{\"success\":false,\"error\":\"empty response\"}";
+        }
+    }
+
+    /// <summary>
+    /// 取消任务
+    /// </summary>
+    /// <returns>true=取消成功/已在终态，false=失败（LastError 含原因）</returns>
+    public static async Task<bool> CancelTaskAsync(string taskId)
+    {
+        if (string.IsNullOrEmpty(taskId))
+        {
+            LastError = "task_id 为空";
+            return false;
+        }
+
+        string url = $"{BASE_URL}/task/{UnityWebRequest.EscapeURL(taskId)}/cancel";
+        using (var req = new UnityWebRequest(url, "POST"))
+        {
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("x-bridge-token", BridgeToken);
+            req.timeout = 10;
+            var op = req.SendWebRequest();
+            while (!op.isDone)
+                await Task.Yield();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                LastError = req.error;
+                return false;
+            }
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 一站式执行任务：提交 + 轮询直到完成（或超时/失败）。
+    /// 适合「等结果」类工具调用；长任务请用 SubmitTaskAsync + PollTaskAsync 组合。
+    /// </summary>
+    /// <param name="task">任务描述</param>
+    /// <param name="mode">agent / browser</param>
+    /// <param name="totalTimeoutSeconds">总等待上限（默认 300 秒，网关侧 180s 超时兜底）</param>
+    /// <returns>任务结果文本（成功时含 AI 答复，失败时以 ❌ 开头）</returns>
+    public static async Task<string> ExecuteTaskAndWaitAsync(string task, string mode = "agent", int totalTimeoutSeconds = 300)
+    {
+        IsBusy = true;
+        try
+        {
+            string taskId = await SubmitTaskAsync(task, mode);
+            if (string.IsNullOrEmpty(taskId))
+                return $"❌ 任务提交失败: {LastError}";
+
+            double deadline = Time.realtimeSinceStartup + totalTimeoutSeconds;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                string raw = await PollTaskAsync(taskId);
+                try
+                {
+                    var obj = JObject.Parse(raw);
+                    if (!(obj["success"]?.Value<bool>() ?? false))
+                        return $"❌ 任务轮询失败: {obj["error"]?.ToString() ?? "未知"}";
+
+                    string status = obj["status"]?.ToString() ?? "running";
+                    switch (status)
+                    {
+                        case "done":
+                            return obj["result"]?.ToString() ?? "(无结果)";
+                        case "error":
+                            return $"❌ 任务执行出错: {obj["error"]?.ToString() ?? "未知错误"}";
+                        case "cancelled":
+                            return "❌ 任务已被取消";
+                        default: // running / queued
+                            await Task.Delay(2000);
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LastError = ex.Message;
+                    return $"❌ 解析任务状态出错: {ex.Message}";
+                }
+            }
+
+            // 超时 → 取消并回报
+            await CancelTaskAsync(taskId);
+            return $"❌ 任务超时（{totalTimeoutSeconds}s），已取消。可在桌面助手再次尝试或拆分任务。";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }

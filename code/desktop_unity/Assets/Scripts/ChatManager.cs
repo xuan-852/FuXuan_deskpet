@@ -315,7 +315,7 @@ public class ChatManager : MonoBehaviour
         ["command"] = new[]  // 指令操作类
         {
             "launch_pogget", "pogget_agent", "open_app", "open_url", "open_folder",
-            "search", "search_web", "openclaw_search",
+            "search", "search_web", "openclaw_search", "openclaw_task",
             "lock_screen", "set_volume", "mute", "power",
             "get_system_info", "get_mouse_pos", "list_files",
             "run_command", "notify", "get_clipboard", "set_clipboard",
@@ -325,7 +325,7 @@ public class ChatManager : MonoBehaviour
 
         ["knowledge"] = new[]  // 知识查询类
         {
-            "search_web", "search", "openclaw_search",
+            "search_web", "search", "openclaw_search", "openclaw_task",
             "knowledge_search", "compile_latex", "get_weather",
             "get_system_info", "get_mouse_pos", "get_clipboard",
             "file_info", "list_files",
