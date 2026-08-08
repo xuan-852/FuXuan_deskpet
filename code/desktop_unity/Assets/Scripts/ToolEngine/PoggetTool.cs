@@ -16,7 +16,7 @@ public class PoggetTool : IPetTool
     public static string ExePath { get; set; } = @"d:\pogget\Pogget.exe";
 
     public string ToolName => "launch_pogget";
-    public string ToolDescription => "打开 Pogget 桌面收纳工具，用于整理桌面文件、收纳文件到收纳盒、建立文件快捷方式等。当用户说「整理桌面」「打开收纳」「帮我收文件」「启动文件整理」「把文件收起来」时调用。";
+    public string ToolDescription => "打开 Pogget 桌面收纳工具，用于整理桌面文件、收纳文件到收纳盒、打开快速面板（侧边栏）窗口等。当用户说「整理桌面」「打开收纳」「帮我收文件」「启动文件整理」「把文件收起来」「打开侧边栏窗口」时调用。注意：只是打开 Pogget 窗口，不执行整理；实际整理用 pogget_agent 工具的 organize_desktop 或 add_to_container。";
     public string ToolParametersJson => "{\"type\": \"object\", \"properties\": {}}";
     public bool IsAsync => false;
 

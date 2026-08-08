@@ -63,6 +63,7 @@ public class RightPanel : MonoBehaviour
     private ChatManager _chat;
     private BallPanel _ballPanel;
     private string _inputText = "";
+    private const int MAX_INPUT_LENGTH = 300;   // 输入最大长度，防超长文字溢出输入框
     private bool _inputFocused = false; // 是否聚焦到输入框
 
     // ==================== 鼠标跟踪 ====================
@@ -118,6 +119,23 @@ public class RightPanel : MonoBehaviour
     private Texture2D _bubbleUserTex;
     private Texture2D _userAvatarTex;      // 用户头像（深色圆角 + 我）
     private GUIStyle _userAvatarStyle;
+
+    // ==================== 像素符玄动态形象（QQ 动态形象风格，17x24 网格图） ====================
+    private Texture2D _mascotOpenTex;       // 睁眼帧（17x24 → ×4 = 68x96，Point 锐利）
+    private Texture2D _mascotBlinkTex;      // 闭眼帧（程序生成：眼睛替换为肤色+闭眼缝线）
+    private bool _mascotBlinking;           // 眨眼中
+    private float _mascotBlinkT;            // 眨眼进度
+    private float _mascotBlinkTimer = 3.2f; // 距下次眨眼秒数
+    private float _mascotJumpStart = -10f;  // 跳跃触发时间戳（负=未触发）
+    private bool _mascotSubscribed;         // 是否已订阅 OnNewReply
+    private const int MASCOT_UPSCALE = 4;   // 17x24 → 68x96
+
+    // ==================== 表情差分徽章（AI 回复【表情:xxx】时右上角显示符号） ====================
+    private string _mascotEmotion = "";     // 当前表情（happy/angry/confused/...，空=无徽章）
+    private float _mascotEmotionTimer;        // 徽章剩余显示秒数
+    private readonly Dictionary<string, Texture2D> _emblemTex = new Dictionary<string, Texture2D>(); // 符号徽章纹理缓存
+    private const float EMOTION_SHOW_TIME = 4f; // 表情徽章显示时长
+    private const float EMBLEM_SIZE = 18f;   // 徽章显示尺寸（8x8 点阵 × ~2）
 
     // ==================== 窗口拉伸 ====================
     private bool _isResizing = false;
@@ -253,6 +271,44 @@ public class RightPanel : MonoBehaviour
             newPos.y = Mathf.Clamp(newPos.y, 0, Screen.height - panelHeight);
             _panelRect.x = newPos.x;
             _panelRect.y = newPos.y;
+        }
+
+        // 4. 订阅 AI 回复（用于形象跳跃反馈）+ 表情标记（用于徽章）
+        if (!_mascotSubscribed && _chat != null)
+        {
+            _mascotSubscribed = true;
+            _chat.OnNewReply += OnMascotReply;
+            _chat.OnExpressionTag += OnMascotExpression;
+        }
+
+        // 4b. 表情徽章计时（到时清除）
+        if (_mascotEmotionTimer > 0f)
+        {
+            _mascotEmotionTimer -= Time.deltaTime;
+            if (_mascotEmotionTimer <= 0f) _mascotEmotion = "";
+        }
+
+        // 5. 像素形象眨眼（随机 3~5s 一次，闭合 0.12s）
+        if (_mascotOpenTex != null)
+        {
+            if (_mascotBlinking)
+            {
+                _mascotBlinkT += Time.deltaTime;
+                if (_mascotBlinkT >= 0.12f)
+                {
+                    _mascotBlinking = false;
+                    _mascotBlinkTimer = UnityEngine.Random.Range(3f, 5f);
+                }
+            }
+            else
+            {
+                _mascotBlinkTimer -= Time.deltaTime;
+                if (_mascotBlinkTimer <= 0f)
+                {
+                    _mascotBlinking = true;
+                    _mascotBlinkT = 0f;
+                }
+            }
         }
     }
 
@@ -468,7 +524,11 @@ public class RightPanel : MonoBehaviour
             }
         }
         if (waiting) totalH += 24f;
-        Rect content = new Rect(0f, 0f, logViewW, Mathf.Max(totalH, logH));
+        // 右下角动态形象占位：内容底部预留形象高度+间距，消息滚到底时停在形象上方不被遮挡
+        float mascotReserve = 0f;
+        if (_mascotOpenTex != null && logH > 130f)
+            mascotReserve = 24f * MASCOT_UPSCALE + 24f;
+        Rect content = new Rect(0f, 0f, logViewW, Mathf.Max(totalH + mascotReserve, logH));
 
         _logScroll = GUI.BeginScrollView(logView, _logScroll, content, false, false, _invisibleScrollbar, _invisibleScrollbar);
 
@@ -517,6 +577,46 @@ public class RightPanel : MonoBehaviour
         }
 
         GUI.EndScrollView();
+
+        // ——— 像素符玄动态形象（右下角浮层，QQ 动态形象风格） ———
+        // 呼吸浮动 + 点击/AI回复时跳跃 + 眨眼
+        if (_mascotOpenTex != null && _mascotBlinkTex != null && logH > 130f)
+        {
+            float mw = 17f * MASCOT_UPSCALE;
+            float mh = 24f * MASCOT_UPSCALE;
+            float breath = Mathf.Sin(Time.time * 2.2f) * 2f;          // 呼吸 ±2px
+            float jump = 0f;
+            float jumpAge = Time.time - _mascotJumpStart;
+            if (jumpAge >= 0f && jumpAge < 0.45f)
+                jump = 26f * Mathf.Sin(Mathf.PI * (jumpAge / 0.45f)); // 跳跃 26px
+            Rect mascotRect = new Rect(logView.xMax - mw - 14f, logView.yMax - mh - 10f + breath + jump, mw, mh);
+            // 点击互动：戳戳额头 → 触发聊天 + 跳一下
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && mascotRect.Contains(mp))
+            {
+                _mascotJumpStart = Time.time;
+                if (_chat != null) _chat.SendMessage("*你伸出手指，轻轻戳了戳符玄的额头*", null);
+                Event.current.Use();
+            }
+            // 地面小阴影（跳跃时缩小）
+            float shadowScale = (jumpAge >= 0f && jumpAge < 0.45f) ? 0.5f : 1f;
+            GUI.color = new Color(0f, 0f, 0f, 0.35f * shadowScale);
+            GUI.DrawTexture(new Rect(mascotRect.x + 8f, logView.yMax - 6f, mw - 16f, 4f), _whiteTex);
+            GUI.color = Color.white;
+            // 形象本体（眨眼时切换闭眼帧）
+            GUI.DrawTexture(mascotRect, _mascotBlinking ? _mascotBlinkTex : _mascotOpenTex);
+            // 表情差分徽章（右上角：AI 回复【表情:xxx】时弹出对应符号，4 秒后消失）
+            if (!string.IsNullOrEmpty(_mascotEmotion))
+            {
+                Texture2D emblem = GetEmblemTex(_mascotEmotion);
+                if (emblem != null)
+                {
+                    float bs = EMBLEM_SIZE;
+                    Rect badgeBg = new Rect(mascotRect.xMax - bs - 5f, mascotRect.y - 5f, bs, bs);
+                    DrawPixelRect(badgeBg, new Color(0f, 0f, 0f, 0.78f)); // 黑色圆角底
+                    GUI.DrawTexture(badgeBg, emblem);
+                }
+            }
+        }
 
         // CRT 扫描线叠加（在日志区上方，半透明）
         Color prevColor = GUI.color;
@@ -584,7 +684,7 @@ public class RightPanel : MonoBehaviour
                 _chat.SendMessage(msg, null);
         }
 
-        _inputText = GUI.TextField(inputBgRect, _inputText, _termInputStyle);
+        _inputText = GUI.TextField(inputBgRect, _inputText, MAX_INPUT_LENGTH, _termInputStyle);
 
         // ——— 发送按钮（像素方块风格，hover 提亮） ———
         Rect sendBtnRect = new Rect(tfX + tfW + 6f, inputY + (inputBarHeight - sendBtnSize) / 2f, sendBtnSize, sendBtnSize);
@@ -794,7 +894,8 @@ public class RightPanel : MonoBehaviour
             normal = { textColor = Color.white },
             focused = { textColor = Color.white },
             alignment = TextAnchor.MiddleLeft,
-            padding = new RectOffset(8, 6, 4, 4)
+            padding = new RectOffset(8, 6, 4, 4),
+            clipping = TextClipping.Clip
         };
         _termPlaceholderStyle = new GUIStyle
         {
@@ -834,6 +935,9 @@ public class RightPanel : MonoBehaviour
         };
         _statusDotTex = MakeCircleTex(8, Color.white);
         _pixelFxTex = LoadPixelFx(); // ★多模态：优先加载 Resources/PixelFuXuan.png，回退代码生成
+        // 像素符玄动态形象（17x24 网格图，睁眼/闭眼两帧，×4 放大）
+        _mascotOpenTex = LoadMascot(true);
+        _mascotBlinkTex = LoadMascot(false);
         _invisibleScrollbar = new GUIStyle();
         _closeBtnStyle = new GUIStyle
         {
@@ -1169,6 +1273,166 @@ public class RightPanel : MonoBehaviour
         return GenPixelFx(2);
     }
 
+    /// <summary>AI 回复到达 → 形象跳一下</summary>
+    private void OnMascotReply(string reply)
+    {
+        _mascotJumpStart = Time.time;
+    }
+
+    /// <summary>AI 回复解析出表情标记 → 右上角显示对应符号徽章（4 秒）</summary>
+    private void OnMascotExpression(string expName)
+    {
+        _mascotEmotion = expName;
+        _mascotEmotionTimer = EMOTION_SHOW_TIME;
+    }
+
+    /// <summary>表情名 → 符号徽章纹理（8x8 点阵，惰性生成缓存）</summary>
+    private Texture2D GetEmblemTex(string expName)
+    {
+        string key;
+        switch (expName)
+        {
+            case "angry": key = "angry"; break;                 // 生气 → 红色感叹号
+            case "confused": key = "confused"; break;          // 困惑 → 黄色问号
+            case "happy": case "love": case "blush": key = "happy"; break; // 开心/爱/害羞 → 粉色爱心
+            case "sleepy": key = "sleepy"; break;              // 困倦 → 蓝色 Z
+            case "sad": case "tear": key = "sad"; break;     // 伤心/哭腔 → 灰色三点
+            case "surprise": key = "surprise"; break;         // 惊讶 → 双感叹号
+            default: return null;                                // neutral/calm/未知 → 无徽章
+        }
+        Texture2D cached;
+        if (_emblemTex.TryGetValue(key, out cached)) return cached;
+        Color c;
+        string[] rows;
+        switch (key)
+        {
+            case "angry":
+                c = new Color(1f, 0.30f, 0.30f, 1f);
+                rows = new[] {
+                    "..##..",
+                    "..##..",
+                    "..##..",
+                    "..##..",
+                    "..##..",
+                    "......",
+                    "..##..",
+                    "..##.." };
+                break;
+            case "confused":
+                c = new Color(1f, 0.83f, 0.30f, 1f);
+                rows = new[] {
+                    ".####.",
+                    "##..##",
+                    "....##",
+                    "...##.",
+                    "..##..",
+                    "......",
+                    "..##..",
+                    "......" };
+                break;
+            case "happy":
+                c = new Color(1f, 0.55f, 0.75f, 1f);
+                rows = new[] {
+                    "##..##",
+                    "######",
+                    "######",
+                    ".####.",
+                    "..##..",
+                    "...#..",
+                    "......",
+                    "......" };
+                break;
+            case "sleepy":
+                c = new Color(0.45f, 0.65f, 1f, 1f);
+                rows = new[] {
+                    "######",
+                    "....##",
+                    "...##.",
+                    "..##..",
+                    ".##...",
+                    "##....",
+                    "######",
+                    "......" };
+                break;
+            case "sad":
+                c = new Color(0.65f, 0.65f, 0.72f, 1f);
+                rows = new[] {
+                    "......",
+                    "......",
+                    "......",
+                    "......",
+                    "......",
+                    "......",
+                    "#.#.#.",
+                    "......" };
+                break;
+            default: // surprise 双感叹号
+                c = new Color(1f, 0.55f, 0.20f, 1f);
+                rows = new[] {
+                    "##..##",
+                    "##..##",
+                    "##..##",
+                    "##..##",
+                    "##..##",
+                    "......",
+                    "##..##",
+                    "##..##" };
+                break;
+        }
+        var tex = new Texture2D(rows[0].Length, rows.Length, TextureFormat.ARGB32, false);
+        tex.filterMode = FilterMode.Point;
+        for (int y = 0; y < rows.Length; y++)
+            for (int x = 0; x < rows[y].Length; x++)
+                tex.SetPixel(x, y, rows[y][x] == '#' ? c : Color.clear);
+        tex.Apply();
+        _emblemTex[key] = tex;
+        return tex;
+    }
+
+    /// <summary>加载 17x24 像素符玄并放大为动态形象（×4，Point 锐利）；闭眼帧程序生成（眼睛行替换为肤色+闭眼缝线）</summary>
+    private static Texture2D LoadMascot(bool openEyes)
+    {
+        var src = Resources.Load<Texture2D>("PixelFuXuan_17x24");
+        if (src == null)
+        {
+            Debug.LogWarning("[RightPanel] 未找到 Resources/PixelFuXuan_17x24.png，像素动态形象不可用");
+            return null;
+        }
+        try
+        {
+            var px = src.GetPixels32();
+            int w = src.width, h = src.height;
+            if (!openEyes)
+            {
+                // 闭眼帧：真正的眼睛 = 第13行(y=12, 0-indexed) 的 M11 两个格子 (x5 和 x9)
+                // 闭眼 = 把两个 M11 眼睛像素替换为 H22 闭眼缝线（×4 放大后为 4px 横线）
+                Color32 line = new Color32(202, 202, 212, 255);  // H22 #CACAD4 缝线
+                px[12 * w + 5] = line;  // 左眼闭眼缝线
+                px[12 * w + 9] = line;  // 右眼闭眼缝线
+            }
+            int uw = w * MASCOT_UPSCALE, uh = h * MASCOT_UPSCALE;
+            var tex = new Texture2D(uw, uh, TextureFormat.ARGB32, false);
+            tex.filterMode = FilterMode.Point;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            for (int y = 0; y < uh; y++)
+            {
+                int sy = y / MASCOT_UPSCALE;
+                for (int x = 0; x < uw; x++)
+                    tex.SetPixel(x, y, px[sy * w + (x / MASCOT_UPSCALE)]);
+            }
+            tex.Apply();
+            return tex;
+        }
+        catch (System.Exception e)
+        {
+            // 纹理不可读（Read/Write 未启用）时的降级：直接用原纹理，靠 GPU Point 整数倍放大，保证面板不崩
+            Debug.LogWarning("[RightPanel] 17x24 纹理不可读(" + e.GetType().Name + ")，降级为原尺寸放大渲染");
+            src.filterMode = FilterMode.Point;
+            src.wrapMode = TextureWrapMode.Clamp;
+            return src;
+        }
+    }
+
     /// <summary>生成像素符玄小人（16x16 像素画，按 scale 放大，Point 过滤保持锐利）</summary>
     private static Texture2D GenPixelFx(int scale)
     {
@@ -1266,6 +1530,16 @@ public class RightPanel : MonoBehaviour
         if (_ornamentTR != null) Destroy(_ornamentTR);
         if (_ornamentBR != null) Destroy(_ornamentBR);
         if (_ornamentBL != null) Destroy(_ornamentBL);
+        if (_mascotSubscribed && _chat != null)
+        {
+            _chat.OnNewReply -= OnMascotReply;
+            _chat.OnExpressionTag -= OnMascotExpression;
+        }
+        foreach (var kv in _emblemTex)
+            if (kv.Value != null) Destroy(kv.Value);
+        _emblemTex.Clear();
+        if (_mascotOpenTex != null) Destroy(_mascotOpenTex);
+        if (_mascotBlinkTex != null) Destroy(_mascotBlinkTex);
         if (_pixelFxTex != null) Destroy(_pixelFxTex);
         if (_statusDotTex != null) Destroy(_statusDotTex);
         if (_scanlineTex != null) Destroy(_scanlineTex);

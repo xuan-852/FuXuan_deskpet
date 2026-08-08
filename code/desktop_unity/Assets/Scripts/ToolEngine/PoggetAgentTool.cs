@@ -28,17 +28,17 @@ public class PoggetAgentTool : IPetTool
     public string ToolName => "pogget_agent";
     public string ToolDescription => @"通过 IPC 调用桌面收纳工具 Pogget 的文件管理能力。
 
-支持以下操作：
+支持以下操作（参数必须放在 cmd 字段，不是 task）：
 - ping: 连通性测试
 - list_containers: 列出所有收纳盒
-- get_container_items: 查看指定收纳盒内的文件（需 containerId）
-- add_to_container: 将文件添加到收纳盒（需 containerId, paths）
-- remove_from_container: 从收纳盒移除文件（需 containerId, itemId）
-- create_container: 创建新收纳盒（需 title, 可选 targetFolder）
-- organize_desktop: 自动扫描桌面并按类型整理文件
+- get_container_items: 查看指定收纳盒内的文件（需 params.containerId）
+- add_to_container: 将文件添加到收纳盒（需 params.containerId, params.paths）
+- remove_from_container: 从收纳盒移除文件（需 params.containerId, params.itemId）
+- create_container: 创建新收纳盒（需 params.title, 可选 params.targetFolder）
+- organize_desktop: 自动扫描桌面并按类型整理文件（一次性完成，已整理过的文件不会重复移动，无需反复调用）
 - quickpanel_status: 查询快速面板（侧边栏）状态
 
-关于侧边栏/快速面板：Pogget 有快速面板（侧边栏），它是所有收纳盒内容的聚合视图，不单独存储文件。用户问「侧边栏收拾」「侧边栏收纳」时，直接使用 add_to_container（收文件进收纳盒）或 organize_desktop（自动分类整理）即可，效果与侧边栏操作一致；用户想打开侧边栏窗口则用 launch_pogget。";
+关于侧边栏/快速面板：Pogget 有快速面板（侧边栏），它是所有收纳盒内容的聚合视图，不单独存储文件。**侧边栏无法创建、不存在 create_sidebar 命令**——用户说「侧边栏收拾/收纳」时直接调用 add_to_container 或 organize_desktop 即可；用户想打开侧边栏窗口则用 launch_pogget 工具（不是 pogget_agent）。";
     public string ToolParametersJson => @"{
   ""type"": ""object"",
   ""properties"": {

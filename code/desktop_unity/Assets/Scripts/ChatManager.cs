@@ -266,6 +266,8 @@ public class ChatManager : MonoBehaviour
     public System.Action OnRequestStarted;
     /// <summary>收到 AI 文字回复时触发</summary>
     public System.Action<string> OnNewReply;
+    /// <summary>回复解析出表情标记时触发（参数 = 标准英文表情名，如 happy/angry/confused）</summary>
+    public System.Action<string> OnExpressionTag;
     /// <summary>执行了工具调用时触发（参数 = 工具名）</summary>
     public System.Action<string> OnToolCalled;
     /// <summary>工具调用有结果时触发</summary>
@@ -1638,6 +1640,7 @@ public class ChatManager : MonoBehaviour
             string expName = match.Groups[1].Value.Trim();
             string mapped = MapExpName(expName);
             renderer.PlayExpression(mapped);
+            OnExpressionTag?.Invoke(mapped); // ★ 广播表情，供 UI 显示符号徽章
             Debug.Log($"[ChatManager] 🎭 言出法随·表情: {expName} → {mapped}");
             return ""; // 从文本中移除
         });
@@ -1662,6 +1665,7 @@ public class ChatManager : MonoBehaviour
                 if (mapped.StartsWith("exp:"))
                 {
                     renderer.PlayExpression(mapped.Substring(4));
+                    OnExpressionTag?.Invoke(mapped.Substring(4)); // ★ 广播表情
                     Debug.Log($"[ChatManager] 🎭 言出法随·自然表情: {desc} → {mapped}");
                 }
                 else
