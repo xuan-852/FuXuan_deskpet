@@ -126,6 +126,7 @@ public class RightPanel : MonoBehaviour
     // ==================== 像素符玄动态形象（QQ 动态形象风格，17x24 网格图） ====================
     private Texture2D _mascotOpenTex;       // 睁眼帧（17x24 → ×4 = 68x96，Point 锐利）
     private Texture2D _mascotBlinkTex;      // 闭眼帧（程序生成：眼睛替换为肤色+闭眼缝线）
+    private readonly Dictionary<string, Texture2D> _mascotEmoteTex = new Dictionary<string, Texture2D>(); // 表情形象帧缓存（表情包）
     private bool _mascotBlinking;           // 眨眼中
     private float _mascotBlinkT;            // 眨眼进度
     private float _mascotBlinkTimer = 3.2f; // 距下次眨眼秒数
@@ -681,8 +682,8 @@ public class RightPanel : MonoBehaviour
             GUI.color = new Color(0f, 0f, 0f, 0.35f * shadowScale);
             GUI.DrawTexture(new Rect(mascotRect.x + 8f, logView.yMax - 6f, mw - 16f, 4f), _whiteTex);
             GUI.color = Color.white;
-            // 形象本体（眨眼时切换闭眼帧）
-            GUI.DrawTexture(mascotRect, _mascotBlinking ? _mascotBlinkTex : _mascotOpenTex);
+            // 形象本体（表情激活时用表情帧，否则眨眼切换睁/闭眼）
+            GUI.DrawTexture(mascotRect, GetActiveMascotTex());
             // 表情差分徽章（右上角：AI 回复【表情:xxx】时弹出对应符号，4 秒后消失）
             if (!string.IsNullOrEmpty(_mascotEmotion))
             {
@@ -1494,6 +1495,28 @@ public class RightPanel : MonoBehaviour
         _mascotEmotionTimer = EMOTION_SHOW_TIME;
     }
 
+    /// <summary>当前应显示的形象纹理：表情激活 → 表情帧；否则睁眼/闭眼帧</summary>
+    private Texture2D GetActiveMascotTex()
+    {
+        if (!string.IsNullOrEmpty(_mascotEmotion))
+        {
+            Texture2D t = GetMascotEmoteTex(_mascotEmotion);
+            if (t != null) return t;
+        }
+        return _mascotBlinking ? _mascotBlinkTex : _mascotOpenTex;
+    }
+
+    /// <summary>表情名 → 表情形象帧（惰性生成缓存）</summary>
+    private Texture2D GetMascotEmoteTex(string expName)
+    {
+        if (string.IsNullOrEmpty(expName)) return null;
+        Texture2D cached;
+        if (_mascotEmoteTex.TryGetValue(expName, out cached)) return cached;
+        cached = LoadMascotEmote(expName);
+        if (cached != null) _mascotEmoteTex[expName] = cached;
+        return cached;
+    }
+
     /// <summary>表情名 → 符号徽章纹理（8x8 点阵，惰性生成缓存）</summary>
     private Texture2D GetEmblemTex(string expName)
     {
@@ -1589,12 +1612,104 @@ public class RightPanel : MonoBehaviour
         }
         var tex = new Texture2D(rows[0].Length, rows.Length, TextureFormat.ARGB32, false);
         tex.filterMode = FilterMode.Point;
+        // ★ SetPixel(0,0) 是纹理底部，而 rows[0] 是符号顶部 → 必须行反转，否则 GUI 显示上下颠倒
         for (int y = 0; y < rows.Length; y++)
             for (int x = 0; x < rows[y].Length; x++)
-                tex.SetPixel(x, y, rows[y][x] == '#' ? c : Color.clear);
+                tex.SetPixel(x, rows.Length - 1 - y, rows[y][x] == '#' ? c : Color.clear);
         tex.Apply();
         _emblemTex[key] = tex;
         return tex;
+    }
+
+    /// <summary>
+    /// 生成表情形象帧：在 17x24 原图上重绘眼睛/眉毛/嘴/腮红（表情包），×4 放大。
+    /// 脸部坐标（x=列, y=行）：眼睛 y=12 x=5/x=9（紫眼）；眉毛 y=10 x=4-5/x=9-10；腮红 y=13-14；嘴 y=15。
+    /// </summary>
+    private static Texture2D LoadMascotEmote(string expName)
+    {
+        var src = Resources.Load<Texture2D>("PixelFuXuan_17x24");
+        if (src == null) return null;
+        try
+        {
+            var px = src.GetPixels32();
+            int w = src.width, h = src.height;
+            Color32 skin   = new Color32(255, 243, 235, 255); // 肤色
+            Color32 eye    = new Color32(159, 117, 148, 255); // 原紫眼
+            Color32 line   = new Color32(202, 202, 212, 255); // 闭眼缝线
+            Color32 dark   = new Color32(72, 70, 78, 255);    // 深描边（眉/嘴）
+            Color32 blushC = new Color32(255, 150, 175, 255); // 腮红粉
+            Color32 tearC  = new Color32(140, 200, 255, 255); // 泪滴蓝
+
+            void Set(int x, int y, Color32 c) { if (x >= 0 && x < w && y >= 0 && y < h) px[y * w + x] = c; }
+            // 微笑嘴：y15 行中间 x6-10 改肤色，保留两端黑 x5/x11 作嘴角
+            void SmileMouth() { for (int mx = 6; mx <= 10; mx++) Set(mx, 15, skin); }
+
+            switch (expName)
+            {
+                case "happy":   // ^ ^ 眯眼笑 + 微笑嘴
+                    Set(5, 12, line); Set(9, 12, line); SmileMouth();
+                    break;
+                case "angry":   // 怒眉压低 + 抿嘴
+                    Set(5, 10, dark); Set(9, 10, dark);
+                    Set(7, 15, dark); Set(8, 15, dark); Set(9, 15, dark);
+                    break;
+                case "sad":     // 八字垂眉 + 泪滴 + 委屈嘴
+                    Set(4, 10, dark); Set(10, 10, dark);
+                    Set(5, 13, tearC); Set(9, 13, tearC);
+                    Set(7, 15, dark); Set(8, 15, dark); Set(9, 15, dark);
+                    break;
+                case "surprise": // 2x2 大眼 ○○ + O 形嘴
+                    for (int ey = 11; ey <= 12; ey++)
+                    { Set(4, ey, eye); Set(5, ey, eye); Set(8, ey, eye); Set(9, ey, eye); }
+                    Set(7, 14, dark); Set(6, 15, dark); Set(8, 15, dark); Set(7, 16, dark); Set(7, 15, skin);
+                    break;
+                case "confused": // 挑眉 + 右眼眯 + 歪嘴
+                    Set(5, 10, dark);
+                    Set(9, 12, line);
+                    Set(8, 15, dark);
+                    break;
+                case "sleepy":  // 闭眼 + 哈欠 O 嘴
+                    Set(5, 12, line); Set(9, 12, line);
+                    Set(7, 14, dark); Set(7, 15, dark); Set(8, 15, dark);
+                    break;
+                case "blush":   // 闭眼 + 大红脸 + 抿嘴
+                    Set(5, 12, line); Set(9, 12, line);
+                    for (int bx = 4; bx <= 5; bx++) { Set(bx, 13, blushC); Set(bx, 14, blushC); }
+                    for (int bx = 9; bx <= 10; bx++) { Set(bx, 13, blushC); Set(bx, 14, blushC); }
+                    Set(7, 15, line); Set(8, 15, line);
+                    break;
+                case "love":    // ♥ 微笑嘴 + 脸颊粉（爱心只由右上角徽章表达，爱心眼太小糊脸，删掉）
+                    Set(4, 13, blushC); Set(10, 13, blushC);
+                    SmileMouth();
+                    break;
+                case "tear":    // 泪汪汪（双竖泪滴 + 撇嘴）
+                    Set(5, 13, tearC); Set(5, 14, tearC);
+                    Set(9, 13, tearC); Set(9, 14, tearC);
+                    Set(7, 15, dark); Set(8, 15, dark);
+                    break;
+                default:
+                    return null;
+            }
+
+            // ×4 放大（与 LoadMascot 一致，Point 锐利）
+            int uw = w * MASCOT_UPSCALE, uh = h * MASCOT_UPSCALE;
+            var tex = new Texture2D(uw, uh, TextureFormat.ARGB32, false);
+            tex.filterMode = FilterMode.Point;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            for (int y = 0; y < uh; y++)
+            {
+                int sy = y / MASCOT_UPSCALE;
+                for (int x = 0; x < uw; x++)
+                    tex.SetPixel(x, y, px[sy * w + (x / MASCOT_UPSCALE)]);
+            }
+            tex.Apply();
+            return tex;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("[RightPanel] 表情形象帧生成失败(" + e.GetType().Name + ")，跳过");
+            return null;
+        }
     }
 
     /// <summary>加载 17x24 像素符玄并放大为动态形象（×4，Point 锐利）；闭眼帧程序生成（眼睛行替换为肤色+闭眼缝线）</summary>
@@ -1759,6 +1874,9 @@ public class RightPanel : MonoBehaviour
         foreach (var kv in _emblemTex)
             if (kv.Value != null) Destroy(kv.Value);
         _emblemTex.Clear();
+        foreach (var kv in _mascotEmoteTex)
+            if (kv.Value != null) Destroy(kv.Value);
+        _mascotEmoteTex.Clear();
         if (_mascotOpenTex != null) Destroy(_mascotOpenTex);
         if (_mascotBlinkTex != null) Destroy(_mascotBlinkTex);
         if (_pixelFxTex != null) Destroy(_pixelFxTex);
