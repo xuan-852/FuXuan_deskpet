@@ -336,8 +336,10 @@ public class RightPanel : MonoBehaviour
     /// <summary>
     /// 测试收件箱：仅测试模式（D:\DesktopPetData\.test_mode 存在）启用。
     /// 外部测试脚本向 D:\DesktopPetData\inbox.txt 写入一行文字，
-    /// 这里以 0.25s 间隔轮询，读到非空内容即调用 ChatManager.SendMessage 发送，
-    /// 然后清空文件（保留文件避免反复触发）。
+    /// 这里以 0.25s 间隔轮询，读到非空内容即处理，然后清空文件（保留文件避免反复触发）。
+    /// 支持两种格式：
+    ///   - 普通文本 → 作为用户消息调用 ChatManager.SendMessage 发送（走 LLM）
+    ///   - @@emote:xxx → 测试表情注入，不走 LLM，直接左侧气泡 + 右上角表情徽章
     /// 发送后 HistoryCount +1 → Update 第 2 步自动 RebuildLog → 气泡直接可见。
     /// </summary>
     private void CheckTestInbox()
@@ -357,11 +359,22 @@ public class RightPanel : MonoBehaviour
         try { System.IO.File.WriteAllText(inboxPath, ""); }
         catch { return; }
 
-        if (_chat != null)
+        if (_chat == null) return;
+
+        // ★ 测试表情注入：@@emote:happy → 不走 LLM，直接左侧气泡 + 徽章
+        if (content.StartsWith("@@emote:"))
         {
-            _chat.SendMessage(content, null);
-            Debug.Log($"[TestInbox] 已注入消息: {content}");
+            string emote = content.Substring("@@emote:".Length).Trim();
+            if (!string.IsNullOrEmpty(emote))
+            {
+                _chat.InjectEmoteTest(emote);
+                Debug.Log($"[TestInbox] 已注入表情: {emote}");
+            }
+            return;
         }
+
+        _chat.SendMessage(content, null);
+        Debug.Log($"[TestInbox] 已注入消息: {content}");
     }
 
     /// <summary>轮询全局热键 Shift+~（GetAsyncKeyState 物理按键，不依赖消息队列）</summary>
@@ -1561,17 +1574,17 @@ public class RightPanel : MonoBehaviour
                     "#.#.#.",
                     "......" };
                 break;
-            default: // surprise 双感叹号
+            default: // surprise 双感叹号（细主干+底部点，避免被认成竖线 ||）
                 c = new Color(1f, 0.55f, 0.20f, 1f);
                 rows = new[] {
-                    "##..##",
-                    "##..##",
-                    "##..##",
-                    "##..##",
-                    "##..##",
+                    ".#..#.",
+                    ".#..#.",
+                    ".#..#.",
+                    ".#..#.",
+                    ".#..#.",
                     "......",
-                    "##..##",
-                    "##..##" };
+                    ".#..#.",
+                    "......" };
                 break;
         }
         var tex = new Texture2D(rows[0].Length, rows.Length, TextureFormat.ARGB32, false);

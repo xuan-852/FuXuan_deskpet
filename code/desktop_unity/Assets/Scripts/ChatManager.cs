@@ -450,6 +450,32 @@ public class ChatManager : MonoBehaviour
     }
 
     // ==================================================================
+    //  测试专用：表情注入（不走 LLM，直接触发左侧气泡 + 表情徽章）
+    // ==================================================================
+
+    /// <summary>
+    /// 测试模式：直接注入一条"符玄表情回复"到历史。
+    /// 内容形如"【表情:xxx】"，经 CleanDisplayText 后气泡显示干净文本，
+    /// 同时触发 OnExpressionTag（右上角徽章）与 OnNewReply（形象跳跃）。
+    /// 仅供测试脚本通过 inbox 通道触发（@@emote: 前缀），生产环境不可用。
+    /// </summary>
+    public void InjectEmoteTest(string expName)
+    {
+        if (!IsTestMode) return; // 仅测试模式允许注入
+
+        string mapped = MapExpName(expName);
+        string display = ChatConfig.EmoteDisplayText(mapped) ?? "……";
+        // 历史里存带标记的原文（RebuildLog 时 CleanDisplayText 会剥掉标记）
+        _history.Add(new Entry { role = "assistant", content = $"【表情:{mapped}】{display}" });
+        TrimHistory();
+        _lastReply = display;
+        _fullReplyText = display;
+        OnExpressionTag?.Invoke(mapped); // 徽章
+        OnNewReply?.Invoke(display);      // 形象跳跃 + HistoryCount 变化 → RebuildLog
+        Debug.Log($"[ChatManager] 🎭 测试注入表情: {expName} → {mapped}（{display}）");
+    }
+
+    // ==================================================================
     //  核心：API 请求循环（支持多次 tool_call 回环）
     // ==================================================================
 
