@@ -98,6 +98,9 @@ public class RightPanel : MonoBehaviour
     private Texture2D _ornamentTR;       // 右上云纹角饰
     private Texture2D _ornamentBR;       // 右下云纹角饰
     private Texture2D _ornamentBL;       // 左下云纹角饰
+    private Texture2D _starfieldTex;     // 星空星点纹理（背景叠加）
+    private Texture2D _taijiTex;         // 太极图（发送按钮）
+    private Texture2D _hexagramTex;      // 卦象三爻装饰（标题栏）
     private bool _stylesReady = false;
 
     // ==================== 字体档位缩放 ====================
@@ -240,6 +243,10 @@ public class RightPanel : MonoBehaviour
     {
         RefreshRefs();
 
+        // 0. 测试收件箱注入（仅测试模式）：外部脚本向 D:\DesktopPetData\inbox.txt 写入一行
+        //    → 本帧检测到即作为用户消息发送（绕过 UI 点击，窗口位置无关，适合自动化测试）
+        CheckTestInbox();
+
         // 1. 热键切换 — 兼容中文键盘（`·~` 键、F2、\ 均可）
         bool togglePressed = Input.GetKeyDown(toggleKey)
             || Input.GetKeyDown(KeyCode.F2)
@@ -322,6 +329,41 @@ public class RightPanel : MonoBehaviour
         }
     }
 
+    // ==================== 测试注入通道 ====================
+
+    private float _nextInboxCheck = 0f;
+
+    /// <summary>
+    /// 测试收件箱：仅测试模式（D:\DesktopPetData\.test_mode 存在）启用。
+    /// 外部测试脚本向 D:\DesktopPetData\inbox.txt 写入一行文字，
+    /// 这里以 0.25s 间隔轮询，读到非空内容即调用 ChatManager.SendMessage 发送，
+    /// 然后清空文件（保留文件避免反复触发）。
+    /// 发送后 HistoryCount +1 → Update 第 2 步自动 RebuildLog → 气泡直接可见。
+    /// </summary>
+    private void CheckTestInbox()
+    {
+        if (!ChatManager.IsTestMode) return;
+        if (Time.time < _nextInboxCheck) return;
+        _nextInboxCheck = Time.time + 0.25f;
+
+        const string inboxPath = @"D:\DesktopPetData\inbox.txt";
+        if (!System.IO.File.Exists(inboxPath)) return;
+
+        string content;
+        try { content = System.IO.File.ReadAllText(inboxPath).Trim(); }
+        catch { return; }
+        if (string.IsNullOrEmpty(content)) return;
+
+        try { System.IO.File.WriteAllText(inboxPath, ""); }
+        catch { return; }
+
+        if (_chat != null)
+        {
+            _chat.SendMessage(content, null);
+            Debug.Log($"[TestInbox] 已注入消息: {content}");
+        }
+    }
+
     /// <summary>轮询全局热键 Shift+~（GetAsyncKeyState 物理按键，不依赖消息队列）</summary>
     private void CheckGlobalHotkey()
     {
@@ -361,6 +403,9 @@ public class RightPanel : MonoBehaviour
         // ——— 面板背景 ———
         Rect bgRect = new Rect(px, py, pw, ph);
         GUI.Box(bgRect, GUIContent.none, _panelStyle);
+        // 星空星点叠加（太卜司观星氛围）
+        if (_starfieldTex != null)
+            GUI.DrawTexture(bgRect, _starfieldTex, ScaleMode.StretchToFill);
 
         // ——— 像素边框（2px 紫色硬边，带四角强调） ———
         Color borderC = new Color(0.58f, 0.42f, 0.88f, 0.85f);
@@ -376,6 +421,15 @@ public class RightPanel : MonoBehaviour
         DrawPixelRect(new Rect(px + pw - 6f, py, 6f, 6f), borderC);
         DrawPixelRect(new Rect(px, py + ph - 6f, 6f, 6f), borderC);
         DrawPixelRect(new Rect(px + pw - 6f, py + ph - 6f, 6f, 6f), borderC);
+
+        // 四角云纹角饰（太卜司星纹，半透明叠加）
+        Color ornamentA = new Color(1f, 1f, 1f, 0.35f);
+        GUI.color = ornamentA;
+        GUI.DrawTexture(new Rect(px + 8f, py + 8f, 30f, 30f), _ornamentTL);
+        GUI.DrawTexture(new Rect(px + pw - 38f, py + 8f, 30f, 30f), _ornamentTR);
+        GUI.DrawTexture(new Rect(px + 8f, py + ph - 38f, 30f, 30f), _ornamentBL);
+        GUI.DrawTexture(new Rect(px + pw - 38f, py + ph - 38f, 30f, 30f), _ornamentBR);
+        GUI.color = Color.white;
 
         // ═══════════════════════════════════════
         //  终端标题栏 — [像素符玄] 符玄@太卜司:~ + 状态 + 时间 + ✕
@@ -395,15 +449,20 @@ public class RightPanel : MonoBehaviour
         GUI.DrawTexture(fxHeadRect, _pixelFxTex);
 
         bool waiting = _chat != null && _chat.IsWaiting;
+        float statusPulse = waiting ? 0.55f + 0.45f * Mathf.Sin(Time.time * 3f) : 1f; // 思考中 → 紫色呼吸
         Color statusC = waiting
-            ? new Color(0.72f, 0.55f, 0.95f, 1f)   // 思考中 → 紫
+            ? new Color(0.72f, 0.55f, 0.95f, statusPulse)   // 思考中 → 紫
             : new Color(0.45f, 0.85f, 0.55f, 1f);  // 就绪 → 绿
         GUI.color = statusC;
         GUI.DrawTexture(new Rect(px + fxHeadSize + 12f, py + titleH / 2f - 3f, 7f, 7f), _statusDotTex);
         GUI.color = Color.white;
 
-        GUI.Label(new Rect(px + fxHeadSize + 24f, py + 3f, pw - 200f, 16f), "符玄@太卜司: ~", _termTitleStyle);
-        GUI.Label(new Rect(px + fxHeadSize + 24f, py + 19f, pw - 200f, 14f),
+        // 卦象三爻装饰（金色，太卜司占卜符号）
+        if (_hexagramTex != null)
+            GUI.DrawTexture(new Rect(px + fxHeadSize + 24f, py + titleH / 2f - 7f, 14f, 14f), _hexagramTex);
+
+        GUI.Label(new Rect(px + fxHeadSize + 46f, py + 3f, pw - 220f, 16f), "符玄@太卜司: ~", _termTitleStyle);
+        GUI.Label(new Rect(px + fxHeadSize + 46f, py + 19f, pw - 220f, 14f),
             waiting ? "● 思考中…" : "● 就绪", _termStatusStyle);
 
         // ——— 字体档位按钮（时间左侧，点击循环 A → A2 → A3 → A4） ———
@@ -520,7 +579,7 @@ public class RightPanel : MonoBehaviour
                 GUIStyle bubble = ln.kind == 1 ? _bubbleUserStyle : _bubbleFxStyle;
                 float naturalW = bubble.CalcSize(new GUIContent(ln.text)).x;
                 float bubbleW = Mathf.Min(naturalW, maxBubbleW);
-                totalH += Mathf.Max(bubble.CalcHeight(new GUIContent(ln.text), bubbleW), avatarSize) + 8f;
+                totalH += Mathf.Max(CalcBubbleHeight(bubble, ln.text, bubbleW, naturalW), avatarSize) + 8f;
             }
         }
         if (waiting) totalH += 24f;
@@ -551,7 +610,7 @@ public class RightPanel : MonoBehaviour
             // 气泡宽度：短消息贴合文字，长消息自动换行封顶
             float naturalW = bubble.CalcSize(new GUIContent(ln.text)).x;
             float bubbleW = Mathf.Min(naturalW, maxBubbleW);
-            float bubbleH = bubble.CalcHeight(new GUIContent(ln.text), bubbleW);
+            float bubbleH = CalcBubbleHeight(bubble, ln.text, bubbleW, naturalW);
             Rect bubbleRect, avatarRect;
             if (isUser)
             {
@@ -686,19 +745,27 @@ public class RightPanel : MonoBehaviour
 
         _inputText = GUI.TextField(inputBgRect, _inputText, MAX_INPUT_LENGTH, _termInputStyle);
 
-        // ——— 发送按钮（像素方块风格，hover 提亮） ———
+        // ——— 发送按钮（太极图，符玄道法风，hover 紫色光晕） ———
         Rect sendBtnRect = new Rect(tfX + tfW + 6f, inputY + (inputBarHeight - sendBtnSize) / 2f, sendBtnSize, sendBtnSize);
         bool sendHover = sendBtnRect.Contains(Event.current.mousePosition);
-        // 像素方块背景
-        DrawPixelRect(sendBtnRect, sendHover
-            ? new Color(0.66f, 0.50f, 0.95f, 0.5f)
-            : new Color(0.50f, 0.35f, 0.80f, 0.25f));
+        if (_taijiTex != null)
+        {
+            GUI.DrawTexture(sendBtnRect, _taijiTex);
+            if (sendHover) GUI.DrawTexture(sendBtnRect, _glowTex); // 紫色光晕提亮
+        }
+        else
+        {
+            // 回退：像素方块背景
+            DrawPixelRect(sendBtnRect, sendHover
+                ? new Color(0.66f, 0.50f, 0.95f, 0.5f)
+                : new Color(0.50f, 0.35f, 0.80f, 0.25f));
+        }
         // 边框
         DrawPixelRect(new Rect(sendBtnRect.x, sendBtnRect.y, sendBtnRect.width, 1f), new Color(0.58f, 0.42f, 0.88f, 0.6f));
         DrawPixelRect(new Rect(sendBtnRect.x, sendBtnRect.yMax - 1f, sendBtnRect.width, 1f), new Color(0.58f, 0.42f, 0.88f, 0.6f));
         DrawPixelRect(new Rect(sendBtnRect.x, sendBtnRect.y, 1f, sendBtnRect.height), new Color(0.58f, 0.42f, 0.88f, 0.6f));
         DrawPixelRect(new Rect(sendBtnRect.xMax - 1f, sendBtnRect.y, 1f, sendBtnRect.height), new Color(0.58f, 0.42f, 0.88f, 0.6f));
-        if (GUI.Button(sendBtnRect, new GUIContent("→", "发送 (Enter)"), sendHover ? _sendBtnHoverStyle : _sendBtnStyle))
+        if (GUI.Button(sendBtnRect, new GUIContent(" ", "发送 (Enter)"), _sendBtnStyle))
         {
             string sendMsg = _inputText.Trim();
             if (sendMsg.Length > 0)
@@ -784,9 +851,15 @@ public class RightPanel : MonoBehaviour
         Color cTextDim    = new Color(0.60f, 0.55f, 0.70f, 0.6f);  // 淡文字
         Color cGold       = new Color(0.85f, 0.75f, 0.50f, 1.0f);  // 金色点缀
 
-        // ——— 面板背景 ——— 竖直渐变模拟（左右两半混合）
-        _bgTex = MakeGradientTex(64, 64, cDarkBg, cMidBg, true);
+        // ——— 面板背景 ——— 太卜司星空（深紫黑→藏蓝渐变），叠加星点
+        _bgTex = MakeGradientTex(64, 64,
+            new Color(0.11f, 0.08f, 0.18f, 0.88f),
+            new Color(0.05f, 0.05f, 0.12f, 0.88f), true);
         _panelStyle = new GUIStyle { normal = { background = _bgTex } };
+        // 星空星点 + 太极发送按钮 + 卦象装饰
+        _starfieldTex = MakeStarfieldTex(96, 96, 70);
+        _taijiTex = MakeTaijiTex(30);
+        _hexagramTex = GenHexagramTex(12, 12, new Color(0.92f, 0.82f, 0.56f, 0.92f));
 
         // ——— 顶部装饰线（紫） ———
         _accentLineTex = MakeTex(1, 1, cAccent);
@@ -835,7 +908,7 @@ public class RightPanel : MonoBehaviour
         _termTitleStyle = new GUIStyle
         {
             font = _monoFont, fontSize = 14, fontStyle = FontStyle.Bold,
-            normal = { textColor = new Color(0.62f, 0.48f, 0.95f, 1f) },
+            normal = { textColor = new Color(0.90f, 0.80f, 0.58f, 1f) },  // 太卜司金
             alignment = TextAnchor.MiddleLeft
         };
         _termStatusStyle = new GUIStyle
@@ -878,7 +951,7 @@ public class RightPanel : MonoBehaviour
         };
         _termLogDimStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 14,
+            font = _monoFont, fontSize = 14, wordWrap = true,
             normal = { textColor = new Color(0.55f, 0.54f, 0.60f, 0.9f) },
             alignment = TextAnchor.UpperLeft
         };
@@ -905,9 +978,13 @@ public class RightPanel : MonoBehaviour
             padding = new RectOffset(8, 6, 4, 4)
         };
 
-        // ——— QQ 式对话气泡样式 ——— 符玄左紫、用户右蓝（圆角，可换行）
-        _bubbleFxTex = GenRoundedRect(64, 48, 10, new Color(0.34f, 0.25f, 0.52f, 0.92f));
-        _bubbleUserTex = GenRoundedRect(64, 48, 10, new Color(0.16f, 0.32f, 0.52f, 0.92f));
+        // ——— QQ 式对话气泡样式 ——— 符玄左紫(渐变+金边)、用户右蓝(渐变+浅蓝边)
+        _bubbleFxTex = GenBubbleTex(64, 48, 10,
+            new Color(0.45f, 0.33f, 0.62f, 0.96f), new Color(0.30f, 0.20f, 0.46f, 0.96f),
+            new Color(0.88f, 0.78f, 0.55f, 0.95f));
+        _bubbleUserTex = GenBubbleTex(64, 48, 10,
+            new Color(0.24f, 0.42f, 0.60f, 0.96f), new Color(0.14f, 0.28f, 0.44f, 0.96f),
+            new Color(0.55f, 0.72f, 0.95f, 0.9f));
         _bubbleFxStyle = new GUIStyle
         {
             font = _monoFont, fontSize = 14, wordWrap = true,
@@ -1255,6 +1332,117 @@ public class RightPanel : MonoBehaviour
         return tex;
     }
 
+    /// <summary>生成星空纹理：透明底上随机散布星点（白色/金色/紫色）</summary>
+    private static Texture2D MakeStarfieldTex(int w, int h, int starCount)
+    {
+        var tex = new Texture2D(w, h, TextureFormat.ARGB32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        Color clear = new Color(0, 0, 0, 0);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                tex.SetPixel(x, y, clear);
+        // 确定性随机（固定种子，避免每次生成不同星空闪烁）
+        var rng = new System.Random(42);
+        for (int i = 0; i < starCount; i++)
+        {
+            int x = rng.Next(w), y = rng.Next(h);
+            float a = 0.25f + (float)rng.NextDouble() * 0.65f;
+            int t = rng.Next(3);
+            Color c = t == 0 ? new Color(1f, 1f, 1f, a)
+                    : t == 1 ? new Color(0.95f, 0.85f, 0.60f, a)   // 金色星
+                             : new Color(0.75f, 0.60f, 1f, a);     // 紫色星
+            tex.SetPixel(x, y, c);
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>生成太极图（黑白双鱼，发送按钮）</summary>
+    private static Texture2D MakeTaijiTex(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.ARGB32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        float c = (size - 1) / 2f;
+        float R = c - 0.5f;          // 外圆半径
+        float r = R / 2f;            // 鱼身小圆半径
+        float eye = r / 2.6f;        // 鱼眼半径
+        Color black = new Color(0.13f, 0.10f, 0.17f, 0.96f);
+        Color white = new Color(0.93f, 0.89f, 0.98f, 0.96f);
+        Color clear = new Color(0, 0, 0, 0);
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = x - c, dy = y - c;
+                if (dx * dx + dy * dy > R * R) { tex.SetPixel(x, y, clear); continue; }
+                Color col = (x < c) ? black : white;   // 左黑右白
+                // 右上白鱼（圆心 (c, c-r)），内含黑眼
+                float d1x = x - c, d1y = y - (c - r);
+                if (d1x * d1x + d1y * d1y <= r * r) col = white;
+                if (d1x * d1x + d1y * d1y <= eye * eye) col = black;
+                // 左下黑鱼（圆心 (c, c+r)），内含白眼
+                float d2x = x - c, d2y = y - (c + r);
+                if (d2x * d2x + d2y * d2y <= r * r) col = black;
+                if (d2x * d2x + d2y * d2y <= eye * eye) col = white;
+                tex.SetPixel(x, y, col);
+            }
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>生成卦象三爻（☰ 形，三横线，标题栏金色装饰）</summary>
+    private static Texture2D GenHexagramTex(int w, int h, Color c)
+    {
+        var tex = new Texture2D(w, h, TextureFormat.ARGB32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        Color clear = new Color(0, 0, 0, 0);
+        int barH = Mathf.Max(h / 10, 1);      // 每爻粗细
+        int gap = Mathf.Max((h - 3 * barH) / 2, 1); // 爻间缝隙
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                tex.SetPixel(x, y, clear);
+        for (int i = 0; i < 3; i++)
+        {
+            int y0 = i * (barH + gap);
+            for (int y = y0; y < y0 + barH; y++)
+                for (int x = 0; x < w; x++)
+                    tex.SetPixel(x, y, c);
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>生成带细边的圆角气泡纹理（SDF 圆角矩形，内部渐变 + 边框色）</summary>
+    private static Texture2D GenBubbleTex(int w, int h, float r, Color fillTop, Color fillBottom, Color border)
+    {
+        var tex = new Texture2D(w, h, TextureFormat.ARGB32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        Color clear = new Color(0, 0, 0, 0);
+        float hw = (w - 1f) / 2f, hh = (h - 1f) / 2f;
+        float rr = Mathf.Max(r - 1f, 0.5f);
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                float qx = Mathf.Abs(x - hw) - (hw - rr);
+                float qy = Mathf.Abs(y - hh) - (hh - rr);
+                float ax = Mathf.Max(qx, 0f), ay = Mathf.Max(qy, 0f);
+                float dist = Mathf.Sqrt(ax * ax + ay * ay) + Mathf.Min(Mathf.Max(qx, qy), 0f) - rr;
+                if (dist > 0f) { tex.SetPixel(x, y, clear); continue; }
+                float ty = y / (float)(h - 1);
+                Color col = Color.Lerp(fillTop, fillBottom, ty);
+                // 边框带：距边缘 2px 内渐变过渡到边框色
+                if (dist > -2f)
+                    col = Color.Lerp(border, col, Mathf.Clamp01((dist + 2f) / 1.2f));
+                tex.SetPixel(x, y, col);
+            }
+        }
+        tex.Apply();
+        return tex;
+    }
+
     /// <summary>
     /// 加载符玄头像（高清原图，平滑显示）
     /// ★多模态：优先加载 Resources/PixelFuXuan.png（透明背景高清立绘）
@@ -1487,6 +1675,15 @@ public class RightPanel : MonoBehaviour
     }
 
     /// <summary>根据 ChatManager 历史重建终端日志行</summary>
+    /// <summary>计算气泡高度：多行文本补足一行余量，防止 GUI.Label 高度不足时尾部出现省略号“...”截断。</summary>
+    private static float CalcBubbleHeight(GUIStyle bubble, string text, float bubbleW, float naturalW)
+    {
+        float h = bubble.CalcHeight(new GUIContent(text), bubbleW);
+        if (naturalW > bubbleW + 1f)
+            h += bubble.fontSize; // 多行：补偿行高/换行点偏差，避免尾部省略号
+        return h;
+    }
+
     private void RebuildLog()
     {
         _logLines.Clear();
@@ -1496,8 +1693,9 @@ public class RightPanel : MonoBehaviour
         {
             var e = hist[i];
             if (string.IsNullOrEmpty(e.content)) continue;
-            string text = e.content.Replace('\n', ' ').Replace('\r', ' ');
-            if (text.Length > 500) text = text.Substring(0, 500) + "…";
+            // ★ 显示前统一清洗：剥离 markdown 语法与内嵌表情/动作标记
+            string text = ChatManager.CleanDisplayText(e.content).Replace('\n', ' ').Replace('\r', ' ');
+            // 注意：不截断长文本——气泡自动换行、日志区可滚动，完整显示符玄的长回复
             string role = e.role;
             if (role == "user")
                 _logLines.Add(new LogLine { text = text, kind = 1 });
@@ -1530,6 +1728,9 @@ public class RightPanel : MonoBehaviour
         if (_ornamentTR != null) Destroy(_ornamentTR);
         if (_ornamentBR != null) Destroy(_ornamentBR);
         if (_ornamentBL != null) Destroy(_ornamentBL);
+        if (_starfieldTex != null) Destroy(_starfieldTex);
+        if (_taijiTex != null) Destroy(_taijiTex);
+        if (_hexagramTex != null) Destroy(_hexagramTex);
         if (_mascotSubscribed && _chat != null)
         {
             _chat.OnNewReply -= OnMascotReply;

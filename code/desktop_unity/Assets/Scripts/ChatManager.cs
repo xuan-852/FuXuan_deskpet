@@ -657,7 +657,8 @@ public class ChatManager : MonoBehaviour
 
             // ——— 解析并执行工具 ———
             var calls = ParseToolCalls(toolCallsJson);
-            _lastReply = fullContent ?? "[施法中……]";
+            // ★ 清洗后再赋值，避免 markdown/表情标记泄漏到 UI
+            _lastReply = CleanDisplayText(fullContent ?? "[施法中……]");
 
             foreach (var call in calls)
             {
@@ -1312,11 +1313,12 @@ public class ChatManager : MonoBehaviour
 
         // 成功：将本地回复加入历史
         _history.Add(new Entry { role = "assistant", content = fallbackReply });
-        _lastReply = fallbackReply;
-        _fullReplyText = fallbackReply;
+        // ★ 清洗后再赋值，避免 markdown/表情标记泄漏到 UI
+        _lastReply = CleanDisplayText(fallbackReply);
+        _fullReplyText = _lastReply;
 
         // 触发显示（使用流式路径的显示机制）
-        OnNewReply?.Invoke(fallbackReply);
+        OnNewReply?.Invoke(_lastReply);
         StartSentenceQueue(fallbackReply);
 
         // 记录记忆
@@ -1617,6 +1619,53 @@ public class ChatManager : MonoBehaviour
     // ==================================================================
 
     /// <summary>
+    /// 清洗 AI 回复文本用于 UI 显示：剥离 markdown 语法与残留的
+    /// 内嵌表情/动作标记（纯文本清理，不执行任何 Live2D 动作）。
+    /// 供气泡、聊天面板（RightPanel）等所有显示层统一调用。
+    ///
+    /// 处理内容：
+    ///   1) markdown 语法：**粗体**、*斜体*、`行内代码`、```代码块```、
+    ///      # 标题、- 列表、数字列表、&gt; 引用、下划线、删除线
+    ///   2) 内嵌标记残留：【表情:xxx】【动作:xxx】（自然描述）
+    /// </summary>
+    public static string CleanDisplayText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+
+        string result = text;
+
+        // 1) 剥离内嵌标记（与 StripAndExecuteActions 的正则一致，但不执行动作）
+        result = Regex.Replace(result, @"【表情[:：]([^】]+)】", "");
+        result = Regex.Replace(result, @"【动作[:：]([^】]+)】", "");
+        result = Regex.Replace(result, @"（([^）]+)）", "");
+
+        // 2) 剥离 markdown 语法
+        // 2.1 代码块 ```...```（整块移除，多行）
+        result = Regex.Replace(result, @"```[\s\S]*?```", "");
+        // 2.2 行内代码 `code`
+        result = Regex.Replace(result, @"`([^`]+)`", "$1");
+        // 2.3 粗体/斜体/删除线/下划线（**x**、__x__、~~x~~、*x*、_x_）
+        result = Regex.Replace(result, @"\*\*([^*]+)\*\*", "$1");
+        result = Regex.Replace(result, @"__([^_]+)__", "$1");
+        result = Regex.Replace(result, @"~~([^~]+)~~", "$1");
+        result = Regex.Replace(result, @"\*([^*]+)\*", "$1");
+        result = Regex.Replace(result, @"_([^_]+)_", "$1");
+        // 2.4 行首标题 #、##、###…
+        result = Regex.Replace(result, @"(?m)^\s*#{1,6}\s*", "");
+        // 2.5 行首列表符号 -、*、+、数字.（转 - 号可能和列表冲突，先处理无序列表）
+        result = Regex.Replace(result, @"(?m)^\s*[-*+]\s+", "");
+        result = Regex.Replace(result, @"(?m)^\s*\d+[\.、]\s*", "");
+        // 2.6 行首引用 >
+        result = Regex.Replace(result, @"(?m)^\s*&gt;\s*", "");
+        result = Regex.Replace(result, @"(?m)^\s*>\s*", "");
+
+        // 3) 收尾清理：合并多余空白行、去掉首尾空白
+        result = Regex.Replace(result, @"[ \t]{2,}", " ");
+        result = Regex.Replace(result, @"\n{3,}", "\n\n");
+        return result.Trim();
+    }
+
+    /// <summary>
     /// 剥离 AI 回复中的内嵌动作/表情标记，同步执行对应的 Live2D 动作。
     /// 这样 AI 可以在话语中自然夹带动作，气泡只显示纯净对话。
     ///
@@ -1630,7 +1679,7 @@ public class ChatManager : MonoBehaviour
         if (string.IsNullOrEmpty(text)) return text;
 
         var renderer = FindObjectOfType<Live2DRenderer>();
-        if (renderer == null) return text;
+        if (renderer == null) return CleanDisplayText(text); // 无渲染器：仅做纯文本清理
 
         string result = text;
 
@@ -1677,7 +1726,8 @@ public class ChatManager : MonoBehaviour
             return ""; // 无论如何都从文本中移除
         });
 
-        return result.Trim();
+        // ★ 最终统一清洗：剥离 markdown 语法（**粗体**、`代码`、# 标题等）
+        return CleanDisplayText(result);
     }
 
     /// <summary>中文/模糊表情名 → 标准英文名</summary>
