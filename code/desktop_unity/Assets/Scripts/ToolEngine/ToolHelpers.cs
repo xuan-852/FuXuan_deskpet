@@ -39,13 +39,6 @@ public static class ToolHelpers
     private const uint GMEM_MOVABLE = 0x0002;
     private const uint GMEM_ZEROINIT = 0x0040;
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessageW(IntPtr hWnd, uint msg, UIntPtr wParam, IntPtr lParam);
-    private const uint WM_APPCOMMAND = 0x0319;
-    private const uint APPCOMMAND_VOLUME_UP = 0x0a0000;
-    private const uint APPCOMMAND_VOLUME_DOWN = 0x090000;
-    private const uint APPCOMMAND_VOLUME_MUTE = 0x080000;
-
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
     private const uint MB_OK = 0x000000;
@@ -130,31 +123,119 @@ public static class ToolHelpers
     }
 
     // ================================================================
-    //  音量
+    //  音量（Core Audio 直控，精度 0-100）
     // ================================================================
 
+    [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
+    private class MMDeviceEnumeratorComObject { }
+
+    [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IMMDeviceEnumerator
+    {
+        [PreserveSig] int EnumAudioEndpoints(int dataFlow, int dwStateMask, out IMMDevice ppDevices);
+        [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppEndpoint);
+        [PreserveSig] int GetDevice(string pwstrId, out IMMDevice ppDevice);
+        [PreserveSig] int RegisterEndpointNotificationCallback(IntPtr pClient);
+        [PreserveSig] int UnregisterEndpointNotificationCallback(IntPtr pClient);
+    }
+
+    [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IMMDevice
+    {
+        [PreserveSig] int Activate(ref Guid iid, int dwClsCtx, IntPtr pActivationParams, out IAudioEndpointVolume ppInterface);
+        [PreserveSig] int OpenPropertyStore(int stgmAccess, out IntPtr ppProperties);
+        [PreserveSig] int GetId(out IntPtr ppstrId);
+        [PreserveSig] int GetState(out int pdwState);
+    }
+
+    [Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IAudioEndpointVolume
+    {
+        [PreserveSig] int RegisterControlChangeNotify(IntPtr pNotify);
+        [PreserveSig] int UnregisterControlChangeNotify(IntPtr pNotify);
+        [PreserveSig] int GetChannelCount(out uint pnChannelCount);
+        [PreserveSig] int SetMasterVolumeLevel(float fLevelDB, ref Guid pguidEventContext);
+        [PreserveSig] int SetMasterVolumeLevelScalar(float fLevel, ref Guid pguidEventContext);
+        [PreserveSig] int GetMasterVolumeLevel(out float pfLevelDB);
+        [PreserveSig] int GetMasterVolumeLevelScalar(out float pfLevel);
+        [PreserveSig] int SetChannelVolumeLevel(uint nChannel, float fLevelDB, ref Guid pguidEventContext);
+        [PreserveSig] int SetChannelVolumeLevelScalar(uint nChannel, float fLevel, ref Guid pguidEventContext);
+        [PreserveSig] int GetChannelVolumeLevel(uint nChannel, out float pfLevelDB);
+        [PreserveSig] int GetChannelVolumeLevelScalar(uint nChannel, out float pfLevel);
+        [PreserveSig] int SetMute(bool bMute, ref Guid pguidEventContext);
+        [PreserveSig] int GetMute(out bool pbMute);
+    }
+
+    private static readonly Guid IID_IAudioEndpointVolume = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
+    private const int CLSCTX_INPROC_SERVER = 0x1;
+    private const int EDataFlow_Render = 0;
+    private const int ERole_Multimedia = 1;
+
+    /// <summary>设置系统主音量（0-100）。Core Audio 直控；仅当 COM 不可用时回退按键模拟。</summary>
     public static void SetSystemVolume(int level)
     {
         level = Mathf.Clamp(level, 0, 100);
-        // 使用简化方法：先静音，再按百分比逐级调
-        IntPtr hWnd = Process.GetCurrentProcess().MainWindowHandle;
-        SendMessageW(hWnd, WM_APPCOMMAND, UIntPtr.Zero, (IntPtr)APPCOMMAND_VOLUME_MUTE);
-        SendMessageW(hWnd, WM_APPCOMMAND, UIntPtr.Zero, (IntPtr)APPCOMMAND_VOLUME_MUTE);
-        // 调到 50%，再微调
-        for (int i = 0; i < 50; i++)
-            SendMessageW(hWnd, WM_APPCOMMAND, UIntPtr.Zero, (IntPtr)APPCOMMAND_VOLUME_UP);
-        int target = level;
-        int current = 50;
-        while (current < target)
+        if (TrySetVolumeScalar(level / 100f)) return;
+        // 回退：按键模拟。先尽力读当前值，再按差值调节（读不到则从 0 起跳，不再盲目假设 50）
+        int current = GetSystemVolume();
+        if (current < 0) current = 0;
+        for (int i = current; i < level; i++) PressVolumeKey(true);
+        for (int i = level; i < current; i++) PressVolumeKey(false);
+    }
+
+    /// <summary>读取系统主音量（0-100），失败返回 -1</summary>
+    public static int GetSystemVolume()
+    {
+        try
         {
-            SendMessageW(hWnd, WM_APPCOMMAND, UIntPtr.Zero, (IntPtr)APPCOMMAND_VOLUME_UP);
-            current++;
+            Guid iid = IID_IAudioEndpointVolume; // static readonly 不能作 ref 实参，用局部变量
+            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
+            IMMDevice device;
+            if (enumerator.GetDefaultAudioEndpoint(EDataFlow_Render, ERole_Multimedia, out device) != 0) return -1;
+            IAudioEndpointVolume volume;
+            if (device.Activate(ref iid, CLSCTX_INPROC_SERVER, IntPtr.Zero, out volume) != 0) return -1;
+            float scalar;
+            int hr = volume.GetMasterVolumeLevelScalar(out scalar);
+            Marshal.ReleaseComObject(volume);
+            Marshal.ReleaseComObject(device);
+            Marshal.ReleaseComObject(enumerator);
+            if (hr != 0) return -1;
+            return Mathf.RoundToInt(Mathf.Clamp01(scalar) * 100f);
         }
-        while (current > target)
+        catch { return -1; }
+    }
+
+    private static bool TrySetVolumeScalar(float scalar)
+    {
+        try
         {
-            SendMessageW(hWnd, WM_APPCOMMAND, UIntPtr.Zero, (IntPtr)APPCOMMAND_VOLUME_DOWN);
-            current--;
+            Guid iid = IID_IAudioEndpointVolume; // static readonly 不能作 ref 实参，用局部变量
+            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
+            IMMDevice device;
+            if (enumerator.GetDefaultAudioEndpoint(EDataFlow_Render, ERole_Multimedia, out device) != 0) return false;
+            IAudioEndpointVolume volume;
+            if (device.Activate(ref iid, CLSCTX_INPROC_SERVER, IntPtr.Zero, out volume) != 0) return false;
+            Guid ctx = Guid.Empty; // static readonly 不能作 ref 实参，用局部变量
+            int hr = volume.SetMasterVolumeLevelScalar(Mathf.Clamp01(scalar), ref ctx);
+            Marshal.ReleaseComObject(volume);
+            Marshal.ReleaseComObject(device);
+            Marshal.ReleaseComObject(enumerator);
+            return hr == 0;
         }
+        catch { return false; }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+    private const byte VK_VOLUME_UP = 0xAF;
+    private const byte VK_VOLUME_DOWN = 0xAE;
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+
+    private static void PressVolumeKey(bool up)
+    {
+        byte vk = up ? VK_VOLUME_UP : VK_VOLUME_DOWN;
+        keybd_event(vk, 0, 0, UIntPtr.Zero);
+        keybd_event(vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
     }
 
     // ================================================================
@@ -163,7 +244,15 @@ public static class ToolHelpers
 
     public static void ShowNotification(string title, string message)
     {
-        try { MessageBox(IntPtr.Zero, message, title, MB_OK | MB_ICONINFORMATION); }
+        // 模态 MessageBox 会阻塞主线程 → 放到线程池，避免桌宠卡死
+        try
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try { MessageBox(IntPtr.Zero, message, title, MB_OK | MB_ICONINFORMATION); }
+                catch { }
+            });
+        }
         catch { }
     }
 
@@ -528,10 +617,17 @@ public static class ToolHelpers
         if (string.IsNullOrEmpty(path)) return path;
         if (path.StartsWith("file://"))
         {
-            path = path.Replace("file://", "");
-            path = Uri.UnescapeDataString(path);
+            string rest = path.Substring("file://".Length);
+            // file://server/share → \\server\share（UNC，不能裁掉开头的双斜杠）
+            if (rest.StartsWith("//"))
+                return Uri.UnescapeDataString("\\\\" + rest.Substring(2)).Replace("/", "\\");
+            // file:///C:/x → C:\x
+            if (rest.StartsWith("/"))
+                rest = rest.Substring(1);
+            return Uri.UnescapeDataString(rest).Replace("/", "\\");
         }
-        return path.TrimStart('/').Replace("/", "\\");
+        // 普通路径：统一斜杠方向（//server/share → \\server\share 恰好正确）
+        return path.Replace("/", "\\");
     }
 
     public static string FormatFileSize(long bytes)
@@ -545,16 +641,30 @@ public static class ToolHelpers
 
     public static void CopyDirectoryRecursive(string sourceDir, string destDir)
     {
+        string srcFull = Path.GetFullPath(sourceDir);
+        string destFull = Path.GetFullPath(destDir);
+        // 🔒 环检测：目标位于源内部 → 拒绝，避免无限递归复制
+        if (string.Equals(destFull, srcFull, StringComparison.OrdinalIgnoreCase)
+            || destFull.StartsWith(srcFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("目标目录位于源目录内部，拒绝复制以免无限递归");
+        CopyDirectoryRecursiveCore(srcFull, destFull);
+    }
+
+    private static void CopyDirectoryRecursiveCore(string sourceDir, string destDir)
+    {
         Directory.CreateDirectory(destDir);
         foreach (var f in Directory.GetFiles(sourceDir))
         {
             string dest = Path.Combine(destDir, Path.GetFileName(f));
-            File.Copy(f, dest, true);
+            // 🔒 不静默覆盖：目标已存在同名文件 → 拒绝
+            if (File.Exists(dest))
+                throw new InvalidOperationException($"目标已存在同名文件「{Path.GetFileName(dest)}」，拒绝覆盖");
+            File.Copy(f, dest);
         }
         foreach (var d in Directory.GetDirectories(sourceDir))
         {
             string dest = Path.Combine(destDir, Path.GetFileName(d));
-            CopyDirectoryRecursive(d, dest);
+            CopyDirectoryRecursiveCore(d, dest);
         }
     }
 
@@ -568,12 +678,12 @@ public static class ToolHelpers
     //   需要脚本能力时应走专门的工具（如 Bridge /compile_latex）。
     public static readonly HashSet<string> AllowedCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        // 网络诊断（只读）
-        "ipconfig", "ping", "tracert", "nslookup", "netstat",
+        // 网络诊断（只读；ping 默认 4 次自动结束）
+        "ipconfig", "ping", "nslookup", "netstat",
         // 系统信息（只读）
-        "systeminfo", "tasklist", "whoami", "ver", "date", "time",
+        "systeminfo", "tasklist", "whoami", "ver",
         // 文件查看（只读）
-        "dir", "tree", "type", "findstr", "more", "sort", "echo",
+        "dir", "tree", "type", "findstr", "echo",
         // 无害应用启动
         "notepad", "calc", "mspaint", "write", "where", "which",
     };
@@ -582,9 +692,11 @@ public static class ToolHelpers
     {
         if (string.IsNullOrEmpty(command)) return false;
         string trimmed = command.TrimStart();
+        if (trimmed.Length > 500) return false; // 防超长命令
 
-        // 🚫 拒绝组合命令与重定向：& | > < ;  —— 防 "dir & 删文件" 或 "echo x > file" 类绕过
-        if (System.Text.RegularExpressions.Regex.IsMatch(trimmed, "[&|<>;]"))
+        // 🚫 拒绝组合命令/重定向/换行/空字符：& | > < ; \r \n \0
+        //    —— 防 "dir & 删文件"、"echo x > file"、"dir\necho 危险" 多行注入绕过白名单
+        if (System.Text.RegularExpressions.Regex.IsMatch(trimmed, "[&|<>;\r\n\0]"))
             return false;
 
         // 检查首个词
@@ -592,7 +704,12 @@ public static class ToolHelpers
         // 去掉路径符号
         first = first.Trim('"').Trim('\'');
         string exe = Path.GetFileNameWithoutExtension(first);
-        return AllowedCommands.Contains(exe);
+        if (!AllowedCommands.Contains(exe)) return false;
+
+        // 各命令专属限制（防挂起/交互）
+        if (exe == "ping" && System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"(^|\s)-t(\s|$)"))
+            return false; // ping -t 无限循环
+        return true;
     }
 
     public static bool IsPathAllowed(string path)

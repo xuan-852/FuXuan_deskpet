@@ -218,14 +218,24 @@ public static class OpenClawBridge
     public static string LastTaskId { get; private set; } = "";
 
     /// <summary>
+    /// 上次任务是否「不可重试错误」（网络连不上/超时/断连等）。
+    /// LLM 看到此类失败后不应换说法反复重调任务（烧 token 元凶）。
+    /// </summary>
+    public static bool LastTaskWasFatal { get; private set; } = false;
+
+    /// <summary>不可重试错误的结果前缀——用于识别 LLM 不应重试的任务失败</summary>
+    public const string FATAL_PREFIX = "❌ [不可重试]";
+
+    /// <summary>
     /// 提交任务给 OpenClaw Agent 执行（异步，后台运行）。
     /// 返回 task_id，之后用 PollTaskAsync 轮询状态、CancelTaskAsync 取消。
     /// </summary>
     /// <param name="task">任务描述（自然语言，如「查一下 B 站本周热门视频 TOP5」）</param>
     /// <param name="mode">执行模式：agent（默认，OpenClaw 自行选择工具）/ browser（引导使用浏览器）</param>
     /// <param name="timeoutMs">网关等待超时（毫秒，默认 180000）</param>
+    /// <param name="maxSteps">步骤预算上限（成本熔断，默认 0=桥接侧默认 20 步）</param>
     /// <returns>task_id；失败返回空串并设置 LastError</returns>
-    public static async Task<string> SubmitTaskAsync(string task, string mode = "agent", int timeoutMs = 180000)
+    public static async Task<string> SubmitTaskAsync(string task, string mode = "agent", int timeoutMs = 180000, int maxSteps = 0)
     {
         if (string.IsNullOrWhiteSpace(task))
         {
@@ -238,7 +248,8 @@ public static class OpenClawBridge
         {
             ["task"] = task,
             ["mode"] = mode,
-            ["timeoutMs"] = timeoutMs
+            ["timeoutMs"] = timeoutMs,
+            ["maxSteps"] = maxSteps
         };
         string jsonBody = payload.ToString(Newtonsoft.Json.Formatting.None);
 
@@ -346,23 +357,41 @@ public static class OpenClawBridge
     }
 
     /// <summary>
-    /// 一站式执行任务：提交 + 轮询直到完成（或超时/失败）。
+    /// 一站式执行任务：提交 + 心跳轮询直到完成（或卡死/超时/失败）。
     /// 适合「等结果」类工具调用；长任务请用 SubmitTaskAsync + PollTaskAsync 组合。
+    ///
+    /// 心跳机制（下载大文件不随意熔断）：
+    /// 每 heartbeatSeconds 探测一次 agent 活动（lastActivityAt 由桥接层在中间事件时刷新）。
+    /// 有进度更新 → 心跳自动重置；连续 maxIdleHeartbeats 次无更新 → 判定卡死，取消并提示可重试。
     /// </summary>
     /// <param name="task">任务描述</param>
     /// <param name="mode">agent / browser</param>
-    /// <param name="totalTimeoutSeconds">总等待上限（默认 300 秒，网关侧 180s 超时兜底）</param>
-    /// <returns>任务结果文本（成功时含 AI 答复，失败时以 ❌ 开头）</returns>
-    public static async Task<string> ExecuteTaskAndWaitAsync(string task, string mode = "agent", int totalTimeoutSeconds = 300)
+    /// <param name="totalTimeoutSeconds">总硬上限（默认 1800 秒=30 分钟，仅防失控；卡死由心跳判定）</param>
+    /// <param name="maxSteps">步骤预算上限（成本熔断，默认 0=桥接侧默认 20 步）</param>
+    /// <param name="heartbeatSeconds">心跳探测间隔秒数（默认 60）</param>
+    /// <param name="maxIdleHeartbeats">连续无进展心跳数阈值（默认 5 → 300s 无进展判定卡死）</param>
+    /// <returns>任务结果文本（成功时含 AI 答复，失败时以 ❌ 开头；不可重试错误以 ❌ [不可重试] 开头）</returns>
+    public static async Task<string> ExecuteTaskAndWaitAsync(
+        string task, string mode = "agent", int totalTimeoutSeconds = 1800,
+        int maxSteps = 0, int heartbeatSeconds = 60, int maxIdleHeartbeats = 5)
     {
         IsBusy = true;
+        LastTaskWasFatal = false;
         try
         {
-            string taskId = await SubmitTaskAsync(task, mode);
+            string taskId = await SubmitTaskAsync(task, mode, timeoutMs: 180000, maxSteps: maxSteps);
             if (string.IsNullOrEmpty(taskId))
-                return $"❌ 任务提交失败: {LastError}";
+            {
+                // 提交失败（桥接不可用/连接失败）→ 不可重试
+                LastTaskWasFatal = IsNetworkishError(LastError);
+                return $"{FATAL_PREFIX} 任务提交失败: {LastError}";
+            }
 
-            double deadline = Time.realtimeSinceStartup + totalTimeoutSeconds;
+            // ★ 心跳参数：探测间隔与「连续无进展」阈值
+            int pollDelayMs = Math.Min(Math.Max(5, heartbeatSeconds * 1000), 5000); // 每 5s 轮询（done 更快感知）
+            int maxIdleSeconds = Math.Max(30, heartbeatSeconds * maxIdleHeartbeats); // 默认 300s 无进展=卡死
+
+            double deadline = Time.realtimeSinceStartup + Math.Max(60, totalTimeoutSeconds);
             while (Time.realtimeSinceStartup < deadline)
             {
                 string raw = await PollTaskAsync(taskId);
@@ -378,12 +407,36 @@ public static class OpenClawBridge
                         case "done":
                             return obj["result"]?.ToString() ?? "(无结果)";
                         case "error":
-                            return $"❌ 任务执行出错: {obj["error"]?.ToString() ?? "未知错误"}";
+                            string err = obj["error"]?.ToString() ?? "未知错误";
+                            bool fatal = obj["fatal"]?.Value<bool>() ?? err.Contains("不可重试");
+                            if (fatal)
+                            {
+                                LastTaskWasFatal = true;
+                                return $"{FATAL_PREFIX} 任务失败（网络/连接问题，重试无益）: {err}";
+                            }
+                            return $"❌ 任务执行出错: {err}";
                         case "cancelled":
                             return "❌ 任务已被取消";
                         default: // running / queued
-                            await Task.Delay(2000);
+                        {
+                            // ★ 心跳判定：agent 最后活动时间（桥接层在中间事件时刷新）。
+                            //   lastActivityAt > 0 且停滞超过 maxIdleSeconds → 卡死（可重试，非不可重试）
+                            long lastActivityMs = obj["lastActivityAt"]?.Value<long>() ?? 0;
+                            if (lastActivityMs > 0)
+                            {
+                                long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                                double idleSeconds = (nowMs - lastActivityMs) / 1000.0;
+                                if (idleSeconds > maxIdleSeconds)
+                                {
+                                    LastTaskWasFatal = false; // 可重试：用户可再发起或换思路
+                                    await CancelTaskAsync(taskId);
+                                    return $"❌ 任务疑似卡死：连续超过 {maxIdleSeconds}s 无任何进度（下载/执行停滞），已取消。可再次尝试，或检查网络/下载源后重试。";
+                                }
+                            }
+                            // queued 且从未有活动（等待前序任务）→ 不算卡死，继续等
+                            await Task.Delay(pollDelayMs);
                             break;
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -393,13 +446,27 @@ public static class OpenClawBridge
                 }
             }
 
-            // 超时 → 取消并回报
+            // 总硬上限兜底（仅防失控；正常下载靠心跳延长）
+            LastTaskWasFatal = true;
             await CancelTaskAsync(taskId);
-            return $"❌ 任务超时（{totalTimeoutSeconds}s），已取消。可在桌面助手再次尝试或拆分任务。";
+            return $"{FATAL_PREFIX} 任务超过总时长上限（{totalTimeoutSeconds}s），已取消。若为下载任务请确认下载源可用后再试。";
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// 判断错误信息是否属于「网络/连接类」——此类错误重试无益，应直接告知用户。
+    /// </summary>
+    private static bool IsNetworkishError(string err)
+    {
+        if (string.IsNullOrEmpty(err)) return false;
+        string e = err.ToLowerInvariant();
+        return e.Contains("timeout") || e.Contains("timed out") || e.Contains("timedout")
+            || e.Contains("refused") || e.Contains("reset") || e.Contains("unreachable")
+            || e.Contains("disconnected") || e.Contains("connection") || e.Contains("socket")
+            || e.Contains("curl error") || e.Contains("not connected") || e.Contains("network");
     }
 }

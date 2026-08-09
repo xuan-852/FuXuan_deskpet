@@ -104,9 +104,14 @@ function handleGatewayEvent(evt) {
         const sk = p.sessionKey;
         if (!sk || !waiters.has(sk)) return;
 
+        const w = waiters.get(sk);
+
+        // ★ 心跳：任何 chat 中间事件（工具调用/增量输出/进度汇报）都算 agent 活跃。
+        //   任务侧据此刷新 lastActivityAt → 桌宠心跳轮询「有进展就重置，连续无进展才熔断」。
+        if (w.onActivity) w.onActivity(p);
+
         if (p.stopReason) {
             // Final chat event — message.content has the full reply
-            const w = waiters.get(sk);
             clearTimeout(w.timeout);
             waiters.delete(sk);
             const msg = p.message || {};
@@ -143,7 +148,7 @@ function handleGatewayEvent(evt) {
 }
 
 // ─── Send Chat and Wait ──────────────────────────────────────────────────────
-async function sendChatAndWait(query, timeoutMs = CHAT_TIMEOUT_MS) {
+async function sendChatAndWait(query, timeoutMs = CHAT_TIMEOUT_MS, onActivity) {
     if (!chatClient || !connected) {
         throw new Error('Gateway not connected');
     }
@@ -163,7 +168,7 @@ async function sendChatAndWait(query, timeoutMs = CHAT_TIMEOUT_MS) {
                 reject(new Error('Response timeout'));
             }, timeoutMs);
 
-            waiters.set(SESSION_KEY, { resolve, reject, timeout });
+            waiters.set(SESSION_KEY, { resolve, reject, timeout, onActivity });
         });
 
         try {
@@ -202,22 +207,47 @@ async function sendChatAndWait(query, timeoutMs = CHAT_TIMEOUT_MS) {
 // 复用 sendChatAndWait 的全局串行锁：后台任务与 /search 请求天然排队，不会错位
 const taskStore = new Map();
 
-function buildTaskPrompt(taskText, mode) {
-    if (mode === 'browser') {
-        return `【桌面助手·浏览器模式】请使用你的浏览器工具（browser）完成以下任务，完成后用中文简洁总结结果：\n\n${taskText}`;
+// ─── 失败模式识别 ─────────────────────────────────────────────────────────
+// 把桥接层自身的错误归类为「不可重试」（网络/连接/超时）或「可重试」。
+// C# 侧看到不可重试错误会直接返回 ❌，不再让 LLM 换说法反复重调任务（烧 token 元凶）。
+function classifyTaskError(err) {
+    const msg = (err && err.message) ? String(err.message) : String(err || '');
+    const low = msg.toLowerCase();
+    // 连接类 / 超时类 / 元数据异常 → 不可重试（重试只会继续烧 token）
+    if (/gateway not connected|connection failed|disconnected|response timeout|timed? ?out|metadata|econnrefused|econnreset|enetunreach|socket hang up/i.test(low)) {
+        return { fatal: true, kind: 'network' };
     }
-    return `【桌面助手·任务模式】请使用你拥有的工具（浏览器/搜索/定时/文件/命令等）完成以下任务。涉及系统命令、文件写操作、浏览器提交等敏感操作前先向用户说明。完成后用中文简洁总结结果：\n\n${taskText}`;
+    return { fatal: false, kind: 'other' };
 }
 
-function startTask(taskText, mode, timeoutMs) {
+function buildTaskPrompt(taskText, mode, maxSteps) {
+    const budget = maxSteps > 0 ? maxSteps : 20;
+    const budgetRule = `【步骤预算 — 必须遵守】
+• 整个任务最多执行 ${budget} 步工具调用，达到预算仍未完成时立即停止，用中文如实汇报已完成的进度和失败原因。
+• 若某个工具反复失败（网络连不上、下载失败、超时等），【最多重试 2 次】，之后立即放弃该方案并汇报，绝不可无限重试。
+• 网络下载类任务：GitHub 直连可能不稳定，可尝试镜像源；但试 2 个来源仍失败就停止，报告原因。`;
+    const heartbeatRule = `【长任务心跳汇报 — 必须遵守】
+• 下载大文件/长时间操作（预计超过 2 分钟）时，必须每 60~120 秒向用户汇报一次进度（已下载大小/百分比/当前阶段/剩余估计），直到完成。
+• 若某来源连续 2~3 分钟无任何下载字节增长，立即切换来源（镜像等）或放弃并如实汇报，绝不可静默卡住。
+• 全程保持定期汇报，让用户知道任务还活着——这是判断任务是否卡死的关键依据。`;
+    if (mode === 'browser') {
+        return `【桌面助手·浏览器模式】请使用你的浏览器工具（browser）完成以下任务，完成后用中文简洁总结结果：\n\n${budgetRule}\n\n${taskText}`;
+    }
+    return `【桌面助手·任务模式】请使用你拥有的工具（浏览器/搜索/定时/文件/命令等）完成以下任务。涉及系统命令、文件写操作、浏览器提交等敏感操作前先向用户说明。完成后用中文简洁总结结果：\n\n${budgetRule}\n\n${heartbeatRule}\n\n${taskText}`;
+}
+
+function startTask(taskText, mode, timeoutMs, maxSteps) {
     const id = randomUUID();
     const entry = {
         id,
         status: 'queued',
         mode,
         task: taskText,
+        maxSteps: maxSteps > 0 ? maxSteps : 20,
         result: null,
         error: null,
+        fatal: false,        // ★ 不可重试错误标记（网络/超时/连接类）
+        lastActivityAt: 0,   // ★ 心跳：最近一次 agent 活动时间戳（ms），0=尚无活动
         createdAt: Date.now(),
     };
     taskStore.set(id, entry);
@@ -227,15 +257,20 @@ function startTask(taskText, mode, timeoutMs) {
         try {
             if (entry.status === 'cancelled') return;
             entry.status = 'running';
-            const prompt = buildTaskPrompt(taskText, mode);
-            const result = await sendChatAndWait(prompt, timeoutMs);
+            const prompt = buildTaskPrompt(taskText, mode, entry.maxSteps);
+            // ★ 心跳：任何中间事件（进度汇报/工具调用）都刷新 lastActivityAt
+            const result = await sendChatAndWait(prompt, timeoutMs, () => {
+                entry.lastActivityAt = Date.now();
+            });
             if (entry.status === 'cancelled') return; // 取消后丢弃结果
             entry.status = 'done';
             entry.result = result;
         } catch (err) {
             if (entry.status === 'cancelled') return; // 取消引发的中断不算错误
             entry.status = 'error';
-            entry.error = err.message;
+            const cls = classifyTaskError(err);
+            entry.error = cls.fatal ? `[不可重试:${cls.kind}] ${err.message}` : err.message;
+            entry.fatal = cls.fatal;
         }
     })();
 
@@ -698,8 +733,8 @@ function startHttpServer() {
                         });
                         return;
                     }
-                    const entry = startTask(task, body.mode || 'agent', parseInt(body.timeoutMs || CHAT_TIMEOUT_MS, 10));
-                    console.log(`[Bridge] Task ${entry.id} queued (mode=${entry.mode}, timeout=${entry.timeoutMs}ms): "${task.substring(0, 80)}..."`);
+                    const entry = startTask(task, body.mode || 'agent', parseInt(body.timeoutMs || CHAT_TIMEOUT_MS, 10), parseInt(body.maxSteps || 0, 10));
+                    console.log(`[Bridge] Task ${entry.id} queued (mode=${entry.mode}, timeout=${entry.timeoutMs}ms, maxSteps=${entry.maxSteps}): "${task.substring(0, 80)}..."`);
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: true, task_id: entry.id, status: entry.status }));
                 } catch (err) {
@@ -726,6 +761,8 @@ function startHttpServer() {
                 const resp = { success: true, task_id: taskId, status: entry.status };
                 if (entry.result != null) resp.result = entry.result;
                 if (entry.error) resp.error = entry.error;
+                if (entry.fatal) resp.fatal = true;
+                if (entry.lastActivityAt > 0) resp.lastActivityAt = entry.lastActivityAt; // 心跳：agent 最后活动时间
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(resp));
                 return;

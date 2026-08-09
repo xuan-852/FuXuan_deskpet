@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -54,7 +55,11 @@ public class OpenUrlTool : IPetTool
     {
         string url = ToolHelpers.JsonRead(argsJson, "url");
         if (string.IsNullOrEmpty(url)) return "❌ 未提供网址，本座如何观星？";
-        if (!url.StartsWith("http://") && !url.StartsWith("https://")) url = "https://" + url;
+        url = url.Trim();
+        // 🔒 协议白名单：仅 http/https/mailto，防 file:/ms-settings:/shell: 等本地协议被滥用
+        string lower = url.ToLowerInvariant();
+        if (!(lower.StartsWith("http://") || lower.StartsWith("https://") || lower.StartsWith("mailto:")))
+            return "❌ 仅允许打开 http/https/mailto 链接";
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
         return $"✅ 已开天目，窥视「{url}」";
     }
@@ -111,8 +116,35 @@ public class OpenAppTool : IPetTool
         return TryLaunch(name);
     }
 
+    /// <summary>可安全启动的应用白名单（仅针对可执行文件；普通文档/文件夹走系统关联不受限）</summary>
+    private static readonly HashSet<string> SafeLaunchApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "calc", "notepad", "mspaint", "write", "wordpad", "winword", "excel", "powerpnt",
+        "explorer", "taskmgr", "msedge", "chrome", "firefox", "regedit", "winver"
+    };
+
+    private static bool IsRiskyLaunchExtension(string ext)
+    {
+        switch (ext)
+        {
+            case ".exe": case ".bat": case ".cmd": case ".com":
+            case ".ps1": case ".vbs": case ".js": case ".jar":
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private string TryLaunch(string name)
     {
+        // 🔒 可执行文件白名单：防 AI 通过 open_app 静默启动任意 exe/bat/ps1（无害文档不受限）
+        string ext = Path.GetExtension(name);
+        if (!string.IsNullOrEmpty(ext) && IsRiskyLaunchExtension(ext))
+        {
+            string exeName = Path.GetFileNameWithoutExtension(name);
+            if (!SafeLaunchApps.Contains(exeName))
+                return $"❌ 拒绝启动可执行文件「{name}」（仅允许白名单内应用）";
+        }
         try
         {
             Process.Start(new ProcessStartInfo(name) { UseShellExecute = true });
@@ -272,12 +304,27 @@ public class MuteTool : IPetTool
     );
     public bool IsAsync => false;
 
+    /// <summary>静音前的音量（-1 表示未知），解禁时恢复</summary>
+    private static int _preMuteVolume = -1;
+
     public string Execute(string argsJson)
     {
         string mutedStr = ToolHelpers.JsonRead(argsJson, "muted");
         bool muted = mutedStr == "true";
-        ToolHelpers.SetSystemVolume(muted ? 0 : 50);
-        return muted ? "🔇 已禁声" : "🔊 已解禁";
+        if (muted)
+        {
+            _preMuteVolume = ToolHelpers.GetSystemVolume(); // 记住原音量，解禁时恢复
+            if (_preMuteVolume < 0) _preMuteVolume = 50; // 读不到则按 50 兜底
+            ToolHelpers.SetSystemVolume(0);
+            return "🔇 已禁声";
+        }
+        else
+        {
+            int restore = _preMuteVolume >= 0 ? _preMuteVolume : 50;
+            _preMuteVolume = -1;
+            ToolHelpers.SetSystemVolume(restore);
+            return $"🔊 已解禁（音量 {restore}）";
+        }
     }
 
     public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
@@ -392,13 +439,31 @@ public class RunCommandTool : IPetTool
     public string ToolParametersJson => ToolSchema.Schema(
         ToolSchema.Req("command", "string", "要执行的命令")
     );
-    public bool IsAsync => false;
+    public bool IsAsync => true;
 
-    public string Execute(string argsJson)
+    private const int COMMAND_TIMEOUT_MS = 10000; // 命令最多运行 10 秒
+
+    public string Execute(string argsJson) => "⏳ 术式施展中……";
+
+    public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
         string cmd = ToolHelpers.JsonRead(argsJson, "command");
-        if (string.IsNullOrEmpty(cmd)) return "❌ 未说要执行什么";
-        if (!ToolHelpers.IsCommandAllowed(cmd)) return "❌ 此术涉及高危操作，需主人亲口确认";
+        if (string.IsNullOrEmpty(cmd)) { onResult?.Invoke("❌ 未说要执行什么"); yield break; }
+        if (!ToolHelpers.IsCommandAllowed(cmd)) { onResult?.Invoke("❌ 此术涉及高危操作，需主人亲口确认"); yield break; }
+
+        // ★ 后台线程执行 + 总超时：绝不让主线程被挂起命令（如 ping -t）冻结
+        var task = System.Threading.Tasks.Task.Run(() => RunCommandWithTimeout(cmd));
+        yield return new WaitUntil(() => task.IsCompleted);
+
+        if (task.IsFaulted)
+            onResult?.Invoke($"❌ 执行失败：{task.Exception?.InnerException?.Message}");
+        else
+            onResult?.Invoke(task.Result);
+    }
+
+    /// <summary>后台线程执行命令，带总超时（超时杀进程），避免主线程冻结</summary>
+    private static string RunCommandWithTimeout(string cmd)
+    {
         try
         {
             var psi = new ProcessStartInfo("cmd", "/c " + cmd)
@@ -412,22 +477,31 @@ public class RunCommandTool : IPetTool
             };
             var p = Process.Start(psi);
             if (p == null) return "❌ 无法执行";
-            string output = p.StandardOutput.ReadToEnd();
-            string err = p.StandardError.ReadToEnd();
-            p.WaitForExit(10000);
-            var sb = new StringBuilder();
-            sb.AppendLine($"⚡ 执行「{cmd}」");
-            if (!string.IsNullOrEmpty(output)) sb.AppendLine(output.TrimEnd());
-            if (!string.IsNullOrEmpty(err)) sb.AppendLine($"⚠️ {err.TrimEnd()}");
-            return sb.ToString().TrimEnd();
+            try
+            {
+                // 先异步读输出（防管道写满死锁），再等进程退出
+                var outTask = p.StandardOutput.ReadToEndAsync();
+                var errTask = p.StandardError.ReadToEndAsync();
+                if (!p.WaitForExit(COMMAND_TIMEOUT_MS))
+                {
+                    try { p.Kill(); } catch { }
+                    p.WaitForExit(1000);
+                    return $"❌ 命令「{cmd}」执行超过 {COMMAND_TIMEOUT_MS / 1000} 秒，已强制终止（防挂起）";
+                }
+                string output = outTask.Result;
+                string err = errTask.Result;
+                var sb = new StringBuilder();
+                sb.AppendLine($"⚡ 执行「{cmd}」");
+                if (!string.IsNullOrEmpty(output)) sb.AppendLine(output.TrimEnd());
+                if (!string.IsNullOrEmpty(err)) sb.AppendLine($"⚠️ {err.TrimEnd()}");
+                return sb.ToString().TrimEnd();
+            }
+            finally
+            {
+                try { p.Dispose(); } catch { }
+            }
         }
         catch (Exception e) { return $"❌ 执行失败：{e.Message}"; }
-    }
-
-    public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
-    {
-        onResult?.Invoke(Execute(argsJson));
-        yield break;
     }
 }
 

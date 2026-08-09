@@ -297,6 +297,15 @@ public class ChatManager : MonoBehaviour
     // ---- 中止标志：看门狗超时时通知协程尽快退出 ----
     private bool _abortRequested = false;
 
+    // ---- 请求代际：看门狗中止/新消息接管时递增，旧协程恢复后凭代际不符自动退场 ----
+    private int _requestGeneration = 0;
+    /// <summary>当前在途的 SendRequestCoroutine（看门狗用于 StopCoroutine 强制中断）</summary>
+    private Coroutine _activeRequestCoroutine = null;
+
+    // ---- 成本熔断：本次请求循环中 openclaw_task 已因不可重试错误失败，
+    //      则后续轮次禁止再次调用（防 LLM 换说法反复重试烧 token）----
+    private bool _openclawTaskFatalSeen = false;
+
     // ---- 本地意图分类：用于 tools 过滤（由 ClassifyIntent 回调写入）----
     private string _lastIntent = "";
     /// <summary>T4: 意图分类是否就绪（首轮请求前等待，避免用残留/空意图）</summary>
@@ -404,7 +413,12 @@ public class ChatManager : MonoBehaviour
 
         if (_isWaiting)
         {
-            // 排队，等当前回复完自动发
+            // 排队，等当前回复完自动发（上限 MAX_QUEUED_MESSAGES，超出丢弃最旧）
+            if (_messageQueue.Count >= MAX_QUEUED_MESSAGES)
+            {
+                _messageQueue.Dequeue();
+                Debug.LogWarning($"[ChatManager] 消息队列已满（>{MAX_QUEUED_MESSAGES}），丢弃最旧消息");
+            }
             _messageQueue.Enqueue((text.Trim(), onUpdate));
             return;
         }
@@ -427,7 +441,9 @@ public class ChatManager : MonoBehaviour
         // 触发"AI 开始处理"事件（悬浮球显示"思考中…"）
         OnRequestStarted?.Invoke();
 
-        StartCoroutine(SendRequestCoroutine());
+        // ★ 代际递增：新请求接管；若旧协程因看门狗中止仍残留，恢复时会检测代际不符自动退场
+        _requestGeneration++;
+        _activeRequestCoroutine = StartCoroutine(SendRequestCoroutine(_requestGeneration));
 
         // 🧠 功能1：意图/情绪分类（异步，SendRequestCoroutine 首轮会等待其结果）
         if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
@@ -480,6 +496,8 @@ public class ChatManager : MonoBehaviour
     // ==================================================================
 
     private const int MAX_TOOL_ROUNDS = 10; // 防止无限循环（5->10: 复杂任务如"读文件→改文件→编译"需多轮）
+    /// <summary>排队消息上限，超出丢弃最旧（防高并发消息塞爆内存）</summary>
+    private const int MAX_QUEUED_MESSAGES = 20;
     /// <summary>历史消息最大条数，超出时裁剪最早的（保留最近 N 条）</summary>
     private const int MAX_HISTORY_ENTRIES = 60;
     /// <summary>T5: 历史字符预算（中文约 1 字符≈1 token），超出部分裁剪并走本地摘要</summary>
@@ -525,9 +543,17 @@ public class ChatManager : MonoBehaviour
         return $"{rawError} | 诊断: 历史 {histCount} 条 / 请求体约 {bodyLen / 1024}KB，{extra}";
     }
 
-    private IEnumerator SendRequestCoroutine()
+    private IEnumerator SendRequestCoroutine(int generation)
     {
         yield return StartCoroutine(DoToolLoop());
+
+        // ★ 代际守卫：请求已被看门狗中止，或新请求已接管 → 旧协程立即退场，
+        //   不再执行 _isWaiting/队列/记忆等收尾，避免与新模式并发污染状态
+        if (generation != _requestGeneration || _abortRequested)
+        {
+            _activeRequestCoroutine = null;
+            yield break;
+        }
 
         _isWaiting = false;
         _requestStartTime = 0f; // 请求完成，停止看门狗
@@ -555,10 +581,15 @@ public class ChatManager : MonoBehaviour
 
         // ——— 知识库：针对对话话题进行后台检索（缓存结果供下次对话使用）———
         StartCoroutine(BackgroundKnowledgeSearch());
+
+        _activeRequestCoroutine = null; // 正常完成，清除在途引用
     }
 
     private IEnumerator DoToolLoop()
     {
+        // ★ 成本熔断：每次用户消息的工具循环开始时重置「openclaw_task 致命失败」标记
+        _openclawTaskFatalSeen = false;
+
         for (int round = 0; round <= MAX_TOOL_ROUNDS; round++)
         {
             _toolRound = round; // ★ 记录轮次，第一轮按意图过滤，后续全量
@@ -691,6 +722,24 @@ public class ChatManager : MonoBehaviour
                 OnToolCalled?.Invoke(call.name);
                 Debug.Log($"[ChatManager] ⚡ 施法: {call.name}({call.arguments})");
 
+                // ★ 成本熔断：openclaw_task 已因「不可重试错误」失败过一次，
+                //   本回合不再重复调用（防 LLM 换说法反复烧 token）
+                if (_openclawTaskFatalSeen && call.name == "openclaw_task")
+                {
+                    string blockReason = "❌ [不可重试] 太卜神行法上次已因网络/连接问题失败（重试无益）。本座不再重复施法；请先检查网络/代理/桥接服务状态，或换个思路。";
+                    Debug.Log($"[ChatManager] 🚫 熔断: 跳过重复 openclaw_task（致命失败已见）");
+                    OnToolResult?.Invoke(call.name, blockReason);
+                    RecordMemoryForTool(call.name, call.arguments, blockReason);
+                    _history.Add(new Entry
+                    {
+                        role = "tool",
+                        content = blockReason,
+                        tool_call_id = call.id,
+                        name = call.name
+                    });
+                    continue;
+                }
+
                 string result;
 
                 // ⚠️ 危险工具 → 必须先经用户确认（防 AI 幻觉 / prompt 注入误删文件、关机等）
@@ -762,6 +811,14 @@ public class ChatManager : MonoBehaviour
                 OnToolResult?.Invoke(call.name, result);
                 RecordMemoryForTool(call.name, call.arguments, result);
 
+                // ★ 成本熔断：openclaw_task 返回不可重试错误 → 标记，后续轮次禁止重复调用
+                if (call.name == "openclaw_task" &&
+                    (result != null && result.StartsWith(OpenClawBridge.FATAL_PREFIX)))
+                {
+                    _openclawTaskFatalSeen = true;
+                    Debug.Log($"[ChatManager] 🚫 openclaw_task 致命失败已记录，后续轮次熔断重试");
+                }
+
                 _history.Add(new Entry
                 {
                     role = "tool",
@@ -793,6 +850,13 @@ public class ChatManager : MonoBehaviour
             _abortRequested = true;
             _isWaiting = false;
             _requestStartTime = 0f;
+            // ★ 代际递增 + 强制停止在途协程：彻底终结旧请求，防其恢复后继续写共享状态
+            _requestGeneration++;
+            if (_activeRequestCoroutine != null)
+            {
+                StopCoroutine(_activeRequestCoroutine);
+                _activeRequestCoroutine = null;
+            }
             _onUpdate?.Invoke();
             // 继续处理队列中的消息
             if (_messageQueue.Count > 0)
@@ -877,16 +941,15 @@ public class ChatManager : MonoBehaviour
 
     private static readonly char[] _sentenceSeps = new[] { '。', '！', '？', '.', '!', '?', '\n' };
 
-    /// <summary>从积累缓冲区中提取完整句子</summary>
+    /// <summary>从积累缓冲区中提取完整句子（★ 直接用 StringBuilder 索引器，避免每 token 全量 ToString 的 O(n²)）</summary>
     private void ExtractSentencesFromBuffer()
     {
-        string buf = _streamBuf.ToString();
-        for (int i = _streamLastSplit; i < buf.Length; i++)
+        for (int i = _streamLastSplit; i < _streamBuf.Length; i++)
         {
-            if (ContainsAny(_sentenceSeps, buf[i]))
+            if (ContainsAny(_sentenceSeps, _streamBuf[i]))
             {
                 int len = i - _streamLastSplit + 1;
-                string rawSentence = buf.Substring(_streamLastSplit, len).Trim();
+                string rawSentence = _streamBuf.ToString(_streamLastSplit, len).Trim();
                 _streamLastSplit = i + 1;
                 if (!string.IsNullOrEmpty(rawSentence))
                     AddStreamSentence(rawSentence);
@@ -897,12 +960,10 @@ public class ChatManager : MonoBehaviour
     /// <summary>将一条完整句子加入队列并触发显示</summary>
     private void AddStreamSentence(string rawSentence)
     {
-        // ★ 剥离内嵌动作标记并执行
+        // ★ 剥离内嵌动作标记并执行（★ 只调用一次：原实现调两次导致动作双重执行）
         string cleanSentence = StripAndExecuteActions(rawSentence);
-        if (string.IsNullOrEmpty(cleanSentence) && StripAndExecuteActions(rawSentence) == "")
-            cleanSentence = rawSentence; // 如果纯动作标记，保留原文（可能为空时忽略）
-
-        if (string.IsNullOrWhiteSpace(cleanSentence)) return;
+        if (string.IsNullOrWhiteSpace(cleanSentence))
+            return; // 纯动作句：动作已执行完毕，不再展示裸标签/原文
 
         _fullReplyText += cleanSentence;
 
@@ -981,6 +1042,19 @@ public class ChatManager : MonoBehaviour
     // ==================================================================
 
     private string BuildRequestBody()
+    {
+        // ★ C4 修复：整个构建过程包 try/catch，任何异常都返回最小可用请求体，
+        //   防止协程内未捕获异常导致 _isWaiting 永久卡死
+        try { return BuildRequestBodyCore(); }
+        catch (Exception e)
+        {
+            Debug.LogError($"[ChatManager] ❌ 构建请求体失败：{e.Message}");
+            _lastError = "请求体构建失败: " + e.Message;
+            return $"{{\"model\":\"{model}\",\"messages\":[{{\"role\":\"system\",\"content\":\"出现内部错误，请简要说明问题并建议检查网络与本地服务。\"}}]}}";
+        }
+    }
+
+    private string BuildRequestBodyCore()
     {
         var body = new JObject();
         body["model"] = model;
@@ -1410,24 +1484,10 @@ public class ChatManager : MonoBehaviour
             _conversationSinceSummary = 0;
 
             // 📝 功能3：对话压缩 — 用本地模型智能摘要（如可用）
-            bool localSummaryUsed = false;
-            if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess && !string.IsNullOrEmpty(lastUserMsg))
+            // ★ C2 修复：回退逻辑移入回调内部 —— 原实现里同步回退总会抢先覆盖
+            //   异步智能摘要（bool 在回调返回前就读），导致智能摘要永远不生效
+            Action fallbackSummary = () =>
             {
-                LocalLLMAgentService.Instance.SummarizeConversation(lastUserMsg, (ok, summary) =>
-                {
-                    if (ok && !string.IsNullOrEmpty(summary) && summary.Length > 5)
-                    {
-                        PetMemory.Instance.UpdateConversationSummary(
-                            $"近日与主人谈论了: {summary}");
-                        localSummaryUsed = true;
-                        Debug.Log($"[ChatManager] 📝 本地灵识摘要: {summary}");
-                    }
-                });
-            }
-
-            if (!localSummaryUsed)
-            {
-                // 回退：原来的字符串截断方式
                 var userMessages = _history.Where(e => e.role == "user").ToList();
                 int skip = Math.Max(0, userMessages.Count - 10);
                 var recentTopics = userMessages.Skip(skip).Select(e => e.content).ToList();
@@ -1441,6 +1501,27 @@ public class ChatManager : MonoBehaviour
                     PetMemory.Instance.UpdateConversationSummary(
                         $"近日与主人谈论了: {summary}");
                 }
+            };
+
+            if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess && !string.IsNullOrEmpty(lastUserMsg))
+            {
+                LocalLLMAgentService.Instance.SummarizeConversation(lastUserMsg, (ok, summary) =>
+                {
+                    if (ok && !string.IsNullOrEmpty(summary) && summary.Length > 5)
+                    {
+                        PetMemory.Instance.UpdateConversationSummary(
+                            $"近日与主人谈论了: {summary}");
+                        Debug.Log($"[ChatManager] 📝 本地灵识摘要: {summary}");
+                    }
+                    else
+                    {
+                        fallbackSummary(); // 智能摘要失败/不可用时才回退截断法
+                    }
+                });
+            }
+            else
+            {
+                fallbackSummary(); // 本地模型不可用 → 直接回退
             }
         }
 

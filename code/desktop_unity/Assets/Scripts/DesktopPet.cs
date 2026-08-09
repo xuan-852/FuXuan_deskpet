@@ -1071,6 +1071,15 @@ public class DesktopPet : MonoBehaviour
         // 标记正常退出（看门狗用）
         PlayerPrefs.SetInt(PREF_CLEAN_EXIT, 1);
         PlayerPrefs.Save();
+
+        // ★ 退出传播取消：有在途 OpenClaw 任务时通知桥接层取消，
+        //   避免桌宠退出后 OpenClaw 继续后台跑任务烧 token
+        if (OpenClawBridge.IsBusy && !string.IsNullOrEmpty(OpenClawBridge.LastTaskId))
+        {
+            Debug.Log($"[DesktopPet] 🚫 退出时取消在途任务: {OpenClawBridge.LastTaskId}");
+            _ = OpenClawBridge.CancelTaskAsync(OpenClawBridge.LastTaskId);
+        }
+
         ReleaseMutex();
     }
 

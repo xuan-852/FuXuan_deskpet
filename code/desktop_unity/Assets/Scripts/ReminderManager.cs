@@ -314,6 +314,7 @@ public class ReminderManager : MonoBehaviour
     private void CheckDueReminders()
     {
         var now = DateTime.Now;
+        bool changed = false;
         foreach (var r in _data.reminders.FindAll(r => !r.done))
         {
             if (_triggeredIds.Contains(r.id)) continue;
@@ -325,7 +326,17 @@ public class ReminderManager : MonoBehaviour
             {
                 TriggerReminder(r);
             }
+            else if (diff > checkInterval + 1f && string.IsNullOrEmpty(r.recurring))
+            {
+                // ★ 一次性提醒错过触发窗口（如桌宠当时未运行）：归档为已勾销，
+                //   避免永久卡在待办列表（原逻辑只等重启时 Load 兜底清理 >1 天的）
+                r.done = true;
+                changed = true;
+                Debug.Log($"[ReminderManager] ⏳ 一次性提醒「{r.text}」已错过（{((int)(diff / 60))} 分钟），自动归档");
+                OnReminderDone?.Invoke(r.id);
+            }
         }
+        if (changed) Save();
     }
 
     private void TriggerReminder(Reminder r)
@@ -510,17 +521,26 @@ public class ReminderManager : MonoBehaviour
     {
         try
         {
-            string ps = $@"
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
-$template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
-$textNodes = $template.GetElementsByTagName('text')
-$textNodes.Item(0).AppendChild($template.CreateTextNode('{title.Replace("'", "''")}')) > $null
-$textNodes.Item(1).AppendChild($template.CreateTextNode('{message.Replace("'", "''")}')) > $null
-$toast = [Windows.UI.Notifications.ToastNotification]::new($template)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('符玄').Show($toast)
-";
+            // ★ 注入面修复：标题/消息不拼进脚本（原实现 \" 转义在 PowerShell 中无效，
+            //   且内容可直接拼入 -Command 字符串形成注入），改为环境变量传递——
+            //   脚本内只读 $env:，用户内容无论含什么字符都无法执行代码
+            const string ENV_TITLE = "FX_NOTIF_TITLE";
+            const string ENV_MSG = "FX_NOTIF_MSG";
+            System.Environment.SetEnvironmentVariable(ENV_TITLE, title ?? "");
+            System.Environment.SetEnvironmentVariable(ENV_MSG, message ?? "");
+
+            string script =
+                "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null\n" +
+                "$template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)\n" +
+                "$textNodes = $template.GetElementsByTagName('text')\n" +
+                "$textNodes.Item(0).AppendChild($template.CreateTextNode($env:" + ENV_TITLE + ")) > $null\n" +
+                "$textNodes.Item(1).AppendChild($template.CreateTextNode($env:" + ENV_MSG + ")) > $null\n" +
+                "$toast = [Windows.UI.Notifications.ToastNotification]::new($template)\n" +
+                "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('符玄').Show($toast)";
+
+            // 脚本内不含双引号与用户内容 → 手工加双引号包裹参数是安全的
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("powershell",
-                $"-NoProfile -Command \"{ps.Replace("\"", "\\\"")}\"")
+                "-NoProfile -Command \"" + script + "\"")
             { UseShellExecute = false, CreateNoWindow = true });
         }
         catch

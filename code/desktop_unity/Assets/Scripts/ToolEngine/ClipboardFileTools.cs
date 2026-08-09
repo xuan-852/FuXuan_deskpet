@@ -145,6 +145,8 @@ public class FileMoveTool : IPetTool
         string src = ToolHelpers.DecodeFileUri(ToolHelpers.JsonRead(argsJson, "source"));
         string dest = ToolHelpers.DecodeFileUri(ToolHelpers.JsonRead(argsJson, "destination"));
         if (string.IsNullOrEmpty(src) || string.IsNullOrEmpty(dest)) return "❌ 需指定源路径和目标路径";
+        if (!ToolHelpers.IsPathAllowed(src)) return "❌ 源为系统要地，不可轻动";
+        if (!ToolHelpers.IsPathAllowed(dest)) return "❌ 目标为系统要地，不可轻动";
         try
         {
             if (Directory.Exists(src)) Directory.Move(src, dest);
@@ -182,18 +184,29 @@ public class FileCopyTool : IPetTool
         string src = ToolHelpers.DecodeFileUri(ToolHelpers.JsonRead(argsJson, "source"));
         string dest = ToolHelpers.DecodeFileUri(ToolHelpers.JsonRead(argsJson, "destination"));
         if (string.IsNullOrEmpty(src) || string.IsNullOrEmpty(dest)) return "❌ 需指定源和目标";
+        if (!ToolHelpers.IsPathAllowed(src)) return "❌ 源为系统要地，不可轻动";
+        if (!ToolHelpers.IsPathAllowed(dest)) return "❌ 目标为系统要地，不可轻动";
         try
         {
             if (Directory.Exists(src))
             {
-                Directory.CreateDirectory(dest);
+                // 🔒 环检测：目标位于源内部 → 拒绝，避免无限递归
+                string srcFull = Path.GetFullPath(src);
+                string destFull = Path.GetFullPath(dest);
+                if (string.Equals(destFull, srcFull, StringComparison.OrdinalIgnoreCase)
+                    || destFull.StartsWith(srcFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    return "❌ 目标位于源目录内部，拒绝复制以免无限递归";
+                if (Directory.Exists(dest) && Directory.GetFileSystemEntries(dest).Length > 0)
+                    return $"❌ 目标「{dest}」已存在且非空，拒绝覆盖";
                 ToolHelpers.CopyDirectoryRecursive(src, dest);
             }
             else if (File.Exists(src))
             {
+                // 🔒 不静默覆盖
+                if (File.Exists(dest)) return $"❌ 目标「{Path.GetFileName(dest)}」已存在，拒绝覆盖";
                 string destDir = Path.GetDirectoryName(dest);
                 if (!string.IsNullOrEmpty(destDir)) Directory.CreateDirectory(destDir);
-                File.Copy(src, dest, true);
+                File.Copy(src, dest);
             }
             else return $"❌ 找不到「{Path.GetFileName(src)}」";
             return $"✅ 已复制「{Path.GetFileName(src)}」";
@@ -238,10 +251,8 @@ public class FileDeleteTool : IPetTool
             {
                 if (ToolHelpers.MoveToRecycleBin(path))
                     return $"🗑️ 已将「{Path.GetFileName(path)}」送入废纸篓（可还原）";
-                // 回收站失败则物理删除
-                if (Directory.Exists(path)) { Directory.Delete(path, true); return $"🗑️ 已删除「{Path.GetFileName(path)}」"; }
-                if (File.Exists(path)) { File.Delete(path); return $"🗑️ 已删除「{Path.GetFileName(path)}」"; }
-                return $"❌ 找不到「{Path.GetFileName(path)}」";
+                // 🔒 回收站失败：不再静默降级物理删除（用户本意是可还原），明确报错
+                return $"❌ 移入回收站失败（路径可能不支持），未删除任何内容。如需强制删除请加 permanent=true";
             }
         }
         catch (Exception e) { return $"❌ 删除失败：{e.Message}"; }
@@ -269,6 +280,7 @@ public class FileRenameTool : IPetTool
         string path = ToolHelpers.DecodeFileUri(ToolHelpers.JsonRead(argsJson, "path"));
         string newName = ToolHelpers.JsonRead(argsJson, "new_name");
         if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(newName)) return "❌ 需指定文件和目标名";
+        if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统要地，不可轻动";
         try
         {
             string dir = Path.GetDirectoryName(path);
@@ -342,6 +354,7 @@ public class FileCreateTool : IPetTool
         string path = ToolHelpers.DecodeFileUri(ToolHelpers.JsonRead(argsJson, "path"));
         string content = ToolHelpers.JsonRead(argsJson, "content");
         if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
+        if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统要地，不可轻动";
         try
         {
             string dir = Path.GetDirectoryName(path);
@@ -372,6 +385,7 @@ public class DirCreateTool : IPetTool
     {
         string path = ToolHelpers.DecodeFileUri(ToolHelpers.JsonRead(argsJson, "path"));
         if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
+        if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统要地，不可轻动";
         try { Directory.CreateDirectory(path); return $"📁 已新建「{path}」"; }
         catch (Exception e) { return $"❌ 创建失败：{e.Message}"; }
     }
@@ -427,7 +441,25 @@ public class FileReadTool : IPetTool
             }
             if (isBinary) return $"📄 {Path.GetFileName(path)} 采二进制之形，非本座可读";
 
-            string content = File.ReadAllText(path, Encoding.UTF8);
+            // 🔒 增量读取 + 上限：避免 File.ReadAllText 对超大文件整读 OOM
+            string content;
+            const int READ_CAP_CHARS = 200000; // 最多读入 20 万字符（约 400KB UTF-8）
+            using (var reader = new StreamReader(path, Encoding.UTF8, true))
+            {
+                var sb = new StringBuilder();
+                char[] chunk = new char[8192];
+                int total = 0;
+                while (total < READ_CAP_CHARS)
+                {
+                    int n = reader.Read(chunk, 0, Math.Min(chunk.Length, READ_CAP_CHARS - total));
+                    if (n <= 0) break;
+                    sb.Append(chunk, 0, n);
+                    total += n;
+                }
+                content = sb.ToString();
+                if (total >= READ_CAP_CHARS)
+                    content += $"\n\n...（文件过大，仅读取前 {total} 字符）";
+            }
             if (offset > 0)
             {
                 if (offset >= content.Length) return $"📄 {Path.GetFileName(path)}：⚠️ 偏移量 {offset} 超过文件长度 {content.Length}，已无更多内容";
@@ -508,11 +540,21 @@ public class SearchFilesTool : IPetTool
                     var p = Process.Start(psi);
                     if (p != null)
                     {
-                        string output = p.StandardOutput.ReadToEnd();
-                        p.WaitForExit(3000);
-                        var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                        foreach (var line in lines)
-                            if (!string.IsNullOrWhiteSpace(line)) results.Add(line);
+                        // 🔒 es.exe 加超时+杀进程：防 Everything 异常挂起导致协程永久等待
+                        string output = null;
+                        var readTask = System.Threading.Tasks.Task.Run(() => p.StandardOutput.ReadToEnd());
+                        if (!p.WaitForExit(5000))
+                        {
+                            try { p.Kill(); } catch { }
+                            p.WaitForExit(2000);
+                        }
+                        try { output = readTask.Result; } catch { output = null; }
+                        if (!string.IsNullOrEmpty(output))
+                        {
+                            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                            foreach (var line in lines)
+                                if (!string.IsNullOrWhiteSpace(line)) results.Add(line);
+                        }
                     }
                 }
                 catch { useEverything = false; }

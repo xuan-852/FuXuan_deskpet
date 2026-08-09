@@ -249,9 +249,11 @@ public class RightPanel : MonoBehaviour
         CheckTestInbox();
 
         // 1. 热键切换 — 兼容中文键盘（`·~` 键、F2、\ 均可）
-        bool togglePressed = Input.GetKeyDown(toggleKey)
+        // ★ 输入框聚焦时不响应热键（否则聊天打字输入 ~、\ 会误触面板收起）
+        bool inputFocused = GUI.GetNameOfFocusedControl() == "rightPanelInput";
+        bool togglePressed = !inputFocused && (Input.GetKeyDown(toggleKey)
             || Input.GetKeyDown(KeyCode.F2)
-            || Input.GetKeyDown(KeyCode.Backslash);
+            || Input.GetKeyDown(KeyCode.Backslash));
         if (togglePressed && Time.frameCount != _hotkeyFrame)
         {
             _hotkeyFrame = Time.frameCount;
@@ -384,6 +386,9 @@ public class RightPanel : MonoBehaviour
         bool shiftDown = (GetAsyncKeyState(VK_LSHIFT) & KEY_DOWN) != 0
                       || (GetAsyncKeyState(VK_RSHIFT) & KEY_DOWN) != 0;
         bool tildeDown = (GetAsyncKeyState(VK_OEM_3) & KEY_DOWN) != 0;
+
+        // ★ 输入框聚焦时不响应全局热键（防打字误触）
+        if (GUI.GetNameOfFocusedControl() == "rightPanelInput") { _globalTildeWasDown = tildeDown; return; }
 
         // 按下沿触发：Shift 按住时 ~ 从「未按下」→「按下」瞬间触发一次
         if (shiftDown && tildeDown && !_globalTildeWasDown && Time.frameCount != _hotkeyFrame)
@@ -1036,7 +1041,11 @@ public class RightPanel : MonoBehaviour
         // 像素符玄动态形象（17x24 网格图，睁眼/闭眼两帧，×4 放大）
         _mascotOpenTex = LoadMascot(true);
         _mascotBlinkTex = LoadMascot(false);
-        _invisibleScrollbar = new GUIStyle();
+        // ★ 日志风暴修复（2026-08）：此前用 `new GUIStyle()` 空样式传参 BeginScrollView，
+        //    Unity 绘制滚动条时回退查找 skin 的 upbutton/downbutton，每帧刷 2 条
+        //    "Unable to find style 'upbutton' in skin 'GameSkin'" 错误 → 67MB/98万行日志拖垮桌宠。
+        //    GUIStyle.none 让 Unity 内部直接跳过滚动条绘制，不再触发样式查找。
+        _invisibleScrollbar = GUIStyle.none;
         _closeBtnStyle = new GUIStyle
         {
             normal = { textColor = new Color(0.75f, 0.70f, 0.82f, 0.85f) },

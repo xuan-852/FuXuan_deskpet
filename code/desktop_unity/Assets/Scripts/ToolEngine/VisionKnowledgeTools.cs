@@ -273,7 +273,10 @@ public class OpenClawTaskTool : IPetTool
     public string ToolParametersJson => ToolSchema.Schema(
         ToolSchema.Req("task", "string", "要执行的任务描述（自然语言，写清楚目标和步骤，如「打开 B 站搜索 明日方舟 本周播放最高的视频并返回前5个」）"),
         ToolSchema.Opt("mode", "string", "执行模式：agent（默认，OpenClaw 自行选工具）/ browser（引导用浏览器操作）"),
-        ToolSchema.Opt("timeout_seconds", "integer", "等待结果超时秒数（默认 300，上限 900）")
+        ToolSchema.Opt("timeout_seconds", "integer", "任务总硬上限秒数（默认 1800，上限 3600）。下载大文件等耗时任务请给足时间——是否卡死由心跳机制判定，不按此值熔断"),
+        ToolSchema.Opt("max_steps", "integer", "步骤预算上限（成本熔断）：OpenClaw 智能体最多执行多少步工具调用，默认 20，超限立即停止。复杂任务可提高，但请勿设过大以免消耗过多资源"),
+        ToolSchema.Opt("heartbeat_seconds", "integer", "心跳探测间隔秒数（默认 60）：周期性检查任务是否有新进展"),
+        ToolSchema.Opt("max_idle_heartbeats", "integer", "连续无进展心跳数阈值（默认 5）：连续这么多次心跳都无新进展即判定卡死取消（可重试）")
     );
     public bool IsAsync => true;
 
@@ -293,16 +296,33 @@ public class OpenClawTaskTool : IPetTool
         if (string.IsNullOrEmpty(mode)) mode = "agent";
 
         string timeoutStr = ToolHelpers.JsonRead(argsJson, "timeout_seconds");
-        int timeoutSec = 300;
+        int timeoutSec = 1800;
         if (!string.IsNullOrEmpty(timeoutStr) && int.TryParse(timeoutStr, out int parsed))
-            timeoutSec = Mathf.Clamp(parsed, 30, 900);
+            timeoutSec = Mathf.Clamp(parsed, 60, 3600);
+
+        // ★ 成本熔断：步骤预算上限（默认 20 步；防止 OpenClaw 无限重试烧 token）
+        string maxStepsStr = ToolHelpers.JsonRead(argsJson, "max_steps");
+        int maxSteps = 20;
+        if (!string.IsNullOrEmpty(maxStepsStr) && int.TryParse(maxStepsStr, out int parsedSteps))
+            maxSteps = Mathf.Clamp(parsedSteps, 1, 100);
+
+        // ★ 心跳参数：探测间隔 + 连续无进展阈值（默认 60s × 5 次 = 300s 无进展判定卡死）
+        string hbStr = ToolHelpers.JsonRead(argsJson, "heartbeat_seconds");
+        int heartbeatSeconds = 60;
+        if (!string.IsNullOrEmpty(hbStr) && int.TryParse(hbStr, out int parsedHb))
+            heartbeatSeconds = Mathf.Clamp(parsedHb, 10, 600);
+
+        string idleStr = ToolHelpers.JsonRead(argsJson, "max_idle_heartbeats");
+        int maxIdleHeartbeats = 5;
+        if (!string.IsNullOrEmpty(idleStr) && int.TryParse(idleStr, out int parsedIdle))
+            maxIdleHeartbeats = Mathf.Clamp(parsedIdle, 2, 20);
 
         // 在后台线程运行（避免阻塞主线程）
         var taskRunner = Task.Run(async () =>
         {
             bool healthy = await OpenClawBridge.CheckHealthAsync();
             if (!healthy) return $"❌ 太卜神行法无法发动：未检测到通神阵法（{OpenClawBridge.LastError}）。请先运行 openclaw_bridge.js 启动桥接服务器。";
-            return await OpenClawBridge.ExecuteTaskAndWaitAsync(task, mode, timeoutSec);
+            return await OpenClawBridge.ExecuteTaskAndWaitAsync(task, mode, timeoutSec, maxSteps, heartbeatSeconds, maxIdleHeartbeats);
         });
 
         yield return new WaitUntil(() => taskRunner.IsCompleted);
