@@ -394,10 +394,10 @@ public static class ToolHelpers
     {
         try
         {
-            var psi = new ProcessStartInfo("where", name)
+            var psi = new ProcessStartInfo("cmd", $"/c chcp 65001 >nul & where {name}")
             {
                 UseShellExecute = false, RedirectStandardOutput = true,
-                CreateNoWindow = true, StandardOutputEncoding = Encoding.GetEncoding(936)
+                CreateNoWindow = true, StandardOutputEncoding = Encoding.UTF8
             };
             var p = Process.Start(psi);
             if (p != null)

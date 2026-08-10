@@ -466,14 +466,16 @@ public class RunCommandTool : IPetTool
     {
         try
         {
-            var psi = new ProcessStartInfo("cmd", "/c " + cmd)
+            // ★ 编码修复：Unity Mono 无 GBK(936) 代码页（缺 I18N.CJK），
+            // 强制 chcp 65001 让 cmd 输出 UTF-8，再用 UTF-8 解码，避免 "Encoding 936 data could not be found"
+            var psi = new ProcessStartInfo("cmd", $"/c chcp 65001 >nul & {cmd}")
             {
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.GetEncoding(936),
-                StandardErrorEncoding = Encoding.GetEncoding(936)
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
             };
             var p = Process.Start(psi);
             if (p == null) return "❌ 无法执行";
