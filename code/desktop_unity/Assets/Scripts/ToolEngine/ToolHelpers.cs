@@ -413,16 +413,40 @@ public static class ToolHelpers
         return null;
     }
 
+    /// <summary>查找 Everything 命令行客户端 es.exe</summary>
+    /// <remarks>
+    /// ★ 修复（2026-08-10）：旧实现只查 PATH，但 Everything 默认装到
+    ///   %LOCALAPPDATA%\Everything（不进 PATH）→ es.exe 永远找不到 → 每次搜索
+    ///   都退化成全目录递归遍历（用户观察到的"全文件遍历"）。现在按可能性
+    ///   从高到低探测：PATH → 官方安装器常见位置。
+    ///   注：Unity .NET Standard profile 无 Microsoft.Win32.Registry，故不做
+    ///   注册表探测（%LOCALAPPDATA%\Everything 已覆盖官方默认安装位置）。
+    /// </remarks>
     public static string FindEverythingCli()
     {
         try
         {
+            // 1) PATH（便携版/手动添加过）
             var paths = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';');
             foreach (var dir in paths)
             {
+                if (string.IsNullOrWhiteSpace(dir)) continue;
                 string test = Path.Combine(dir.Trim(), "es.exe");
                 if (File.Exists(test)) return test;
             }
+
+            // 2) Everything 官方安装器的默认位置（用户级 / 全局）
+            var candidates = new List<string>
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Everything", "es.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Everything", "es.exe"),
+                @"C:\Program Files\Everything\es.exe",
+                @"C:\Program Files (x86)\Everything\es.exe",
+                @"D:\Everything\es.exe",
+                @"D:\Program Files\Everything\es.exe",
+            };
+            foreach (var c in candidates)
+                if (File.Exists(c)) return c;
         }
         catch { }
         return null;
