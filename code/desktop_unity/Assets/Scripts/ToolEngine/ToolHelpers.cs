@@ -452,6 +452,63 @@ public static class ToolHelpers
         return null;
     }
 
+    /// <summary>
+    /// 用 Everything CLI (es.exe) 搜索，返回结果列表；不可用或失败返回 null（调用方回退递归）。
+    ///
+    /// ★ 修复（2026-08-12）：Unity Mono 运行时是 .NET Standard 2.0 profile，缺少
+    ///   I18N.CJK.dll → Encoding.GetEncoding(936) 抛异常（旧实现每次都被 catch 静默吞掉，
+    ///   导致搜索永远降级成递归）。改用 es.exe -export-txt 导出 UTF-8 BOM 临时文件再读回，
+    ///   完全绕开 GBK 解码。
+    /// </summary>
+    public static List<string> SearchWithEverything(string query, string rootDir, int maxResults = 200)
+    {
+        string esExe = FindEverythingCli();
+        if (esExe == null) return null;
+        var results = new List<string>();
+        try
+        {
+            string tmpFile = Path.Combine(Path.GetTempPath(),
+                "es_search_" + Guid.NewGuid().ToString("N") + ".txt");
+            string exportArgs = $"-n {maxResults} -no-header -utf8-bom -export-txt \"{tmpFile}\"";
+            if (!string.IsNullOrEmpty(rootDir))
+                exportArgs += $" -path \"{rootDir.Replace("\"", "\\\"")}\"";
+            exportArgs += $" \"{query.Replace("\"", "\\\"")}\"";
+
+            var psi = new ProcessStartInfo(esExe, exportArgs)
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
+            };
+            var p = Process.Start(psi);
+            if (p != null)
+            {
+                // 🔒 es.exe 加超时+杀进程：防 Everything 异常挂起导致协程永久等待
+                var readTask = System.Threading.Tasks.Task.Run(() => p.StandardOutput.ReadToEnd());
+                if (!p.WaitForExit(5000))
+                {
+                    try { p.Kill(); } catch { }
+                    p.WaitForExit(2000);
+                }
+                try { _ = readTask.Result; } catch { }
+            }
+            if (File.Exists(tmpFile))
+            {
+                // UTF-8 BOM 文件：无结果时仅含 BOM（空），有结果时中文路径不乱码
+                var lines = File.ReadAllLines(tmpFile, Encoding.UTF8);
+                foreach (var line in lines)
+                    if (!string.IsNullOrWhiteSpace(line)) results.Add(line);
+                try { File.Delete(tmpFile); } catch { }
+                return results;
+            }
+            return null; // es.exe 未产出文件 → 失败，调用方降级
+        }
+        catch { return null; }
+    }
+
     public static void SearchRecursive(string dir, string query, List<string> results, int maxResults, bool skipSystemDirs = false)
     {
         try
@@ -592,8 +649,7 @@ public static class ToolHelpers
         if (script == null || !File.Exists(script))
         {
             return SearchFileFallback(query, rootDir);
-        }
-        try
+        }        try
         {
             string pyArgs = $"\"{script}\" \"{EscapeJsonStr(query)}\"";
             if (!string.IsNullOrEmpty(rootDir)) pyArgs += $" \"{EscapeJsonStr(rootDir)}\"";
@@ -620,6 +676,21 @@ public static class ToolHelpers
     {
         try
         {
+            // ★ 优先 Everything（毫秒级全盘索引），失败才递归
+            var esResults = SearchWithEverything(query, rootDir, 100);
+            if (esResults != null)
+            {
+                if (esResults.Count == 0)
+                {
+                    string scope = string.IsNullOrEmpty(rootDir) ? "全境" : $"「{rootDir}」";
+                    return $"🔍 在{scope}中未找到与「{query}」匹配的文件";
+                }
+                var sb0 = new StringBuilder();
+                sb0.AppendLine($"⚡本座以 Everything 天眼通搜，得 {esResults.Count} 件与「{query}」相关之物：");
+                foreach (var f in esResults) sb0.AppendLine($"  📄 {f}");
+                return sb0.ToString();
+            }
+
             if (string.IsNullOrEmpty(rootDir)) rootDir = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
             var results = new List<string>();
             SearchRecursive(rootDir, query, results, 100, skipSystemDirs: true);

@@ -392,4 +392,39 @@ public class ToolEngineTests
                 $"同步工具 {name} 应被 HasTool 识别");
         }
     }
+
+    // ================================================================
+    //  Everything 集成（2026-08-12 修复验证）
+    //  旧实现 Unity Mono 缺 I18N.CJK → GetEncoding(936) 抛异常 → 永远降级递归
+    //  新实现 es.exe -export-txt -utf8-bom 绕开 GBK 解码
+    // ================================================================
+
+    [Test]
+    public void FindEverythingCli_能找到es可执行文件()
+    {
+        var es = ToolHelpers.FindEverythingCli();
+        Assert.IsNotNull(es, "应能在 PATH 或默认安装位置找到 es.exe");
+        Assert.IsTrue(System.IO.File.Exists(es), $"es.exe 路径不存在: {es}");
+    }
+
+    [Test]
+    public void SearchWithEverything_能搜到DesktopPet_exe()
+    {
+        var results = ToolHelpers.SearchWithEverything("DesktopPet.exe", null, 10);
+        Assert.IsNotNull(results, "SearchWithEverything 不应返回 null（es.exe 应可用）");
+        Assert.IsTrue(results.Count > 0,
+            $"应至少搜到 1 条结果，实际 {results.Count} 条");
+        bool hit = results.Any(r =>
+            r.IndexOf("DesktopPet.exe", StringComparison.OrdinalIgnoreCase) >= 0);
+        Assert.IsTrue(hit, "结果应包含 DesktopPet.exe");
+    }
+
+    [Test]
+    public void SearchWithEverything_中文路径无乱码()
+    {
+        var results = ToolHelpers.SearchWithEverything("DesktopPet.exe", null, 10);
+        Assert.IsNotNull(results);
+        Assert.IsTrue(results.All(r => !r.Contains("\uFFFD")),
+            "UTF-8 BOM 导出读回后不应含替换字符 \uFFFD（乱码标志）");
+    }
 }

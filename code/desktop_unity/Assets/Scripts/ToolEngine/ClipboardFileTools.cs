@@ -516,48 +516,14 @@ public class SearchFilesTool : IPetTool
     /// <summary>后台线程执行的实际搜索（无 Unity API，安全）</summary>
     private static string DoSearch(string query, string rootDir)
     {
-        string esExe = ToolHelpers.FindEverythingCli();
-        bool useEverything = esExe != null;
-        var results = new List<string>();
-
         try
         {
-            if (useEverything)
+            bool useEverything = true;
+            var results = ToolHelpers.SearchWithEverything(query, rootDir, 200);
+            if (results == null)
             {
-                try
-                {
-                    var psi = new ProcessStartInfo(esExe, $"-n 200 \"{query.Replace("\"", "\\\"")}\"")
-                    {
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true,
-                        StandardOutputEncoding = Encoding.GetEncoding(936),
-                        StandardErrorEncoding = Encoding.GetEncoding(936)
-                    };
-                    if (!string.IsNullOrEmpty(rootDir))
-                        psi.Arguments = $"-n 200 -path \"{rootDir.Replace("\"", "\\\"")}\" \"{query.Replace("\"", "\\\"")}\"";
-                    var p = Process.Start(psi);
-                    if (p != null)
-                    {
-                        // 🔒 es.exe 加超时+杀进程：防 Everything 异常挂起导致协程永久等待
-                        string output = null;
-                        var readTask = System.Threading.Tasks.Task.Run(() => p.StandardOutput.ReadToEnd());
-                        if (!p.WaitForExit(5000))
-                        {
-                            try { p.Kill(); } catch { }
-                            p.WaitForExit(2000);
-                        }
-                        try { output = readTask.Result; } catch { output = null; }
-                        if (!string.IsNullOrEmpty(output))
-                        {
-                            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                            foreach (var line in lines)
-                                if (!string.IsNullOrWhiteSpace(line)) results.Add(line);
-                        }
-                    }
-                }
-                catch { useEverything = false; }
+                useEverything = false;
+                results = new List<string>();
             }
 
             if (!useEverything)
@@ -600,7 +566,6 @@ public class SearchFilesTool : IPetTool
     private static string Truncate(string s, int maxLen) =>
         s.Length <= maxLen ? s : s[..maxLen] + $"\n...（已截断）";
 }
-
 public class SearchFileTool : IPetTool
 {
     public string ToolName => "search_file";

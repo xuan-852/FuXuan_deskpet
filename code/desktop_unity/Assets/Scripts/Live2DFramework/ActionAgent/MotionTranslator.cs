@@ -984,7 +984,7 @@ public static class MotionTranslator
                 lastKf.Values[key] = 0f;
         }
 
-        Debug.Log($"[MotionTranslator] 鈿犱负 \"{plan.Description}\" 鑷姩娉ㄥ叆 {enrichParams.Count} 涓偄浣撳弬鏁帮紙鍘熷ご闈㈠崰姣?{headFaceRatio:P0}锛?");
+        Debug.Log($"[MotionTranslator] 🦋 为 \"{plan.Description}\" 自动注入 {enrichParams.Count} 个身体参数（原头面占比 {headFaceRatio:P0}）；");
     }
 
     // ──────────────────────────────────────────────
@@ -1004,7 +1004,7 @@ public static class MotionTranslator
             int lines = memories.Split('\n').Length;
             int armCount = memories.Split(new[] { "arm_" }, StringSplitOptions.None).Length - 1;
             int fingerCount = memories.Split(new[] { "finger_" }, StringSplitOptions.None).Length - 1;
-            Debug.Log($"[MotionTranslator] 鉂わ笍 娉ㄥ叆 {lines} 琛岃繍鍔ㄨ蹇嗗埌 prompt (鍚玜rm_={armCount}妗?鎸噁inger_={fingerCount}妗?)");
+            Debug.Log($"[MotionTranslator] 📥 注入 {lines} 行运动记忆到 prompt (含 arm_={armCount} 条, finger_={fingerCount} 条)");
         }
         return memories;
     }
