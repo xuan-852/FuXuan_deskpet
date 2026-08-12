@@ -211,6 +211,77 @@ public static class OpenClawBridge
         }
     }
 
+    /// <summary>
+    /// 生成办公文档（PPT / Word / Excel）。
+    /// 桥接服务器让 AI 组织内容 → 本地 Python (python-pptx/docx/openpyxl) 渲染成文件。
+    /// </summary>
+    /// <param name="type">文档类型：ppt / docx / xlsx</param>
+    /// <param name="description">文档需求描述（自然语言，如「做一个关于 AI 的汇报 PPT」）</param>
+    /// <param name="title">文档标题（可选，用于命名文件）</param>
+    /// <param name="theme">PPT 主题色（可选：blue/green/purple/dark/orange）</param>
+    /// <returns>JSON 文本：{"success":true,"path":"...","title":"...","folder_path":"..."} 或失败 JSON</returns>
+    public static async Task<string> GenerateOfficeAsync(string type, string description, string title = null, string theme = null)
+    {
+        if (string.IsNullOrWhiteSpace(type) || !(type == "ppt" || type == "docx" || type == "xlsx"))
+            return "❌ 文档类型必须是 ppt / docx / xlsx 之一";
+        if (string.IsNullOrWhiteSpace(description))
+            return "❌ 未提供文档需求描述，请告诉本座想生成什么内容";
+
+        string url = $"{BASE_URL}/generate_office";
+        var payload = new Newtonsoft.Json.Linq.JObject
+        {
+            ["type"] = type,
+            ["description"] = description,
+            ["title"] = title ?? "",
+            ["theme"] = theme ?? ""
+        };
+        string jsonBody = payload.ToString(Newtonsoft.Json.Formatting.None);
+
+        using (var req = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
+            req.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("x-bridge-token", BridgeToken);
+            // AI 组织内容 + 本地渲染，通常 10-60s；给足余量
+            req.timeout = 300;
+
+            var op = req.SendWebRequest();
+            while (!op.isDone)
+                await Task.Yield();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                LastError = req.error;
+                IsAvailable = false;
+                return $"{{\"success\":false,\"error\":\"{req.error}\"}}";
+            }
+
+            string raw = req.downloadHandler?.text ?? "{}";
+            try
+            {
+                var obj = JObject.Parse(raw);
+                bool success = obj["success"]?.Value<bool>() ?? false;
+                if (success)
+                {
+                    IsAvailable = true;
+                    LastError = "";
+                    return raw; // 完整 JSON 给工具层解析
+                }
+
+                string err = obj["error"]?.ToString() ?? "未知错误";
+                LastError = err;
+                return $"{{\"success\":false,\"error\":\"{err}\"}}";
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                return $"{{\"success\":false,\"error\":\"{ex.Message}\"}}";
+            }
+        }
+    }
+
     /// <summary>当前是否有在途任务（提交后未完成）</summary>
     public static bool IsBusy { get; private set; } = false;
 

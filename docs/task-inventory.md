@@ -234,7 +234,8 @@
 | ✅ | 工具注册 | `openclaw_search` |
 | ✅ | PM2 统一管理 | server/ecosystem.config.js（进程名 openclaw-bridge） |
 | ✅ | 环境变量鉴权（N39+） | 请求头 `x-bridge-token`：优先 `BRIDGE_TOKEN`（系统级 64 字符），fallback `GATEWAY_TOKEN`（自动从 openclaw.json 读取，含 BOM strip）；C# 侧同源读取 |
-| ✅ | 端点现状 | `/search`、`/health`、`/compile_latex`（**无 /task**，roadmap 规划未落地） |
+| ✅ | 端点现状 | `/search`、`/health`、`/compile_latex`、`/generate_office`、`/task`（P1 已落地：POST 提交 / GET 轮询 / POST cancel，含心跳 lastActivityAt 与 maxSteps 成本熔断） |
+| ✅ | 任务外包工具（P1） | `openclaw_task`（太卜神行法，VisionKnowledgeTools.cs）→ `OpenClawBridge.ExecuteTaskAndWaitAsync`：提交 + 心跳轮询（默认 300s 无进展自动取消）+ 不可重试错误 `❌ [不可重试]` 前缀 + ChatManager 成本熔断 `_openclawTaskFatalSeen` |
 
 ---
 

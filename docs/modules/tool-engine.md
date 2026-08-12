@@ -1,0 +1,129 @@
+# 工具系统 ToolEngine — 59 工具插件架构与稳定性报告
+
+> **文档作用**: 本模块文档描述桌宠「工具系统」的**代码真相**——IPetTool 插件架构、ToolRegistry 反射自动发现、AsyncToolBase 异步基类、危险工具审批、10 个工具文件 59 个已注册工具的分类清单，以及 2026-08-08 全量稳定性测试报告（57 用例 0 真实 bug）。新增/修改/删除任何 AI 工具前必读。
+> **基本架构**: `IPetTool`（接口）+ `ToolSchema`（参数 Schema）→ 实现类（10 个工具文件 + 7 个基础设施 .cs）→ `ToolRegistry`（AppDomain 反射自动发现 + 调度）→ `AsyncToolBase`（异步/协程基类）→ `ChatManager` 调用。危险工具清单 `DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}`，经 `ToolConfirmManager` 审批。关键文件：`Assets/Scripts/ToolEngine/`（18 个 .cs，含测试器 ToolBenchmarkRunner）。
+> **开发历史迭代**: N40 起工具数 40+→52→55（新增 Pogget/LaTeX 等）；2026-08-08 `9b94c09` 修复 4 类 benchmark 问题（emoji 误判、DANGER_GUARD 真执行、run_command GBK 崩溃、file_move 链式失败）；55 工具全量测试 44 OK / 6 DANGER_GUARD / 5 SKIP / 2 ERROR（均预期）；2026-08-12 P1 收尾 55→**59**（+OfficeTools 3 个补录 + openclaw_task 补录，任务外包 /task 端点落地）。
+> **编写注意事项**: ①测试**禁止空参数遍历调用所有工具**（lock_screen 真锁屏、file_delete 真删文件、set_volume 真改音量），空参测试只限只读白名单（get_system_info/get_mouse_pos/get_clipboard）；②新增工具自动被反射发现，无需手动注册；③工具执行须返回中文 ✅/❌ 前缀消息；④危险工具须入 DangerousTools 清单并走 ToolConfirmManager 审批；⑤run_command 输出必须 UTF-8 解码（`chcp 65001`），Unity Mono 无 I18N.CJK 会抛异常。
+
+---
+
+## 一、文档作用
+
+- **服务对象**: 开发者 + AI 编码代理。任何涉及工具新增、工具改名、危险工具清单、工具 Schema、工具稳定性验证的改动。
+- **回答的问题**:
+  - 工具是怎么被发现的？新增工具要做什么？
+  - 59 个工具分别在哪几个文件？名字是什么？
+  - 哪些是危险工具？审批流程怎么走？
+  - 全量工具稳定性测试结果如何？有哪些已知环境限制？
+- **关联文档**: `code-truth-architecture.md` 四章（工具系统真相）｜`modules/ai-chat-system.md`（工具子集 T4 注入）｜`modules/bridge-communication.md`（桥接依赖工具）｜`modules/action-agent.md`（动作工具）｜`development-standards.md`（工具新增标准流程）
+
+## 二、基本架构
+
+### 2.1 插件架构
+
+```
+IPetTool (接口: ToolName / ToolDescription / ToolParametersJson / IsAsync / Execute / ExecuteAsync)
+  ↑ 实现 (10 个工具文件 + 7 个基础设施 .cs · 共 59 工具)
+ToolRegistry (AppDomain.GetAssemblies 反射自动发现 + 调度)
+  ↑ 委托
+AsyncToolBase (异步/协程工具基类, ToolName 虚属性)
+  ↑ ChatManager 调用 (DoToolLoop, 最多 10 轮)
+```
+
+### 2.2 文件清单与工具分类（真实注册名，59 个）
+
+| 文件 | 工具数 | 工具列表 | 类别 |
+|------|--------|----------|------|
+| `WebSystemTools.cs` | 14 | search_web / open_url / search / open_app / open_folder / get_system_info / lock_screen / set_volume / mute / get_mouse_pos / list_files / notify / run_command / power | 观星/封印/洞观/开阵 |
+| `ClipboardFileTools.cs` | 14 | get_clipboard / set_clipboard / get_weather / file_open / file_move / file_copy / file_delete / file_rename / file_info / file_create / dir_create / file_read / search_files / search_file | 传音/摄形/调音/文件 |
+| `ReminderAcademicTools.cs` | 8 | set_reminder / query_reminders / mark_reminder_done / delete_reminder / query_exams / query_scores / query_schedule / query_user_status | 卜算记事簿/传讯 |
+| `Live2DSyncTools.cs` | 7 | set_expression / play_action / stop_action / inspect_motion_memory / inspect_personality / explore_body / control_body | 演武/表情/动作 |
+| `VisionKnowledgeTools.cs` | 5 | take_screenshot / knowledge_search / knowledge_index / openclaw_search / openclaw_task | 摄形/藏书阁 RAG/OpenClaw 搜索+任务外包 |
+| `OfficeTools.cs` | 3 | generate_ppt / generate_docx / generate_xlsx（经 OpenClawBridge 调 `/generate_office`，输出 `D:\DesktopPetData\Documents\`） | 办公文档生成 |
+| `MotionCoroutineTools.cs` | 5 | generate_motion / explore_body_vision / run_verification / vis_verify / self_review | 异步动作生成(协程)/视觉验证 |
+| `PoggetTool.cs` | 1 | launch_pogget（启动 `d:\pogget\Pogget.exe`） | 启动 Pogget |
+| `PoggetAgentTool.cs` | 1 | pogget_agent（8 子命令：ping/list_containers/get_container_items/add_to_container/remove_from_container/create_container/organize_desktop/quickpanel_status） | Agent IPC |
+| `LatexCompileTool.cs` | 1 | compile_latex（经 OpenClawBridge.CompileLatexAsync，输出 `D:\DesktopPetData\Documents\`） | 问天录 |
+
+### 2.3 基础设施（7 个 .cs）
+
+| 文件 | 职责 |
+|------|------|
+| `IPetTool.cs` | 工具接口 |
+| `AsyncToolBase.cs` | 异步工具基类（ToolName 虚属性） |
+| `ToolRegistry.cs` | 反射自动发现 + 调度；`DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}` |
+| `ToolSchema.cs` | JSON Schema 构建器 |
+| `ToolHelpers.cs` | 工具辅助函数 |
+| `ToolConfirmManager.cs` | 危险工具确认管理 |
+| `GlmModels.cs` | GLM 模型配置 |
+
+> ⚠️ **代码中不存在的旧文档工具**：`get_time`、`get_pet_status`、`get_system_status`、`show_reminder`、`send_notification`、`write_note`、`messenger`、`write_memory`、`get_memories`、`start_conversation`、`open_web`、`capture_screen`、`reminder_*`（旧文件 MemoryTools/ReminderTools/AcademicTools/KnowledgeTools/BodyTools 均已不存在）。以本表为准。
+
+### 2.4 意图 → 工具白名单映射（ChatManager 侧）
+
+- **chat** / **emotion** → 不发任何 tools
+- **command** → launch_pogget、pogget_agent、open_app、open_url、open_folder、search、search_web、openclaw_search、openclaw_task、lock_screen、set_volume、mute、power、get_system_info、get_mouse_pos、list_files、run_command、notify、get_clipboard、set_clipboard、file_*、take_screenshot
+- **knowledge** → search_web、search、openclaw_search、openclaw_task、knowledge_search、compile_latex、get_weather、generate_ppt、generate_docx、generate_xlsx、query_*、inspect_*、explore_body*
+- **operation** → set_expression、play_action、stop_action、generate_motion、inspect_*、explore_body*、take_screenshot、knowledge_index
+
+### 2.5 危险工具审批流程
+
+`DangerousTools`（7 个：file_delete / power / lock_screen / run_command / set_volume / mute / openclaw_task）→ `ToolConfirmManager` 弹确认 → 用户同意才执行。测试器验证时**只验证 IsDangerous/HasTool 标记，绝不执行**。
+
+> ℹ️ `openclaw_task`（太卜神行法，`VisionKnowledgeTools.cs`）把复杂多步任务外包给 OpenClaw 智能体（浏览器/命令行），经 `OpenClawBridge.ExecuteTaskAndWaitAsync` 提交 + 心跳轮询（默认 300s 无进展判卡死自动取消）。ChatManager 侧有成本熔断：`_openclawTaskFatalSeen`——一旦任务返回不可重试错误（`❌ [不可重试]`），本轮禁止再次调用，防 LLM 换说法反复重试烧 token。参数：task（必填）/ mode（agent/browser）/ timeout_seconds / max_steps / heartbeat_seconds / max_idle_heartbeats。
+
+## 三、开发历史迭代
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| N20+ | — | 工具集 40+ → 52 个 |
+| N39 | 2026-08-02 | 工具数修正 40+→52 |
+| N40 | 2026-08-08 | 工具数修正 52→**55**（含 Pogget/LaTeX 等新工具）；T4 工具子集注入（55→27） |
+| N40 | 2026-08-08 | 全量稳定性测试提交 `9b94c09`：修复 4 类问题（见下） |
+| P1 | 2026-08-12 | 工具数修正 55→**59**：补录 `OfficeTools.cs` 3 个（generate_ppt/docx/xlsx，此前漏登记）+ `VisionKnowledgeTools.cs` 补录 openclaw_task；`/task` 外包端点落地（提交/轮询/取消/心跳），ChatManager knowledge 白名单补 generate_* 三工具；桥接 404 文案补 /generate_office、/task |
+
+### 2026-08-08 Benchmark 修复清单（提交 9b94c09）
+
+| # | 问题 | 根因 | 修复 | 验证 |
+|---|------|------|------|------|
+| 1 | **39 个成功结果误判 ERROR** | Unity Mono `StartsWith` 默认 culture-sensitive，zh-CN 下 `✅`/`🖥️` 前缀被 `StartsWith("❌")` 匹配为 True | 判定改 `StartsWith("❌", StringComparison.Ordinal)` | ERROR 39→2，误判归零 |
+| 2 | **DANGER_GUARD 真执行** | 测试器直接调用 `ToolRegistry.Execute` | 改为只验证 `IsDangerous`/`HasTool`，绝不执行 | 6 个危险工具 0ms 全部"仅验证" |
+| 3 | **run_command GBK 崩溃** | `Encoding.GetEncoding(936)` Unity Mono 无 I18N.CJK 抛异常 | `chcp 65001` + UTF-8 解码 | whoami 成功返回用户名 |
+| 4 | **file_move 链式失败** | file_rename 用例 new_name 无目录拼到根目录 | 改为 `_bench_c.txt` | move 3ms 通过，无残留 |
+
+### 全量测试结果（57 用例）
+
+| 指标 | 结果 |
+|------|------|
+| 总用例 | 57（55 工具各 1 用例 + run_command 双用例；OfficeTools 3 个经独立端点验证未入 benchmark） |
+| 通过（OK） | **44（77%）** |
+| 危险拦截（DANGER_GUARD） | 6（10.5%）— 只验证标记，未执行 |
+| 跳过（SKIP） | 5（8.8%）— notify 弹窗/launch_pogget 独立进程/compile_latex、vis_verify、run_verification 分钟级流程 |
+| 失败（ERROR） | **2（3.5%）** — 均为预期/环境限制 |
+| **真实 bug 失败** | **0** |
+
+### 2 个 ERROR 明细（预期/环境限制）
+
+| 工具 | 结果 | 判定 |
+|------|------|------|
+| `run_command format c:` | `❌ 此术涉及高危操作，需主人亲口确认` | ✅ 预期拦截，高危命令白名单防护生效 |
+| `take_screenshot` | 摄形失败（2ms） | ⚠️ 环境限制——后台/无窗口会话无法截屏 |
+
+### 耗时分布（44 个 OK 用例，均值 1361ms / 中位数 10ms）
+
+| 档位 | 数量 | 占比 | 代表 |
+|------|------|------|------|
+| ⚡ <50ms | 26 | 59% | get_mouse_pos 0ms、query_reminders 0ms、file_* 2-3ms |
+| 🔄 50ms–1s | 9 | 20% | open_folder 88ms、query_schedule 504ms、open_app 829ms |
+| 🚀 1–5s | 4 | 9% | run_command 1003ms、generate_motion 4029ms |
+| 🐢 >5s | 5 | 11% | openclaw_search 11s、search_web 16s（网络/GLM 固有） |
+
+## 四、编写注意事项
+
+1. **测试禁止空参数遍历调用所有工具**：`lock_screen` 真锁屏、`file_delete` 真删文件、`set_volume` 真改音量、`mute` 真静音、`power` 真关机——**只读安全白名单**（get_system_info / get_mouse_pos / get_clipboard）才可空参测试
+2. **新增工具三件套**：Python 脚本（如需）→ 桥接端点（curl 验证）→ OpenClawBridge.cs 方法 → ToolEngine 工具类 → `build.ps1 -Quick` → 测试 → 更新文档 → 提交（详见 development-standards.md 第八章）
+3. **反射自动发现**：工具类实现 `IPetTool` 即被 `ToolRegistry` 自动注册，无需手动注册表；但**旧文档中的工具名列表不会自动更新**——新增/改名后必须同步更新本文档与 report.md
+4. **返回值格式**：成功返回 `✅ <中文描述>`，失败返回 `❌ <中文描述>`（Unity Mono culture-sensitive StartsWith 陷阱已修复，但新判定代码仍须用 `StringComparison.Ordinal`）
+5. **危险工具**：必须入 `DangerousTools` 清单；execSync 类调用注意输出编码（run_command 用 `chcp 65001` + UTF-8 解码，勿用 `Encoding.GetEncoding(936)`）
+6. **危险命令白名单**：run_command 有高危命令拦截（format c: 等），测试这类用例预期返回「此术涉及高危操作」而非成功
+7. **验证方法**：全量稳定性测试用 `ToolBenchmarkRunner`（`.benchmark` 开关触发，真机运行）；测试后清理 `_bench*` 残留、还原剪贴板、回退 pet_memory/personality（备份 `_test_backup_*`）

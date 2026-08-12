@@ -336,6 +336,7 @@ public class ChatManager : MonoBehaviour
         {
             "search_web", "search", "openclaw_search", "openclaw_task",
             "knowledge_search", "compile_latex", "get_weather",
+            "generate_ppt", "generate_docx", "generate_xlsx",
             "get_system_info", "get_mouse_pos", "get_clipboard",
             "file_info", "list_files", "search_files",
             "query_exams", "query_scores", "query_schedule",

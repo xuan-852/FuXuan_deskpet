@@ -312,6 +312,155 @@ function cleanLatexFence(text) {
     return raw.replace(/^```(?:latex|tex|)\s*/i, '').replace(/\s*```$/i, '').trim();
 }
 
+// ─── 办公文档生成（/generate_office 端点用）─────────────────────────────────
+// 与 /compile_latex 同架构：AI 生成结构化内容 → 本地 Python 渲染成文件。
+// AI 只负责「内容」，渲染交给 python-pptx / python-docx / openpyxl，快且零误差。
+
+// 清理 AI 返回中的 ```json 围栏，取纯 JSON 文本
+function cleanJsonFence(text) {
+    let raw = cleanLatexFence(text);
+    const m = raw.match(/^\s*```(?:json)?\s*([\s\S]*?)\s*```\s*$/i);
+    if (m) raw = m[1];
+    return raw.trim();
+}
+
+// 定位本地 Python 解释器（办公生成器依赖）
+function resolvePython() {
+    if (process.env.OFFICE_PYTHON) return process.env.OFFICE_PYTHON;
+    // PM2 下 LOCALAPPDATA 可能缺失，用 USERPROFILE 兜底
+    const home = process.env.LOCALAPPDATA || join(process.env.USERPROFILE || '', 'AppData', 'Local');
+    const candidates = [
+        join(home, 'Programs', 'Python', 'Python312', 'python.exe'),
+        join(home, 'Programs', 'Python', 'Python311', 'python.exe'),
+        join(home, 'Programs', 'Python', 'Python310', 'python.exe'),
+    ];
+    for (const c of candidates) {
+        try { if (existsSync(c)) return c; } catch { /* ignore */ }
+    }
+    // 兜底：PATH 里的 python
+    try {
+        execSync('where python', { stdio: 'pipe', windowsHide: true, timeout: 5000, encoding: 'utf-8' });
+        return 'python';
+    } catch {
+        return null;
+    }
+}
+
+// AI 生成结构化内容 JSON（type: ppt | docx | xlsx）
+async function generateOfficeContent(type, description, title, theme) {
+    const schemas = {
+        ppt: `输出一个 JSON 对象（不要 Markdown 代码块包裹），结构如下：
+{
+  "title": "PPT 标题",
+  "subtitle": "副标题（可选）",
+  "author": "作者（可选）",
+  "theme": "blue|green|purple|dark|orange（可选）",
+  "sections": [
+    { "title": "章节标题", "bullets": ["要点1", "要点2", "要点3"], "notes": "演讲备注（可选）" }
+  ]
+}
+要求：sections 不少于 3 个章节；每节 bullets 3~5 条；内容贴合需求、专业准确。${theme ? `主题色用 "${theme}"。` : ''}${title ? `标题用 "${title}"。` : ''}`,
+        docx: `输出一个 JSON 对象（不要 Markdown 代码块包裹），结构如下：
+{
+  "title": "文档标题",
+  "author": "作者（可选）",
+  "intro": "文档简介（可选，显示在标题下方）",
+  "blocks": [
+    { "type": "h1", "text": "一级标题" },
+    { "type": "p", "text": "正文段落" },
+    { "type": "h2", "text": "二级标题" },
+    { "type": "bullet", "text": "项目符号项" }
+  ]
+}
+可用 block 类型：h1/h2/h3（标题）、p（正文，中文首行缩进）、bullet（项目符号）、number（编号）、quote（引用）。要求：结构完整、内容专业、正文段落有实际内容。${title ? `标题用 "${title}"。` : ''}`,
+        xlsx: `输出一个 JSON 对象（不要 Markdown 代码块包裹），结构如下：
+{
+  "title": "工作簿标题",
+  "sheets": [
+    {
+      "name": "Sheet 名（可选）",
+      "headers": ["列1", "列2", "列3"],
+      "rows": [["单元格", "单元格", "单元格"]],
+      "note": "表底部备注（可选）"
+    }
+  ]
+}
+要求：headers 不少于 2 列；rows 不少于 3 行真实数据；数据贴合需求。${title ? `标题用 "${title}"。` : ''}`,
+    };
+    const schema = schemas[type];
+    if (!schema) throw new Error(`不支持的文档类型: ${type}`);
+
+    const prompt = `你是办公文档内容专家。请根据以下需求，生成结构化内容描述。\n\n需求：${description}\n\n${schema}\n\n**只输出 JSON，不要任何解释，不要 Markdown 代码块包裹。**`;
+    if (!connected) {
+        try { await connect_(); }
+        catch (err) { throw new Error(`AI 内容生成连接失败: ${err.message}`); }
+    }
+    const raw = await sendChatAndWait(prompt, 180000);
+    const cleaned = cleanJsonFence(raw);
+    let parsed;
+    try {
+        parsed = JSON.parse(cleaned);
+    } catch (e) {
+        console.error(`[Bridge] Office AI returned invalid JSON (${cleaned.length} chars): ${cleaned.slice(0, 300)}`);
+        throw new Error('AI 未能生成有效的结构化内容，请换一种更明确的描述重试');
+    }
+    if (!parsed || typeof parsed !== 'object') throw new Error('AI 返回内容格式错误');
+    if (type === 'ppt' && (!Array.isArray(parsed.sections) || parsed.sections.length === 0)) throw new Error('AI 未生成 PPT 章节内容');
+    if (type === 'docx' && (!Array.isArray(parsed.blocks) || parsed.blocks.length === 0)) throw new Error('AI 未生成文档正文内容');
+    if (type === 'xlsx' && (!Array.isArray(parsed.sheets) || parsed.sheets.length === 0)) throw new Error('AI 未生成表格内容');
+    return parsed;
+}
+
+// 调用本地 Python 生成器渲染文件
+function renderOfficeFile(type, contentJson, outDir) {
+    const python = resolvePython();
+    if (!python) throw new Error('未找到 Python 解释器，无法生成办公文档。请安装 Python 3.10+ 并加入 PATH');
+    const scriptMap = { ppt: 'ppt_gen.py', docx: 'docx_gen.py', xlsx: 'xlsx_gen.py' };
+    const script = scriptMap[type];
+    if (!script) throw new Error(`不支持的文档类型: ${type}`);
+
+    // ★ 多候选定位 scripts/office 目录（PM2 下 process.argv[1] 是容器脚本，必须兜底）：
+    //   1) OFFICE_SCRIPTS_DIR 环境变量（最高优先）
+    //   2) 已知项目根 D:\Unity\projects\Desktop_per_pro\scripts\office
+    //   3) process.cwd() 向上 5 级
+    //   4) process.argv[1] 所在目录向上 5 级
+    const scriptCandidates = [];
+    if (process.env.OFFICE_SCRIPTS_DIR) scriptCandidates.push(join(process.env.OFFICE_SCRIPTS_DIR, script));
+    scriptCandidates.push('D:\\Unity\\projects\\Desktop_per_pro\\scripts\\office\\' + script);
+    for (const base of [process.cwd(), dirname(process.argv[1])]) {
+        let probe = base;
+        for (let depth = 0; depth < 5; depth++) {
+            scriptCandidates.push(join(probe, 'scripts', 'office', script));
+            const parent = dirname(probe);
+            if (parent === probe) break;
+            probe = parent;
+        }
+    }
+    let scriptPath = scriptCandidates.find(p => existsSync(p));
+    if (!scriptPath) {
+        throw new Error(`未找到生成器脚本 ${script}（候选位置均不存在，请设置 OFFICE_SCRIPTS_DIR 环境变量指向 scripts/office 目录）`);
+    }
+
+    mkdirSync(outDir, { recursive: true });
+    // 内容写到临时 JSON 文件（避免命令行转义问题）
+    const tmpJson = join(tmpdir(), `office_${Date.now().toString(36)}_${type}.json`);
+    writeFileSync(tmpJson, JSON.stringify(contentJson), 'utf-8');
+
+    const pyCmd = `"${python}" "${scriptPath}" "${tmpJson}" "${outDir}"`;
+    console.log(`[Bridge] Office render: ${pyCmd}`);
+    const stdout = execSync(pyCmd, {
+        windowsHide: true, timeout: 60000, encoding: 'utf-8', stdio: 'pipe',
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
+    });
+    try { unlinkSync(tmpJson); } catch { /* ignore */ }
+    const result = stdout.trim().split('\n').pop(); // 取最后一行 JSON
+    try {
+        return JSON.parse(result);
+    } catch {
+        throw new Error(`生成器输出无法解析: ${result}`);
+    }
+}
+
 // ─── 节内容合法性校验 ──────────────────────────────────────────────────────
 // 防止两类坏响应混入 .tex：
 //   1) Gateway 元数据 JSON（{runId, stopReason, ...}）——run#7 模块2 曾混入 140 chars
@@ -1045,8 +1194,67 @@ function startHttpServer() {
             return;
         }
 
+        // ─── POST /generate_office ──────────────────────────────────
+        // 办公文档生成：AI 组织内容 → 本地 Python 渲染成 .pptx/.docx/.xlsx
+        // body: { type: "ppt"|"docx"|"xlsx", description, title?, theme? }
+        if (path === '/generate_office' && req.method === 'POST') {
+            const bodyChunks = [];
+            req.on('data', chunk => bodyChunks.push(chunk));
+            req.on('end', async () => {
+                const body = Buffer.concat(bodyChunks).toString('utf-8');
+                try {
+                    const { type, description, title, theme } = JSON.parse(body);
+                    if (!type || !['ppt', 'docx', 'xlsx'].includes(type)) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: 'type 必须是 ppt / docx / xlsx 之一' }));
+                        return;
+                    }
+                    if (!description || !description.trim()) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: '需要提供 description（文档需求描述）' }));
+                        return;
+                    }
+
+                    // 1) AI 生成结构化内容
+                    console.log(`[Bridge] Generating office content (${type}): "${description.substring(0, 80)}..."`);
+                    const t0 = Date.now();
+                    const content = await generateOfficeContent(type, description.trim(), title, theme);
+                    console.log(`[Bridge] AI generated office content in ${Date.now() - t0}ms`);
+
+                    // 2) 确定输出目录（Documents 下按标题建文件夹）
+                    const docTitle = String(content.title || title || 'document').replace(/[<>:"\/\\|?*]/g, '_');
+                    const folderName = `${docTitle}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}_${Date.now().toString(36)}`;
+                    const outDir = join('D:\\DesktopPetData\\Documents', folderName);
+                    mkdirSync(outDir, { recursive: true });
+
+                    // 3) 本地 Python 渲染
+                    const result = renderOfficeFile(type, content, outDir);
+                    if (!result || result.success !== true) {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: result?.error || '文档生成失败', folder_path: outDir }));
+                        return;
+                    }
+
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({
+                        success: true,
+                        path: result.path,
+                        title: docTitle,
+                        folder_path: outDir,
+                        type: type,
+                        detail: result
+                    }));
+                } catch (err) {
+                    console.error(`[Bridge] Office generate error: ${err.message}`);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: err.message }));
+                }
+            });
+            return;
+        }
+
         res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Not found. Use /search?q=, /compile_latex, or /health' }));
+        res.end(JSON.stringify({ error: 'Not found. Use /search?q=, /compile_latex, /generate_office, /task, or /health' }));
     });
 
     server.listen(BRIDGE_PORT, '127.0.0.1', () => {
