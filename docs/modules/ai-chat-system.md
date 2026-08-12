@@ -2,7 +2,7 @@
 
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
 > **基本架构**: 用户输入 → `ChatManager`（10 轮回环 / 意图过滤 / 600s 看门狗）→ `ApiClient`（DeepSeek SSE 流式，Function Calling）→ `ToolEngine/` 插件调度；`LocalLLMAgentService`（Ollama qwen2.5:3b）提供 4 项离线能力兜底；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`（1,595 行）、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
-> **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染。
+> **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀。
 > **编写注意事项**: ①测试必须开测试模式（`D:\DesktopPetData\.test_mode`）否则污染 pet_memory/pet_personality；②`{current_time}` 等动态内容**必须放 system prompt 尾部**（放开头会摧毁 DeepSeek 缓存命中，全价 ¥1/M）；③deepseek-v4-flash 是推理模型，必须显式 `"thinking":{"type":"disabled"}` + `max_tokens:1200` 否则 `content=""`；④历史裁剪须按字符预算且向前对齐最近 user 消息，防止切断 tool_calls↔tool 配对导致 API 400。
 
 ---
@@ -47,16 +47,23 @@
 
 ### 2.3 系统 Prompt 注入链（BuildSystemPrompt 真实顺序）
 
-1. 基础人格（符玄人设）
-2. `ActivityTracker.GetSummary()` 活动摘要
-3. ★ 当前前台窗口（法眼实时观测）
-4. ★ 多窗口环境摘要 `GetVisibleWindowsSummary()`
-5. ★ 浏览器标签页深度感知 `GetBrowserTabsSummary()`
-6. `InjectParameterKnowledge()` → `ParameterKnowledgeProvider.GenerateKnowledgePrompt()`（身体参数知识）
-7. `InjectClosedLoopCapability()` → 闭环演武系统说明（GLM-4V 自评、演武心经、30 上限、无望淘汰；「勿提及评分」铁则在此代码版）
-8. `MotionMemoryManager.GetFormattedMemories()` 演武心经经验
+1. 基础人格模板（`Resources/SystemPrompt.txt`，兜底"你是符玄…"）
+2. `PetMemory.GetFormattedMemories()` 长期记忆
+3. `PersonalityManager.FormatForPrompt()` 人格特质与关系
+4. `PreferencesManager.FormatForPrompt()` 主人偏好【本座谨记】（P4.2）
+5. 知识库上下文 `_cachedKnowledgeContext`（藏书阁检索缓存）
+6. `ActivityTracker.GetSummary()` 活动摘要
+7. ★ 当前前台窗口（法眼实时观测）
+8. ★ 多窗口环境摘要 `GetVisibleWindowsSummary()`
+9. ★ 浏览器标签页深度感知 `GetBrowserTabsSummary()`
+10. `InjectParameterKnowledge()` → 身体参数知识
+11. `InjectClosedLoopCapability()` → 闭环演武系统说明
+12. `InjectMultiActionCapability()` → 多步并行施法（T7）
+13. `MotionMemoryManager.GetFormattedMemories()` 演武心经经验
+14. `ClipboardMonitor.GetRecentClipboardSummary()` 剪贴板感知（P4.1，30 分钟时效）
+15. 【当前时刻】固定尾部（命中 DeepSeek 上下文缓存）
 
-> ⚠️ 铁则：**动态内容（时间戳等）只允许出现在尾部固定段之后或 prompt 末尾**——T1 把 `{current_time}` 从开头挪到尾部后缓存命中率 23.9%→98.6%（50x 差价：¥1/M → ¥0.02/M）。
+> ⚠️ 铁则：**动态内容（时间戳等）只允许出现在尾部固定段之后或 prompt 末尾**——T1 把 `{current_time}` 从开头挪到尾部后缓存命中率 23.9%→98.6%（50x 差价：¥1/M → ¥0.02/M）。P4 新增注入（偏好/剪贴板）均置于【当前时刻】之前，不影响静态前缀缓存。
 
 ### 2.4 言出法随 — 内嵌动作标记（StripAndExecuteActions）
 

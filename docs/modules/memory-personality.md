@@ -2,7 +2,7 @@
 
 > **文档作用**: 本模块文档描述桌宠「记忆与人格」子系统的**代码真相**——PetMemory 三层记忆、PersonalityManager 五维人格演化、KnowledgeBaseManager 本地 RAG 知识库，以及数据持久化文件地图。改记忆读写/人格演化/知识库相关代码前必读。
 > **基本架构**: `PetMemory`（entries + coreFacts + conversationSummary 三层，输出 4 层格式化）；`PersonalityManager`（五维人格 × 三维关系 × 情绪联动，`pet_personality.json`）；`KnowledgeBaseManager`（Ollama nomic-embed-text 嵌入 + 余弦 TopK 检索，`knowledge_base.json`）；反思链路（CheckReflection → DoReflection → CommitReflection）。数据根目录硬编码 `D:\DesktopPetData\`（`DataPathConfig.cs`）。
-> **开发历史迭代**: N39 修复两大缺口——反思链路实际接线（死回调 OnReflectRequest 删除）、知识库上下文实际注入（GetFormattedContext 返回 LastFormattedContext 缓存）；测试模式 IsTestMode 防污染（.test_mode 标记文件）。
+> **开发历史迭代**: N39 修复两大缺口——反思链路实际接线（死回调 OnReflectRequest 删除）、知识库上下文实际注入（GetFormattedContext 返回 LastFormattedContext 缓存）；测试模式 IsTestMode 防污染（.test_mode 标记文件）；2026-08-12 P4 新增 PreferencesManager 偏好结构化存储（`pet_preferences.json` + set/query/remove 三工具）。
 > **编写注意事项**: ①测试必须开 `.test_mode`（防污染 pet_memory.json 忆境 + pet_personality.json 人格计数），测后清理用 `scripts/openclaw/clean_test_pollution.cjs`；②人格触发词注意区分正负触发（"我的"/"我在"等 importantMarkers）；③`DriftTowardNeutral()` 存在但 ActionAgent 内无调用者（潜在死代码）；④知识库检索是协程异步填充缓存，同步 API 返回最近结果（可能有 1 帧延迟）。
 
 ---
@@ -68,6 +68,7 @@ SendRequestCoroutine → CheckReflection (L518)
 | `pet_config.json` | PetConfig | 宠物配置 |
 | `pet_memory.json` | PetMemory | 记忆（3 层结构） |
 | `pet_personality.json` | PersonalityManager | 人格五维 |
+| `pet_preferences.json` | PreferencesManager | 主人偏好（50 条上限） |
 | `reminders.json` | ReminderManager | 提醒 |
 | `motion_memory.json` | MotionMemoryManager | 演武心经（30 条上限） |
 | `activity_log.json` | ActivityTracker | 30 天活动日志 |
@@ -82,6 +83,14 @@ SendRequestCoroutine → CheckReflection (L518)
 - 2s 轮询前台窗口；8 类关键词匹配（coding/gaming/studying/browsing/entertainment/communication/idle/other）；30 天留存 `activity_log.json`
 - 摘要经 system prompt 注入对话（AI 对话系统 2.3 节注入链第 2 项）
 
+### 2.7 主人偏好（PreferencesManager，P4.2）
+
+- **设计定位**：与记忆（事件流）互补——偏好是「去重、可覆盖、常驻」的结构化条目；文件 `pet_preferences.json`
+- **条目结构**：`{key, value, source(user/infer), note, updatedAt}`；同 key 覆盖更新；上限 50 条淘汰最旧
+- **注入**：`FormatForPrompt()` → ChatManager.BuildSystemPrompt（人格注入之后），标题「【本座谨记 · 主人偏好】」
+- **工具**：`set_preference`（记/改）/ `query_preferences`（查）/ `remove_preference`（删），均为同步工具，自动注册（ToolRegistry 反射）
+- **测试注意**：EditMode 下 `AddComponent` 不触发 Awake，测试需手动反射注册单例 + 调用 Load()；测试键用 `test_` 前缀并在 TearDown 清理
+
 ## 三、开发历史迭代
 
 | 版本 | 日期 | 变更 |
@@ -89,6 +98,7 @@ SendRequestCoroutine → CheckReflection (L518)
 | N31-N37 | — | 三层记忆、五维人格、知识库 RAG 建立 |
 | N39 | 2026-08-02 | ①反思链路接线（CheckReflection→DoReflection→CommitReflection，删除 OnReflectRequest 死回调）②知识库上下文实际注入（LastFormattedContext 缓存替代 STUB） |
 | N40 | 2026-08-08 | 新增 `IsTestMode`（.test_mode 标记文件）防自动化测试污染记忆/人格；clean_test_pollution.cjs 清理工具 |
+| P4.2 | 2026-08-12 | 新增 PreferencesManager 偏好结构化存储（`pet_preferences.json`，50 条上限淘汰最旧）+ set/query/remove 三工具 + prompt 注入；P4PerceptionTests 10 用例 |
 
 ## 四、编写注意事项
 

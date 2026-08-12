@@ -286,6 +286,7 @@ public class WindowOverlay : MonoBehaviour
     /// 获取全屏尺寸 — 只在主显示器范围内（多显示器时窗口不跨屏）
     /// 使用 SM_CXSCREEN / SM_CYSCREEN 而非虚拟桌面尺寸，确保 Screen.width/height 始终等于主屏大小，
     /// 所有 UI 组件（悬浮球、气泡、面板等）自然定位正确，无需逐个适配多显示器。
+    /// 同时用虚拟桌面指标（SM_CXVIRTUALSCREEN 等）检测是否多屏，供 AI 感知（P4.4）。
     /// </summary>
     private void GetFullScreenSize(out int w, out int h, out int originX, out int originY)
     {
@@ -296,11 +297,16 @@ public class WindowOverlay : MonoBehaviour
 
         primaryScreenWidth = w;
         primaryScreenHeight = h;
-        isMultiMonitor = false;
-        virtualScreenX = 0;
-        virtualScreenY = 0;
 
-        Log($"主屏尺寸: {w}x{h}");
+        // P4.4: 真实多屏检测 — 虚拟桌面尺寸大于主屏则存在多显示器（原点可能为负）
+        int virtualW = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        int virtualH = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        virtualScreenX = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        virtualScreenY = GetSystemMetrics(SM_YVIRTUALSCREEN);
+
+        isMultiMonitor = (virtualW > w || virtualH > h);
+
+        Log($"主屏尺寸: {w}x{h}，虚拟桌面: {virtualW}x{virtualH}，原点: ({virtualScreenX},{virtualScreenY})，多屏: {isMultiMonitor}");
     }
 
     /// <summary>

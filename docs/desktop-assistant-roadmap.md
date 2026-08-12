@@ -151,25 +151,25 @@
 - **执行结果**: `FinishAction` 写回 `action.result`/`lastRunAt` + `Save()`，气泡显示「✅/⚠️ 定时动作执行完成：…」（截断 60 字符）
 - **测试**: `ToolEngineTests` 新增 7 用例（旧数据兼容 / local_tool 序列化往返 / openclaw_task 序列化往返 / 危险判定对齐 ToolRegistry / BuildAction 解析三态）——2026-08-12 EditMode 全过（46 总 45 过，唯一失败为预存在的异步工具 WaitForSeconds 限制）
 
-### Phase 3 — 语音双向：让桌宠「开口说话」（约 1~1.5 天）
+### Phase 3 — 语音双向：让桌宠「开口说话」（~~约 1~1.5 天~~ **已放弃**）
 
-**目标**: 打字输入 → 语音输入输出
+> **2026-08-12 决策**: P3 语音**整体放弃**。桌宠场景气泡文字交互已完整，语音属"锦上添花"的拟人感；办公/安静环境下语音反而打扰；嘴型同步+音量+静音开关是半截子工程，性价比低。保留历史设计备查：
 
 | # | 任务 | 说明 |
 |---|---|---|
-| 3.1 | **TTS 输出**（先做，零成本） | Windows 自带 `System.Speech.Synthesis`（C#，无依赖）；或 `edge-tts`（更自然，免费）；接 `ChatBubble` 显示 + 说话 |
-| 3.2 | 嘴型同步（可选） | Live2D SDK `CubismAudioMouthInput` 组件已存在但未接线 → 音量驱动 `ParamMouthOpenY` |
-| 3.3 | **ASR 输入**（后做） | 方案 A：本地 whisper（`faster-whisper`，CPU 可用）；方案 B：云端（GLM-4V 同源无，需另配）；方案 C：Windows 语音识别 API |
-| 3.4 | 唤醒词（远期） | 「符玄」唤醒 → 参考 OpenClaw 语音通道 |
+| 3.1 | ~~TTS 输出~~ | ~~Windows `System.Speech.Synthesis` / `edge-tts`~~ |
+| 3.2 | ~~嘴型同步~~ | ~~Live2D `CubismAudioMouthInput` → `ParamMouthOpenY`~~ |
+| 3.3 | ~~ASR 输入~~ | ~~faster-whisper / 云端 / Windows 语音 API~~ |
+| 3.4 | ~~唤醒词~~ | ~~「符玄」唤醒~~ |
 
-### Phase 4 — 感知与个性化补强（约 1~1.5 天）
+### Phase 4 — 感知与个性化补强（✅ 2026-08-12 完成）
 
 | # | 任务 | 改动文件 | 说明 |
 |---|---|---|---|
-| 4.1 | **剪贴板监听** | 新 `ClipboardWatcher.cs` | `AddClipboardFormatListener` 挂窗口消息；变化 → 写入感知上下文（"用户复制了 X"）|
-| 4.2 | **偏好结构化存储** | `PetMemory.cs` | 新增 `preferences[]`（`{key,value,source,confidence}`），system prompt 注入 + `set_preference` 工具 |
-| 4.3 | 偏好→行为绑定（可选） | `ChatManager.cs` | 对明确偏好（如"别主动提游戏"）加确定性过滤，不依赖 LLM 心情 |
-| 4.4 | 多屏感知（顺手） | `WindowOverlay.cs` | `isMultiMonitor` 真实计算（EnumDisplayMonitors），至少让"当前屏"注入上下文 |
+| 4.1 | **剪贴板监听** ✅ | 新 `ClipboardMonitor.cs` + `SystemTrayManager.cs` | `AddClipboardFormatListener` 挂隐藏窗口 `WM_CLIPBOARDUPDATE`；`ExecuteOnMainThread` 送主线程读取去重缓存；`GetRecentClipboardSummary()` 注入 prompt（30 分钟时效，200 字截断）|
+| 4.2 | **偏好结构化存储** ✅ | 新 `PreferencesManager.cs` + `PreferenceTools.cs` + `ChatManager.cs` | 独立 `pet_preferences.json`（`{key,value,source,note,updatedAt}`），50 条上限淘汰最旧；`set_preference` / `query_preferences` / `remove_preference` 三工具；`FormatForPrompt()` 注入 prompt |
+| 4.3 | 偏好→行为绑定（可选） | `ChatManager.cs` | 对明确偏好（如"别主动提游戏"）加确定性过滤，不依赖 LLM 心情（未做，待后续）|
+| 4.4 | 多屏感知 ✅ | `WindowOverlay.cs` + `ToolHelpers.cs` | `isMultiMonitor` 真实计算（`SM_CXVIRTUALSCREEN` 差值法）；**主屏窗口策略不变**（仍 SM_CXSCREEN 定位）；`get_system_info` 注入屏幕信息 |
 
 ### Phase 5 — 省钱与自学习（持续优化，借鉴 UFO²）
 
@@ -199,11 +199,11 @@
 |---|---|---|---|---|
 | P1 | 桥接泛化 `/task` | 1~2 天 | OpenClaw 运行中 | ✅ 2026-08-12 |
 | P2 | 定时动作框架 | 1 天 | P1（动作可能外包） | ✅ 2026-08-12 |
-| P3 | 语音双向 | 1~1.5 天 | 无 | 待做 |
-| P4 | 剪贴板/偏好/多屏 | 1~1.5 天 | 无 | 待做 |
+| P3 | 语音双向 | ~~1~1.5 天~~ | 无 | ❌ 放弃 2026-08-12 |
+| P4 | 剪贴板/偏好/多屏 | 1~1.5 天 | 无 | ✅ 2026-08-12 |
 | P5 | 省钱与轨迹库 | 持续 | P1 | 部分完成 |
 
-**推荐顺序**: P1 → P2 → P3.1(TTS) → P4 → P3.3(ASR) → P5
+**推荐顺序**: P1 ✅ → P2 ✅ → P4 ✅ → P5 → （P3 已放弃）
 
 ---
 

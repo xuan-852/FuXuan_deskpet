@@ -48,6 +48,13 @@ public static class ToolHelpers
     private static extern bool LockWorkStation();
 
     [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int nIndex);
+    private const int SM_CXSCREEN = 0;
+    private const int SM_CYSCREEN = 1;
+    private const int SM_CXVIRTUALSCREEN = 78;
+    private const int SM_CYVIRTUALSCREEN = 79;
+
+    [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT lpPoint);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -383,6 +390,20 @@ public static class ToolHelpers
         catch { }
         sb.AppendLine($"⏱️ 运行时间: {TimeSpan.FromMilliseconds(Environment.TickCount):dd\\.hh\\:mm\\:ss}");
         sb.AppendLine($"🔤 系统语言: {System.Globalization.CultureInfo.InstalledUICulture.DisplayName}");
+
+        // P4.4: 多屏感知 — 虚拟桌面尺寸大于主屏即存在多显示器
+        try
+        {
+            int w = GetSystemMetrics(SM_CXSCREEN);
+            int h = GetSystemMetrics(SM_CYSCREEN);
+            int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+            int vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+            bool multi = vw > w || vh > h;
+            sb.AppendLine(multi
+                ? $"🖥️ 显示器: {w}x{h} 主屏（检测到多屏，虚拟桌面 {vw}x{vh}）"
+                : $"🖥️ 显示器: {w}x{h} 单屏");
+        }
+        catch { }
         return sb.ToString().TrimEnd();
     }
 

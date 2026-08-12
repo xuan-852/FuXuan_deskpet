@@ -2,7 +2,7 @@
 
 > **文档作用**: 本模块文档描述桌宠「工具系统」的**代码真相**——IPetTool 插件架构、ToolRegistry 反射自动发现、AsyncToolBase 异步基类、危险工具审批、10 个工具文件 59 个已注册工具的分类清单，以及 2026-08-08 全量稳定性测试报告（57 用例 0 真实 bug）。新增/修改/删除任何 AI 工具前必读。
 > **基本架构**: `IPetTool`（接口）+ `ToolSchema`（参数 Schema）→ 实现类（10 个工具文件 + 7 个基础设施 .cs）→ `ToolRegistry`（AppDomain 反射自动发现 + 调度）→ `AsyncToolBase`（异步/协程基类）→ `ChatManager` 调用。危险工具清单 `DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}`，经 `ToolConfirmManager` 审批。关键文件：`Assets/Scripts/ToolEngine/`（18 个 .cs，含测试器 ToolBenchmarkRunner）。
-> **开发历史迭代**: N40 起工具数 40+→52→55（新增 Pogget/LaTeX 等）；2026-08-08 `9b94c09` 修复 4 类 benchmark 问题（emoji 误判、DANGER_GUARD 真执行、run_command GBK 崩溃、file_move 链式失败）；55 工具全量测试 44 OK / 6 DANGER_GUARD / 5 SKIP / 2 ERROR（均预期）；2026-08-12 P1 收尾 55→**59**（+OfficeTools 3 个补录 + openclaw_task 补录，任务外包 /task 端点落地）。
+> **开发历史迭代**: N40 起工具数 40+→52→55（新增 Pogget/LaTeX 等）；2026-08-08 `9b94c09` 修复 4 类 benchmark 问题（emoji 误判、DANGER_GUARD 真执行、run_command GBK 崩溃、file_move 链式失败）；55 工具全量测试 44 OK / 6 DANGER_GUARD / 5 SKIP / 2 ERROR（均预期）；2026-08-12 P1 收尾 55→**59**（+OfficeTools 3 个补录 + openclaw_task 补录，任务外包 /task 端点落地）；2026-08-12 P4 新增 3 个偏好工具 → **62**（set_preference / query_preferences / remove_preference，PreferencesManager 配套）。
 > **编写注意事项**: ①测试**禁止空参数遍历调用所有工具**（lock_screen 真锁屏、file_delete 真删文件、set_volume 真改音量），空参测试只限只读白名单（get_system_info/get_mouse_pos/get_clipboard）；②新增工具自动被反射发现，无需手动注册；③工具执行须返回中文 ✅/❌ 前缀消息；④危险工具须入 DangerousTools 清单并走 ToolConfirmManager 审批；⑤run_command 输出必须 UTF-8 解码（`chcp 65001`），Unity Mono 无 I18N.CJK 会抛异常。
 
 ---
@@ -30,7 +30,7 @@ AsyncToolBase (异步/协程工具基类, ToolName 虚属性)
   ↑ ChatManager 调用 (DoToolLoop, 最多 10 轮)
 ```
 
-### 2.2 文件清单与工具分类（真实注册名，59 个）
+### 2.2 文件清单与工具分类（真实注册名，62 个）
 
 | 文件 | 工具数 | 工具列表 | 类别 |
 |------|--------|----------|------|
@@ -44,6 +44,7 @@ AsyncToolBase (异步/协程工具基类, ToolName 虚属性)
 | `PoggetTool.cs` | 1 | launch_pogget（启动 `d:\pogget\Pogget.exe`） | 启动 Pogget |
 | `PoggetAgentTool.cs` | 1 | pogget_agent（8 子命令：ping/list_containers/get_container_items/add_to_container/remove_from_container/create_container/organize_desktop/quickpanel_status） | Agent IPC |
 | `LatexCompileTool.cs` | 1 | compile_latex（经 OpenClawBridge.CompileLatexAsync，输出 `D:\DesktopPetData\Documents\`） | 问天录 |
+| `PreferenceTools.cs` | 3 | set_preference（key/value/source/note）/ query_preferences / remove_preference（偏好结构化存储，P4.2） | 心之所向 |
 
 ### 2.3 基础设施（7 个 .cs）
 

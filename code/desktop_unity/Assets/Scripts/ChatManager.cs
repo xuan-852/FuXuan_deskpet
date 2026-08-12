@@ -120,6 +120,14 @@ public class ChatManager : MonoBehaviour
                 prompt += "\n" + personality;
         }
 
+        // ★ P4.2: 注入主人偏好摘要（心之所向）
+        if (PreferencesManager.Instance != null)
+        {
+            string preferences = PreferencesManager.Instance.FormatForPrompt();
+            if (!string.IsNullOrEmpty(preferences))
+                prompt += "\n" + preferences;
+        }
+
         // ★ 注入知识库上下文（藏书阁检索结果缓存）
         if (KnowledgeBaseManager.Instance != null && !string.IsNullOrEmpty(_cachedKnowledgeContext))
         {
@@ -171,6 +179,13 @@ public class ChatManager : MonoBehaviour
             string motionMemories = MotionMemoryManager.Instance.GetFormattedMemories();
             if (!string.IsNullOrEmpty(motionMemories))
                 prompt += "\n" + motionMemories;
+        }
+
+        // ★ P4.1: 注入剪贴板感知（主人最近复制的内容，过期自动失效）
+        string clipboardSummary = ClipboardMonitor.GetRecentClipboardSummary();
+        if (!string.IsNullOrEmpty(clipboardSummary))
+        {
+            prompt += clipboardSummary;
         }
 
         // ★ 当前时刻追加到末尾（保持静态前缀不变 → 命中 DeepSeek 上下文缓存）

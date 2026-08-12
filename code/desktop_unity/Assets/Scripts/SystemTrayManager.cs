@@ -92,6 +92,7 @@ public class SystemTrayManager : MonoBehaviour
     private const uint WM_LBUTTONUP = 0x0202;
     private const uint WM_LBUTTONDBLCLK = 0x0203;
     private const uint WM_RBUTTONUP = 0x0205;
+    private const uint WM_CLIPBOARDUPDATE = 0x031D;  // 剪贴板内容变化通知
 
     private const uint SW_HIDE = 0;
     private const uint SW_SHOW = 5;
@@ -134,6 +135,12 @@ public class SystemTrayManager : MonoBehaviour
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool AddClipboardFormatListener(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RemoveClipboardFormatListener(IntPtr hWnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool ShowWindow(IntPtr hWnd, uint nCmdShow);
@@ -232,6 +239,7 @@ public class SystemTrayManager : MonoBehaviour
     private bool _minimizedToTray = false;
     private bool _autoStartEnabled = false;
     private bool _showMenuRequested = false;     // 右键菜单请求（线程安全）
+    private bool _clipboardListenerAttached = false; // P4.1 剪贴板监听是否已注册
 
     // 窗口 Proc 委托（必须存字段，否则 GC 会回收导致崩溃）
     private WndProcDelegate _wndProcDelegate;
@@ -480,6 +488,25 @@ public class SystemTrayManager : MonoBehaviour
         {
             Log($"隐藏消息窗口已创建: {_trayHwnd.ToInt64():X8}");
         }
+
+        // P4.1 剪贴板感知：注册剪贴板变化监听（成功后会收到 WM_CLIPBOARDUPDATE）
+        try
+        {
+            if (AddClipboardFormatListener(_trayHwnd))
+            {
+                _clipboardListenerAttached = true;
+                Log("✅ 剪贴板监听已注册");
+            }
+            else
+            {
+                int err = Marshal.GetLastWin32Error();
+                LogError($"注册剪贴板监听失败, error={err}");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError($"注册剪贴板监听异常: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -559,6 +586,20 @@ public class SystemTrayManager : MonoBehaviour
             Shell_NotifyIcon(NIM_DELETE, ref nid);
         }
 
+        // P4.1 注销剪贴板监听（先于销毁窗口）
+        if (_trayHwnd != IntPtr.Zero && _clipboardListenerAttached)
+        {
+            try
+            {
+                RemoveClipboardFormatListener(_trayHwnd);
+            }
+            catch (Exception ex)
+            {
+                LogError($"注销剪贴板监听异常: {ex.Message}");
+            }
+            _clipboardListenerAttached = false;
+        }
+
         if (_hIcon != IntPtr.Zero)
         {
             DestroyIcon(_hIcon);
@@ -602,6 +643,14 @@ public class SystemTrayManager : MonoBehaviour
             }
             return IntPtr.Zero;
         }
+
+        if (msg == WM_CLIPBOARDUPDATE)
+        {
+            // P4.1 剪贴板内容变化 → 主线程读取并缓存
+            ExecuteOnMainThread(ClipboardMonitor.NotifyClipboardUpdated);
+            return IntPtr.Zero;
+        }
+
         return DefWindowProc(hWnd, msg, wParam, lParam);
     }
 
