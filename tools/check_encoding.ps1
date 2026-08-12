@@ -4,6 +4,9 @@ param(
     [string]$Pattern = "*.cs"
 )
 
+# ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
+. "$PSScriptRoot\init-utf8.ps1"
+
 $files = Get-ChildItem $Root -Recurse -Filter $Pattern -File -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\(Library|Build|obj|node_modules|\.git|Logs)\\' }
 

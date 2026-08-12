@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # 符玄像素头像生成器 (PixelFuXuan Generator)
 # 用法: powershell -ExecutionPolicy Bypass -File pixelize.ps1 -InputImage "路径\图片.png" [-Size 32] [-CropCenter] [-BgTolerance 24]
 # 功能: 把任意图片转为硬边像素风头像，输出到 Assets/Resources/PixelFuXuan.png
@@ -11,6 +11,9 @@ param(
     [int]$BlurBefore = 2,     # 先模糊降噪再缩小，2=轻微
     [switch]$KeepAlpha        # 保留原图透明度，否则自动抠背景
 )
+
+# ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
+. "$PSScriptRoot\init-utf8.ps1"
 
 Add-Type -AssemblyName System.Drawing
 

@@ -62,9 +62,25 @@ $OutputEncoding.EncodingName             # 应显示 Unicode (UTF-8)
 python tools/scan_garbled_cs.py   # 产出 garbled_scan_result.txt
 ```
 
-## 五、已接入的脚本
+## 五、已接入的脚本（共 17 个，全部含中文）
 
-- `build.ps1` ✅（已 dot-source init-utf8.ps1）
+统一做法：文件保存为 **UTF-8 with BOM**，并在 `param()` 块之后（无 `param()` 则放脚本
+最顶部注释之后）加一行 dot-source：
 
-> 其余含中文的 .ps1（约 15 个）为存量脚本，接入方式同上；按需逐步迁移，
-> 迁移前如遇中文乱码可先手动加 BOM + dot-source 一行解决。
+```powershell
+. "$PSScriptRoot\..\..\tools\init-utf8.ps1"   # 相对层级按脚本所在目录调整
+```
+
+| 脚本 | 位置 |
+|---|---|
+| `build.ps1` | 项目根 |
+| `test_chunked_latex.ps1` | 项目根 |
+| `analyze_grid.ps1` / `analyze_ui.ps1` | `code/desktop_unity/screenshots/` |
+| `generate_pixel_candidates_fixed.ps1` / `generate_pixel_from_live2d.ps1` / `generate_pixel_quick.ps1` | `code/desktop_unity/scripts/` |
+| `download_samples.ps1` | `scripts/param_mapper/` |
+| `analyze_log.ps1` / `check_encoding.ps1` / `count_log.ps1` / `fuxuan_pixel_art.ps1` / `pet_chat_test.ps1` / `pixelize.ps1` / `read_pixel_map.ps1` / `render_fuxuan_17x24.ps1` | `tools/` |
+
+> 迁移工具：`tools/batch_utf8_protocol.py`（一次性批量加 BOM + 插 dot-source，已成功迁移 15 个存量脚本）。
+> 验证结果：全部 16 个已接入脚本语法解析通过；`analyze_log.ps1`/`count_log.ps1`/`analyze_grid.ps1`
+> 实机运行中文输出正常；全仓 20 个 ps1 编码 = 17 UTF8_BOM + 3 纯 ASCII（无中文，无需 BOM），零非合规文件。
+> 新增含中文的 ps1 请沿用同一做法，勿回退为 GBK 或 UTF-8 无 BOM。

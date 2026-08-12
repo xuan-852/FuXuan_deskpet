@@ -58,6 +58,9 @@ param(
     [switch]$KeepTestMode
 )
 
+# ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
+. "$PSScriptRoot\init-utf8.ps1"
+
 $ErrorActionPreference = "Stop"
 $PY = "C:\Users\25295\AppData\Local\Programs\Python\Python312\python.exe"
 $SHOT_DIR = "C:\Users\25295\.vscode_vision_screenshots"

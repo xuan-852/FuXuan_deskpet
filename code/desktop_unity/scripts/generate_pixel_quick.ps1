@@ -1,3 +1,6 @@
+﻿# ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
+. "$PSScriptRoot\..\..\..\tools\init-utf8.ps1"
+
 Add-Type -AssemblyName System.Drawing
 
 $src = 'D:\Unity\projects\Desktop_per_pro\code\desktop_unity\Assets\StreamingAssets\Live2D\Fuxuan\符玄.4096\texture_03.png'

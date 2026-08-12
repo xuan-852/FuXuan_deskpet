@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # 像素图反推工具 — 读取图片逐像素颜色，反推出颜色代码分布表
 # 用法: powershell -ExecutionPolicy Bypass -File read_pixel_map.ps1 -Image "路径\图片.png"
 # 输出: 控制台打印 几×几 的颜色代码表格（可复制回填给 fuxuan_pixel_art.ps1）
@@ -7,6 +7,9 @@ param(
     [Parameter(Mandatory=$true)][string]$Image,
     [switch]$GridOnly        # 只输出网格表格，不输出调色板匹配信息
 )
+
+# ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
+. "$PSScriptRoot\init-utf8.ps1"
 
 Add-Type -AssemblyName System.Drawing
 

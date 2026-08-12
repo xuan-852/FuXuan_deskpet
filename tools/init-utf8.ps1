@@ -1,16 +1,17 @@
-<#
+﻿<#
 .SYNOPSIS
     项目统一编码协议 —— PowerShell UTF-8 环境初始化
 .DESCRIPTION
     所有含中文的 .ps1 脚本在头部 dot-source 本文件，即可统一解决
-    PowerShell 5.1 的三类乱码问题：
+    PowerShell 5.1 的四类乱码问题：
       1. 控制台输出中文乱码     → 设置 [Console]::OutputEncoding
       2. 管道/重定向输出乱码    → 设置 $OutputEncoding + $PSDefaultParameterValues
       3. Invoke-RestMethod 发中文 body 变 '?' → 强制 UTF-8 body 编码
+      4. Get-Content 读无 BOM UTF-8 文件乱码  → 默认按 UTF-8 读取
 
     用法（脚本第一行，注释之后）:
-        . "$PSScriptRoot\..\tools\init-utf8.ps1"
-        或（与脚本同目录时）
+        . "$PSScriptRoot\..\tools\init-utf8.ps1"   # 脚本在子目录时
+        或（脚本与 init-utf8.ps1 同目录时）
         . "$PSScriptRoot\init-utf8.ps1"
 
     本文件必须保存为 UTF-8 with BOM（.editorconfig 已强制）。
@@ -29,6 +30,11 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 # Invoke-RestMethod / Invoke-WebRequest 发送 body 时强制 UTF-8 字节
 $PSDefaultParameterValues['Invoke-RestMethod:ContentType'] = 'application/json; charset=utf-8'
 $PSDefaultParameterValues['Invoke-WebRequest:ContentType']  = 'application/json; charset=utf-8'
+
+# Get-Content 默认按 UTF-8 读取（PS 5.1 默认按 ANSI/GBK 读无 BOM UTF-8 文件 → 乱码）
+$PSDefaultParameterValues['Get-Content:Encoding'] = 'UTF8'
+# Out-File / Add-Content 默认按 UTF-8 写出（与 .editorconfig 协议一致）
+$PSDefaultParameterValues['Out-File:Encoding']    = 'utf8'
 
 # ── 3. chcp 65001 同步代码页（仅 PS 5.1 原生控制台需要）──
 try {
