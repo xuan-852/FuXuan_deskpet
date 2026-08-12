@@ -13,6 +13,7 @@
 
 | 文档 | 作用 | 阅读时机 |
 |------|------|---------|
+| [`PROJECT_INTRO.md`](../PROJECT_INTRO.md) | GitHub 项目介绍（特性亮点/架构图/快速上手/展示） | 访客首次了解项目 |
 | [`AGENTS.md`](../AGENTS.md) | AI 协作快速入口（7 条铁律） | **每次开工前** |
 | [`development-standards.md`](development-standards.md) | 唯一权威开发规范（9 章） | 写任何代码前 |
 | [`code-truth-architecture.md`](code-truth-architecture.md) | 代码真相架构审计（六层架构） | 改架构/子系统前 |

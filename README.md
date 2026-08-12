@@ -2,6 +2,9 @@
 
 <div align="center">
 
+> 🎉 **GitHub 项目介绍请看 [`PROJECT_INTRO.md`](PROJECT_INTRO.md)**（特性亮点 + 架构 + 快速上手 + 展示图）；
+> 本文件为**面向开发者的详细文档**（功能详解 + 六层架构 + 迭代历史）。
+
 ![版本](https://img.shields.io/badge/版本-N41-blue)
 ![引擎](https://img.shields.io/badge/引擎-Tuanjie%202022.3.62t7-purple)
 ![平台](https://img.shields.io/badge/平台-Windows%2064位-green)
