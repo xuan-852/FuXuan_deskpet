@@ -1,0 +1,101 @@
+# 记忆与人格系统 — PetMemory、人格演化与知识库
+
+> **文档作用**: 本模块文档描述桌宠「记忆与人格」子系统的**代码真相**——PetMemory 三层记忆、PersonalityManager 五维人格演化、KnowledgeBaseManager 本地 RAG 知识库，以及数据持久化文件地图。改记忆读写/人格演化/知识库相关代码前必读。
+> **基本架构**: `PetMemory`（entries + coreFacts + conversationSummary 三层，输出 4 层格式化）；`PersonalityManager`（五维人格 × 三维关系 × 情绪联动，`pet_personality.json`）；`KnowledgeBaseManager`（Ollama nomic-embed-text 嵌入 + 余弦 TopK 检索，`knowledge_base.json`）；反思链路（CheckReflection → DoReflection → CommitReflection）。数据根目录硬编码 `D:\DesktopPetData\`（`DataPathConfig.cs`）。
+> **开发历史迭代**: N39 修复两大缺口——反思链路实际接线（死回调 OnReflectRequest 删除）、知识库上下文实际注入（GetFormattedContext 返回 LastFormattedContext 缓存）；测试模式 IsTestMode 防污染（.test_mode 标记文件）。
+> **编写注意事项**: ①测试必须开 `.test_mode`（防污染 pet_memory.json 忆境 + pet_personality.json 人格计数），测后清理用 `scripts/openclaw/clean_test_pollution.cjs`；②人格触发词注意区分正负触发（"我的"/"我在"等 importantMarkers）；③`DriftTowardNeutral()` 存在但 ActionAgent 内无调用者（潜在死代码）；④知识库检索是协程异步填充缓存，同步 API 返回最近结果（可能有 1 帧延迟）。
+
+---
+
+## 一、文档作用
+
+- **服务对象**: 开发者 + AI 编码代理。任何涉及记忆读写、人格演化、知识库检索、数据持久化的改动。
+- **回答的问题**:
+  - 记忆分几层？怎么持久化？格式化输出是什么样？
+  - 人格五维是什么？怎么演化？和情绪怎么联动？
+  - 知识库 RAG 怎么工作的？
+  - 哪些数据文件在哪？谁写的？
+- **关联文档**: `code-truth-architecture.md` 六章（感知/记忆/窗口真相）+ 七章（数据持久化真相）｜`modules/ai-chat-system.md`（反思链路 + 记忆注入 prompt）｜`modules/action-agent.md`（MotionMemory 独立于本模块）｜`modules/tool-engine.md`（inspect_personality 工具）
+
+## 二、基本架构
+
+### 2.1 PetMemory — 三层记忆
+
+| 层级 | 容量 | 内容 | 持久化 |
+|------|------|------|--------|
+| 核心事实 | ≤5 | 用户基本信息 | JSON |
+| 重要记忆 | Top-20 | 重要性排序 | JSON |
+| 近期琐事 | ≤10 | 最近交互 | JSON |
+
+存储结构：`entries + coreFacts + conversationSummary`；格式化输出为 **4 层**：核心事实 → 【近日印象】→ Top5 重要 → 最近 3 条。
+
+### 2.2 人格演化系统（PersonalityManager）
+
+| 维度 | 初始值 | 范围 | 描述 | 正触发 | 负触发 |
+|------|--------|------|------|--------|--------|
+| diligence | 0.5 | 0-1 | 勤勉 vs 慵懒 | 工作/学习 | 游戏/娱乐 |
+| warmth | 0.6 | 0-1 | 温暖 vs 高冷 | 感谢/称赞 | 负面情绪 |
+| playfulness | 0.5 | 0-1 | 活泼 vs 稳重 | 游戏/语气词 | 学习/工作 |
+| confidence | 0.5 | 0-1 | 自信 vs 谦逊 | 工具成功 | 工具失败 |
+| curiosity | 0.6 | 0-1 | 求知 vs 淡然 | 搜索/提问 | — |
+
+**三维关系**：信任(0.3) / 亲密(0.2) / 熟悉度(0.1, 对数增长)，learningRate=0.01
+**人格↔情绪联动**：五维 × 权重 → EmotionState 四维偏移
+**持久化**：`pet_personality.json`
+> ⚠️ `DriftTowardNeutral()`（无交互回归）存在但 ActionAgent 内无调用者——潜在死代码。
+
+### 2.3 知识库（KnowledgeBaseManager）
+
+- 本地 RAG：Ollama `/api/embed` + nomic-embed-text 嵌入 → 余弦 TopK 检索
+- 25+ 文件类型分块索引
+- `knowledge_base.json` 持久化
+- N39 修复：`GetFormattedContext()` 返回 `LastFormattedContext` 缓存（`SearchAndFormat` 协程填充），知识库内容已注入对话上下文
+
+### 2.4 反思链路（N39 接线）
+
+```
+SendRequestCoroutine → CheckReflection (L518)
+  → DoReflection (DeepSeek 提炼)
+  → CommitReflection (写入记忆)
+```
+
+记忆重要性评估 / 反思提炼已实际驱动（曾有的 `OnReflectRequest` 死回调已删除）。
+
+### 2.5 数据持久化地图（根目录 `D:\DesktopPetData\`，DataPathConfig.cs）
+
+| 文件 | 写入方 | 说明 |
+|------|--------|------|
+| `pet_config.json` | PetConfig | 宠物配置 |
+| `pet_memory.json` | PetMemory | 记忆（3 层结构） |
+| `pet_personality.json` | PersonalityManager | 人格五维 |
+| `reminders.json` | ReminderManager | 提醒 |
+| `motion_memory.json` | MotionMemoryManager | 演武心经（30 条上限） |
+| `activity_log.json` | ActivityTracker | 30 天活动日志 |
+| `knowledge_base.json` | KnowledgeBaseManager | RAG 知识库 |
+| `Documents/` | LatexCompileTool / OfficeTools | LaTeX/办公输出 |
+| `ActionRefs/` | ActionReferenceManager | 参考图（512×512 PNG 仅注释） |
+| `glm_collages/` | DualModelValidator | 2×2 拼图（上限 50 张） |
+| `.test_mode` | 手动创建 | 测试模式标记（存在 = IsTestMode） |
+
+### 2.6 感知侧（ActivityTracker，关联注入）
+
+- 2s 轮询前台窗口；8 类关键词匹配（coding/gaming/studying/browsing/entertainment/communication/idle/other）；30 天留存 `activity_log.json`
+- 摘要经 system prompt 注入对话（AI 对话系统 2.3 节注入链第 2 项）
+
+## 三、开发历史迭代
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| N31-N37 | — | 三层记忆、五维人格、知识库 RAG 建立 |
+| N39 | 2026-08-02 | ①反思链路接线（CheckReflection→DoReflection→CommitReflection，删除 OnReflectRequest 死回调）②知识库上下文实际注入（LastFormattedContext 缓存替代 STUB） |
+| N40 | 2026-08-08 | 新增 `IsTestMode`（.test_mode 标记文件）防自动化测试污染记忆/人格；clean_test_pollution.cjs 清理工具 |
+
+## 四、编写注意事项
+
+1. **测试必须开测试模式**：建空文件 `D:\DesktopPetData\.test_mode`（防污染 pet_memory/pet_personality），测后删 + `node scripts/openclaw/clean_test_pollution.cjs`（备份→删测试记忆→回退 totalInteractions→重算 familiarity）
+2. **人格触发词敏感**：importantMarkers 触发词（"我的""我在"等）会推高人格计数——测试消息会永久改变人格，务必测试模式隔离
+3. **知识库异步缓存**：`GetFormattedContext()` 是同步 API 返回协程填充的缓存（可能有 1 帧延迟），不要改成同步阻塞检索
+4. **数据根目录硬编码**：所有持久化文件根在 `D:\DesktopPetData\`（`DataPathConfig.cs`），不要散落新路径；新增文件先查数据地图表
+5. **反思链路不要回退**：历史曾有死回调（OnReflectRequest 恒 null），现在已接线——改 ChatManager 时保持 SendRequestCoroutine → CheckReflection → DoReflection → CommitReflection 链路
+6. **`DriftTowardNeutral()` 无调用者**：如需无交互人格回归，需要显式接入（目前是死代码）
+7. **验证方法**：查看 `pet_memory.json` 结构（entries/coreFacts/conversationSummary）与 `pet_personality.json` 五维值；测试后确认无新增测试记忆、totalInteractions 无变化

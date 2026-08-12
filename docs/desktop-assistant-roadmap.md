@@ -1,8 +1,9 @@
 # 符玄桌宠 → 桌面助手：开源调研与演进路线图
 
-> **版本**: v0.1 (2026-08-05)
-> **定位**: 基于现有 N39 代码真相（`code-truth-architecture.md`），以「任务外包给 OpenClaw」为核心的后续开发计划
+> **版本**: v0.2 (2026-08-12)
+> **定位**: 基于现有 N39+ 代码真相（`code-truth-architecture.md`），以「任务外包给 OpenClaw」为核心的后续开发计划
 > **基准**: 六层架构 + ToolEngine 55 工具 + OpenClaw Bridge（`openclaw_bridge.js` @ 19876）
+> **开发规范**: 所有新功能开发须遵循 [`development-standards.md`](development-standards.md)（通信/目录/测试/日志规范），AI 协作入口见根目录 [`AGENTS.md`](../AGENTS.md)
 
 ---
 

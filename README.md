@@ -15,6 +15,7 @@
 > ⚠️ **本文档已按「代码真相审计」重写（2026-08-02）并随 N39/N40/N41 修订（2026-08-09）**：所有数字与表述均以
 > `code/desktop_unity/Assets/Scripts/` 下的真实代码为准，旧版文档的过时描述已修正。
 > 权威架构参照见 [`docs/code-truth-architecture.md`](docs/code-truth-architecture.md)。
+> 📏 开发协作规范（AI + 人类通用）见 [`docs/development-standards.md`](docs/development-standards.md)，AI 快速入口见 [`AGENTS.md`](AGENTS.md)。
 
 </div>
 
@@ -399,6 +400,7 @@ D:\Unity\projects\Desktop_per_pro\            # 项目仓库根
 ├── file/符玄/                                # Live2D 模型源文件
 ├── docs/                                     # 技术文档（含 LaTeX 报告）
 │   ├── code-truth-architecture.md            # ⭐ 代码真相架构审计（权威参照）
+│   ├── development-standards.md              # 📏 项目开发规范（通信/目录/测试/日志）
 │   └── report.tex / report.pdf               # LaTeX 开发报告
 ├── record/                                   # 开发记录
 │   ├── Latex/report.tex

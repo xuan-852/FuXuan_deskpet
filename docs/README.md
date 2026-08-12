@@ -1,0 +1,82 @@
+# 📚 docs/ 文档总索引
+
+> **文档作用**: 本文件是 `docs/` 目录的**导航地图**——告诉 AI 与开发者每份文档的作用、归属模块、阅读优先级，以及统一的文档编写模板。
+> **基本架构**: 三层结构——① 顶层权威文档（架构/规范/路线图/清单）→ ② `modules/` 模块文档（每模块一份，四要素）→ ③ 构建产物（report.* 等，勿手改）。
+> **开发历史迭代**: 2026-08-12 由「平铺 14 份文档」重构为「索引 + 模块化」结构，全部模块文档统一四要素模板。
+> **编写注意事项**: 新增模块文档必须套用下方模板；修改架构/规范类文档需同步更新本索引与 `AGENTS.md`；`report.*` 是 LaTeX 构建产物，改动源文件 `report.tex` 而非 `report.md`。
+
+---
+
+## 一、文档地图
+
+### 1.1 顶层权威文档（优先阅读）
+
+| 文档 | 作用 | 阅读时机 |
+|------|------|---------|
+| [`AGENTS.md`](../AGENTS.md) | AI 协作快速入口（7 条铁律） | **每次开工前** |
+| [`development-standards.md`](development-standards.md) | 唯一权威开发规范（9 章） | 写任何代码前 |
+| [`code-truth-architecture.md`](code-truth-architecture.md) | 代码真相架构审计（六层架构） | 改架构/子系统前 |
+| [`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) | 项目演进路线图（v0.2） | 规划新功能前 |
+| [`task-inventory.md`](task-inventory.md) | 项目任务清单（N40，55 工具） | 接任务/汇报进度时 |
+
+### 1.2 模块文档（modules/，每份含四要素）
+
+| 模块 | 文档 | 覆盖范围 |
+|------|------|---------|
+| AI 对话 | [`modules/ai-chat-system.md`](modules/ai-chat-system.md) | ChatManager、ApiClient、言出法随、Token 优化历史 |
+| 工具系统 | [`modules/tool-engine.md`](modules/tool-engine.md) | ToolEngine、55+ 工具、审批、benchmark 报告 |
+| 动作系统 | [`modules/action-agent.md`](modules/action-agent.md) | ActionAgent、MotionPlanner/Translator、验证闭环、行走研究 |
+| Live2D 渲染 | [`modules/live2d-rendering.md`](modules/live2d-rendering.md) | Live2DRenderer、参数映射、硬编码迁移清单 |
+| 对话界面 | [`modules/chat-ui.md`](modules/chat-ui.md) | RightPanel、ChatBubble、像素化优化 |
+| 桥接通信 | [`modules/bridge-communication.md`](modules/bridge-communication.md) | OpenClawBridge.cs、openclaw_bridge.js、Python 调用链 |
+| 记忆人格 | [`modules/memory-personality.md`](modules/memory-personality.md) | PetMemory、人格演化、知识库 |
+| 编码协议 | [`modules/encoding-protocol.md`](modules/encoding-protocol.md) | .editorconfig、BOM、乱码排查历史 |
+| 办公工具 | [`modules/office-tools.md`](modules/office-tools.md) | PPT/Word/Excel 生成器、/generate_office 端点 |
+
+### 1.3 构建产物（勿手改）
+
+| 文件 | 说明 |
+|------|------|
+| `report.md` / `report.tex` / `report.pdf` | LaTeX 技术报告（改源 `report.tex`，`report.md` 由工具生成） |
+| `report.aux/.out/.toc/.log` | LaTeX 中间产物（gitignore） |
+
+---
+
+## 二、模块文档统一模板（四要素）
+
+每个 `modules/` 文档必须包含以下四个区块（顺序固定）：
+
+```markdown
+# <模块名> — <一句话定位>
+
+> **文档作用**: 这个模块是做什么的 / 谁该读 / 解决什么问题
+> **基本架构**: 组件清单、数据流、关键文件路径
+> **开发历史迭代**: 版本时间线（N 号 + 日期 + 关键变更/修复）
+> **编写注意事项**: 改这个模块时的铁律 / 常见坑 / 验证方法
+
+---
+
+## 一、文档作用
+## 二、基本架构
+## 三、开发历史迭代
+## 四、编写注意事项
+```
+
+### 四要素编写要点
+
+| 要素 | 要点 |
+|------|------|
+| **文档作用** | 一句话定位 + 谁该读 + 与哪些文档关联；避免与架构文档重复 |
+| **基本架构** | 只写**代码真相**（以 `Assets/Scripts/` 实际代码为准），组件表 + 数据流 + 关键文件路径 |
+| **开发历史迭代** | 按时间倒序或正序均可（全库统一用正序），标注任务号（N 号）与提交号；历史存档报告归入此节 |
+| **编写注意事项** | 铁律（副作用/危险操作）、常见坑（BOM/编码/超时）、验证命令、测试模式要求 |
+
+---
+
+## 三、维护规范
+
+1. **新增模块**：在 `modules/` 新建文档 → 套用四要素模板 → 在 1.2 节加一行 → 更新 `AGENTS.md` 技术栈表
+2. **修改模块文档**：功能级改动**测试通过后**再更新对应 `modules/` 文档（先代码后文档），并核对 1.2 节索引表
+3. **修改顶层文档**：确认是否影响索引（标题/路径/作用变化时同步更新）
+4. **文档优先级**（AI 读取顺序）：`AGENTS.md` → `development-standards.md` → `code-truth-architecture.md` → 对应模块文档
+5. **数据真实性**：模块文档中的组件名/工具数/行号必须以代码为准（参考 `code-truth-architecture.md` 的审计方法），禁止沿用过时描述
