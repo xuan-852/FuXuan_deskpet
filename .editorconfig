@@ -1,0 +1,43 @@
+# 项目统一编码协议 —— EditorConfig
+# 核心原则：全项目统一 UTF-8（PowerShell 5.1 需 BOM，其余 UTF-8 无 BOM）
+# VS Code 原生支持，保存文件时自动按此规则处理
+
+root = true
+
+# ---- 默认规则：UTF-8 无 BOM，LF 换行，末尾换行 ----
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# ---- PowerShell 5.1：必须 UTF-8 with BOM（否则中文被按 GBK 解析报错）----
+[*.ps1]
+charset = utf-8-bom
+
+# ---- C#：与存量 171 个 UTF8_BOM 文件保持一致（Unity 两者均可，BOM 更稳）----
+[*.cs]
+charset = utf-8-bom
+
+# ---- 换行符特例 ----
+# Windows 批处理必须 CRLF（cmd 对 LF 敏感）
+[*.cmd]
+end_of_line = crlf
+charset = utf-8-bom
+
+# ---- 缩进规则 ----
+[*.cs]
+indent_style = space
+indent_size = 4
+
+[*.json]
+indent_style = space
+indent_size = 4
+
+[*.{js,ts,jsx,tsx}]
+indent_style = space
+indent_size = 2
+
+[*.{ps1,py}]
+indent_style = space
+indent_size = 4

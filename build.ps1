@@ -24,6 +24,9 @@ param(
     [switch]$NoKill
 )
 
+# ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
+. "$PSScriptRoot\tools\init-utf8.ps1"
+
 $ErrorActionPreference = "Stop"
 $Host.UI.RawUI.ForegroundColor = "Cyan"
 Write-Host "============================================"
