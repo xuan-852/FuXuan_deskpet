@@ -162,7 +162,9 @@ public class DesktopPet : MonoBehaviour
     #region Unity 生命周期
 
     // ===== 崩溃日志 & 内存监控 =====
-    private const string CrashLogPath = "crash_log.txt";
+    // 统一日志目录：D:\DesktopPetData\logs\（与持久化数据同根，不依赖启动工作目录）
+    private const string CrashLogDir = @"D:\DesktopPetData\logs";
+    private const string CrashLogPath = @"D:\DesktopPetData\logs\crash_log.txt";
     private const long CRASH_LOG_MAX_BYTES = 1024L * 1024L;  // crash_log.txt 超过1MB自动截断
     private float _memoryCheckInterval = 30f;  // 每30秒检查一次内存
     private float _memoryCheckTimer = 0f;
@@ -288,6 +290,9 @@ public class DesktopPet : MonoBehaviour
     {
         try
         {
+            // 0) 确保日志目录存在
+            System.IO.Directory.CreateDirectory(CrashLogDir);
+
             // 1) crash_log.txt 超过 1MB 时截断，保留最后 2000 行
             var crashInfo = new System.IO.FileInfo(CrashLogPath);
             if (crashInfo.Exists && crashInfo.Length > CRASH_LOG_MAX_BYTES)
@@ -302,8 +307,8 @@ public class DesktopPet : MonoBehaviour
                 }
             }
 
-            // 2) 删除 7 天前的 build_log*.txt
-            string dataDir = System.IO.Directory.GetCurrentDirectory();
+            // 2) 删除 7 天前的 build_log*.txt（统一日志目录内）
+            string dataDir = CrashLogDir;
             string[] buildLogs = System.IO.Directory.GetFiles(dataDir, "build_log*.txt");
             var cutoff = System.DateTime.Now.AddDays(-7);
             foreach (string path in buildLogs)
@@ -341,6 +346,9 @@ public class DesktopPet : MonoBehaviour
 
     private void Awake()
     {
+        // ---- 确保统一日志目录存在（崩溃日志写入前提）----
+        try { System.IO.Directory.CreateDirectory(CrashLogDir); } catch { }
+
         // ---- 崩溃看门狗 ----
 #if !UNITY_EDITOR
         Application.logMessageReceivedThreaded += CaptureCrashLog;

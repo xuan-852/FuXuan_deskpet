@@ -1,5 +1,5 @@
 ﻿# ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
-. "$PSScriptRoot\init-utf8.ps1"
+. "$PSScriptRoot\..\encoding\init-utf8.ps1"
 
 $log = 'C:\Users\25295\AppData\LocalLow\DefaultCompany\desktop pet\Player.log'
 $c = Get-Content $log

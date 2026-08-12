@@ -7,8 +7,10 @@ REM  Tuanjie 有路径拼接 Bug，所以必须 CD 到项目目录用 relative p
 REM ============================================================
 
 set PROJECT_DIR=D:\Unity\projects\Desktop_per_pro\code\desktop_unity
-set LOG_FILE=D:\Unity\projects\Desktop_per_pro\build_log.txt
+set LOG_FILE=D:\Unity\projects\Desktop_per_pro\logs\build\build_log.txt
 set UNITY_EXE=D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe
+
+if not exist "D:\Unity\projects\Desktop_per_pro\logs\build" mkdir "D:\Unity\projects\Desktop_per_pro\logs\build"
 
 echo [Build] Project: %PROJECT_DIR%
 echo [Build] Starting Tuanjie build...

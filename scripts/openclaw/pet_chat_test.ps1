@@ -42,11 +42,11 @@
 
 .EXAMPLE
     # 发送一条测试消息，等 35 秒后截图分析气泡（含用户气泡特写）
-    powershell -File tools\pet_chat_test.ps1 -Message "测试一下气泡显示" -WaitSec 35 -Name chat1
+    powershell -File scripts\openclaw\pet_chat_test.ps1 -Message "测试一下气泡显示" -WaitSec 35 -Name chat1
 
 .EXAMPLE
     # 不发送，直接截图当前面板
-    powershell -File tools\pet_chat_test.ps1 -ShotOnly -Name now
+    powershell -File scripts\openclaw\pet_chat_test.ps1 -ShotOnly -Name now
 #>
 param(
     [string]$Message = "",
@@ -59,7 +59,7 @@ param(
 )
 
 # ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
-. "$PSScriptRoot\init-utf8.ps1"
+. "$PSScriptRoot\..\encoding\init-utf8.ps1"
 
 $ErrorActionPreference = "Stop"
 $PY = "C:\Users\25295\AppData\Local\Programs\Python\Python312\python.exe"

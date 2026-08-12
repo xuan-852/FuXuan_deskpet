@@ -80,7 +80,7 @@
 **附注（2026-08-08）**：
 1. **T4 竞态修复**：实测发现首轮意图分类结果跨消息残留（上一轮 `command` 意图污染下一轮首轮工具子集）→ 新增 `_intentReady` 标志 + 3s 超时兜底全量：`SendMessage()` 重置 `_intentReady=false`，分类回调成功才置 true，`DoToolLoop()` 首轮等待分类结果
 2. **测试模式开关**：新增 `ChatManager.IsTestMode`（存在 `D:\DesktopPetData\.test_mode` 标记文件即跳过记忆/人格/反思全部持久化写入），防止自动化测试污染符玄忆境与人格演化。实测防污染：3 条测试消息后 pet_memory 28 条无新增、人格 totalInteractions 56 无变化
-3. **防污染清理**：若历史测试已写入数据，用 `tools/clean_test_pollution.cjs`（备份→删测试记忆→回退人格计数→重算 familiarity）
+3. **防污染清理**：若历史测试已写入数据，用 `scripts/openclaw/clean_test_pollution.cjs`（备份→删测试记忆→回退人格计数→重算 familiarity）
 
 ## 四、验证方法
 

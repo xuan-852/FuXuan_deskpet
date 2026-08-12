@@ -14,7 +14,7 @@
 
 > ⚠️ **本文档已按「代码真相审计」重写（2026-08-02）并随 N39/N40/N41 修订（2026-08-09）**：所有数字与表述均以
 > `code/desktop_unity/Assets/Scripts/` 下的真实代码为准，旧版文档的过时描述已修正。
-> 权威架构参照见 [`project_brief/code-truth-architecture.md`](project_brief/code-truth-architecture.md)。
+> 权威架构参照见 [`docs/code-truth-architecture.md`](docs/code-truth-architecture.md)。
 
 </div>
 
@@ -397,16 +397,25 @@ D:\Unity\projects\Desktop_per_pro\            # 项目仓库根
 │   └── ProjectSettings/ / Packages/
 │
 ├── file/符玄/                                # Live2D 模型源文件
-├── project_brief/                            # 技术文档（含 LaTeX 报告）
-│   └── code-truth-architecture.md            # ⭐ 代码真相架构审计（权威参照）
+├── docs/                                     # 技术文档（含 LaTeX 报告）
+│   ├── code-truth-architecture.md            # ⭐ 代码真相架构审计（权威参照）
+│   └── report.tex / report.pdf               # LaTeX 开发报告
 ├── record/                                   # 开发记录
 │   ├── Latex/report.tex
 │   └── log/build_workflow.md
-├── scripts/param_mapper/                     # 参数映射工具
-├── tools/                                    # 诊断/搜索工具
-│   ├── pet_diag.py                           # 自动化诊断
-│   ├── find_file.py                          # 文件搜索
-│   └── pdf_extract.py
+├── logs/                                     # 运行日志（按类分目录）
+│   ├── build/                                # 构建日志
+│   ├── runtime/                              # 运行时日志
+│   └── archive/                              # 已归档旧日志
+├── assets/                                   # 素材（SDK 安装包等）
+├── scripts/                                  # 工具脚本（按功能分类）
+│   ├── encoding/                             # UTF-8 编码协议
+│   ├── latex/                                # LaTeX 生成/验证
+│   ├── log-analysis/                         # 日志分析
+│   ├── openclaw/                             # OpenClaw 桥接/诊断
+│   ├── git-tools/                            # git 推送检查
+│   ├── ui-pixel/                             # 像素画工具
+│   └── param_mapper/                         # 参数映射工具
 └── CHANGELOG.md
 ```
 
@@ -431,7 +440,7 @@ JSON 持久化 (D:\DesktopPetData\，DataPathConfig.cs 硬编码):
 
 ## ⚠️ 已知问题清单（代码真相版）
 
-详见 [`project_brief/code-truth-architecture.md`](project_brief/code-truth-architecture.md)：
+详见 [`docs/code-truth-architecture.md`](docs/code-truth-architecture.md)：
 
 1. 工具回环为 **10 轮**（非 5 轮）；注册工具 **55 个 / 16 文件**（9 工具文件 + 7 基础设施，非 40+ / 6 文件）
 2. ActionAgent 为 **15 文件**；MotionTranslator 为 **10 规则 + 10 特殊**（非 11+12）

@@ -18,14 +18,14 @@
 
 param(
     [string]$UnityExe = "D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe",
-    [string]$LogFile = "D:\Unity\projects\Desktop_per_pro\build_log.txt",
+    [string]$LogFile = "D:\Unity\projects\Desktop_per_pro\logs\build\build_log.txt",
     [switch]$Quick,
     [switch]$RunTests,
     [switch]$NoKill
 )
 
 # ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
-. "$PSScriptRoot\tools\init-utf8.ps1"
+. "$PSScriptRoot\scripts\encoding\init-utf8.ps1"
 
 $ErrorActionPreference = "Stop"
 $Host.UI.RawUI.ForegroundColor = "Cyan"
@@ -38,6 +38,9 @@ Write-Host ""
 $RootDir = "D:\Unity\projects\Desktop_per_pro"
 $ProjectDir = Join-Path $RootDir "code\desktop_unity"
 $DefaultOutputDir = Join-Path $RootDir "Build"
+
+# ---- Ensure log dir exists ----
+New-Item -ItemType Directory -Force -Path (Split-Path $LogFile -Parent) | Out-Null
 
 # ---- Pre-checks ----
 if (-not (Test-Path $UnityExe)) {
@@ -73,7 +76,7 @@ if ($PetProc) {
 # ---- Determine build/test mode ----
 if ($RunTests) {
     $Label = "Run Tests"
-    $TestResultsFile = Join-Path $RootDir "build_test_results.xml"
+    $TestResultsFile = Join-Path $RootDir "logs\build\test_results.xml"
     $unityArgs = @(
         "-batchmode"
         "-nographics"

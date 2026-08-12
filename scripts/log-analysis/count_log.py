@@ -29,6 +29,6 @@ pats = {
 for k, pat in pats.items():
     out.append('%s = %d' % (k, text.count(pat)))
 
-with open(r'd:\Unity\projects\Desktop_per_pro\tools\count_out.txt', 'w', encoding='utf-8') as f:
+with open(r'd:\Unity\projects\Desktop_per_pro\scripts\log-analysis\count_out.txt', 'w', encoding='utf-8') as f:
     f.write('\n'.join(out))
 print('done')

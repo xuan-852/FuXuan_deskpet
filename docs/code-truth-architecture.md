@@ -2,7 +2,7 @@
 
 > **审计方式**: 全部结论以 `code/desktop_unity/Assets/Scripts/` 下真实代码为准（2026-08-08 快照，含 N39 修复与 T1-T8 Token 优化）
 > **审计范围**: **84 个 .cs 文件、约 36,356 行 C# 代码**（2026-08-08 实测）
-> **重要声明**: 本项目的 md 文档（README / project_brief / 各类方案文档）**部分已过时**，存在多处与代码不符的陈述。本文档即为"唯一可信"的架构参照。
+> **重要声明**: 本项目的 md 文档（README / docs / 各类方案文档）**部分已过时**，存在多处与代码不符的陈述。本文档即为"唯一可信"的架构参照。
 > **引擎**: 团结引擎 Tuanjie 2022.3.62t7（Unity 派生版）+ Live2D Cubism SDK 5-r.4
 > **版本基准**: N38 审计（2026-08-02）→ N39 代码修复（2026-08-02）→ N40 Token 优化（2026-08-07，T1-T8 全部完成）
 
@@ -378,6 +378,6 @@ flowchart TB
 5. **BUG-5**：DualModelValidator 名不副实 → ✅ N39 已修复（回调简化 4 参，删除恒 0 qwenScore）
 
 ### 建议
-- 以本文档为基准更新 README / project_brief 中的过时章节（**已完成**，2026-08-08 全量修订）
+- 以本文档为基准更新 README / docs 中的过时章节（**已完成**，2026-08-08 全量修订）
 - 清理死代码（AutoMotionCollector 已删）、修正注释与代码矛盾（Model3DRenderer、VisualHeartbeat）
 - 多屏支持（isMultiMonitor）与 3D 模式为规划中能力，勿在文档中宣称可用

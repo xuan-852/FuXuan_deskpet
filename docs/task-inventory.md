@@ -946,7 +946,7 @@ GLM-4V 观察效果 → 对比参考            DeepSeek 理解描述 → 生成
 | 文件 | 用途 |
 |------|------|
 | `ActionAgent/MotionVerifier.cs` | 验证引擎：19 用例测试套件（5 控制 + 10 测试 + 4 边界），自动评分 |
-| `project_brief/embodied-ai-verification.md` | 验证方案协议文档 |
+| `docs/embodied-ai-verification.md` | 验证方案协议文档 |
 
 #### 新增 AI 工具
 

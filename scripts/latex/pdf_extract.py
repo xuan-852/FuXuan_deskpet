@@ -3,11 +3,11 @@
 AI PDF 文本提取桥 — 用 PyMuPDF 提取 PDF 中的文字
 输出纯文本（UTF-8），供 AI 阅读
 
-用法: python tools/pdf_extract.py <pdf路径> [最大字符数]
+用法: python scripts/latex/pdf_extract.py <pdf路径> [最大字符数]
 
 示例:
-  python tools/pdf_extract.py "D:\书籍\控制理论.pdf"
-  python tools/pdf_extract.py "D:\书籍\控制理论.pdf" 3000
+  python scripts/latex/pdf_extract.py "D:\书籍\控制理论.pdf"
+  python scripts/latex/pdf_extract.py "D:\书籍\控制理论.pdf" 3000
 """
 import sys
 import os

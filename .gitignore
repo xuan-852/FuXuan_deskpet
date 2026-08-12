@@ -59,13 +59,13 @@ cubism_extracted/
 # ================
 # LaTeX 构建产物
 # ================
-project_brief/*.aux
-project_brief/*.out
-project_brief/*.toc
-project_brief/*.log
-project_brief/*.synctex.gz
-project_brief/*.fls
-project_brief/*.fdb_latexmk
+docs/*.aux
+docs/*.out
+docs/*.toc
+docs/*.log
+docs/*.synctex.gz
+docs/*.fls
+docs/*.fdb_latexmk
 
 # ================
 # Unity 构建日志
@@ -73,6 +73,28 @@ project_brief/*.fdb_latexmk
 code/desktop_unity/build_log.txt
 build_log*.txt
 build_*.txt
+logs/
+
+# ================
+# 素材安装包（大文件不上传）
+# ================
+assets/
+
+# ================
+# 工具脚本输出（_out.txt 等中间产物）
+# ================
+scripts/**/*_out.txt
+scripts/**/*_out.json
+scripts/**/*_out.log
+
+# ================
+# 编译锁文件 / 虚拟环境
+# ================
+*.dll.locked
+.venv/
+.venv-1/
+.venv-2/
+__pycache__/
 [Bb]uild/
 code/desktop_unity/[Ll]ogs/
 code/desktop_unity/[Uu]ser[Ss]ettings/

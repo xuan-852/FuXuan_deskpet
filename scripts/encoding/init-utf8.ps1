@@ -10,8 +10,8 @@
       4. Get-Content 读无 BOM UTF-8 文件乱码  → 默认按 UTF-8 读取
 
     用法（脚本第一行，注释之后）:
-        . "$PSScriptRoot\..\tools\init-utf8.ps1"   # 脚本在子目录时
-        或（脚本与 init-utf8.ps1 同目录时）
+        . "$PSScriptRoot\..\encoding\init-utf8.ps1"   # 脚本在 scripts/ 下其他子目录时
+        或（脚本与 init-utf8.ps1 同目录时，即 scripts/encoding/ 内）
         . "$PSScriptRoot\init-utf8.ps1"
 
     本文件必须保存为 UTF-8 with BOM（.editorconfig 已强制）。

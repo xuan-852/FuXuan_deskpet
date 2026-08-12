@@ -1,5 +1,5 @@
 ﻿# ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
-. "$PSScriptRoot\init-utf8.ps1"
+. "$PSScriptRoot\..\encoding\init-utf8.ps1"
 
 $c = Get-Content 'C:\Users\25295\AppData\LocalLow\DefaultCompany\desktop pet\Player.log'
 $out = @()
@@ -14,5 +14,5 @@ $out += "意图分类=$((@($c | ? {$_ -like '*意图*' -or $_ -like '*ClassifyIn
 $out += "反思=$((@($c | ? {$_ -like '*反思*'}).Count))"
 $out += "施法=$((@($c | ? {$_ -like '*施法*'}).Count))"
 $out += "闲话=$((@($c | ? {$_ -like '*闲话生成*' -or $_ -like '*闲话*完成*'}).Count))"
-$out | Out-File -Encoding utf8 'd:\Unity\projects\Desktop_per_pro\tools\count_out.txt'
+$out | Out-File -Encoding utf8 'd:\Unity\projects\Desktop_per_pro\scripts\log-analysis\count_out.txt'
 Write-Host "done"

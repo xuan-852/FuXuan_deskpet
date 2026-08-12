@@ -34,7 +34,7 @@
 1. 文件保存为 **UTF-8 with BOM**（VS Code 右下角选 UTF-8 with BOM，或 .editorconfig 自动）
 2. 在 `param()` 之后加一行：
    ```powershell
-   . "$PSScriptRoot\..\tools\init-utf8.ps1"   # 路径按实际位置调整
+   . "$PSScriptRoot\..\encoding\init-utf8.ps1"   # 路径按实际位置调整
    ```
 3. 发 HTTP 中文 body 时用工具函数：
    ```powershell
@@ -51,15 +51,15 @@ PS 5.1 的字符串 body 按系统 ANSI（GBK）编码发送，服务器按 UTF-
 
 ```powershell
 # 1. 检查 init-utf8 生效
-. .\tools\init-utf8.ps1
+. .\scripts\encoding\init-utf8.ps1
 [Console]::OutputEncoding.EncodingName   # 应显示 UTF-8
 $OutputEncoding.EncodingName             # 应显示 Unicode (UTF-8)
 
 # 2. 检查文件编码合规
-.\tools\check_encoding.ps1 -Pattern "*.cs"
+.\scripts\encoding\check_encoding.ps1 -Pattern "*.cs"
 
 # 3. 扫描固化乱码
-python tools/scan_garbled_cs.py   # 产出 garbled_scan_result.txt
+python scripts/encoding/scan_garbled_cs.py   # 产出 garbled_scan_result.txt
 ```
 
 ## 五、已接入的脚本（共 17 个，全部含中文）
@@ -68,7 +68,7 @@ python tools/scan_garbled_cs.py   # 产出 garbled_scan_result.txt
 最顶部注释之后）加一行 dot-source：
 
 ```powershell
-. "$PSScriptRoot\..\..\tools\init-utf8.ps1"   # 相对层级按脚本所在目录调整
+. "$PSScriptRoot\..\..\encoding\init-utf8.ps1"   # 相对层级按脚本所在目录调整
 ```
 
 | 脚本 | 位置 |
@@ -78,9 +78,11 @@ python tools/scan_garbled_cs.py   # 产出 garbled_scan_result.txt
 | `analyze_grid.ps1` / `analyze_ui.ps1` | `code/desktop_unity/screenshots/` |
 | `generate_pixel_candidates_fixed.ps1` / `generate_pixel_from_live2d.ps1` / `generate_pixel_quick.ps1` | `code/desktop_unity/scripts/` |
 | `download_samples.ps1` | `scripts/param_mapper/` |
-| `analyze_log.ps1` / `check_encoding.ps1` / `count_log.ps1` / `fuxuan_pixel_art.ps1` / `pet_chat_test.ps1` / `pixelize.ps1` / `read_pixel_map.ps1` / `render_fuxuan_17x24.ps1` | `tools/` |
+| `analyze_log.ps1` / `count_log.ps1` / `pet_chat_test.ps1` | `scripts/log-analysis/`、`scripts/openclaw/` |
+| `check_encoding.ps1` / `init-utf8.ps1` | `scripts/encoding/` |
+| `fuxuan_pixel_art.ps1` / `pixelize.ps1` / `read_pixel_map.ps1` / `render_fuxuan_17x24.ps1` | `scripts/ui-pixel/` |
 
-> 迁移工具：`tools/batch_utf8_protocol.py`（一次性批量加 BOM + 插 dot-source，已成功迁移 15 个存量脚本）。
+> 迁移工具：`scripts/encoding/batch_utf8_protocol.py`（一次性批量加 BOM + 插 dot-source，已成功迁移 15 个存量脚本；2026-08-12 目录重构后仅作历史记录）。
 > 验证结果：全部 16 个已接入脚本语法解析通过；`analyze_log.ps1`/`count_log.ps1`/`analyze_grid.ps1`
 > 实机运行中文输出正常；全仓 20 个 ps1 编码 = 17 UTF8_BOM + 3 纯 ASCII（无中文，无需 BOM），零非合规文件。
 > 新增含中文的 ps1 请沿用同一做法，勿回退为 GBK 或 UTF-8 无 BOM。

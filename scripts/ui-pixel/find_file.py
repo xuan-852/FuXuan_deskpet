@@ -3,13 +3,13 @@
 AI 文件搜索桥 — 解决中文文件名检索问题
 输出 JSON 格式（UTF-8），AI 直接解析拿到完整 Unicode 路径
 
-用法: python tools/find_file.py <关键词> [搜索根目录]
+用法: python scripts/ui-pixel/find_file.py <关键词> [搜索根目录]
 
 示例:
-  python tools/find_file.py 符玄
-  python tools/find_file.py 使用说明
-  python tools/find_file.py .meta
-  python tools/find_file.py 符玄 D:\
+  python scripts/ui-pixel/find_file.py 符玄
+  python scripts/ui-pixel/find_file.py 使用说明
+  python scripts/ui-pixel/find_file.py .meta
+  python scripts/ui-pixel/find_file.py 符玄 D:\
 """
 import os
 import sys

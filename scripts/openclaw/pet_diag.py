@@ -11,12 +11,12 @@
   5. 自动修复 + 构建 + 重测试 (闭环迭代)
 
 用法:
-  python tools/pet_diag.py                  # 完整诊断
-  python tools/pet_diag.py --quick          # 仅检查编码+日志
-  python tools/pet_diag.py --fix            # 诊断+自动修复+构建
-  python tools/pet_diag.py --loop           # 持续监控循环
-  python tools/pet_diag.py chat <消息>        # 向宠物发送一条对话消息
-  python tools/pet_diag.py chat-loop        # 交互式对话循环
+  python scripts/openclaw/pet_diag.py                  # 完整诊断
+  python scripts/openclaw/pet_diag.py --quick          # 仅检查编码+日志
+  python scripts/openclaw/pet_diag.py --fix            # 诊断+自动修复+构建
+  python scripts/openclaw/pet_diag.py --loop           # 持续监控循环
+  python scripts/openclaw/pet_diag.py chat <消息>        # 向宠物发送一条对话消息
+  python scripts/openclaw/pet_diag.py chat-loop        # 交互式对话循环
 """
 
 import json

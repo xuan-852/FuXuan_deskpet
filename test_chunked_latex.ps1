@@ -8,7 +8,7 @@ param(
 )
 
 # ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
-. "$PSScriptRoot\tools\init-utf8.ps1"
+. "$PSScriptRoot\scripts\encoding\init-utf8.ps1"
 
 if ($DescFile -and (Test-Path $DescFile)) {
     $Desc = [System.IO.File]::ReadAllText($DescFile, (New-Object System.Text.UTF8Encoding $false))

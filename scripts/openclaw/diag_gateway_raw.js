@@ -1,6 +1,6 @@
 /**
  * 诊断：直连 Gateway 发一个最小 chat.send，打印所有事件的原始结构
- * 用法: node tools/diag_gateway_raw.js "测试：生成中文LaTeX文档《测试》。共1章：1.背景介绍"
+ * 用法: node scripts/openclaw/diag_gateway_raw.js "测试：生成中文LaTeX文档《测试》。共1章：1.背景介绍"
  */
 import { GatewayChatClient } from 'file:///D:/openclaw/node_modules/openclaw/dist/gateway-chat-BW6uyvQL.js';
 

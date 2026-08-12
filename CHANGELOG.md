@@ -32,7 +32,7 @@
 
 ### ⚡ Token 优化 T1–T8 全部完成（08-07~08，`a78e62c` + `52f9cec` + `bad7487` + `5f0a048` + `77645d4` + `807290e` + `0b7480c`）
 
-> 依据 `project_brief/token-optimization-plan.md`，2026-08-07 token 审计后按 ROI 分批执行。
+> 依据 `docs/token-optimization-plan.md`，2026-08-07 token 审计后按 ROI 分批执行。
 
 | # | 优化 | 实测效果 |
 |---|---|---|
@@ -55,7 +55,7 @@
 
 ### 🔧 代码修复（N38 审计出的 9 个 Bug + 2 项结构性偏差）
 
-> 按 `project_brief/code-truth-architecture.md` 第 10 节修复优先级执行，`build.ps1 -Quick` 编译验证通过。
+> 按 `docs/code-truth-architecture.md` 第 10 节修复优先级执行，`build.ps1 -Quick` 编译验证通过。
 
 **P0 — 睡眠调度与锁时序**
 - **BUG-1** `MotionAgent.IsSleepTime()`：删除调试期硬编码 `return false`，恢复真实判断（凌晨 1~7 点为睡眠时段），保留 `testMode` 测试保护
@@ -82,7 +82,7 @@
 ### 📚 代码真相审计与文档重写
 
 > 以 `code/desktop_unity/Assets/Scripts/` 下真实代码为准，对全部文档做了审计与重写。
-> 权威结论见 [`project_brief/code-truth-architecture.md`](project_brief/code-truth-architecture.md)。
+> 权威结论见 [`docs/code-truth-architecture.md`](docs/code-truth-architecture.md)。
 
 **审计确认的真相数字**（修正此前文档偏差）：
 - 工具回环：**10 轮**（原文档误写 5 轮）；注册工具 **52 个 / 10 文件**（原误写 40+/6 文件）
@@ -105,7 +105,7 @@
 8. BUG-8 规则数文档 11+12 与实际 10+10 不符
 9. BUG-9 曲线文档 BounceEaseOut 与实际 Bounce 不符
 
-**重写文档**：README.md、CHANGELOG.md、project_brief/report.md、project_brief/task-inventory.md、project_brief/report.tex、record/Latex/report.tex 等 12 份文档全部按代码真相重写或修订。
+**重写文档**：README.md、CHANGELOG.md、docs/report.md 、docs/task-inventory.md、docs/report.tex、record/Latex/report.tex 等 12 份文档全部按代码真相重写或修订。
 
 ---
 

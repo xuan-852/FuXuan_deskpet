@@ -30,7 +30,7 @@
 - **实测**：字符串 body 推送后数据库存 `"?? ????","??????????????"`；`-Body ([byte[]]utf8Bytes)` + `-ContentType "application/json; charset=utf-8"` 后数据库存 `"编码测试","这是编码验证消息，中文必须正常"` ✓
 - **修复**：发送中文时显式 `[System.Text.Encoding]::UTF8.GetBytes($json)`
 
-## 三、排查工具（tools/）
+## 三、排查工具（scripts/encoding/）
 - `check_encoding.ps1`：按文件类型统计 UTF8_BOM / UTF8_NO_BOM / GBK / ASCII 分布
 - `scan_garbled_cs.py`：PUA 字符 + GBK→UTF-8 还原双重检测，扫描 .cs 固化乱码
 
