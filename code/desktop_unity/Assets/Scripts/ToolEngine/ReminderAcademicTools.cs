@@ -10,12 +10,17 @@ using UnityEngine;
 public class SetReminderTool : IPetTool
 {
     public string ToolName => "set_reminder";
-    public string ToolDescription => "【卜算记事】设置提醒/待办事项。用户说「提醒我xxx」「记一下xxx」「设个提醒」时调用。支持时间（yyyy-MM-dd HH:mm）、重复周期（daily/weekly/monthly）和优先级（high/normal/low）。默认1小时后。";
+    public string ToolDescription => "【卜算记事】设置提醒/待办事项。用户说「提醒我xxx」「记一下xxx」「设个提醒」时调用。支持时间（yyyy-MM-dd HH:mm）、重复周期（daily/weekly/monthly）、优先级（high/normal/low）和到期动作（到时自动执行工具/外包任务）。默认1小时后。";
     public string ToolParametersJson => ToolSchema.Schema(
         ToolSchema.Req("text", "string", "提醒内容"),
         ToolSchema.Opt("remind_at", "string", "提醒时间，格式 yyyy-MM-dd HH:mm，为空则自动设为1小时后"),
         ToolSchema.Opt("recurring", "string", "重复周期：daily/weekly/monthly，不重复则留空"),
-        ToolSchema.Opt("priority", "string", "优先级：high/normal/low，默认 normal")
+        ToolSchema.Opt("priority", "string", "优先级：high/normal/low，默认 normal"),
+        ToolSchema.Opt("action_type", "string", "到期动作类型：local_tool（执行本地工具，如打开应用/网页）/ openclaw_task（外包给 OpenClaw 智能体），不填则纯提醒"),
+        ToolSchema.Opt("action_tool", "string", "action_type=local_tool 时的本地工具名，如 open_app / open_url / notify"),
+        ToolSchema.Opt("action_args", "string", "action_type=local_tool 时传给工具的 JSON 参数，如 {\"app\":\"notepad\"}"),
+        ToolSchema.Opt("action_task", "string", "action_type=openclaw_task 时的任务描述（自然语言）"),
+        ToolSchema.Opt("action_mode", "string", "action_type=openclaw_task 时的执行模式：agent/browser，默认 agent")
     );
     public bool IsAsync => false;
 
@@ -51,14 +56,52 @@ public class SetReminderTool : IPetTool
         string priority = ToolHelpers.JsonRead(argsJson, "priority");
         if (string.IsNullOrEmpty(priority)) priority = "normal";
 
+        // ★ P2 定时动作：解析 action_* 参数
+        ReminderManager.ReminderAction action = BuildAction(argsJson);
+
         var mgr = ReminderManager.Instance;
         if (mgr == null) return "❌ 卜算记事簿未就绪";
 
         var r = mgr.AddReminder(text, remindAt,
             string.IsNullOrEmpty(recurring) ? null : recurring,
-            priority, "ai");
-        return $"✅ 已记入卜算记事簿！提醒「{text}」定于 {remindAt:yyyy-MM-dd HH:mm}" +
+            priority, "ai", action);
+        string actionTag = action != null ? "，到时将自动执行动作" : "";
+        return $"✅ 已记入卜算记事簿！提醒「{text}」定于 {remindAt:yyyy-MM-dd HH:mm}{actionTag}" +
                $"\n📌 ID: {r.id.Substring(0, 8)}… 可对我说「查提醒」查阅";
+    }
+
+    /// <summary>从参数 JSON 解析 ReminderAction（无 action_* 参数则返回 null）</summary>
+    private static ReminderManager.ReminderAction BuildAction(string argsJson)
+    {
+        string type = ToolHelpers.JsonRead(argsJson, "action_type");
+        if (string.IsNullOrEmpty(type)) return null;
+
+        if (type == "local_tool")
+        {
+            string toolName = ToolHelpers.JsonRead(argsJson, "action_tool");
+            if (string.IsNullOrEmpty(toolName)) return null;
+            return new ReminderManager.ReminderAction
+            {
+                type = "local_tool",
+                toolName = toolName,
+                args = ToolHelpers.JsonRead(argsJson, "action_args")
+            };
+        }
+
+        if (type == "openclaw_task")
+        {
+            string task = ToolHelpers.JsonRead(argsJson, "action_task");
+            if (string.IsNullOrEmpty(task)) return null;
+            string mode = ToolHelpers.JsonRead(argsJson, "action_mode");
+            return new ReminderManager.ReminderAction
+            {
+                type = "openclaw_task",
+                task = task,
+                mode = string.IsNullOrEmpty(mode) ? "agent" : mode
+            };
+        }
+
+        return null;
     }
 
     public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)

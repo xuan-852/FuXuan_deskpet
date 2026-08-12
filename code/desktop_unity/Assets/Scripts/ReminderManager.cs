@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
@@ -33,10 +34,24 @@ public class ReminderManager : MonoBehaviour
         public string recurring;       // null / "daily" / "weekday" / "weekly"
         public string source;          // "user" / "ai"
         public string priority;        // "low" / "normal" / "high"
+        public ReminderAction action;  // P2: 到期要执行的动作（null = 纯提醒）
+    }
+
+    /// <summary>定时动作 — 提醒到期时自动执行（P2 定时动作框架）</summary>
+    [System.Serializable]
+    public class ReminderAction
+    {
+        public string type;      // "local_tool" | "openclaw_task"
+        public string toolName;  // local_tool 时的工具名（如 open_app）
+        public string args;      // local_tool 时的参数 JSON
+        public string task;      // openclaw_task 时的任务描述
+        public string mode;      // openclaw_task 模式: "agent" / "browser"
+        public string result;    // 最近一次执行结果摘要（供查询）
+        public string lastRunAt; // 最近一次执行时间（ISO 8601）
     }
 
     [System.Serializable]
-    private class ReminderList
+    public class ReminderList
     {
         public List<Reminder> reminders = new List<Reminder>();
     }
@@ -175,9 +190,10 @@ public class ReminderManager : MonoBehaviour
     //  公开 CRUD
     // ================================================================
 
-    /// <summary>新增一条提醒</summary>
+    /// <summary>新增一条提醒（可带到期动作）</summary>
     public Reminder AddReminder(string text, DateTime remindAt,
-        string recurring = null, string priority = "normal", string source = "user")
+        string recurring = null, string priority = "normal", string source = "user",
+        ReminderAction action = null)
     {
         var r = new Reminder
         {
@@ -188,13 +204,16 @@ public class ReminderManager : MonoBehaviour
             done = false,
             recurring = recurring,
             source = source,
-            priority = priority
+            priority = priority,
+            action = action
         };
         _data.reminders.Add(r);
         Save();
         OnReminderAdded?.Invoke(r);
         NotifyDataChanged();
-        Debug.Log($"[ReminderManager] 新增提醒: [{r.id}] {text} @ {remindAt:yyyy-MM-dd HH:mm}");
+        string actionTag = action != null && !string.IsNullOrEmpty(action.type)
+            ? $" [动作:{action.type}]" : "";
+        Debug.Log($"[ReminderManager] 新增提醒: [{r.id}] {text} @ {remindAt:yyyy-MM-dd HH:mm}{actionTag}");
         return r;
     }
 
@@ -301,7 +320,8 @@ public class ReminderManager : MonoBehaviour
                 string recurringTag = r.recurring == "daily" ? " [每日]" :
                                       r.recurring == "weekday" ? " [工作日]" :
                                       r.recurring == "weekly" ? " [每周]" : "";
-                lines.Add($"  • [{r.id.Substring(0, 6)}] {timeStr} {r.text}{recurringTag}");
+                string actionTag = HasAction(r) ? " [⚡到时执行动作]" : "";
+                lines.Add($"  • [{r.id.Substring(0, 6)}] {timeStr} {r.text}{recurringTag}{actionTag}");
             }
         }
         return $"你共有 {pending.Count} 项待办：\n" + string.Join("\n", lines);
@@ -355,6 +375,12 @@ public class ReminderManager : MonoBehaviour
 
         // 3. Server酱³ 推送手机
         PushToServerChan("符玄 · 卜算提醒", r.text);
+
+        // 3.5 ★ P2 定时动作：有 action → 异步执行（危险工具需确认，见 ExecuteReminderAction）
+        if (HasAction(r))
+        {
+            StartCoroutine(ExecuteReminderAction(r));
+        }
 
         // 4. 触发事件
         OnReminderDue?.Invoke(r);
@@ -425,6 +451,177 @@ public class ReminderManager : MonoBehaviour
         }
 
         return templates[UnityEngine.Random.Range(0, templates.Length)];
+    }
+
+    // ================================================================
+    //  P2 定时动作执行
+    // ================================================================
+
+    /// <summary>判断提醒是否带有效动作（兼容旧数据：action 为 null 或空对象时视为纯提醒）</summary>
+    public static bool HasAction(Reminder r)
+    {
+        return r != null && r.action != null && !string.IsNullOrEmpty(r.action.type);
+    }
+
+    /// <summary>
+    /// 执行提醒的定时动作。
+    /// 安全规则：
+    /// - local_tool 安全工具（open_app/open_url/notify 等）→ 直接执行，无需确认
+    /// - 危险工具（file_delete/power/run_command/openclaw_task 等）→ 弹确认（点宠物=允许/ESC=拒绝/60s 超时拒绝），
+    ///   无人值守时不静默执行（守住 ToolRegistry 危险动作铁律）
+    /// </summary>
+    private IEnumerator ExecuteReminderAction(Reminder r)
+    {
+        var action = r.action;
+        string result;
+
+        if (action.type == "local_tool")
+        {
+            bool needsConfirm = ToolRegistry.IsDangerous(action.toolName);
+            if (needsConfirm)
+            {
+                string desc = ToolRegistry.GetDangerDescription(action.toolName);
+                bool confirmed = false;
+                yield return StartCoroutine(ConfirmReminderAction(r, desc, ok => confirmed = ok));
+                if (!confirmed)
+                {
+                    result = "⏭️ 定时动作属危险操作，未获确认，未执行";
+                    FinishAction(r, result, false);
+                    yield break;
+                }
+            }
+            result = null;
+            yield return StartCoroutine(ExecuteLocalTool(action.toolName, action.args, res => result = res));
+            if (result == null) result = "❌ 工具无返回结果";
+        }
+        else if (action.type == "openclaw_task")
+        {
+            string desc = "外包给 OpenClaw 智能体执行任务（可能涉及浏览器操作、命令执行）";
+            bool confirmed = false;
+            yield return StartCoroutine(ConfirmReminderAction(r, desc, ok => confirmed = ok));
+            if (!confirmed)
+            {
+                result = "⏭️ 外包任务属危险操作，未获确认，未执行";
+                FinishAction(r, result, false);
+                yield break;
+            }
+            result = null;
+            yield return StartCoroutine(ExecuteOpenClawTask(action, res => result = res));
+            if (result == null) result = "❌ 外包任务无返回结果";
+        }
+        else
+        {
+            result = $"❌ 未知动作类型：{action.type}";
+        }
+
+        FinishAction(r, result, true);
+    }
+
+    /// <summary>危险定时动作的用户确认流（复用 ToolConfirmManager；60s 超时自动拒绝）</summary>
+    private IEnumerator ConfirmReminderAction(Reminder r, string description, Action<bool> onResult)
+    {
+        // 已有确认请求在排队（如用户聊天中正触发危险工具）→ 本次跳过，不抢占
+        if (ToolConfirmManager.HasPending)
+        {
+            Debug.LogWarning($"[ReminderManager] 定时动作「{r.text}」跳过确认：已有确认请求在排队");
+            onResult(false);
+            yield break;
+        }
+
+        bool confirmed = false;
+        bool resolved = false;
+        var confirmBubble = _bubble != null ? _bubble : FindObjectOfType<ChatBubble>();
+        if (confirmBubble != null)
+        {
+            confirmBubble.ShowMessage(
+                $"⚠️ 定时动作「{r.text}」欲执行「{r.action.toolName}」——{description}。\n点一下本座 = 允许，按 ESC = 拒绝。",
+                60f, ChatBubble.MsgPriority.High);
+        }
+
+        ToolConfirmManager.Request(r.action.toolName, r.action.args, description,
+            ok => { confirmed = ok; resolved = true; });
+
+        float confirmTimeout = Time.time + 60f;
+        while (!resolved)
+        {
+            if (Time.time > confirmTimeout)
+            {
+                ToolConfirmManager.Resolve(false); // 触发回调 → resolved=true, confirmed=false
+                break;
+            }
+            yield return null;
+        }
+
+        Debug.Log($"[ReminderManager] 定时动作确认结果: {(confirmed ? "允许" : "拒绝")}");
+        onResult(confirmed);
+    }
+
+    /// <summary>执行本地工具（同步/异步统一入口）</summary>
+    private IEnumerator ExecuteLocalTool(string toolName, string argsJson, Action<string> onResult)
+    {
+        if (ToolRegistry.IsAsync(toolName))
+        {
+            string result = null;
+            yield return ToolRegistry.ExecuteAsync(toolName, argsJson ?? "{}", res => result = res);
+            onResult(result ?? "❌ 工具无返回结果");
+        }
+        else if (ToolRegistry.HasTool(toolName))
+        {
+            onResult(ToolRegistry.Execute(toolName, argsJson ?? "{}"));
+        }
+        else
+        {
+            onResult($"❌ 不识此术：「{toolName}」");
+        }
+    }
+
+    /// <summary>执行 openclaw_task 外包任务（后台 Task + 轮询，参考 OpenClawTaskTool）</summary>
+    private IEnumerator ExecuteOpenClawTask(ReminderAction action, Action<string> onResult)
+    {
+        string task = string.IsNullOrEmpty(action.task) ? "请总结当前提醒文本对应的待办" : action.task;
+        string mode = string.IsNullOrEmpty(action.mode) ? "agent" : action.mode;
+
+        var taskRunner = System.Threading.Tasks.Task.Run(async () =>
+        {
+            bool healthy = await OpenClawBridge.CheckHealthAsync();
+            if (!healthy)
+                return $"❌ 定时外包任务无法发动：未检测到通神阵法（{OpenClawBridge.LastError}）。请先运行 openclaw_bridge.js";
+            // 定时任务给足预算，但限制步骤防烧 token
+            return await OpenClawBridge.ExecuteTaskAndWaitAsync(task, mode,
+                totalTimeoutSeconds: 600, maxSteps: 20, heartbeatSeconds: 60, maxIdleHeartbeats: 5);
+        });
+
+        yield return new WaitUntil(() => taskRunner.IsCompleted);
+
+        if (taskRunner.IsFaulted)
+            onResult($"❌ 定时外包任务出错: {taskRunner.Exception?.InnerException?.Message}");
+        else
+            onResult(taskRunner.Result);
+    }
+
+    /// <summary>记录动作执行结果并通知用户</summary>
+    private void FinishAction(Reminder r, string result, bool executed)
+    {
+        if (r.action == null) return;
+        r.action.result = result;
+        r.action.lastRunAt = DateTime.Now.ToString("O");
+        Save();
+        NotifyDataChanged();
+
+        string prefix = executed ? "✅" : "⚠️";
+        if (_bubble != null)
+        {
+            _bubble.ShowMessage($"{prefix} 定时动作「{r.text}」完成：{Truncate(result, 60)}",
+                bubbleDuration, ChatBubble.MsgPriority.Normal);
+        }
+        Debug.Log($"[ReminderManager] 定时动作执行完成: [{r.id}] {r.text} → {result}");
+    }
+
+    /// <summary>截断过长的结果文本（气泡展示用）</summary>
+    private static string Truncate(string s, int maxLen)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+        return s.Length <= maxLen ? s : s.Substring(0, maxLen) + "…";
     }
 
     // ================================================================

@@ -136,15 +136,20 @@
 
 **目标**: 提醒升级为「到时执行动作」
 
-| # | 任务 | 改动文件 | 说明 |
-|---|---|---|---|
-| 2.1 | `Reminder` 模型加 `action` 字段 | `ReminderManager.cs` | `{type:"local_tool"\|"openclaw_task", toolName, args}`；兼容旧数据（无 action 则纯提醒） |
-| 2.2 | 到期触发动作 | `ReminderManager.cs` | 现有 5 件事之后：有 action → 调 `ToolCallInvoker` 执行本地工具或 `openclaw_task` |
-| 2.3 | 重复规则与动作 | `ReminderManager.cs` | daily/weekly 重复提醒可带动作（如每天 8:00 open_app 网课） |
-| 2.4 | 新增 `set_reminder` 参数 | `ReminderAcademicTools.cs` | schema 增加可选 `action` 字段 |
-| 2.5 | 参照 OpenClaw `cron` | 设计评审 | 若未来需要更复杂调度，可直接让 OpenClaw cron 承担，桌宠只做"注册" |
+| # | 任务 | 改动文件 | 状态 | 说明 |
+|---|---|---|---|---|
+| 2.1 | `Reminder` 模型加 `action` 字段 | `ReminderManager.cs` | ✅ | `ReminderAction {type, toolName, args, task, mode, result, lastRunAt}`；`[Serializable]` 序列化兼容旧数据（无 action 字段则纯提醒，`HasAction=false`） |
+| 2.2 | 到期触发动作 | `ReminderManager.cs` | ✅ | `TriggerReminder()` 第 3.5 步：ServerChan 推送后、`OnReminderDue` 前，`HasAction(r)` → `StartCoroutine(ExecuteReminderAction)`；local_tool 走 `ExecuteLocalTool`，openclaw_task 走 `ExecuteOpenClawTask`（`ExecuteTaskAndWaitAsync(task, mode, 600s, 20步, 60s心跳, 5空闲)`） |
+| 2.3 | 重复规则与动作 | `ReminderManager.cs` | ✅ | 现有 daily/weekly 重复逻辑不阻塞：动作执行在重复提醒触发链内复用（`recurring` 字段在 `TriggerReminder` 中已重排下次时间，动作随之复用） |
+| 2.4 | 新增 `set_reminder` 参数 | `ReminderAcademicTools.cs` | ✅ | schema 增加可选 `action_type`/`action_tool`/`action_args`/`action_task`/`action_mode`（默认 `agent`）；`BuildAction()` 校验后构造 `ReminderAction` |
+| 2.5 | 参照 OpenClaw `cron` | 设计评审 | 待定 | 若未来需要更复杂调度（时区/表达式），直接让 OpenClaw cron 承担，桌宠只做"注册" |
 
-**验收**: 「每天 8:00 打开某应用」可配置、到期真实执行、失败有通知。
+**验收**: ✅ 「每天 8:00 打开某应用」可配置（`set_reminder` + `action_type=local_tool`）、到期真实执行（`TriggerReminder` → `ExecuteReminderAction`）、失败有通知（气泡 ⚠️ + `result` 写入提醒）。
+
+**P2 落地说明（2026-08-12）**:
+- **安全规则（重要）**: 到时执行**不静默跑危险动作**。local_tool 若在 `ToolRegistry.DangerousTools`（file_delete/power/run_command/lock_screen/set_volume/mute/openclaw_task）→ 弹 `ToolConfirmManager` 确认（点宠物=允许 / ESC=拒绝 / 60s 超时拒绝）；`openclaw_task` **一律确认**；`HasPending` 被占用时跳过本次执行（防抢占）
+- **执行结果**: `FinishAction` 写回 `action.result`/`lastRunAt` + `Save()`，气泡显示「✅/⚠️ 定时动作执行完成：…」（截断 60 字符）
+- **测试**: `ToolEngineTests` 新增 7 用例（旧数据兼容 / local_tool 序列化往返 / openclaw_task 序列化往返 / 危险判定对齐 ToolRegistry / BuildAction 解析三态）——2026-08-12 EditMode 全过（46 总 45 过，唯一失败为预存在的异步工具 WaitForSeconds 限制）
 
 ### Phase 3 — 语音双向：让桌宠「开口说话」（约 1~1.5 天）
 
@@ -190,13 +195,13 @@
 
 ## 五、工作量与依赖总览
 
-| Phase | 内容 | 估时 | 依赖 |
-|---|---|---|---|
-| P1 | 桥接泛化 `/task` | 1~2 天 | OpenClaw 运行中 |
-| P2 | 定时动作框架 | 1 天 | P1（动作可能外包） |
-| P3 | 语音双向 | 1~1.5 天 | 无 |
-| P4 | 剪贴板/偏好/多屏 | 1~1.5 天 | 无 |
-| P5 | 省钱与轨迹库 | 持续 | P1 |
+| Phase | 内容 | 估时 | 依赖 | 状态 |
+|---|---|---|---|---|
+| P1 | 桥接泛化 `/task` | 1~2 天 | OpenClaw 运行中 | ✅ 2026-08-12 |
+| P2 | 定时动作框架 | 1 天 | P1（动作可能外包） | ✅ 2026-08-12 |
+| P3 | 语音双向 | 1~1.5 天 | 无 | 待做 |
+| P4 | 剪贴板/偏好/多屏 | 1~1.5 天 | 无 | 待做 |
+| P5 | 省钱与轨迹库 | 持续 | P1 | 部分完成 |
 
 **推荐顺序**: P1 → P2 → P3.1(TTS) → P4 → P3.3(ASR) → P5
 

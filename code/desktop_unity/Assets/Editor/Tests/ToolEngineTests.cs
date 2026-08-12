@@ -427,4 +427,134 @@ public class ToolEngineTests
         Assert.IsTrue(results.All(r => !r.Contains("\uFFFD")),
             "UTF-8 BOM 导出读回后不应含替换字符 \uFFFD（乱码标志）");
     }
+
+    // ================================================================
+    //  P2 定时动作框架（2026-08-12）
+    //  纯逻辑测试：ReminderAction 数据模型 + JSON 兼容性，不触碰文件系统
+    // ================================================================
+
+    [Test]
+    public void Reminder_无action字段旧数据_兼容加载()
+    {
+        // 模拟旧版本 reminders.json（无 action 字段）
+        const string oldJson = "{\"reminders\":[{\"id\":\"a1\",\"text\":\"旧提醒\",\"createdAt\":\"2026-01-01T00:00:00\",\"remindAt\":\"2026-01-02T00:00:00\",\"done\":false,\"source\":\"user\",\"priority\":\"normal\"}]}";
+
+        var list = JsonUtility.FromJson<ReminderManager.ReminderList>(oldJson);
+        Assert.IsNotNull(list);
+        Assert.AreEqual(1, list.reminders.Count);
+        // action 为 null → HasAction 判定为纯提醒
+        Assert.IsFalse(ReminderManager.HasAction(list.reminders[0]),
+            "旧数据无 action 应判定为纯提醒");
+    }
+
+    [Test]
+    public void Reminder_带localTool动作_序列化往返()
+    {
+        var r = new ReminderManager.Reminder
+        {
+            id = "b1",
+            text = "到点开网课",
+            remindAt = "2026-08-13T08:00:00",
+            done = false,
+            recurring = "daily",
+            action = new ReminderManager.ReminderAction
+            {
+                type = "local_tool",
+                toolName = "open_app",
+                args = "{\"app\":\"notepad\"}"
+            }
+        };
+
+        string json = JsonUtility.ToJson(r);
+        Assert.IsTrue(json.Contains("action"), "序列化应包含 action 字段");
+
+        var loaded = JsonUtility.FromJson<ReminderManager.Reminder>(json);
+        Assert.IsTrue(ReminderManager.HasAction(loaded), "往返后应仍判定为有动作");
+        Assert.AreEqual("local_tool", loaded.action.type);
+        Assert.AreEqual("open_app", loaded.action.toolName);
+        Assert.AreEqual("{\"app\":\"notepad\"}", loaded.action.args);
+        Assert.AreEqual("daily", loaded.recurring);
+    }
+
+    [Test]
+    public void Reminder_带openclawTask动作_序列化往返()
+    {
+        var r = new ReminderManager.Reminder
+        {
+            id = "c1",
+            text = "检查B站更新",
+            remindAt = "2026-08-13T12:00:00",
+            done = false,
+            action = new ReminderManager.ReminderAction
+            {
+                type = "openclaw_task",
+                task = "打开B站检查关注的UP主更新并总结",
+                mode = "browser"
+            }
+        };
+
+        string json = JsonUtility.ToJson(r);
+        var loaded = JsonUtility.FromJson<ReminderManager.Reminder>(json);
+        Assert.IsTrue(ReminderManager.HasAction(loaded));
+        Assert.AreEqual("openclaw_task", loaded.action.type);
+        Assert.AreEqual("browser", loaded.action.mode);
+        Assert.AreEqual("打开B站检查关注的UP主更新并总结", loaded.action.task);
+    }
+
+    [Test]
+    public void Reminder_危险工具判定_遵循ToolRegistry清单()
+    {
+        // 定时动作执行时的安全规则：危险工具必须走确认
+        Assert.IsTrue(ToolRegistry.IsDangerous("openclaw_task"),
+            "openclaw_task 应属危险工具（定时触发时需确认）");
+        Assert.IsTrue(ToolRegistry.IsDangerous("run_command"));
+        Assert.IsTrue(ToolRegistry.IsDangerous("file_delete"));
+        // 安全工具不应误判为危险
+        Assert.IsFalse(ToolRegistry.IsDangerous("open_app"));
+        Assert.IsFalse(ToolRegistry.IsDangerous("open_url"));
+        Assert.IsFalse(ToolRegistry.IsDangerous("notify"));
+    }
+
+    [Test]
+    public void SetReminderTool_解析localTool动作参数()
+    {
+        var tool = new SetReminderTool();
+        string args = "{\"text\":\"到点开网课\",\"remind_at\":\"2099-01-01 08:00\",\"action_type\":\"local_tool\",\"action_tool\":\"open_app\",\"action_args\":\"{\\\"app\\\":\\\"notepad\\\"}\"}";
+
+        // 通过反射调用私有 BuildAction 验证解析逻辑
+        var method = typeof(SetReminderTool).GetMethod("BuildAction",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.IsNotNull(method, "BuildAction 私有方法应存在");
+
+        var action = (ReminderManager.ReminderAction)method.Invoke(null, new object[] { args });
+        Assert.IsNotNull(action);
+        Assert.AreEqual("local_tool", action.type);
+        Assert.AreEqual("open_app", action.toolName);
+        Assert.IsTrue(action.args.Contains("notepad"), $"action_args 应保留: {action.args}");
+    }
+
+    [Test]
+    public void SetReminderTool_解析openclawTask动作参数()
+    {
+        var tool = new SetReminderTool();
+        string args = "{\"text\":\"查B站\",\"remind_at\":\"2099-01-01 12:00\",\"action_type\":\"openclaw_task\",\"action_task\":\"打开B站查更新\",\"action_mode\":\"browser\"}";
+
+        var method = typeof(SetReminderTool).GetMethod("BuildAction",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        var action = (ReminderManager.ReminderAction)method.Invoke(null, new object[] { args });
+        Assert.IsNotNull(action);
+        Assert.AreEqual("openclaw_task", action.type);
+        Assert.AreEqual("browser", action.mode);
+        Assert.AreEqual("打开B站查更新", action.task);
+    }
+
+    [Test]
+    public void SetReminderTool_无动作参数_返回null()
+    {
+        var method = typeof(SetReminderTool).GetMethod("BuildAction",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        var action = (ReminderManager.ReminderAction)method.Invoke(null,
+            new object[] { "{\"text\":\"纯提醒\",\"remind_at\":\"2099-01-01 08:00\"}" });
+        Assert.IsNull(action, "无 action_* 参数应返回 null（纯提醒）");
+    }
 }
