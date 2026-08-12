@@ -13,19 +13,19 @@
 
 | 文档 | 作用 | 阅读时机 |
 |------|------|---------|
-| [`PROJECT_INTRO.md`](../PROJECT_INTRO.md) | GitHub 项目介绍（特性亮点/架构图/快速上手/展示） | 访客首次了解项目 |
+| [`README.md`](../README.md) | GitHub 项目介绍（特性亮点/架构图/快速上手/展示，**GitHub 默认渲染页**） | 访客首次了解项目 |
 | [`AGENTS.md`](../AGENTS.md) | AI 协作快速入口（7 条铁律） | **每次开工前** |
 | [`development-standards.md`](development-standards.md) | 唯一权威开发规范（9 章） | 写任何代码前 |
 | [`code-truth-architecture.md`](code-truth-architecture.md) | 代码真相架构审计（六层架构） | 改架构/子系统前 |
 | [`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) | 项目演进路线图（v0.2） | 规划新功能前 |
-| [`task-inventory.md`](task-inventory.md) | 项目任务清单（N40，55 工具） | 接任务/汇报进度时 |
+| [`task-inventory.md`](task-inventory.md) | 项目任务清单（N40+，65 工具） | 接任务/汇报进度时 |
 
 ### 1.2 模块文档（modules/，每份含四要素）
 
 | 模块 | 文档 | 覆盖范围 |
 |------|------|---------|
 | AI 对话 | [`modules/ai-chat-system.md`](modules/ai-chat-system.md) | ChatManager、ApiClient、言出法随、Token 优化历史 |
-| 工具系统 | [`modules/tool-engine.md`](modules/tool-engine.md) | ToolEngine、55+ 工具、审批、benchmark 报告 |
+| 工具系统 | [`modules/tool-engine.md`](modules/tool-engine.md) | ToolEngine、65 工具、审批、benchmark 报告 |
 | 动作系统 | [`modules/action-agent.md`](modules/action-agent.md) | ActionAgent、MotionPlanner/Translator、验证闭环、行走研究 |
 | Live2D 渲染 | [`modules/live2d-rendering.md`](modules/live2d-rendering.md) | Live2DRenderer、参数映射、硬编码迁移清单 |
 | 对话界面 | [`modules/chat-ui.md`](modules/chat-ui.md) | RightPanel、ChatBubble、像素化优化 |
