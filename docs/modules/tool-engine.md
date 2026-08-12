@@ -1,7 +1,7 @@
-# 工具系统 ToolEngine — 59 工具插件架构与稳定性报告
+# 工具系统 ToolEngine — 65 工具插件架构与稳定性报告
 
-> **文档作用**: 本模块文档描述桌宠「工具系统」的**代码真相**——IPetTool 插件架构、ToolRegistry 反射自动发现、AsyncToolBase 异步基类、危险工具审批、10 个工具文件 59 个已注册工具的分类清单，以及 2026-08-08 全量稳定性测试报告（57 用例 0 真实 bug）。新增/修改/删除任何 AI 工具前必读。
-> **基本架构**: `IPetTool`（接口）+ `ToolSchema`（参数 Schema）→ 实现类（10 个工具文件 + 7 个基础设施 .cs）→ `ToolRegistry`（AppDomain 反射自动发现 + 调度）→ `AsyncToolBase`（异步/协程基类）→ `ChatManager` 调用。危险工具清单 `DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}`，经 `ToolConfirmManager` 审批。关键文件：`Assets/Scripts/ToolEngine/`（18 个 .cs，含测试器 ToolBenchmarkRunner）。
+> **文档作用**: 本模块文档描述桌宠「工具系统」的**代码真相**——IPetTool 插件架构、ToolRegistry 反射自动发现、AsyncToolBase 异步基类、危险工具审批、12 个工具文件 65 个已注册工具的分类清单，以及 2026-08-08 全量稳定性测试报告（57 用例 0 真实 bug）。新增/修改/删除任何 AI 工具前必读。
+> **基本架构**: `IPetTool`（接口）+ `ToolSchema`（参数 Schema）→ 实现类（12 个工具文件 + 7 个基础设施 .cs）→ `ToolRegistry`（AppDomain 反射自动发现 + 调度）→ `AsyncToolBase`（异步/协程基类）→ `ChatManager` 调用。危险工具清单 `DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}`，经 `ToolConfirmManager` 审批。关键文件：`Assets/Scripts/ToolEngine/`（20 个 .cs，含测试器 ToolBenchmarkRunner）。
 > **开发历史迭代**: N40 起工具数 40+→52→55（新增 Pogget/LaTeX 等）；2026-08-08 `9b94c09` 修复 4 类 benchmark 问题（emoji 误判、DANGER_GUARD 真执行、run_command GBK 崩溃、file_move 链式失败）；55 工具全量测试 44 OK / 6 DANGER_GUARD / 5 SKIP / 2 ERROR（均预期）；2026-08-12 P1 收尾 55→**59**（+OfficeTools 3 个补录 + openclaw_task 补录，任务外包 /task 端点落地）；2026-08-12 P4 新增 3 个偏好工具 → **62**（set_preference / query_preferences / remove_preference，PreferencesManager 配套）；2026-08-12 P5 新增 3 个任务模板工具 → **65**（query_task_templates / save_task_template / remove_task_template，TaskTemplateManager 配套）+ openclaw_task 支持 template/template_args + 轨迹记录（TaskTrajectoryManager，太卜手札）。
 > **编写注意事项**: ①测试**禁止空参数遍历调用所有工具**（lock_screen 真锁屏、file_delete 真删文件、set_volume 真改音量），空参测试只限只读白名单（get_system_info/get_mouse_pos/get_clipboard）；②新增工具自动被反射发现，无需手动注册；③工具执行须返回中文 ✅/❌ 前缀消息；④危险工具须入 DangerousTools 清单并走 ToolConfirmManager 审批；⑤run_command 输出必须 UTF-8 解码（`chcp 65001`），Unity Mono 无 I18N.CJK 会抛异常。
 
@@ -12,7 +12,7 @@
 - **服务对象**: 开发者 + AI 编码代理。任何涉及工具新增、工具改名、危险工具清单、工具 Schema、工具稳定性验证的改动。
 - **回答的问题**:
   - 工具是怎么被发现的？新增工具要做什么？
-  - 59 个工具分别在哪几个文件？名字是什么？
+  - 65 个工具分别在哪几个文件？名字是什么？
   - 哪些是危险工具？审批流程怎么走？
   - 全量工具稳定性测试结果如何？有哪些已知环境限制？
 - **关联文档**: `code-truth-architecture.md` 四章（工具系统真相）｜`modules/ai-chat-system.md`（工具子集 T4 注入）｜`modules/bridge-communication.md`（桥接依赖工具）｜`modules/action-agent.md`（动作工具）｜`development-standards.md`（工具新增标准流程）
@@ -23,7 +23,7 @@
 
 ```
 IPetTool (接口: ToolName / ToolDescription / ToolParametersJson / IsAsync / Execute / ExecuteAsync)
-  ↑ 实现 (10 个工具文件 + 7 个基础设施 .cs · 共 59 工具)
+  ↑ 实现 (12 个工具文件 + 7 个基础设施 + 1 测试器 .cs · 共 65 工具)
 ToolRegistry (AppDomain.GetAssemblies 反射自动发现 + 调度)
   ↑ 委托
 AsyncToolBase (异步/协程工具基类, ToolName 虚属性)

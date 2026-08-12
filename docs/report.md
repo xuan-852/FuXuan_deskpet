@@ -38,7 +38,7 @@
 ### 1.1 项目目标
 
 开发运行于 Windows 桌面的 AI 驱动 Live2D 虚拟角色桌面宠物，具备：
-- 自然语言对话 + **55 个工具**调用能力（10 轮回环，首轮意图子集 27 个）
+- 自然语言对话 + **65 个工具**调用能力（10 轮回环，首轮意图子集 27 个）
 - Live2D 实时表情动作 + LLM 动态动作生成
 - 环境感知 + 人格演化 + 长期记忆
 - 桌面物理交互 + 系统集成
@@ -64,7 +64,7 @@
 |------|------|
 | 渲染帧率 | 20-60fps（三档自适应降档） |
 | AI 响应延迟 | 1-5s（网络 + 工具轮次） |
-| 注册工具 | **55 个**（9 个工具文件，插件式自动发现；N40 按意图注入子集） |
+| 注册工具 | **65 个**（12 个工具文件，插件式自动发现；按意图注入子集） |
 | 工具回环 | 最多 **10 轮**（`MAX_TOOL_ROUNDS=10`） |
 | 内存管理 | 800MB GC / 1.2GB 强制 GC |
 | 动作模板 | 10 种硬编码模板 + 6 种插值曲线（Linear/Smooth/EaseOut/EaseIn/Hold/Bounce） |
@@ -109,7 +109,7 @@
 │                    系统层                                 │
 │   WindowOverlay (DWM) · SystemTrayManager               │
 │   ReminderManager · ServerPollService · OpenClawBridge  │
-│   ToolEngine (9 工具文件 + 7 基础设施 · 55 工具) · Mutex │
+│   ToolEngine (12 工具文件 + 7 基础设施 + 1 测试器 · 65 工具) · Mutex │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -185,14 +185,14 @@ AI 回复文本中嵌入标记，无需 tool_call 即同步触发表情动作：
 
 ```
 IPetTool (接口) + ToolSchema (参数 Schema)
-  ↑ 实现 (9 个工具文件 + 7 个基础设施 .cs · 共 55 工具)
+  ↑ 实现 (12 个工具文件 + 7 个基础设施 + 1 测试器 .cs · 共 65 工具)
 ToolRegistry (反射自动发现 + 调度)
   ↑ 委托
 AsyncToolBase (异步/协程工具基类)
   ↑ ChatManager 调用
 ```
 
-### 4.2 工具分类（真实注册名，55 个）
+### 4.2 工具分类（真实注册名，65 个）
 
 | 文件 | 工具数 | 代表工具 | 类别 |
 |------|--------|----------|------|
@@ -200,14 +200,17 @@ AsyncToolBase (异步/协程工具基类)
 | ClipboardFileTools.cs | 14 | `get_clipboard`, `set_clipboard`, `get_weather`, `file_open`, `file_move`, `file_copy`, `file_delete`, `file_rename`, `file_info`, `file_create`, `dir_create`, `file_read`, `search_files`, `search_file` | 传音/摄形/调音/文件 |
 | ReminderAcademicTools.cs | 8 | `set_reminder`, `query_reminders`, `mark_reminder_done`, `delete_reminder`, `query_exams`, `query_scores`, `query_schedule`, `query_user_status` | 卜算记事簿/传讯 |
 | Live2DSyncTools.cs | 7 | `set_expression`, `play_action`, `stop_action`, `inspect_motion_memory`, `inspect_personality`, `explore_body`, `control_body` | 演武/表情/动作 |
-| VisionKnowledgeTools.cs | 4 | `take_screenshot`, `knowledge_search`, `knowledge_index`, `openclaw_search` | 摄形/藏书阁 RAG/OpenClaw |
+| VisionKnowledgeTools.cs | 5 | `take_screenshot`, `knowledge_search`, `knowledge_index`, `openclaw_search`, `openclaw_task` | 摄形/藏书阁 RAG/OpenClaw/任务外包 | 
 | MotionCoroutineTools.cs | 5 | `generate_motion`, `explore_body_vision`, `run_verification`, `vis_verify`, `self_review` | 异步动作生成(协程)/视觉验证 |
+| OfficeTools.cs | 3 | `generate_ppt`, `generate_docx`, `generate_xlsx` | 办公文档生成（经 Bridge `/generate_office`） |
+| PreferenceTools.cs | 3 | `set_preference`, `query_preferences`, `remove_preference` | 用户偏好（PreferencesManager） |
+| TaskTemplateTools.cs | 3 | `query_task_templates`, `save_task_template`, `remove_task_template` | 任务模板（TaskTemplateManager） |
 | PoggetTool.cs | 1 | `launch_pogget` | 启动 Pogget |
 | PoggetAgentTool.cs | 1 | `pogget_agent`（8 子命令：ping/list_containers/get_container_items/add_to_container/remove_from_container/create_container/organize_desktop/quickpanel_status） | Agent IPC |
 | LatexCompileTool.cs | 1 | `compile_latex` | 问天录（经 OpenClawBridge） |
 
 > ⚠️ 旧文档的工具名与文件（`MemoryTools.cs`/`ReminderTools.cs`/`AcademicTools.cs`/`KnowledgeTools.cs`/`BodyTools.cs`、`open_web`/`capture_screen`/`send_notification`/`reminder_*` 等）**均已不存在**，以本表为准。
-> N40（T4）：ChatManager 每轮只注入意图相关工具子集（55→27），见 §3.1。
+> 意图子集（T4）：ChatManager 每轮只注入意图相关工具子集（65→27），见 §3.1。
 
 ### 4.3 关键工具列表（已核实存在）
 
@@ -610,12 +613,12 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 | # | 旧文档陈述 | 代码真相 | 严重度 | 状态 |
 |---|---|---|---|---|
 | 1 | 工具回环 5 轮 | `MAX_TOOL_ROUNDS = 10` | 高 | 已修正 |
-| 2 | ToolEngine 6 文件 | 9 工具文件 + 7 基础设施 = 16 .cs、55 工具（N40 修正 52→55） | 高 | 已修正 |
+| 2 | ToolEngine 6 文件 | 12 工具文件 + 7 基础设施 + 1 测试器 = 20 .cs、65 工具（2026-08-12 全量清点） | 高 | 已修正 |
 | 3 | ActionAgent 15 组件 | 15 文件（N39 删 AutoMotionCollector 后 16→15） | 低 | 已修正 |
 | 4 | "11 规则 + 12 特殊模式" | **10 规则 + 10 特殊（9 姿势，捂脸重复）** | 中 | 已修正 |
 | 5 | 曲线含 "BounceEaseOut" | 实际为 `Bounce`（共 6 种：Linear/Smooth/EaseOut/EaseIn/Hold/Bounce） | 低 | 已修正 |
 | 6 | 双模型校验（Qwen+GLM） | 单 GLM-4V（Qwen-VL 已删，qwenScore 已删） | 高 | N39 已修复 |
-| 7 | "36 个核心脚本" | 顶层 33 + 子目录 ~50（合计 84 文件/36,356 行） | 中 | 已修正 |
+| 7 | "36 个核心脚本" | 顶层 33 + 子目录 ~59（合计 92 文件，2026-08-13 实测） | 中 | 已修正 |
 | 8 | 知识库同步上下文 | `GetFormattedContext()` STUB 恒 "" → N39 已修复（返回 LastFormattedContext 缓存） | 高 | N39 已修复 |
 | 9 | 反思机制驱动 | `OnReflectRequest` 恒 null → N39 已接线（CheckReflection→DoReflection） | 高 | N39 已修复 |
 | 10 | 3D 渲染可用 | HybridRenderer TODO，强制 Live2D | 中 | 已修正 |

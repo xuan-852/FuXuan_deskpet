@@ -1,9 +1,9 @@
 # 项目任务清单
 
-> 文件版本: N40 · 最后更新: 2026-08-08（按代码真相审计修订，含 N39 修复与 T1-T8 Token 优化）
+> 文件版本: N40+ · 最后更新: 2026-08-13（按代码真相审计修订，含 N39 修复、T1-T8 Token 优化、2026-08-12 任务可视化/办公/偏好/模板迭代）
 >
 > 图例: ✅ 已完成 / 🔧 已优化 / 🐛 已修复 / ⏳ 待办 / 💡 待研究 / ❌ 已废弃
-> ⚠️ 数字修正: 工具回环 5→**10 轮**、工具集 40+→**52 个**→**55 个（N40）**、MotionTranslator "11 规则+12 特殊"→**10+10**
+> ⚠️ 数字修正: 工具回环 5→**10 轮**、工具集 40+→**52 个**→**55 个（N40）**→**65 个（2026-08-12）**、MotionTranslator "11 规则+12 特殊"→**10+10**
 
 ---
 
@@ -134,19 +134,22 @@
 | ✅ | 自动闲聊 | IdleChatGenerator + Scheduler |
 | ✅ | 主动消息调度 | ProactiveMessageScheduler |
 
-### ToolEngine 工具集 (55 个, 9 个工具文件 + 7 个基础设施 .cs)
+### ToolEngine 工具集 (65 个, 12 个工具文件 + 7 个基础设施 + 1 测试器 .cs)
 | 状态 | 分类 | 工具数 | 说明 |
 |------|------|--------|------|
 | ✅ | WebSystemTools | **14** | 观星/封印/洞观/开阵（含 run_command / notify / power） |
 | ✅ | ClipboardFileTools | **14** | 传音/摄形/调音/文件（含 dir_create / file_read） |
 | ✅ | ReminderAcademicTools | 8 | 卜算记事簿/传讯 |
 | ✅ | Live2DSyncTools | 7 | 演武/表情/动作 |
-| ✅ | VisionKnowledgeTools | 4 | 视觉分析/知识库 |
+| ✅ | VisionKnowledgeTools | 5 | 视觉分析/知识库/任务（含 openclaw_task） |
 | ✅ | MotionCoroutineTools | 5 | 异步动作生成(协程) |
+| ✅ | OfficeTools | 3 | 办公生成（generate_ppt/docx/xlsx） |
+| ✅ | PreferenceTools | 3 | 偏好（set/query/remove_preference） |
+| ✅ | TaskTemplateTools | 3 | 任务模板（save/query/remove_task_template） |
 | ✅ | Pogget / 其他 | **3** | PoggetTool(launch_pogget) / PoggetAgentTool(pogget_agent, 8 子命令) / LatexCompileTool(compile_latex) |
 
-> **N40 修正**：旧文档称 WebSystemTools 11 / ClipboardFileTools 18 / 合计 52，实测为 **14+14+8+7+4+5+3 = 55**。
-> **N40 工具子集（T4）**：首轮对话只注入意图相关子集（55→27），回环轮按已用工具∪候选∪CoreToolSubset。
+> **2026-08-12 修正**：旧文档称 WebSystemTools 11 / ClipboardFileTools 18 / 合计 52，N40 实测 55，2026-08-12 新增 Office/偏好/任务模板后为 **14+14+8+7+5+5+3+3+3+1+1+1 = 65**。
+> **工具子集（T4）**：首轮对话只注入意图相关子集（65→27），回环轮按已用工具∪候选∪CoreToolSubset。
 > **代码中不存在的旧文档工具**：get_time / get_memories / write_memory / start_conversation / messenger / write_note / send_notification / get_pet_status / get_system_status / show_reminder。
 
 ### 上下文注入

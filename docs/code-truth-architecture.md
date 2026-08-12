@@ -1,10 +1,10 @@
 # 代码真相架构文档（Code-Truth Architecture）
 
-> **审计方式**: 全部结论以 `code/desktop_unity/Assets/Scripts/` 下真实代码为准（2026-08-08 快照，含 N39 修复与 T1-T8 Token 优化）
-> **审计范围**: **84 个 .cs 文件、约 36,356 行 C# 代码**（2026-08-08 实测）
+> **审计方式**: 全部结论以 `code/desktop_unity/Assets/Scripts/` 下真实代码为准（2026-08-13 快照，含 N39 修复、N40 T1-T8 Token 优化、2026-08-12 任务可视化/审批/并行化）
+> **审计范围**: **92 个 .cs 文件**（2026-08-13 实测，含 N40 后新增的 Preferences/TaskTemplate/TaskTrajectory 等）
 > **重要声明**: 本项目的 md 文档（README / docs / 各类方案文档）**部分已过时**，存在多处与代码不符的陈述。本文档即为"唯一可信"的架构参照。
 > **引擎**: 团结引擎 Tuanjie 2022.3.62t7（Unity 派生版）+ Live2D Cubism SDK 5-r.4
-> **版本基准**: N38 审计（2026-08-02）→ N39 代码修复（2026-08-02）→ N40 Token 优化（2026-08-07，T1-T8 全部完成）
+> **版本基准**: N38 审计（2026-08-02）→ N39 代码修复（2026-08-02）→ N40 Token 优化（2026-08-07，T1-T8 全部完成）→ 2026-08-12 任务可视化（exec 审批 E2E / per-session 并行 / 65 工具）
 
 ---
 
@@ -18,12 +18,12 @@ code/desktop_unity/Assets/
 │   ├── Editor/                       # 编辑器工具（6 个，非运行时）
 │   ├── Live2DFramework/              # Live2D 参数框架（8 个 .cs：ParameterMapper/ModelAnalyzer 等）
 │   │   └── ActionAgent/              # 具身动作闭环（15 个文件，AutoMotionCollector 已于 N39 删除）
-│   └── ToolEngine/                   # 工具系统（16 个 .cs = 9 个工具文件 + 7 个基础设施，55 个工具）
+│   └── ToolEngine/                   # 工具系统（20 个 .cs = 12 个工具文件 + 7 个基础设施 + 1 测试器，65 个工具）
 ├── StreamingAssets/Live2D/Fuxuan/    # 符玄 Live2D 模型（唯一模型）
 └── Resources/                        # 运行时资源
 ```
 
-> **实测统计（2026-08-08）**: 顶层 Scripts 33 + Editor 6 + Live2DFramework 8 + ActionAgent 15 + ToolEngine 16 = 84 个 .cs 文件。
+> **实测统计（2026-08-13）**: 顶层 Scripts 33 + Editor 6 + Live2DFramework 8 + ActionAgent 15 + ToolEngine 20 + 其余新增（PreferencesManager/TaskTemplateManager/TaskTrajectoryManager 等）= 92 个 .cs 文件。
 
 ### 1.2 文件规模 TOP 榜（按行数）
 
@@ -100,7 +100,7 @@ flowchart TB
         F2[ReminderManager 三级提醒]
         F3[ServerPollService 服务器轮询]
         F4[OpenClawBridge Node桥]
-        F5[ToolEngine 55工具]
+        F5[ToolEngine 65工具]
         F6[PetMemory 记忆]
         F7[KnowledgeBaseManager RAG]
     end
@@ -127,7 +127,7 @@ flowchart TB
 | 消息队列 | — | `_messageQueue` 等待时输入排队不丢 |
 | 句子显示 | — | 流式 + 逐句队列（2.5s/句）、`SentenceVersionId` 供 ContextMenu 重播 |
 | 反射（Reflect） | 声称驱动 | **已接线（N39 确认）**：`SendRequestCoroutine → CheckReflection → DoReflection（DeepSeek 提炼）→ CommitReflection`；曾有的 `OnReflectRequest` 死回调已删除 |
-| Token 优化（N40） | — | **T1-T8 全部完成**：时间戳挪尾部（缓存命中 98.6%）、body schema 裁剪、max_tokens:1200+thinking 禁用、工具子集 55→27、历史 15000 字符预算、SystemPrompt 5012→2972、Speculative Multi-Action、usage 日志 |
+| Token 优化（N40） | — | **T1-T8 全部完成**：时间戳挪尾部（缓存命中 98.6%）、body schema 裁剪、max_tokens:1200+thinking 禁用、工具子集 65→27、历史 15000 字符预算、SystemPrompt 5012→2972、Speculative Multi-Action、usage 日志 |
 
 ### 3.1.1 工具子集（T4）与测试模式
 
@@ -163,7 +163,7 @@ flowchart TB
 
 ## 四、工具系统真相（ToolEngine）— 文档严重过时
 
-### 4.1 文件清单（16 个 .cs = 9 个工具文件 + 7 个基础设施）
+### 4.1 文件清单（20 个 .cs = 12 个工具文件 + 7 个基础设施 + 1 测试器）
 
 | 文件 | 内容 |
 |---|---|
@@ -171,27 +171,32 @@ flowchart TB
 | `ClipboardFileTools.cs` | **14 个**：get_clipboard / set_clipboard / get_weather / file_open / file_move / file_copy / file_delete / file_rename / file_info / file_create / dir_create / file_read / search_files / search_file |
 | `ReminderAcademicTools.cs` | **8 个**：set_reminder / query_reminders / mark_reminder_done / delete_reminder / query_exams / query_scores / query_schedule / query_user_status |
 | `Live2DSyncTools.cs` | **7 个**：set_expression / play_action / stop_action / inspect_motion_memory / inspect_personality / explore_body / control_body |
-| `VisionKnowledgeTools.cs` | **4 个**：take_screenshot / knowledge_search / knowledge_index / openclaw_search |
+| `VisionKnowledgeTools.cs` | **5 个**：take_screenshot / knowledge_search / knowledge_index / openclaw_search / **openclaw_task**（太卜神行法，任务外包 + 审批 + 轨迹） |
 | `MotionCoroutineTools.cs` | **5 个**：generate_motion / explore_body_vision / run_verification / vis_verify / self_review |
+| `OfficeTools.cs` ★P1 补录 | **3 个**：generate_ppt / generate_docx / generate_xlsx（经 OpenClawBridge `/generate_office`） |
+| `PreferenceTools.cs` ★P4 新增 | **3 个**：set_preference / query_preferences / remove_preference（PreferencesManager 配套） |
+| `TaskTemplateTools.cs` ★P5 新增 | **3 个**：query_task_templates / save_task_template / remove_task_template（TaskTemplateManager 配套） |
 | `PoggetTool.cs` ★文档未列 | **launch_pogget** → 启动 `d:\pogget\Pogget.exe` |
 | `PoggetAgentTool.cs` ★文档未列 | **pogget_agent** → IPC 调 `D:\pogget\agent\bin\PoggetAgent-debug.exe`（**8 个子命令**：ping / list_containers / get_container_items / add_to_container / remove_from_container / create_container / organize_desktop / **quickpanel_status**） |
 | `LatexCompileTool.cs` ★文档未列 | **compile_latex** → OpenClawBridge.CompileLatexAsync，输出 `D:\DesktopPetData\Documents\` |
 | `AsyncToolBase.cs` | 异步工具基类（含 `ToolName` 虚属性，`search_web` 等 override 于此） |
 | `IPetTool.cs` | 工具接口（ToolName / ToolDescription / ToolParametersJson / IsAsync / Execute / ExecuteAsync） |
-| `ToolRegistry.cs` | 反射自动发现 IPetTool（AppDomain.GetAssemblies）；DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute} |
+| `ToolRegistry.cs` | 反射自动发现 IPetTool（AppDomain.GetAssemblies）；DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, **openclaw_task**} |
 | `ToolSchema.cs` | JSON Schema 构建器 |
 | `ToolHelpers.cs` | 工具辅助函数 |
 | `ToolConfirmManager.cs` | 危险工具确认管理 |
 | `GlmModels.cs` | GLM 模型配置 |
+| `ToolBenchmarkRunner.cs` | 测试器（非运行时工具，全量稳定性测试用） |
 
-> **合计：55 个已注册工具**（9 个工具文件；README 未提及 Pogget、LaTeX 等新工具）。
+> **合计：65 个已注册工具**（12 个工具文件；README 未提及 Pogget、LaTeX、Office、偏好、任务模板等新工具）。
 > **注意**：`get_time`、`get_memories`、`write_memory`、`start_conversation` 等旧文档列出的工具在代码中**不存在**。
+> **工具清单权威参照**：逐工具签名 / 参数 / 审批配置见 [`docs/modules/tool-engine.md`](modules/tool-engine.md)（与本文档 2026-08-13 同步核对）。
 
 ### 4.2 意图 → 工具白名单映射（真实）
 
 - **chat** / **emotion** → 不发任何 tools（纯角色对话）
-- **command** → launch_pogget、pogget_agent、open_app、open_url、open_folder、search、search_web、openclaw_search、lock_screen、set_volume、mute、power、get_system_info、get_mouse_pos、list_files、run_command、notify、get_clipboard、set_clipboard、file_*、take_screenshot
-- **knowledge** → search_web、search、openclaw_search、knowledge_search、compile_latex、get_weather、query_*、inspect_*、explore_body*
+- **command** → launch_pogget、pogget_agent、open_app、open_url、open_folder、search、search_web、openclaw_search、**openclaw_task**、lock_screen、set_volume、mute、power、get_system_info、get_mouse_pos、list_files、run_command、notify、get_clipboard、set_clipboard、file_*、take_screenshot
+- **knowledge** → search_web、search、openclaw_search、**openclaw_task**、knowledge_search、compile_latex、get_weather、**generate_ppt / generate_docx / generate_xlsx**、query_*、inspect_*、explore_body*
 - **operation** → set_expression、play_action、stop_action、generate_motion、inspect_*、explore_body*、take_screenshot、knowledge_index
 
 ---
@@ -260,7 +265,7 @@ flowchart TB
 | `HybridRenderer` 3D 模式可用 | **3D 模式不可用** — TODO 注释，强制走 Live2D |
 | `Model3DRenderer` 绿幕抠像（Color Key） | **实际设置纯黑背景**，注释与代码矛盾 |
 | `VisualHeartbeat` 默认表情 "curious" | **实际默认 "surprise"** |
-| README "36 个核心脚本" | **实际顶层 33 + 子目录 ~50（共 84 个 .cs）** |
+| README "36 个核心脚本" | **实际顶层 33 + 子目录 ~59（共 92 个 .cs，2026-08-13 实测）** |
 | `PerformanceMonitor.GetResolutionScale()` 动态降分辨率 | **恒返回 1.0f**（仅帧率降级） |
 | `WindowOverlay.isMultiMonitor` 支持多屏 | **恒为 false**（只用 `SM_CXSCREEN`，多屏逻辑死代码） |
 
@@ -289,14 +294,15 @@ flowchart TB
 
 ### 6.3 OpenClawBridge（Node.js，`openclaw_bridge.js`）
 
-- HTTP 端口 **19876**：`/search`、`/health`、`/compile_latex`（**无 /task 端点**，roadmap 中的 /task 仍为规划）
+- HTTP 端口 **19876**：`/health`（免鉴权）、`/search`、`/task`（POST 提交任务）、`/task/{id}`（GET 轮询）、`/task/{id}/cancel`（取消）、`/task/{id}/approve`（审批回执）、`/compile_latex`、`/generate_office`（2026-08-12 起 `/task` 系列已实现并 E2E 打通）
+- **exec 审批（2026-08-12）**：OpenClaw 侧 `exec.approval.resolve` RPC 回执，`decision` ∈ `allow-once / allow-always / deny`；pendingApproval 按 kind 分流（exec / plugin）；`tools.exec.mode=ask` 已配置，危险命令须用户审批
 - WebSocket 网关：`ws://127.0.0.1:18789`
 - **认证（N39 后改为环境变量）**：请求头 `x-bridge-token`，取值优先 `BRIDGE_TOKEN` 环境变量（系统级，64 字符），fallback `GATEWAY_TOKEN`；`GATEWAY_TOKEN` 自动从 `C:\Users\25295\.openclaw\openclaw.json` 读取（含 BOM strip）
 - C# 侧 `OpenClawBridge.cs`：`BASE_URL = http://127.0.0.1:19876`，`BridgeToken` 同样读环境变量 `BRIDGE_TOKEN`（未配置则返回空串禁用鉴权并打 Warning）
 - **进程管理**：PM2 管理（进程名 `openclaw-bridge`），`ecosystem.config.js` 配置
-- 串行锁：`requestChain`（防止并发覆盖 waiter）；180s 超时
-- 会话 key：`agent:main:main`
-- 消费方：`OpenClawBridge.cs`（C# 侧）+ `LatexCompileTool` + `VisionKnowledgeTools.openclaw_search`
+- **并行锁（N40 后重构）**：`requestChains = new Map()`（per-sessionKey 串行链，防止并发覆盖 waiter），180s 超时
+- 会话 key：`agent:main:main`（任务走独立 sessionKey `agent:main:task-<id>`）
+- 消费方：`OpenClawBridge.cs`（C# 侧）+ `LatexCompileTool` + `VisionKnowledgeTools.openclaw_search` / `openclaw_task` + `OfficeTools.generate_*`
 
 ---
 
@@ -322,6 +328,9 @@ flowchart TB
 | `pet_personality.json` | PersonalityManager | 人格五维 |
 | `activity_log.json` | ActivityTracker | 30 天活动日志 |
 | `knowledge_base.json` | KnowledgeBaseManager | RAG 知识库 |
+| `pet_preferences.json` ★P4 新增 | PreferencesManager | 用户偏好（set_preference/query_preferences/remove_preference） |
+| `task_templates.json` ★P5 新增 | TaskTemplateManager | 任务模板（30 条上限，save/query/remove） |
+| `task_trajectories.json` ★P5 新增 | TaskTrajectoryManager | 任务轨迹记录（openclaw_task 执行复盘） |
 | `Documents/` | LatexCompileTool | LaTeX 编译输出 |
 | `ActionRefs/` | ActionReferenceManager | 参考图（512×512 PNG 仅注释） |
 | `glm_collages/` | DualModelValidator | 2×2 拼图（上限 50 张） |
@@ -342,17 +351,17 @@ flowchart TB
 
 ## 九、文档 vs 代码偏差总表（核心交付物）
 
-> 状态列：N39 修复（2026-08-02）/ N40 更新（2026-08-07~08）后统一标注。
+> 状态列：N39 修复（2026-08-02）/ N40 更新（2026-08-07~08）/ 2026-08-12（P1/P4/P5 + 任务可视化）后统一标注。
 
 | # | 文档陈述 | 代码真相 | 严重度 | 状态 |
 |---|---|---|---|---|
 | 1 | README 工具循环 5 轮 | `MAX_TOOL_ROUNDS=10` | 高 | ✅ 已修正 |
-| 2 | ToolEngine 6 文件 | **9 工具文件 + 7 基础设施 · 55 工具（N40 全量清点）** | 高 | ✅ 已更新 |
+| 2 | ToolEngine 6 文件 | **12 工具文件 + 7 基础设施 + 1 测试器 · 65 工具（2026-08-12 全量清点）** | 高 | ✅ 已更新 |
 | 3 | ActionAgent 15 组件 | **15 文件（N39 删除 AutoMotionCollector 后）** | 低 | ✅ 已更新 |
 | 4 | "11 规则 + 12 特殊模式" | 10 规则 + 10 特殊（9 姿势） | 中 | ✅ 已修正 |
 | 5 | 曲线含 "BounceEaseOut" | `Bounce`（共 6 种） | 低 | ✅ 已修正 |
 | 6 | 双模型校验（Qwen+GLM） | 单 GLM-4V（Qwen 已删，N39 回调简化为 4 参） | 高 | ✅ 已修正 |
-| 7 | 36 个核心脚本 | 顶层 33 + 子目录 ~50（实测 84 个 .cs） | 中 | ✅ 已更新 |
+| 7 | 36 个核心脚本 | 顶层 33 + 子目录 ~50（实测 **92** 个 .cs，2026-08-13） | 中 | ✅ 已更新 |
 | 8 | 知识库同步上下文 | ~~`GetFormattedContext()` 是 STUB~~ → **N39 已修复**（`LastFormattedContext` 缓存） | 高 | ✅ N39 已修复 |
 | 9 | 反思机制驱动 | ~~`OnReflectRequest` 恒 null~~ → **N39 已接线**（CheckReflection → DoReflection → CommitReflection） | 高 | ✅ N39 已修复 |
 | 10 | 3D 渲染可用 | HybridRenderer TODO，强制 Live2D | 中 | ⚠️ 保持现状（规划中） |
@@ -378,6 +387,6 @@ flowchart TB
 5. **BUG-5**：DualModelValidator 名不副实 → ✅ N39 已修复（回调简化 4 参，删除恒 0 qwenScore）
 
 ### 建议
-- 以本文档为基准更新 README / docs 中的过时章节（**已完成**，2026-08-08 全量修订）
+- 以本文档为基准更新 README / docs 中的过时章节（**已完成**，2026-08-13 全量修订，含 65 工具 / /task 端点 / 新持久化文件）
 - 清理死代码（AutoMotionCollector 已删）、修正注释与代码矛盾（Model3DRenderer、VisualHeartbeat）
 - 多屏支持（isMultiMonitor）与 3D 模式为规划中能力，勿在文档中宣称可用

@@ -74,8 +74,8 @@
 \thispagestyle{empty}
 
 \begin{abstract}
-本文档为符玄桌面宠物项目的完整技术报告（N40，2026-08-08 按代码真相审计修订）。项目基于 Tuanjie 2022.3.62t7（团结引擎）与 Live2D Cubism SDK 5-r.4，
-构建了一个运行于 Windows 桌面的 AI 驱动虚拟角色。系统深度集成 DeepSeek Chat API（含 Function Calling 55 个工具）、
+本文档为符玄桌面宠物项目的完整技术报告（N40+，2026-08-13 按代码真相审计修订）。项目基于 Tuanjie 2022.3.62t7（团结引擎）与 Live2D Cubism SDK 5-r.4，
+构建了一个运行于 Windows 桌面的 AI 驱动虚拟角色。系统深度集成 DeepSeek Chat API（含 Function Calling 65 个工具）、
 GLM-4V 多模态视觉模型、Ollama 本地 LLM 实时决策引擎、本地知识库（RAG）以及多层级感知与记忆系统。
 核心亮点是\textbf{具身智能闭环}——从感知、决策、执行到视觉验证与记忆学习的完整循环。
 
@@ -83,6 +83,7 @@ N39（2026-08-02）已修复全部 9 个审计 Bug（IsSleepTime 真实睡眠判
 DualModelValidator 清理、AutoMotionCollector 死代码删除、示例角度修正、反思机制接线、知识库缓存注入）。
 N40（2026-08-07）完成 T1--T8 Token 优化：工具集 52→55 全量核实、工具子集按意图注入（55→27）、
 历史 15000 字符预算 + Ollama 摘要、SystemPrompt -41\%、Speculative Multi-Action、usage 日志。
+2026-08-12 迭代：任务可视化（exec 审批 E2E / per-session 并行）、办公生成 P1、偏好 P4、任务模板与轨迹 P5，工具集 55→**65**（12 工具文件 + 7 基础设施 + 1 测试器）。
 工具回环为 10 轮（\texttt{MAX\_TOOL\_ROUNDS=10}），MotionTranslator 规则为 10 条 + 10 种 SPECIAL PATTERNS（9 姿势，捂脸重复），
 天气源默认 wttr.in（QWeather 可选）。详见第 13 章。
 \end{abstract}
@@ -108,7 +109,7 @@ N40（2026-08-07）完成 T1--T8 Token 优化：工具集 52→55 全量核实�
     \item \textbf{引擎}：Tuanjie 2022.3.62t7（团结引擎）
     \item \textbf{角色渲染}：Live2D Cubism SDK 5-r.4（参数化变形 + 实时物理模拟）
     \item \textbf{3D 渲染}：Unity Animator + FBX（预留混合渲染框架，3D 模型尚未接入）
-    \item \textbf{AI 对话}：DeepSeek Chat API + Function Calling（55 个法术工具，9 个工具文件 + 7 个基础设施 .cs）
+    \item \textbf{AI 对话}：DeepSeek Chat API + Function Calling（65 个法术工具，12 个工具文件 + 7 个基础设施 + 1 测试器 .cs）
     \item \textbf{视觉模型}：GLM-4V（智谱）--- 截图分析 + 多帧拼图动作视觉验证（单模型）
     \item \textbf{本地决策}：Ollama + qwen2.5:3b（MotionAgent 实时动作决策）
     \item \textbf{本地知识库}：Ollama + nomic-embed-text（RAG 语义检索）
@@ -128,7 +129,7 @@ N40（2026-08-07）完成 T1--T8 Token 优化：工具集 52→55 全量核实�
     \item AI 响应延迟：1--5\,s（取决于网络与工具调用轮次）
     \item 内存管理：800\,MB 触发 GC，1200\,MB 强制 GC
     \item 系统内存监控：85\% 预警 GC，93\% 紧急降质
-    \item 工具调用：55 注册工具（9 个工具文件，插件式自动发现），最多 10 轮回环（\texttt{MAX\_TOOL\_ROUNDS=10}）；N40 按意图注入工具子集（55→27）
+    \item 工具调用：65 注册工具（12 个工具文件，插件式自动发现），最多 10 轮回环（\texttt{MAX\_TOOL\_ROUNDS=10}）；按意图注入工具子集（65→27）
     \item 空闲动作：9 种 JSON 配置驱动（7 参数化 + 2 硬编码特效）
     \item 运动记忆：上限 30 条，负反馈 10 条，无望检测 5 次
     \item 动作验证：GLM-4V 四帧拼图评分 + 三级测试验证
@@ -302,10 +303,10 @@ Camera.backgroundColor = new Color(0, 0, 0, 0);
 
 \subsubsection{Function Calling 架构}
 
-55 个注册工具（9 个工具文件）通过 JSON Schema 暴露给 DeepSeek，覆盖网页搜索、截图分析、
+65 个注册工具（12 个工具文件）通过 JSON Schema 暴露给 DeepSeek，覆盖网页搜索、截图分析、
 系统控制、文件操作与搜索（Everything 毫秒级）、便签管理、课表查询、动作/表情播放、
-动作生成与视觉验证、本地知识库检索与索引、应用/文件夹启动、Pogget 集成、LaTeX 编译等。
-N40（T4）起按意图注入工具子集：首轮有意图→27 个相关工具，回环轮→已用工具∪意图候选∪CoreToolSubset（6 个）。
+动作生成与视觉验证、本地知识库检索与索引、应用/文件夹启动、Pogget 集成、LaTeX 编译、办公文档生成、偏好与任务模板等。
+按意图注入工具子集：首轮有意图→27 个相关工具，回环轮→已用工具∪意图候选∪CoreToolSubset（6 个）。
 
 \subsubsection{多轮工具调用循环}
 
@@ -340,7 +341,7 @@ SendMessage()
 \subsection{工具索引}
 
 \begin{longtable}{lll}
-\caption{工具列表（55 个，9 个工具文件）\label{tab:tools}}\\\toprule
+\caption{工具列表（65 个，12 个工具文件）\label{tab:tools}}\\\toprule
 \textbf{工具} & \textbf{功能} & \textbf{类型} \\
 \midrule
 \endfirsthead
@@ -380,14 +381,21 @@ set\_expression & 切换面部表情 & 同步 \\
 play\_action / stop\_action & 播放/停止动作 & 同步 \\
 inspect\_motion\_memory / inspect\_personality & 自省 & 同步 \\
 explore\_body / control\_body & 身体参数探索/控制 & 同步 \\
-\multicolumn{3}{l}{\textbf{VisionKnowledgeTools.cs（4）}} \\
+\multicolumn{3}{l}{\textbf{VisionKnowledgeTools.cs（5）}} \\
 take\_screenshot & 截屏 + GLM-4V 分析 & 协程异步 \\
 knowledge\_search & 藏书阁语义检索（本地 RAG） & 协程异步 \\
 knowledge\_index & 索引文件/文件夹到藏书阁 & 协程异步 \\
 openclaw\_search & OpenClaw 搜索 & 同步 \\
+openclaw\_task & OpenClaw 任务外包（提交/轮询/审批/轨迹） & 协程异步 \\
 \multicolumn{3}{l}{\textbf{MotionCoroutineTools.cs（5）}} \\
 generate\_motion & LLM 生成自定义动作 & 协程异步 \\
 explore\_body\_vision / run\_verification / vis\_verify / self\_review & 视觉验证/自评 & 协程异步 \\
+\multicolumn{3}{l}{\textbf{OfficeTools.cs（3）}} \\
+generate\_ppt / generate\_docx / generate\_xlsx & 办公文档生成（经 Bridge /generate\_office） & 协程异步 \\
+\multicolumn{3}{l}{\textbf{PreferenceTools.cs（3）}} \\
+set\_preference / query\_preferences / remove\_preference & 用户偏好（PreferencesManager） & 同步 \\
+\multicolumn{3}{l}{\textbf{TaskTemplateTools.cs（3）}} \\
+query\_task\_templates / save\_task\_template / remove\_task\_template & 任务模板（TaskTemplateManager） & 同步 \\
 \multicolumn{3}{l}{\textbf{其他（3）}} \\
 launch\_pogget & 启动 Pogget & 同步 \\
 pogget\_agent & Pogget Agent IPC（8 子命令，含 quickpanel\_status） & 同步 \\
