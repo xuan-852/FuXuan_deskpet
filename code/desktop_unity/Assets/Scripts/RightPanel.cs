@@ -115,6 +115,14 @@ public class RightPanel : MonoBehaviour
     private int _lastLogCount = -1;        // 上次日志条数（检测增量）
     private readonly List<LogLine> _logLines = new List<LogLine>();
 
+    // ==================== OpenClaw 任务进度（类智能体入口·实时步骤可见） ====================
+    private readonly List<LogLine> _liveLogLines = new List<LogLine>(); // 动态行（任务步骤/审批），RebuildLog 后保留
+    private int _lastSeenStepCount = -1;   // 上次已见步骤数（检测新步骤写日志）
+    private bool _taskActiveSeen = false;  // 任务在途检测沿（开始/结束）
+    private string _lastSeenApprovalId = ""; // 上次已见审批 id（检测新审批弹窗）
+    private float _approvalShownAt = -1f;  // 审批弹窗打开时间（60s 自动拒绝）
+    private bool _approvalDialogOpen = false; // 审批弹窗是否打开
+
     // ==================== QQ 式对话气泡 ====================
     private GUIStyle _bubbleFxStyle;       // 符玄气泡（左，紫）
     private GUIStyle _bubbleUserStyle;     // 用户气泡（右，蓝）
@@ -298,6 +306,9 @@ public class RightPanel : MonoBehaviour
             if (_mascotEmotionTimer <= 0f) _mascotEmotion = "";
         }
 
+        // 4c. OpenClaw 任务进度轮询（后台线程写静态原子属性，本帧对比变化写日志/开弹窗）
+        CheckOpenClawTaskProgress();
+
         // 5. 像素形象眨眼（随机 3~5s 一次，闭合 0.12s）
         if (_mascotOpenTex != null)
         {
@@ -406,6 +417,98 @@ public class RightPanel : MonoBehaviour
         _isDragging = false;
     }
 
+    // ==================================================================
+    //  OpenClaw 任务进度轮询（类智能体入口：步骤可见 + 审批弹窗）
+    //  后台任务线程只写 OpenClawBridge 静态原子属性，本方法在主线程逐帧对比变化。
+    // ==================================================================
+
+    /// <summary>
+    /// 主线程轮询：任务开始/结束、新步骤写日志、新审批开弹窗、审批 60s 超时自动拒绝。
+    /// </summary>
+    private void CheckOpenClawTaskProgress()
+    {
+        bool active = OpenClawBridge.HasActiveTask;
+
+        // ——— 任务开始 / 结束沿 ———
+        if (active && !_taskActiveSeen)
+        {
+            _taskActiveSeen = true;
+            _lastSeenStepCount = 0;
+            AddLiveLog("⚙ OpenClaw 任务开始执行", 2);
+        }
+        else if (!active && _taskActiveSeen)
+        {
+            _taskActiveSeen = false;
+            AddLiveLog("✔ OpenClaw 任务已结束", 2);
+        }
+
+        // ——— 新步骤 → 日志区（步骤级含工具名+摘要） ———
+        int stepCount = OpenClawBridge.ActiveStepCount;
+        if (active && stepCount > _lastSeenStepCount)
+        {
+            _lastSeenStepCount = stepCount;
+            if (!string.IsNullOrEmpty(OpenClawBridge.ActiveStepLabel))
+                AddLiveLog("[openclaw] " + OpenClawBridge.ActiveStepLabel, 2);
+        }
+
+        // ——— 新审批 → 打开审批弹窗 ———
+        var pa = OpenClawBridge.PendingApproval;
+        string paId = pa?.approvalId ?? "";
+        if (!string.IsNullOrEmpty(paId) && paId != _lastSeenApprovalId)
+        {
+            _lastSeenApprovalId = paId;
+            _approvalDialogOpen = true;
+            _approvalShownAt = Time.time;
+            string cmd = string.IsNullOrEmpty(pa.command) ? (pa.title ?? "(无命令描述)") : pa.command;
+            AddLiveLog("⚠ OpenClaw 请求审批: " + cmd, 2);
+        }
+        else if (string.IsNullOrEmpty(paId) && _approvalDialogOpen)
+        {
+            // 审批已被后台解析（回执送达）→ 关弹窗
+            _approvalDialogOpen = false;
+        }
+
+        // ——— 审批弹窗 60s 超时自动拒绝（防挂起） ———
+        if (_approvalDialogOpen && Time.time - _approvalShownAt > 60f)
+        {
+            _approvalDialogOpen = false;
+            AddLiveLog("⏰ OpenClaw 审批超时（60s），已自动拒绝", 2);
+            _ = AutoDenyApproval();
+        }
+    }
+
+    /// <summary>追加一条动态日志（同时入 _logLines 即时显示 + _liveLogLines 供 RebuildLog 保留）</summary>
+    private void AddLiveLog(string text, int kind)
+    {
+        var ln = new LogLine { text = text, kind = kind };
+        _logLines.Add(ln);
+        _liveLogLines.Add(ln);
+        _pendingAutoScroll = true;
+        // 防无限增长（动态行上限 300，日志区上限 800）
+        if (_liveLogLines.Count > 300) _liveLogLines.RemoveRange(0, _liveLogLines.Count - 300);
+        if (_logLines.Count > 800) _logLines.RemoveRange(0, _logLines.Count - 800);
+    }
+
+    /// <summary>审批回执：允许一次 / 总是允许 / 拒绝（POST 桥接层，后台任务继续）</summary>
+    private async void ResolveApproval(string decision)
+    {
+        _approvalDialogOpen = false;
+        string taskId = OpenClawBridge.ActiveTaskId;
+        if (string.IsNullOrEmpty(taskId)) taskId = OpenClawBridge.LastTaskId;
+        bool ok = await OpenClawBridge.ApproveTaskAsync(taskId, decision);
+        string verb = decision == "deny" ? "拒绝" : (decision == "allow-always" ? "总是允许" : "允许");
+        AddLiveLog(ok ? $"✔ 已{verb} OpenClaw 审批（{decision}）"
+                      : $"❌ 审批回执失败: {OpenClawBridge.LastError}", 2);
+    }
+
+    /// <summary>审批超时自动拒绝（后台发送，不阻塞主线程）</summary>
+    private async System.Threading.Tasks.Task AutoDenyApproval()
+    {
+        string taskId = OpenClawBridge.ActiveTaskId;
+        if (string.IsNullOrEmpty(taskId)) taskId = OpenClawBridge.LastTaskId;
+        await OpenClawBridge.ApproveTaskAsync(taskId, "deny");
+    }
+
     void OnGUI()
     {
         InitStyles();
@@ -469,9 +572,28 @@ public class RightPanel : MonoBehaviour
 
         bool waiting = _chat != null && _chat.IsWaiting;
         float statusPulse = waiting ? 0.55f + 0.45f * Mathf.Sin(Time.time * 3f) : 1f; // 思考中 → 紫色呼吸
-        Color statusC = waiting
-            ? new Color(0.72f, 0.55f, 0.95f, statusPulse)   // 思考中 → 紫
-            : new Color(0.45f, 0.85f, 0.55f, 1f);  // 就绪 → 绿
+
+        // ★ 状态优先级：OpenClaw 任务步骤 > 思考中 > 就绪（类智能体入口·进度可见）
+        string statusText;
+        Color statusC;
+        if (OpenClawBridge.HasActiveTask && !string.IsNullOrEmpty(OpenClawBridge.ActiveStepLabel))
+        {
+            // 任务执行中 → 金色 ⚙ + 步骤（工具名+摘要），呼吸提示运转中
+            float taskPulse = 0.65f + 0.35f * Mathf.Sin(Time.time * 2.2f);
+            statusText = "⚙ " + OpenClawBridge.ActiveStepLabel;
+            statusC = new Color(0.95f, 0.78f, 0.40f, taskPulse);
+        }
+        else if (waiting)
+        {
+            statusText = "● 思考中…";
+            statusC = new Color(0.72f, 0.55f, 0.95f, statusPulse);   // 思考中 → 紫
+        }
+        else
+        {
+            statusText = "● 就绪";
+            statusC = new Color(0.45f, 0.85f, 0.55f, 1f);  // 就绪 → 绿
+        }
+
         GUI.color = statusC;
         GUI.DrawTexture(new Rect(px + fxHeadSize + 12f, py + titleH / 2f - 3f, 7f, 7f), _statusDotTex);
         GUI.color = Color.white;
@@ -481,8 +603,7 @@ public class RightPanel : MonoBehaviour
             GUI.DrawTexture(new Rect(px + fxHeadSize + 24f, py + titleH / 2f - 7f, 14f, 14f), _hexagramTex);
 
         GUI.Label(new Rect(px + fxHeadSize + 46f, py + 3f, pw - 220f, 16f), "符玄@太卜司: ~", _termTitleStyle);
-        GUI.Label(new Rect(px + fxHeadSize + 46f, py + 19f, pw - 220f, 14f),
-            waiting ? "● 思考中…" : "● 就绪", _termStatusStyle);
+        GUI.Label(new Rect(px + fxHeadSize + 46f, py + 19f, pw - 220f, 14f), statusText, _termStatusStyle);
 
         // ——— 字体档位按钮（时间左侧，点击循环 A → A2 → A3 → A4） ———
         Rect fontBtnRect = new Rect(px + pw - 138f, py + 4f, 32f, 28f);
@@ -856,6 +977,64 @@ public class RightPanel : MonoBehaviour
                 }
             }
         }
+
+        // ——— OpenClaw 审批模态弹窗（最上层绘制，敏感命令必须人工确认） ———
+        if (_approvalDialogOpen)
+            DrawApprovalDialog(px, py, pw, ph);
+    }
+
+    // ==================================================================
+    //  OpenClaw 审批弹窗（todo 6：关键敏感操作可审批）
+    //  显示待执行命令，用户三选一：允许一次 / 总是允许 / 拒绝。
+    // ==================================================================
+    private void DrawApprovalDialog(float px, float py, float pw, float ph)
+    {
+        var pa = OpenClawBridge.PendingApproval;
+        if (pa == null) { _approvalDialogOpen = false; return; }
+
+        // ——— 全面板半透明遮罩（模态，阻断下层交互） ———
+        GUI.color = new Color(0f, 0f, 0f, 0.62f);
+        GUI.DrawTexture(new Rect(px, py, pw, ph), _whiteTex);
+        GUI.color = Color.white;
+
+        // ——— 弹窗主体（居中，红边警示） ———
+        float w = Mathf.Min(480f, pw - 40f);
+        float h = 210f;
+        float wx = px + (pw - w) / 2f;
+        float wy = py + (ph - h) / 2f;
+        Rect box = new Rect(wx, wy, w, h);
+        GUI.Box(box, GUIContent.none, _panelStyle);
+        DrawPixelRect(box, new Color(0.85f, 0.35f, 0.35f, 0.9f));   // 红边
+        DrawPixelRect(new Rect(box.x - 3f, box.y - 3f, box.width + 6f, 3f), new Color(0.85f, 0.35f, 0.35f, 0.5f));
+        DrawPixelRect(new Rect(box.x - 3f, box.yMax, box.width + 6f, 3f), new Color(0.85f, 0.35f, 0.35f, 0.5f));
+
+        // 标题
+        GUI.Label(new Rect(wx + 18f, wy + 14f, w - 36f, 24f), "⚠ OpenClaw 请求执行系统命令", _termTitleStyle);
+        // 说明
+        GUI.Label(new Rect(wx + 18f, wy + 46f, w - 36f, 18f), "以下命令为敏感操作，需本座主人亲自批准：", _termLogDimStyle);
+        // 命令内容（等宽高亮，换行显示）
+        string cmd = string.IsNullOrEmpty(pa.command) ? (pa.title ?? "(无命令描述)") : pa.command;
+        float cmdH = _termPromptStyle.CalcHeight(new GUIContent(cmd), w - 52f);
+        if (cmdH > 52f) cmdH = 52f; // 命令最多显示 3 行
+        GUI.Label(new Rect(wx + 18f, wy + 70f, w - 52f, cmdH), cmd, _termPromptStyle);
+        // 超时倒计时
+        float remain = Mathf.Max(0f, 60f - (Time.time - _approvalShownAt));
+        GUI.Label(new Rect(wx + 18f, wy + 70f + cmdH + 10f, w - 36f, 16f),
+            $"{(int)remain}s 后自动拒绝", _termLogDimStyle);
+
+        // ——— 三选一按钮：允许一次 / 总是允许 / 拒绝 ———
+        float bw = (w - 60f) / 3f;
+        float by = wy + h - 46f;
+        if (GUI.Button(new Rect(wx + 18f, by, bw, 30f), "✓ 允许一次", _termToolBtnStyle))
+            ResolveApproval("allow-once");
+        if (GUI.Button(new Rect(wx + 24f + bw, by, bw, 30f), "↻ 总是允许", _termToolBtnStyle))
+            ResolveApproval("allow-always");
+        if (GUI.Button(new Rect(wx + 30f + bw * 2f, by, bw, 30f), "✕ 拒绝", _termToolBtnStyle))
+            ResolveApproval("deny");
+
+        // 防穿透：弹窗打开时吞掉所有鼠标事件
+        if (Event.current.type == EventType.MouseDown)
+            Event.current.Use();
     }
 
     // ==================== 样式初始化 ====================
@@ -1850,6 +2029,9 @@ public class RightPanel : MonoBehaviour
             else
                 _logLines.Add(new LogLine { text = text, kind = 2 });
         }
+        // ★ OpenClaw 任务动态行（步骤/审批）在历史重建后保留，不丢失
+        for (int i = 0; i < _liveLogLines.Count; i++)
+            _logLines.Add(_liveLogLines[i]);
     }
 
     // ==================== 清理 ====================

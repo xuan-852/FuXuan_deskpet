@@ -69,7 +69,9 @@ public class PoggetAgentTool : IPetTool
 
         float timeout = TimeoutMs / 1000f;
         float elapsed = 0;
-        while (!done && elapsed < timeout) { yield return new WaitForSeconds(0.1f); elapsed += 0.1f; }
+        // 注意：不能用 WaitForSeconds —— EditMode 测试只允许 yield null，运行时也依赖场景时间；
+        // 后台线程完成即置 done=true 退出，轮询间隔以固定步长累加保持超时语义一致
+        while (!done && elapsed < timeout) { yield return null; elapsed += 0.1f; }
         onResult?.Invoke(result ?? "\u274C PoggetAgent 执行超时");
     }
 

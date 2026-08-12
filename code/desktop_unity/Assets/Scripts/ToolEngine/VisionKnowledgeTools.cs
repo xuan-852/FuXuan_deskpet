@@ -373,10 +373,12 @@ public class OpenClawTaskTool : IPetTool
 
             // ★ P5.2：执行完毕后自动记录轨迹（成功存结果摘要，失败存错误原因）
             bool success = !result.StartsWith("❌");
+            // ★ P5.3：结构化沉淀——步骤数来自桥接层实时收集（进度可见性复用同一数据源）
             RecordTrajectory(originalTask, mode, success,
                 success ? result : "",
                 success ? "" : result,
-                (int)sw.Elapsed.TotalSeconds);
+                (int)sw.Elapsed.TotalSeconds,
+                OpenClawBridge.LastTaskStepCount);
             return result;
         });
 
@@ -393,12 +395,12 @@ public class OpenClawTaskTool : IPetTool
     }
 
     /// <summary>记录执行轨迹（记录原始任务描述，不含附加的历史参考）</summary>
-    private static void RecordTrajectory(string task, string mode, bool success, string summary, string error, int durationSec)
+    private static void RecordTrajectory(string task, string mode, bool success, string summary, string error, int durationSec, int stepCount = 0)
     {
         try
         {
             if (TaskTrajectoryManager.Instance != null)
-                TaskTrajectoryManager.Instance.RecordTrajectory(task, mode, success, summary, error, durationSec);
+                TaskTrajectoryManager.Instance.RecordTrajectory(task, mode, success, summary, error, durationSec, stepCount);
         }
         catch (Exception e)
         {

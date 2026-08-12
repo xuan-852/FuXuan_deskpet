@@ -72,7 +72,8 @@ AsyncToolBase (异步/协程工具基类, ToolName 虚属性)
 
 `DangerousTools`（7 个：file_delete / power / lock_screen / run_command / set_volume / mute / openclaw_task）→ `ToolConfirmManager` 弹确认 → 用户同意才执行。测试器验证时**只验证 IsDangerous/HasTool 标记，绝不执行**。
 
-> ℹ️ `openclaw_task`（太卜神行法，`VisionKnowledgeTools.cs`）把复杂多步任务外包给 OpenClaw 智能体（浏览器/命令行），经 `OpenClawBridge.ExecuteTaskAndWaitAsync` 提交 + 心跳轮询（默认 300s 无进展判卡死自动取消）。ChatManager 侧有成本熔断：`_openclawTaskFatalSeen`——一旦任务返回不可重试错误（`❌ [不可重试]`），本轮禁止再次调用，防 LLM 换说法反复重试烧 token。参数：task（必填）/ mode（agent/browser）/ timeout_seconds / max_steps / heartbeat_seconds / max_idle_heartbeats / **template**（任务模板名，P5.3 优先于 task，从 `TaskTemplateManager` 展开占位符）/ **template_args**（模板占位符参数 JSON 字符串，如 `{"url":"https://example.com"}`）。P5.2 起执行完毕后自动记录轨迹到 `TaskTrajectoryManager`（task_trajectories.json，成功/失败/耗时），下次同类任务提交前经 `BuildReferenceText` 附加「成功经验/失败教训」参考（成功 2 条 + 失败 1 条，referenceCount 计数），供 OpenClaw 借鉴。
+> ℹ️ `openclaw_task`（太卜神行法，`VisionKnowledgeTools.cs`）把复杂多步任务外包给 OpenClaw 智能体（浏览器/命令行），经 `OpenClawBridge.ExecuteTaskAndWaitAsync` 提交 + 心跳轮询（默认 300s 无进展判卡死自动取消）。ChatManager 侧有成本熔断：`_openclawTaskFatalSeen`——一旦任务返回不可重试错误（`❌ [不可重试]`），本轮禁止再次调用，防 LLM 换说法反复重试烧 token。参数：task（必填）/ mode（agent/browser）/ timeout_seconds / max_steps / heartbeat_seconds / max_idle_heartbeats / **template**（任务模板名，P5.3 优先于 task，从 `TaskTemplateManager` 展开占位符）/ **template_args**（模板占位符参数 JSON 字符串，如 `{"url":"https://example.com"}`）。P5.2 起执行完毕后自动记录轨迹到 `TaskTrajectoryManager`（task_trajectories.json，成功/失败/耗时/工具步数），下次同类任务提交前经 `BuildReferenceText` 附加「成功经验/失败教训」参考（成功 2 条 + 失败 1 条，referenceCount 计数），供 OpenClaw 借鉴。
+> 🎯 **工具步数回传**（2026-08-12 Phase B）：`RecordTrajectory` 签名追加 `int stepCount = 0`（`TaskTrajectoryEntry.stepCount` 字段，0=未知），成功路径传 `OpenClawBridge.LastTaskStepCount`（`ExecuteTaskAndWaitAsync` 结束时由 `ActiveStepCount` 快照）——任务执行了多少步工具调用会沉淀进轨迹库，供后续同类任务参考「这个任务用了几步」。配套 RightPanel 进度显示 + 审批弹窗（见 chat-ui.md）。
 
 ## 三、开发历史迭代
 
@@ -84,6 +85,7 @@ AsyncToolBase (异步/协程工具基类, ToolName 虚属性)
 | N40 | 2026-08-08 | 全量稳定性测试提交 `9b94c09`：修复 4 类问题（见下） |
 | P1 | 2026-08-12 | 工具数修正 55→**59**：补录 `OfficeTools.cs` 3 个（generate_ppt/docx/xlsx，此前漏登记）+ `VisionKnowledgeTools.cs` 补录 openclaw_task；`/task` 外包端点落地（提交/轮询/取消/心跳），ChatManager knowledge 白名单补 generate_* 三工具；桥接 404 文案补 /generate_office、/task |
 | P5 | 2026-08-12 | 工具数 62→**65**：新增 `TaskTemplateTools.cs` 3 个模板工具 + `TaskTemplateManager.cs`（task_templates.json，5 预置模板）+ `TaskTrajectoryManager.cs`（task_trajectories.json，轨迹库）；openclaw_task 支持 template/template_args + 自动轨迹记录与参考文本附加；EditMode 测试 21 个（P5TrajectoryTests） |
+| 2026-08-12 | **Phase B 任务可视化**（方案七）：`RecordTrajectory` + `TaskTrajectoryEntry` 追加 `stepCount`（工具步数，0=未知），成功路径回传 `OpenClawBridge.LastTaskStepCount`；RightPanel 进度显示 + 审批弹窗配套（桥接层见 bridge-communication.md，UI 见 chat-ui.md） |
 
 ### 2026-08-08 Benchmark 修复清单（提交 9b94c09）
 

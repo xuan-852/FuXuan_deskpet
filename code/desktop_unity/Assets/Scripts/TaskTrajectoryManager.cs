@@ -50,6 +50,9 @@ public class TaskTrajectoryEntry
     /// <summary>耗时（秒）</summary>
     public int durationSeconds = 0;
 
+    /// <summary>工具调用步数（OpenClaw 实际执行步骤数，0=未知）</summary>
+    public int stepCount = 0;
+
     /// <summary>记录时间 yyyy-MM-dd HH:mm</summary>
     public string timestamp = "";
 
@@ -115,8 +118,9 @@ public class TaskTrajectoryManager : MonoBehaviour
     /// <param name="resultSummary">成功结果摘要（可为空）</param>
     /// <param name="error">失败原因（可为空）</param>
     /// <param name="durationSeconds">耗时（秒）</param>
+    /// <param name="stepCount">工具调用步数（0=未知，旧数据兼容）</param>
     public void RecordTrajectory(string task, string mode, bool success,
-        string resultSummary, string error, int durationSeconds)
+        string resultSummary, string error, int durationSeconds, int stepCount = 0)
     {
         if (string.IsNullOrWhiteSpace(task))
             return;
@@ -130,6 +134,7 @@ public class TaskTrajectoryManager : MonoBehaviour
             resultSummary = Truncate(resultSummary ?? "", MAX_SUMMARY_LEN),
             error = Truncate(error ?? "", MAX_SUMMARY_LEN),
             durationSeconds = Math.Max(0, durationSeconds),
+            stepCount = Math.Max(0, stepCount),
             timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm")
         };
         _data.entries.Add(entry);

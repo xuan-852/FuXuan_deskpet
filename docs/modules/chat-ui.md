@@ -1,7 +1,7 @@
 # 对话界面 UI — IMGUI 界面与像素化优化
 
 > **文档作用**: 本模块文档描述桌宠「交互界面」子系统的**代码真相**——纯 IMGUI 架构（无 UGUI/无 Prefab）、四类界面元素（悬浮球/BallPanel/RightPanel/ChatBubble）、对话核心事件链，以及 17×24 像素符玄 × 对话界面的开源方案可移植汇总（换字体/换头像/加表情差分三件事）。改任何 UI 相关代码前必读。
-> **基本架构**: 全部界面为 **IMGUI**（`OnGUI`/`GUI.DrawTexture`，无 UGUI、无 Prefab、无美术贴图管线），视觉元素（圆角气泡/云纹/星点/CRT 扫描线/像素边框）均运行时 `Texture2D.SetPixel` 程序生成。核心：`RightPanel.cs`（终端窗）、`ChatBubble.cs`（头顶气泡）、`ChatManager.cs`（Entry 历史 + SplitSentences 逐句事件）、`AutoChat.cs`（气泡驱动）。
+> **基本架构**: 全部界面为 **IMGUI**（`OnGUI`/`GUI.DrawTexture`，无 UGUI、无 Prefab、无美术贴图管线），视觉元素（圆角气泡/云纹/星点/CRT 扫描线/像素边框）均运行时 `Texture2D.SetPixel` 程序生成。核心：`RightPanel.cs`（终端窗）、`ChatBubble.cs`（头顶气泡）、`ChatManager.cs`（Entry 历史 + SplitSentences 逐句事件）、`AutoChat.cs`（气泡驱动）。2026-08-12 起 RightPanel 支持 OpenClaw 任务进度可视化：标题栏状态区（思考中部位）步骤显示 + 模态审批弹窗（todo 5/6）。
 > **开发历史迭代**: 2026-08-08 像素化调研（Fusion Pixel 字体/17×24 精灵表/ink 对话引擎）；P0 落地清单（半天）：17×24 头像 + FilterMode.Point + 整数倍绘制 + 程序描边；P1（1 天）：Fusion Pixel 12px + 表情差分 + 气泡小立绘；P2 可选：程序化微动/ink/像素本体模式。
 > **编写注意事项**: ①不引入 UI 框架/UGUI/Preafab（架构铁则，ink 除外但 UI 仍自绘）；②像素图只能 ×2/×3/×4 **整数倍**放大 + `FilterMode.Point`，绝不平滑插值；③动态字体 fontSize 用 12/24/36 整数倍；④像素符玄角色版权属米哈游，仅个人自用/学习；⑤OFL-1.1 字体需随包保留许可证文本（`Assets/Resources/Licenses/`）。
 
@@ -30,6 +30,16 @@
 | 输入栏 | 自动显示 | 固定坐标 | Windows 搜索风格 |
 
 **消息优先级**：High(AI 回复) > Normal(提醒/交互) > Low(闲话/问候)
+
+**OpenClaw 任务进度显示**（2026-08-12，方案七 todo 5/6）：
+
+| 元素 | 位置 | 状态 | 视觉 |
+|------|------|------|------|
+| 任务步骤 | RightPanel 标题栏状态区（思考中部位，L471-489 附近） | 任务中 | 金色呼吸 `⚙ 第n步: tool summary`（Color(0.95,0.78,0.40)）；状态优先级 **任务步骤 > 思考中 > 就绪** |
+| 步骤日志 | 日志区系统行（kind=2） | 新步骤 | `[openclaw] 第n步: tool summary` 灰字追加 |
+| 审批弹窗 | OnGUI 末尾模态（最上层） | 待审批 | 全面板 62% 黑色遮罩 + 居中红边（0.85,0.35,0.35）弹窗：命令高亮 + 60s 倒计时自动拒绝 + 三按钮「✓ 允许一次 / ↻ 总是允许 / ✕ 拒绝」 |
+
+> 数据流：`OpenClawBridge` 后台轮询 `RefreshTaskProgress` 写静态原子属性 → RightPanel `Update` 第 4c 步 `CheckOpenClawTaskProgress()`（新步骤写日志、新审批开弹窗 + `_approvalShownAt` 计时、60s 超时 `AutoDenyApproval`）→ 按钮调 `ResolveApproval(decision)`（用 `ActiveTaskId`→`LastTaskId` 兜底）→ `ApproveTaskAsync` POST 回执。任务结束自动关弹窗、清 `PendingApproval`。
 
 ### 2.2 对话核心事件链
 
@@ -72,6 +82,7 @@
 |------|------|------|
 | — | — | 纯 IMGUI 界面 + 程序生成视觉（圆角/云纹/星点/CRT） |
 | N40 | 2026-08-08 | 17×24 像素化调研完成（`pixel-dialogue-optimization.md`）：开源方案汇总 + P0/P1/P2 落地清单 |
+| 2026-08-12 | **OpenClaw 任务可视化**（方案七）：标题栏状态区步骤显示（金色呼吸，优先级 任务>思考中>就绪）+ 日志区 `[openclaw]` 系统行 + 模态审批弹窗（红边三按钮，60s 自动拒绝，`DrawApprovalDialog`） |
 
 ### 像素化落地清单（按成本排序，2026-08-08）
 

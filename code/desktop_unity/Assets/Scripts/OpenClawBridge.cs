@@ -288,6 +288,46 @@ public static class OpenClawBridge
     /// <summary>最近提交的任务 ID</summary>
     public static string LastTaskId { get; private set; } = "";
 
+    // ==================================================================
+    //  ★ 实时进度状态（后台任务线程写原子字段，主线程 OnGUI 只读，无锁安全）
+    // ==================================================================
+
+    /// <summary>是否有 OpenClaw 任务正在后台执行（ExecuteTaskAndWaitAsync 在途）</summary>
+    public static bool HasActiveTask { get; private set; } = false;
+
+    /// <summary>当前在途任务 ID（审批回执用；任务结束后保留供查询）</summary>
+    public static string ActiveTaskId { get; private set; } = "";
+
+    /// <summary>已记录步骤数（进度可见：第几步）</summary>
+    public static int ActiveStepCount { get; private set; } = 0;
+
+    /// <summary>当前步骤标签（如「第3步: exec 下载文件」；无步骤时为空串）</summary>
+    public static string ActiveStepLabel { get; private set; } = "";
+
+    /// <summary>最近一次任务的总步骤数（供轨迹库记录 stepCount）</summary>
+    public static int LastTaskStepCount { get; private set; } = 0;
+
+    /// <summary>挂起的 exec 审批（null=无）；含 id/command/host/title/slug</summary>
+    public static PendingApprovalInfo PendingApproval { get; private set; } = null;
+
+    /// <summary>最近一次审批回执结果（成功 true / 失败 false），UI 提示用</summary>
+    public static bool LastApprovalOk { get; private set; } = false;
+
+    /// <summary>OpenClaw exec 审批信息（与桥接层 pendingApproval 结构对应）</summary>
+    public class PendingApprovalInfo
+    {
+        /// <summary>审批 ID（回执时必须原样带回）</summary>
+        public string approvalId = "";
+        /// <summary>审批类型 slug（如 exec）</summary>
+        public string approvalSlug = "";
+        /// <summary>待执行的命令（exec 审批的核心内容，展示给用户）</summary>
+        public string command = "";
+        /// <summary>主机信息（可选）</summary>
+        public string host = "";
+        /// <summary>审批标题（可选）</summary>
+        public string title = "";
+    }
+
     /// <summary>
     /// 上次任务是否「不可重试错误」（网络连不上/超时/断连等）。
     /// LLM 看到此类失败后不应换说法反复重调任务（烧 token 元凶）。
@@ -428,6 +468,65 @@ public static class OpenClawBridge
     }
 
     /// <summary>
+    /// 审批 OpenClaw 任务挂起的敏感操作（exec 等）。
+    /// </summary>
+    /// <param name="taskId">任务 ID</param>
+    /// <param name="decision">allow-once（允许一次）/ allow-always（总是允许）/ deny（拒绝）</param>
+    /// <returns>true=回执成功送达，false=失败（LastError 含原因）</returns>
+    public static async Task<bool> ApproveTaskAsync(string taskId, string decision)
+    {
+        if (string.IsNullOrEmpty(taskId) || string.IsNullOrEmpty(decision))
+        {
+            LastError = "task_id / decision 为空";
+            return false;
+        }
+        if (decision != "allow-once" && decision != "allow-always" && decision != "deny")
+        {
+            LastError = $"decision 非法: {decision}（应为 allow-once/allow-always/deny）";
+            return false;
+        }
+
+        string url = $"{BASE_URL}/task/{UnityWebRequest.EscapeURL(taskId)}/approve";
+        var payload = new JObject { ["decision"] = decision };
+        string jsonBody = payload.ToString(Newtonsoft.Json.Formatting.None);
+
+        using (var req = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
+            req.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("x-bridge-token", BridgeToken);
+            req.timeout = 10;
+            var op = req.SendWebRequest();
+            while (!op.isDone)
+                await Task.Yield();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                LastError = req.error;
+                LastApprovalOk = false;
+                return false;
+            }
+
+            try
+            {
+                var obj = JObject.Parse(req.downloadHandler?.text ?? "{}");
+                LastApprovalOk = obj["success"]?.Value<bool>() ?? false;
+                if (!LastApprovalOk)
+                    LastError = obj["error"]?.ToString() ?? "审批回执失败";
+                return LastApprovalOk;
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                LastApprovalOk = false;
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
     /// 一站式执行任务：提交 + 心跳轮询直到完成（或卡死/超时/失败）。
     /// 适合「等结果」类工具调用；长任务请用 SubmitTaskAsync + PollTaskAsync 组合。
     ///
@@ -448,6 +547,12 @@ public static class OpenClawBridge
     {
         IsBusy = true;
         LastTaskWasFatal = false;
+        // ★ 进度状态复位（后台线程写，主线程 OnGUI 只读）
+        HasActiveTask = true;
+        ActiveStepCount = 0;
+        ActiveStepLabel = "";
+        PendingApproval = null;
+        LastTaskStepCount = 0;
         try
         {
             string taskId = await SubmitTaskAsync(task, mode, timeoutMs: 180000, maxSteps: maxSteps);
@@ -457,6 +562,7 @@ public static class OpenClawBridge
                 LastTaskWasFatal = IsNetworkishError(LastError);
                 return $"{FATAL_PREFIX} 任务提交失败: {LastError}";
             }
+            ActiveTaskId = taskId;
 
             // ★ 心跳参数：探测间隔与「连续无进展」阈值
             int pollDelayMs = Math.Min(Math.Max(5, heartbeatSeconds * 1000), 5000); // 每 5s 轮询（done 更快感知）
@@ -473,11 +579,19 @@ public static class OpenClawBridge
                         return $"❌ 任务轮询失败: {obj["error"]?.ToString() ?? "未知"}";
 
                     string status = obj["status"]?.ToString() ?? "running";
+
+                    // ★ 实时步骤/审批解析（无论状态，每轮都刷新；后台线程写原子字段）
+                    RefreshTaskProgress(obj);
+
                     switch (status)
                     {
                         case "done":
+                            LastTaskStepCount = ActiveStepCount;
+                            PendingApproval = null; // 任务已终态，清审批
                             return obj["result"]?.ToString() ?? "(无结果)";
                         case "error":
+                            LastTaskStepCount = ActiveStepCount;
+                            PendingApproval = null;
                             string err = obj["error"]?.ToString() ?? "未知错误";
                             bool fatal = obj["fatal"]?.Value<bool>() ?? err.Contains("不可重试");
                             if (fatal)
@@ -487,6 +601,8 @@ public static class OpenClawBridge
                             }
                             return $"❌ 任务执行出错: {err}";
                         case "cancelled":
+                            LastTaskStepCount = ActiveStepCount;
+                            PendingApproval = null;
                             return "❌ 任务已被取消";
                         default: // running / queued
                         {
@@ -501,6 +617,8 @@ public static class OpenClawBridge
                                 {
                                     LastTaskWasFatal = false; // 可重试：用户可再发起或换思路
                                     await CancelTaskAsync(taskId);
+                                    LastTaskStepCount = ActiveStepCount;
+                                    PendingApproval = null;
                                     return $"❌ 任务疑似卡死：连续超过 {maxIdleSeconds}s 无任何进度（下载/执行停滞），已取消。可再次尝试，或检查网络/下载源后重试。";
                                 }
                             }
@@ -520,11 +638,74 @@ public static class OpenClawBridge
             // 总硬上限兜底（仅防失控；正常下载靠心跳延长）
             LastTaskWasFatal = true;
             await CancelTaskAsync(taskId);
+            LastTaskStepCount = ActiveStepCount;
+            PendingApproval = null;
             return $"{FATAL_PREFIX} 任务超过总时长上限（{totalTimeoutSeconds}s），已取消。若为下载任务请确认下载源可用后再试。";
         }
         finally
         {
             IsBusy = false;
+            HasActiveTask = false;   // ★ 任务结束（任何路径）→ 进度状态复位
+            ActiveStepLabel = "";
+            PendingApproval = null;
+        }
+    }
+
+    /// <summary>
+    /// 从轮询响应刷新实时进度状态（步骤数/步骤标签/挂起审批）。
+    /// 后台任务线程调用——只写引用/值类型原子字段，主线程 OnGUI 只读，无锁安全。
+    /// </summary>
+    private static void RefreshTaskProgress(JObject obj)
+    {
+        try
+        {
+            // ——— 步骤 ———
+            var stepsArr = obj["steps"] as JArray;
+            if (stepsArr != null)
+            {
+                int n = stepsArr.Count;
+                ActiveStepCount = n;
+                if (n > 0)
+                {
+                    var last = stepsArr[n - 1] as JObject;
+                    if (last != null)
+                    {
+                        string tool = last["tool"]?.ToString() ?? "tool";
+                        string summary = last["summary"]?.ToString() ?? "";
+                        // 摘要精简：去换行/压缩空白，截断（标题栏一行显示）
+                        summary = summary.Replace("\r", " ").Replace("\n", " ").Trim();
+                        if (summary.Length > 48) summary = summary.Substring(0, 48) + "…";
+                        ActiveStepLabel = $"第{n}步: {tool}" + (string.IsNullOrEmpty(summary) ? "" : $" {summary}");
+                    }
+                }
+            }
+
+            // ——— 挂起审批 ———
+            var pa = obj["pendingApproval"] as JObject;
+            if (pa != null && pa["id"] != null)
+            {
+                var info = new PendingApprovalInfo
+                {
+                    approvalId = pa["id"]?.ToString() ?? "",
+                    approvalSlug = pa["slug"]?.ToString() ?? "",
+                    command = pa["command"]?.ToString() ?? "",
+                    host = pa["host"]?.ToString() ?? "",
+                    title = pa["title"]?.ToString() ?? ""
+                };
+                // 仅当 id 变化或从无到有时刷新（避免每轮重设导致 UI 检测不到"新审批"）
+                var cur = PendingApproval;
+                if (cur == null || cur.approvalId != info.approvalId)
+                    PendingApproval = info;
+            }
+            else if (pa != null && pa["id"] == null)
+            {
+                // pendingApproval 对象存在但已无 id → 已解析
+                PendingApproval = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[OpenClawBridge] 刷新任务进度失败: {ex.Message}");
         }
     }
 
