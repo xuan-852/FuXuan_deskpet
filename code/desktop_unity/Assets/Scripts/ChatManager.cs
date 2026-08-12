@@ -188,6 +188,22 @@ public class ChatManager : MonoBehaviour
             prompt += clipboardSummary;
         }
 
+        // ★ P5.2: 注入太卜手札·任务轨迹摘要（过往外包任务成败，同类任务可参考）
+        if (TaskTrajectoryManager.Instance != null)
+        {
+            string trajectories = TaskTrajectoryManager.Instance.FormatForPrompt();
+            if (!string.IsNullOrEmpty(trajectories))
+                prompt += trajectories;
+        }
+
+        // ★ P5.3: 注入太卜阵法图·任务模板清单（openclaw_task 的 template 参数可省 token）
+        if (TaskTemplateManager.Instance != null)
+        {
+            string templates = TaskTemplateManager.Instance.FormatForPrompt();
+            if (!string.IsNullOrEmpty(templates))
+                prompt += templates;
+        }
+
         // ★ 当前时刻追加到末尾（保持静态前缀不变 → 命中 DeepSeek 上下文缓存）
         prompt += "\n\n【当前时刻】" + DateTime.Now.ToString("yyyy-MM-dd HH:mm") +
                   "（主人电脑的本地时间。用法阵术式填入时辰时，务必以此刻为准推算。）";

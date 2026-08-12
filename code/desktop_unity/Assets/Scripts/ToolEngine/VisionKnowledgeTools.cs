@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -264,14 +265,17 @@ public class OpenClawSearchTool : IPetTool
 
 // ================================================================
 //  太卜神行法 — OpenClaw 通用任务外包（浏览器操作/定时/执行等多步任务）
+//  P5 增强：支持 template 模板参数（省 token）+ 执行后自动记录轨迹（自学习）
 // ================================================================
 
 public class OpenClawTaskTool : IPetTool
 {
     public string ToolName => "openclaw_task";
-    public string ToolDescription => "【太卜神行法】让本座将复杂多步任务外包给 OpenClaw 智能体执行——包括浏览器操作（登录网页/填表/点击/抓取页面数据）、定时任务、代码执行、多步调研汇总等。当任务需要「打开网站并操作」「持续监测某页面」「多步流程」时使用，比 openclaw_search 更强。注意：此为最终工具，调用后直接返回任务结果，请勿再调用其它工具！";
+    public string ToolDescription => "【太卜神行法】让本座将复杂多步任务外包给 OpenClaw 智能体执行——包括浏览器操作（登录网页/填表/点击/抓取页面数据）、定时任务、代码执行、多步调研汇总等。当任务需要「打开网站并操作」「持续监测某页面」「多步流程」时使用，比 openclaw_search 更强。支持 template 参数直接调用任务模板（高频任务省 token，模板清单用 query_task_templates 查询）。注意：此为最终工具，调用后直接返回任务结果，请勿再调用其它工具！";
     public string ToolParametersJson => ToolSchema.Schema(
-        ToolSchema.Req("task", "string", "要执行的任务描述（自然语言，写清楚目标和步骤，如「打开 B 站搜索 明日方舟 本周播放最高的视频并返回前5个」）"),
+        ToolSchema.Req("task", "string", "要执行的任务描述（自然语言，写清楚目标和步骤，如「打开 B 站搜索 明日方舟 本周播放最高的视频并返回前5个」）。若提供了 template 参数则此项可省略"),
+        ToolSchema.Opt("template", "string", "任务模板名（P5 高频任务省 token）：从模板库取任务描述，用 template_args 填充占位符后执行。可用模板用 query_task_templates 查询"),
+        ToolSchema.Opt("template_args", "string", "模板占位符参数，JSON 对象字符串，如 {\"url\":\"https://example.com\"}。仅当使用 template 时生效"),
         ToolSchema.Opt("mode", "string", "执行模式：agent（默认，OpenClaw 自行选工具）/ browser（引导用浏览器操作）"),
         ToolSchema.Opt("timeout_seconds", "integer", "任务总硬上限秒数（默认 1800，上限 3600）。下载大文件等耗时任务请给足时间——是否卡死由心跳机制判定，不按此值熔断"),
         ToolSchema.Opt("max_steps", "integer", "步骤预算上限（成本熔断）：OpenClaw 智能体最多执行多少步工具调用，默认 20，超限立即停止。复杂任务可提高，但请勿设过大以免消耗过多资源"),
@@ -284,11 +288,33 @@ public class OpenClawTaskTool : IPetTool
 
     public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
-        string task = ToolHelpers.JsonRead(argsJson, "task");
-        if (string.IsNullOrEmpty(task)) task = ToolHelpers.JsonRead(argsJson, "description");
-        if (string.IsNullOrEmpty(task))
+        // ——— 1. 任务描述：优先 template 模板展开，其次直接传 task ———
+        string originalTask = "";
+        string templateName = ToolHelpers.JsonRead(argsJson, "template");
+        if (!string.IsNullOrEmpty(templateName))
         {
-            onResult?.Invoke("❌ 请告诉本座要执行什么任务");
+            if (TaskTemplateManager.Instance == null)
+            {
+                onResult?.Invoke("❌ 太卜阵法图尚未展开（TaskTemplateManager 未初始化），无法使用模板");
+                yield break;
+            }
+            var args = ParseTemplateArgs(ToolHelpers.JsonRead(argsJson, "template_args"));
+            originalTask = TaskTemplateManager.Instance.ApplyTemplate(templateName, args);
+            if (string.IsNullOrEmpty(originalTask))
+            {
+                onResult?.Invoke($"❌ 模板「{templateName}」不存在，请先调用 query_task_templates 查看可用模板");
+                yield break;
+            }
+            Debug.Log($"[OpenClawTaskTool] 📋 已展开模板「{templateName}」: {originalTask}");
+        }
+        else
+        {
+            originalTask = ToolHelpers.JsonRead(argsJson, "task");
+            if (string.IsNullOrEmpty(originalTask)) originalTask = ToolHelpers.JsonRead(argsJson, "description");
+        }
+        if (string.IsNullOrEmpty(originalTask))
+        {
+            onResult?.Invoke("❌ 请告诉本座要执行什么任务，或提供 template 模板名");
             yield break;
         }
 
@@ -317,19 +343,84 @@ public class OpenClawTaskTool : IPetTool
         if (!string.IsNullOrEmpty(idleStr) && int.TryParse(idleStr, out int parsedIdle))
             maxIdleHeartbeats = Mathf.Clamp(parsedIdle, 2, 20);
 
+        // ★ P5.2：检索相似轨迹，把成功经验/失败教训附加到任务描述（历史参考）
+        string finalTask = originalTask;
+        string refText = "";
+        if (TaskTrajectoryManager.Instance != null)
+        {
+            refText = TaskTrajectoryManager.Instance.BuildReferenceText(originalTask);
+            if (!string.IsNullOrEmpty(refText))
+            {
+                finalTask = originalTask + "\n\n【历史参考 · 仅供执行借鉴，勿向用户复述】\n" + refText;
+                Debug.Log($"[OpenClawTaskTool] 📜 已附加 {refText.Split('\n').Length} 行历史轨迹参考");
+            }
+        }
+
         // 在后台线程运行（避免阻塞主线程）
         var taskRunner = Task.Run(async () =>
         {
             bool healthy = await OpenClawBridge.CheckHealthAsync();
-            if (!healthy) return $"❌ 太卜神行法无法发动：未检测到通神阵法（{OpenClawBridge.LastError}）。请先运行 openclaw_bridge.js 启动桥接服务器。";
-            return await OpenClawBridge.ExecuteTaskAndWaitAsync(task, mode, timeoutSec, maxSteps, heartbeatSeconds, maxIdleHeartbeats);
+            if (!healthy)
+            {
+                string err = $"❌ 太卜神行法无法发动：未检测到通神阵法（{OpenClawBridge.LastError}）。请先运行 openclaw_bridge.js 启动桥接服务器。";
+                RecordTrajectory(originalTask, mode, false, "", err, 0);
+                return err;
+            }
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string result = await OpenClawBridge.ExecuteTaskAndWaitAsync(finalTask, mode, timeoutSec, maxSteps, heartbeatSeconds, maxIdleHeartbeats);
+            sw.Stop();
+
+            // ★ P5.2：执行完毕后自动记录轨迹（成功存结果摘要，失败存错误原因）
+            bool success = !result.StartsWith("❌");
+            RecordTrajectory(originalTask, mode, success,
+                success ? result : "",
+                success ? "" : result,
+                (int)sw.Elapsed.TotalSeconds);
+            return result;
         });
 
         yield return new WaitUntil(() => taskRunner.IsCompleted);
 
         if (taskRunner.IsFaulted)
-            onResult?.Invoke($"❌ 任务执行出错: {taskRunner.Exception?.InnerException?.Message}");
+        {
+            string err = $"❌ 任务执行出错: {taskRunner.Exception?.InnerException?.Message}";
+            RecordTrajectory(originalTask, mode, false, "", err, 0);
+            onResult?.Invoke(err);
+        }
         else
             onResult?.Invoke(taskRunner.Result);
+    }
+
+    /// <summary>记录执行轨迹（记录原始任务描述，不含附加的历史参考）</summary>
+    private static void RecordTrajectory(string task, string mode, bool success, string summary, string error, int durationSec)
+    {
+        try
+        {
+            if (TaskTrajectoryManager.Instance != null)
+                TaskTrajectoryManager.Instance.RecordTrajectory(task, mode, success, summary, error, durationSec);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[OpenClawTaskTool] 轨迹记录失败: {e.Message}");
+        }
+    }
+
+    /// <summary>解析 template_args JSON 字符串 → 占位符字典</summary>
+    private static Dictionary<string, string> ParseTemplateArgs(string json)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(json)) return result;
+        try
+        {
+            var obj = JObject.Parse(json);
+            foreach (var prop in obj.Properties())
+                result[prop.Name] = prop.Value?.ToString() ?? "";
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[OpenClawTaskTool] template_args 解析失败（按无参数处理）: {e.Message}");
+        }
+        return result;
     }
 }

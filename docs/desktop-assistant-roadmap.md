@@ -176,8 +176,8 @@
 | # | 任务 | 借鉴 | 说明 |
 |---|---|---|---|
 | 5.1 | **Speculative Multi-Action** | UFO²（-51% LLM 调用） | ✅ **N40 T7 已完成**（2026-08-07 `77645d4`）：一次请求返回多个独立 tool_call，单次响应双工具实测（completion=7902）；后续可做「预测 2-3 步工具」深度批量化 |
-| 5.2 | **任务执行轨迹库** | UFO² Knowledge Substrate | 把成功/失败的 `openclaw_task` 记录存入 RAG，后续同类任务直接参考（类似 MotionMemory 对动作的机制） |
-| 5.3 | 任务模板 | AutoGPT Build | 高频任务（查成绩/看更新/编译论文）预置模板，`openclaw_task` 只传模板名 + 参数 |
+| 5.2 | **任务执行轨迹库** ✅ | UFO² Knowledge Substrate | ✅ **已完成**（2026-08-12）：新 `TaskTrajectoryManager.cs`（太卜手札）把成功/失败的 `openclaw_task` 记录入库 `task_trajectories.json`（30 条上限，淘汰最少引用/最旧），bigram Jaccard ≥0.2 相似检索；`openclaw_task` 提交前自动附加「成功经验/失败教训」参考文本（成功 2 条 + 失败 1 条，referenceCount 计数）；`FormatForPrompt()` 注入 SystemPrompt，机制类似 MotionMemory 对动作的闭环学习 | 
+| 5.3 | 任务模板 ✅ | AutoGPT Build | ✅ **已完成**（2026-08-12）：新 `TaskTemplateManager.cs`（太卜阵法图）+ `TaskTemplateTools.cs` 三工具（`query_task_templates` / `save_task_template` / `remove_task_template`），5 个预置模板（查更新/查 release/下载/比价/总结），`openclaw_task` 支持 `template` + `template_args` 参数只传模板名+占位符参数，占位符 `{url}` 等自动替换 |
 
 ---
 
@@ -201,7 +201,7 @@
 | P2 | 定时动作框架 | 1 天 | P1（动作可能外包） | ✅ 2026-08-12 |
 | P3 | 语音双向 | ~~1~1.5 天~~ | 无 | ❌ 放弃 2026-08-12 |
 | P4 | 剪贴板/偏好/多屏 | 1~1.5 天 | 无 | ✅ 2026-08-12 |
-| P5 | 省钱与轨迹库 | 持续 | P1 | 部分完成 |
+| P5 | 省钱与轨迹库 | 持续 | P1 | ✅ 2026-08-12（5.1 此前已完成） |
 
 **推荐顺序**: P1 ✅ → P2 ✅ → P4 ✅ → P5 → （P3 已放弃）
 

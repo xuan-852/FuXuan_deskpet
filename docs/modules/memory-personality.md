@@ -69,6 +69,8 @@ SendRequestCoroutine → CheckReflection (L518)
 | `pet_memory.json` | PetMemory | 记忆（3 层结构） |
 | `pet_personality.json` | PersonalityManager | 人格五维 |
 | `pet_preferences.json` | PreferencesManager | 主人偏好（50 条上限） |
+| `task_trajectories.json` | TaskTrajectoryManager | 任务执行轨迹（30 条上限，P5.2） |
+| `task_templates.json` | TaskTemplateManager | 任务模板（30 条上限，P5.3） |
 | `reminders.json` | ReminderManager | 提醒 |
 | `motion_memory.json` | MotionMemoryManager | 演武心经（30 条上限） |
 | `activity_log.json` | ActivityTracker | 30 天活动日志 |
@@ -99,6 +101,8 @@ SendRequestCoroutine → CheckReflection (L518)
 | N39 | 2026-08-02 | ①反思链路接线（CheckReflection→DoReflection→CommitReflection，删除 OnReflectRequest 死回调）②知识库上下文实际注入（LastFormattedContext 缓存替代 STUB） |
 | N40 | 2026-08-08 | 新增 `IsTestMode`（.test_mode 标记文件）防自动化测试污染记忆/人格；clean_test_pollution.cjs 清理工具 |
 | P4.2 | 2026-08-12 | 新增 PreferencesManager 偏好结构化存储（`pet_preferences.json`，50 条上限淘汰最旧）+ set/query/remove 三工具 + prompt 注入；P4PerceptionTests 10 用例 |
+| P5.2 | 2026-08-12 | 新增 TaskTrajectoryManager 任务执行轨迹库（`task_trajectories.json`，30 条上限淘汰最少引用/最旧，bigram Jaccard 相似检索，参考文本附加 referenceCount 计数）+ prompt 注入；P5TrajectoryTests 21 用例 |
+| P5.3 | 2026-08-12 | 新增 TaskTemplateManager 任务模板库（`task_templates.json`，30 条上限，5 预置模板）+ query/save/remove 三工具 + openclaw_task 模板参数 |
 
 ## 四、编写注意事项
 
