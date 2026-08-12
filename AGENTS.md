@@ -8,7 +8,7 @@
 
 ## 项目是什么
 
-Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣「符玄」，具备感知-决策-执行-记忆闭环，内置 55+ 工具，通过本地 Node.js 桥接调用 OpenClaw AI 与 Python 办公生成器。
+Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣「符玄」，具备感知-决策-执行-记忆闭环，内置 65 个工具，通过本地 Node.js 桥接调用 OpenClaw AI 与 Python 办公生成器。
 
 ## 技术栈速览
 
@@ -25,7 +25,7 @@ Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣
 | 模块 | 文档 | 一句话定位 |
 |------|------|-----------|
 | AI 对话 | [`docs/modules/ai-chat-system.md`](docs/modules/ai-chat-system.md) | ChatManager 轮环、注入链、Token 优化 |
-| 工具系统 | [`docs/modules/tool-engine.md`](docs/modules/tool-engine.md) | 55+ 工具、审批、benchmark |
+| 工具系统 | [`docs/modules/tool-engine.md`](docs/modules/tool-engine.md) | 65 工具、审批、benchmark |
 | 动作系统 | [`docs/modules/action-agent.md`](docs/modules/action-agent.md) | 决策循环、动作验证闭环 |
 | Live2D 渲染 | [`docs/modules/live2d-rendering.md`](docs/modules/live2d-rendering.md) | 渲染管线、参数映射、硬编码迁移 |
 | 对话界面 | [`docs/modules/chat-ui.md`](docs/modules/chat-ui.md) | IMGUI 界面、像素化优化 |
