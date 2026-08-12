@@ -9,6 +9,9 @@
  *   Events via onEvent:
  *     chat { sessionKey, deltaText, ... }          - intermediate deltas
  *     chat { sessionKey, stopReason, message, ... } - final response
+ *   （订阅 sessions.subscribe 后额外推送）
+ *     tool.call { threadId, turnId, toolCallId, name, arguments } - 工具调用进度
+ *     exec.approval.requested { id, request, createdAtMs, expiresAtMs } - 敏感命令审批
  */
 
 import { GatewayChatClient } from 'file:///D:/openclaw/node_modules/openclaw/dist/gateway-chat-BW6uyvQL.js';
@@ -59,10 +62,12 @@ let connectError = null;
 // Per-session waiters: Map<sessionKey, { resolve, reject, timeout }>
 const waiters = new Map();
 
-// ★ 健壮化：请求串行锁。Gateway 事件只带 sessionKey、无法按 runId 匹配，
-//   并发请求会互相覆盖 waiter 导致响应错位（run#7 曾发生模块2 混入元数据、模块6 丢失）。
-//   逐节生成本就是串行任务，加锁无性能损失。
-let requestChain = Promise.resolve();
+// ★ 并行化：per-session 请求链（Map<sessionKey, Promise>）。
+//   同一 sessionKey 内串行（Gateway 事件按 sessionKey 匹配 waiter，同会话并发会互相覆盖导致响应错位，
+//   如 run#7 模块2 混入元数据、模块6 丢失）；不同 sessionKey 之间完全并行（Gateway 真并行已实测：
+//   两个任务 sessionKey 的 lifecycle start 时间戳仅差 88ms）。
+//   任务（/task）使用独立 sessionKey `agent:main:task-<id>`，与主会话 /search 互不阻塞。
+const requestChains = new Map();
 
 // ─── Gateway Connection ──────────────────────────────────────────────────────
 async function connect_() {
@@ -86,6 +91,15 @@ async function connect_() {
 
         chatClient.start();
         await chatClient.waitForReady();
+        // ★ 订阅会话事件：接收 tool.call（工具调用进度）与 exec.approval.requested（敏感命令审批）。
+        //   不订阅则 Gateway 不推送这两类事件，任务进度与审批将永远不可见。
+        //   失败不致命（降级为仅心跳/无进度），重连时会再次尝试订阅。
+        try {
+            await chatClient.subscribeSessionEvents();
+            console.log('[Bridge] Subscribed to session events (tool.call / exec.approval.requested)');
+        } catch (subErr) {
+            console.warn(`[Bridge] subscribeSessionEvents failed: ${subErr.message}`);
+        }
         connected = true;
         connectError = null;
         console.log(`[Bridge] Connected to Gateway at ${GATEWAY_URL}`);
@@ -144,36 +158,118 @@ function handleGatewayEvent(evt) {
                 w.reject(new Error('Gateway final event missing message content'));
             }
         }
+        return;
+    }
+
+    // ★ 实时工具进度与审批：Gateway 实时推送到 agent 事件的 payload.stream 下
+    //   （tool.call / exec.approval.requested 是轨迹导出/独立事件，实时并不推送——
+    //     实测确认实时事件为 agent.stream=tool|item|approval）
+    if (evt.event === 'agent') {
+        const p = evt.payload || {};
+        const stream = p.stream;
+        const d = p.data || {};
+        // ★ 并行化：agent 事件带 sessionKey，精确路由到对应任务 entry；
+        //   无 sessionKey 的事件（罕见）回退到全局活跃任务
+        const entry = getTaskBySessionKey(p.sessionKey) || getActiveTask();
+
+        if (stream === 'tool' || stream === 'item') {
+            // 工具调用进度：tool → {phase:'start'|'result', name, toolCallId, args}
+            //             item → {phase:'start'|'end'|'update', kind, name, title, meta, toolCallId}
+            // 注意：同一 toolCallId 会同时收到 tool.start 与 item.start，需按 toolCallId 去重
+            if (entry && entry.status === 'running' && d.phase === 'start' && (d.name || d.title)) {
+                const callId = d.toolCallId || null;
+                if (callId && entry.seenToolCalls && entry.seenToolCalls.has(callId)) return; // 去重
+                const name = d.name || d.title || 'tool';
+                // 摘要优先级：args（tool.start 带）> meta（item 带）> title
+                let summary = summarizeArgs(d.args);
+                if (!summary && d.meta) summary = String(d.meta).substring(0, 80);
+                if (!summary && d.title && d.title !== name) summary = String(d.title).substring(0, 80);
+                entry.steps.push({ tool: name, summary, ts: Date.now() });
+                if (entry.steps.length > MAX_TASK_STEPS) entry.steps = entry.steps.slice(-MAX_TASK_STEPS);
+                if (callId) entry.seenToolCalls.add(callId);
+                entry.lastActivityAt = Date.now(); // 心跳：工具调用也算 agent 活跃
+            }
+            return;
+        }
+
+        if (stream === 'approval') {
+            // 审批请求：approval → {phase:'requested'|'resolved', approvalId, approvalSlug, command, host, status, title}
+            // ★ 这是 agent 事件流里的审批（插件/通用审批）→ 决议走 plugin.approval.resolve
+            if (entry && entry.status === 'running' && !entry.pendingApproval && d.phase === 'requested' && d.approvalId) {
+                entry.pendingApproval = {
+                    kind: 'plugin',
+                    id: d.approvalId,
+                    slug: d.approvalSlug || null,
+                    command: d.command || d.title || '',
+                    cwd: null,
+                    host: d.host || null,
+                    createdAtMs: Date.now(),
+                    expiresAtMs: 0,
+                };
+                entry.lastActivityAt = Date.now();
+            }
+            return;
+        }
+        return; // 其余 agent 流（lifecycle/command_output/patch/心跳等）不处理
+    }
+
+    // ★ 独立审批事件（exec 审批）：exec-approval 模块直接推送
+    //   payload 结构: {id: approvalId, request: {command, commandPreview, host, cwd, sessionKey, ...}}
+    //   ★ 决议必须走 exec.approval.resolve（plugin.approval.resolve 不认识 exec 审批 id！
+    //     2026-08-12 E2E 实测：resolvePluginApproval 报 'unknown or expired approval id'）
+    if (evt.event === 'exec.approval.requested') {
+        const p = evt.payload || {};
+        const entry = getActiveTask();
+        if (entry && entry.status === 'running' && !entry.pendingApproval) {
+            const req = p.request || {};
+            const command = req.command
+                || (Array.isArray(req.commandArgv) ? req.commandArgv.join(' ') : '')
+                || JSON.stringify(req).substring(0, 200);
+            entry.pendingApproval = {
+                kind: 'exec',
+                id: p.id,
+                command,
+                cwd: req.cwd || null,
+                host: req.host || null,
+                createdAtMs: p.createdAtMs || Date.now(),
+                expiresAtMs: p.expiresAtMs || 0,
+            };
+            entry.lastActivityAt = Date.now();
+        }
+        return;
     }
 }
 
 // ─── Send Chat and Wait ──────────────────────────────────────────────────────
-async function sendChatAndWait(query, timeoutMs = CHAT_TIMEOUT_MS, onActivity) {
+// ★ 并行化：支持传入 sessionKey。同一 sessionKey 内串行，不同 sessionKey 并行。
+//   默认用主会话 SESSION_KEY（/search、/compile_latex、/generate_office 等单次请求）；
+//   任务（/task）传入独立 sessionKey `agent:main:task-<id>` 实现多任务并行。
+async function sendChatAndWait(query, timeoutMs = CHAT_TIMEOUT_MS, onActivity, sessionKey = SESSION_KEY) {
     if (!chatClient || !connected) {
         throw new Error('Gateway not connected');
     }
 
     const runId = randomUUID();
 
-    // 串行化：同一时刻只允许一个在途请求，等前一个完成（或失败）再发下一个
-    const prev = requestChain;
+    // per-session 串行化：同一 sessionKey 内排队，跨 sessionKey 并行
+    const prev = requestChains.get(sessionKey) || Promise.resolve();
     let release;
-    requestChain = new Promise((r) => { release = r; });
+    requestChains.set(sessionKey, new Promise((r) => { release = r; }));
     await prev.catch(() => { /* 忽略前序请求的失败 */ });
 
     try {
         const responsePromise = new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
-                waiters.delete(SESSION_KEY);
+                waiters.delete(sessionKey);
                 reject(new Error('Response timeout'));
             }, timeoutMs);
 
-            waiters.set(SESSION_KEY, { resolve, reject, timeout, onActivity });
+            waiters.set(sessionKey, { resolve, reject, timeout, onActivity });
         });
 
         try {
             await chatClient.client.request('chat.send', {
-                sessionKey: SESSION_KEY,
+                sessionKey: sessionKey,
                 message: query,
                 timeoutMs: timeoutMs,
                 idempotencyKey: runId,
@@ -189,10 +285,10 @@ async function sendChatAndWait(query, timeoutMs = CHAT_TIMEOUT_MS, onActivity) {
             }
             return content;
         } catch (err) {
-            if (waiters.has(SESSION_KEY)) {
-                const w = waiters.get(SESSION_KEY);
+            if (waiters.has(sessionKey)) {
+                const w = waiters.get(sessionKey);
                 clearTimeout(w.timeout);
-                waiters.delete(SESSION_KEY);
+                waiters.delete(sessionKey);
             }
             throw err;
         }
@@ -202,10 +298,47 @@ async function sendChatAndWait(query, timeoutMs = CHAT_TIMEOUT_MS, onActivity) {
 }
 
 // ─── 通用任务外包（后台执行，供 /task 端点使用）───────────────────────────
-// taskStore: Map<taskId, { id, status, mode, task, result, error, createdAt }>
+// taskStore: Map<taskId, { id, status, mode, task, result, error, createdAt, steps, pendingApproval }>
 // status: queued → running → done | error | cancelled
 // 复用 sendChatAndWait 的全局串行锁：后台任务与 /search 请求天然排队，不会错位
 const taskStore = new Map();
+
+// ★ 步骤轨迹上限：超出截断最旧步骤，防止高频 tool.call 导致内存膨胀
+const MAX_TASK_STEPS = 200;
+
+// ★ 活跃任务（全局兜底）：串行锁保证同一时刻至多一个 running 任务。
+//   Gateway 的独立事件（exec.approval.requested）不带 sessionKey，
+//   只能按「当前在途任务」关联（与心跳 lastActivityAt 同思路）。
+function getActiveTask() {
+    for (const entry of taskStore.values()) {
+        if (entry.status === 'running') return entry;
+    }
+    return null;
+}
+
+// ★ 并行化：按 sessionKey 精确路由到对应任务 entry。
+//   agent 事件（tool/item/approval 流）实测都带 payload.sessionKey，
+//   可直接映射到任务自己的 sessionKey，替代 getActiveTask() 的全局关联。
+function getTaskBySessionKey(sk) {
+    if (!sk) return null;
+    for (const entry of taskStore.values()) {
+        if (entry.sessionKey === sk) return entry;
+    }
+    return null;
+}
+
+// ★ 工具参数 → 短摘要（进度显示用，避免长 JSON 刷屏）
+function summarizeArgs(args) {
+    if (args == null) return '';
+    try {
+        if (typeof args === 'string') {
+            const t = args.trim();
+            return t.length > 60 ? t.substring(0, 60) + '…' : t;
+        }
+        const s = JSON.stringify(args);
+        return s.length > 80 ? s.substring(0, 80) + '…' : s;
+    } catch { return ''; }
+}
 
 // ─── 失败模式识别 ─────────────────────────────────────────────────────────
 // 把桥接层自身的错误归类为「不可重试」（网络/连接/超时）或「可重试」。
@@ -238,8 +371,14 @@ function buildTaskPrompt(taskText, mode, maxSteps) {
 
 function startTask(taskText, mode, timeoutMs, maxSteps) {
     const id = randomUUID();
+    // ★ 并行化：每个任务使用独立 sessionKey（agent:main:task-<id>）。
+    //   → 任务与任务、任务与 /search 主会话之间完全并行（Gateway 真并行已实测）；
+    //   → agent 事件按 sessionKey 精确路由到本任务 entry（getTaskBySessionKey）；
+    //   → 任务上下文与主会话隔离，不会互相污染。
+    const sessionKey = `agent:main:task-${id}`;
     const entry = {
         id,
+        sessionKey,        // ★ 任务的独立会话 key（事件路由 + 取消中断 + per-session 锁用）
         status: 'queued',
         mode,
         task: taskText,
@@ -248,11 +387,15 @@ function startTask(taskText, mode, timeoutMs, maxSteps) {
         error: null,
         fatal: false,        // ★ 不可重试错误标记（网络/超时/连接类）
         lastActivityAt: 0,   // ★ 心跳：最近一次 agent 活动时间戳（ms），0=尚无活动
+        steps: [],           // ★ 步骤轨迹：[{tool, summary, ts}]，来自 agent 事件流
+        seenToolCalls: new Set(), // ★ 已记录工具调用去重（tool.start 与 item.start 双推）
+        pendingApproval: null, // ★ 挂起的 exec 审批：{id, command, cwd, createdAtMs, expiresAtMs}
         createdAt: Date.now(),
     };
     taskStore.set(id, entry);
 
-    // 后台执行（sendChatAndWait 自带串行锁，自动排队等待前序请求完成）
+    // 后台执行（per-session 锁：任务用自己的 sessionKey，与其他任务/主会话并行，
+    // 同一任务内自动排队；取消后不再启动）
     (async () => {
         try {
             if (entry.status === 'cancelled') return;
@@ -261,7 +404,7 @@ function startTask(taskText, mode, timeoutMs, maxSteps) {
             // ★ 心跳：任何中间事件（进度汇报/工具调用）都刷新 lastActivityAt
             const result = await sendChatAndWait(prompt, timeoutMs, () => {
                 entry.lastActivityAt = Date.now();
-            });
+            }, sessionKey);
             if (entry.status === 'cancelled') return; // 取消后丢弃结果
             entry.status = 'done';
             entry.result = result;
@@ -271,6 +414,9 @@ function startTask(taskText, mode, timeoutMs, maxSteps) {
             const cls = classifyTaskError(err);
             entry.error = cls.fatal ? `[不可重试:${cls.kind}] ${err.message}` : err.message;
             entry.fatal = cls.fatal;
+        } finally {
+            // ★ 任务终止（done/error/cancelled）时清理挂起审批，防止悬挂
+            entry.pendingApproval = null;
         }
     })();
 
@@ -283,15 +429,16 @@ function cancelTask(taskId) {
     if (entry.status === 'done' || entry.status === 'error') {
         return { ok: false, error: `task already ${entry.status}` };
     }
-    if (entry.status === 'running' && waiters.has(SESSION_KEY)) {
-        // 中断在途的 gateway 等待（全局串行锁保证同一时刻只有一个在途请求）
-        const w = waiters.get(SESSION_KEY);
+    if (entry.status === 'running' && waiters.has(entry.sessionKey)) {
+        // 中断在途的 gateway 等待（per-session 锁：只中断本任务自己的 waiter）
+        const w = waiters.get(entry.sessionKey);
         clearTimeout(w.timeout);
-        waiters.delete(SESSION_KEY);
+        waiters.delete(entry.sessionKey);
         w.reject(new Error('Task cancelled'));
     }
     entry.status = 'cancelled';
     entry.error = 'cancelled by user';
+    entry.pendingApproval = null; // ★ 取消时清理挂起审批
     return { ok: true };
 }
 
@@ -912,6 +1059,9 @@ function startHttpServer() {
                 if (entry.error) resp.error = entry.error;
                 if (entry.fatal) resp.fatal = true;
                 if (entry.lastActivityAt > 0) resp.lastActivityAt = entry.lastActivityAt; // 心跳：agent 最后活动时间
+                // ★ 新增：步骤轨迹（进度显示）与挂起审批（关键步审批）
+                if (Array.isArray(entry.steps) && entry.steps.length > 0) resp.steps = entry.steps;
+                if (entry.pendingApproval) resp.pendingApproval = entry.pendingApproval;
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(resp));
                 return;
@@ -926,6 +1076,86 @@ function startHttpServer() {
                 }
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: true, task_id: taskId, status: 'cancelled' }));
+                return;
+            }
+
+            // ★ 新增：审批回执 POST /task/{id}/approve {decision: 'allow-once'|'allow-always'|'deny'}
+            //   把 Unity 侧的用户决定回执给 Gateway（exec.approval.resolve），命令才继续/中止。
+            if (taskId && action === 'approve' && req.method === 'POST') {
+                const bodyChunks = [];
+                req.on('data', chunk => bodyChunks.push(chunk));
+                req.on('end', async () => {
+                    try {
+                        const body = JSON.parse(Buffer.concat(bodyChunks).toString('utf-8') || '{}');
+                        const entry = taskStore.get(taskId);
+                        if (!entry) {
+                            res.writeHead(404, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: false, error: `task ${taskId} not found` }));
+                            return;
+                        }
+                        if (!entry.pendingApproval) {
+                            res.writeHead(400, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: false, error: 'no pending approval for this task' }));
+                            return;
+                        }
+                        const decision = body.decision;
+                        if (!['allow-once', 'allow-always', 'deny'].includes(decision)) {
+                            res.writeHead(400, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: false, error: "decision must be 'allow-once' | 'allow-always' | 'deny'" }));
+                            return;
+                        }
+                        if (!connected) {
+                            res.writeHead(503, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: false, error: 'Gateway not connected' }));
+                            return;
+                        }
+                        const approvalId = entry.pendingApproval.id;
+                        const kind = entry.pendingApproval.kind || 'plugin';
+                        try {
+                            // ★ 审批决议通道选择（2026-08-12 E2E 实测修复）：
+                            //   - kind='exec'（exec.approval.requested 独立事件）→ exec.approval.resolve
+                            //   - kind='plugin'（agent 事件 approval 流）→ plugin.approval.resolve
+                            //   此前一律用 resolvePluginApproval（plugin 通道），exec 审批 id 报
+                            //   'unknown or expired approval id'，导致审批永远无法通过。
+                            let resolvedOk = false;
+                            let lastErr = null;
+                            if (kind === 'exec') {
+                                try {
+                                    await chatClient.client.request('exec.approval.resolve', { id: approvalId, decision });
+                                    resolvedOk = true;
+                                } catch (err) {
+                                    lastErr = err;
+                                    // exec 找不到时回退 plugin 通道（插件审批也可能推成独立事件）
+                                    await chatClient.resolvePluginApproval(approvalId, decision);
+                                    resolvedOk = true;
+                                }
+                            } else {
+                                try {
+                                    await chatClient.resolvePluginApproval(approvalId, decision);
+                                    resolvedOk = true;
+                                } catch (err) {
+                                    lastErr = err;
+                                    await chatClient.client.request('exec.approval.resolve', { id: approvalId, decision });
+                                    resolvedOk = true;
+                                }
+                            }
+                            if (!resolvedOk) throw lastErr || new Error('approval resolve failed');
+                            entry.pendingApproval = null; // 回执成功后清除
+                            console.log(`[Bridge] Task ${taskId} approval resolved: ${decision} (${kind} id=${approvalId})`);
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: true, task_id: taskId, decision }));
+                        } catch (err) {
+                            // 回执失败也清除挂起，避免任务永久卡在等待审批
+                            entry.pendingApproval = null;
+                            console.error(`[Bridge] Approval resolve failed: ${err.message}`);
+                            res.writeHead(500, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: false, error: err.message }));
+                        }
+                    } catch (err) {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: err.message }));
+                    }
+                });
                 return;
             }
 
@@ -1254,7 +1484,7 @@ function startHttpServer() {
         }
 
         res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Not found. Use /search?q=, /compile_latex, /generate_office, /task, or /health' }));
+        res.end(JSON.stringify({ error: 'Not found. Use /search?q=, /compile_latex, /generate_office, /task[/{id}[/cancel|/approve]], or /health' }));
     });
 
     server.listen(BRIDGE_PORT, '127.0.0.1', () => {

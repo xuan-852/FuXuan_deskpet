@@ -1,8 +1,8 @@
 # 桥接通信 — C# ↔ Node.js ↔ Python 三层链路
 
 > **文档作用**: 本模块文档描述桌宠「通信桥接」子系统的**代码真相**——Unity C#（`OpenClawBridge.cs`）↔ Node.js 桥接服务器（`openclaw_bridge.js`，:19876）↔ OpenClaw Gateway（WebSocket :18789）↔ Python 脚本（办公/LaTeX 生成）的完整链路、端点契约、鉴权方式、超时与健壮性机制。**改任何端点/工具/通信相关代码前必读**。
-> **基本架构**: `OpenClawBridge.cs`（静态类，UnityWebRequest HTTP JSON）→ `openclaw_bridge.js`（Node http server，鉴权 `x-bridge-token`，请求串行锁，任务心跳）→ ①WebSocket→OpenClaw Gateway（:18789，GATEWAY_TOKEN 自动从 openclaw.json 读取）②execSync→Python 脚本（临时 JSON 传参）。端点：`/health`（免鉴权）/`/search`（GET）/`/task` 系列（POST+轮询）/`/compile_latex`（POST）/`/generate_office`（POST）。端口 19876，PM2 管理（进程名 `openclaw-bridge`）。
-> **开发历史迭代**: run#7 修复并发响应错位（请求串行锁）；8/5 认证失败（GATEWAY_TOKEN 自动轮换读取）；8/7 BOM 导致 JSON.parse 失败（strip BOM）；任务不可重试错误分类（烧 token 元凶修复）；2026-08-12 Phase A 新增 `/generate_office` 端点（Python 办公生成器链路）。
+> **基本架构**: `OpenClawBridge.cs`（静态类，UnityWebRequest HTTP JSON）→ `openclaw_bridge.js`（Node http server，鉴权 `x-bridge-token`，请求 per-session 锁，任务心跳）→ ①WebSocket→OpenClaw Gateway（:18789，GATEWAY_TOKEN 自动从 openclaw.json 读取）②execSync→Python 脚本（临时 JSON 传参）。端点：`/health`/`/search`（GET）/`/task` 系列（POST+轮询+审批）/`/compile_latex`（POST）/`/generate_office`（POST）。端口 19876，PM2 管理（进程名 `openclaw-bridge`）。
+> **开发历史迭代**: run#7 修复并发响应错位（请求串行锁）；8/5 认证失败（GATEWAY_TOKEN 自动轮换读取）；8/7 BOM 导致 JSON.parse 失败（strip BOM）；任务不可重试错误分类（烧 token 元凶修复）；2026-08-12 Phase A 新增 `/generate_office` 端点（Python 办公生成器链路）；2026-08-12 Phase B 任务可视化：实时事件订阅（tool/item/approval）→ steps 收集去重 + `GET /task/{id}` 返回 `steps`/`pendingApproval` + `POST /task/{id}/approve` 审批回执；2026-08-12 Phase C 并行化（per-session 锁）+ exec 审批打通（`exec.approval.resolve`）。
 > **编写注意事项**: ①新端点必须鉴权（x-bridge-token）+ 放 404 前 + 更新 404 文案；②返回统一 `{success:bool,...}` 或 `{success:false,error:"..."}`；③PM2 进程勿手动 kill/start，改桥接后 `pm2 restart openclaw-bridge --update-env`；④PS 5.1 写 JSON 带 BOM，Python 读文件用 `utf-8-sig`；⑤JS 2 空格缩进，请求体必须 `Buffer.concat` 收集（body += chunk 会截断中文）；⑥密钥不入库，日志禁含 Token。
 
 ---
@@ -44,27 +44,34 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 
 | 端点 | 方法 | 鉴权 | 参数 | 响应 | 超时 |
 |------|------|------|------|------|------|
-| `/health` | GET | **免鉴权** | — | `{status: ok/error, connected, error}` | 3s |
+| `/health` | GET | ✅（实际所有请求均需 token，见下方注） | — | `{status: ok/error, connected, error}` | 3s |
 | `/search` | GET | ✅ | `?q=` | `{success, query, response, elapsed_ms}` | 180s |
 | `/task` | POST | ✅ | `{task, mode?, timeoutMs?, maxSteps?}` | `{success, task_id, status}` | 立即返回 |
-| `/task/{id}` | GET | ✅ | — | `{success, task_id, status, result?, error?, fatal?, lastActivityAt?}` | 轮询 |
+| `/task/{id}` | GET | ✅ | — | `{success, task_id, status, result?, error?, fatal?, lastActivityAt?, steps?, pendingApproval?}` | 轮询 |
 | `/task/{id}/cancel` | POST | ✅ | — | `{success, task_id, status: cancelled}` | — |
+| `/task/{id}/approve` | POST | ✅ | `{decision: allow-once/allow-always/deny}` | `{success, task_id, decision, status}` | — |
 | `/compile_latex` | POST | ✅ | `{source?, output_path?, compiler?, title?, pin_to_desktop?, description?}` | `{success, pdf_path?, tex_path?, error?}` | C# 1800s |
 | `/generate_office` | POST | ✅ | `{type: ppt/docx/xlsx, description, title?, theme?}` | `{success, path?, title?, folder_path?, error?}` | C# 300s |
 
-> ⚠️ 失败统一返回 `{success:false, error:"..."}`；404 兜底文案：`{error: 'Not found. Use /search?q=, /compile_latex, or /health'}`（**尚未包含 /generate_office，Phase A 遗留待更新**）。
+> ⚠️ `/health` 鉴权注：代码中鉴权检查（`authToken !== BRIDGE_TOKEN`）在路径分发**之前**，即 `/health` 实际也要求 `x-bridge-token`（实测 401）——与早期文档「免鉴权」描述不符，已按代码真相修正。
+> ⚠️ `steps` 字段：工具调用轨迹数组 `[{tool, summary, ts}]`，桥接层实时事件（`stream: "tool"` phase start/result）按 `toolCallId` 去重收集，上限 `MAX_TASK_STEPS=200`。
+> ⚠️ `pendingApproval` 字段：`{kind, id, slug, command, cwd, host, createdAtMs, expiresAtMs}`，`kind` ∈ `exec`（exec.approval.requested 独立事件）/ `plugin`（agent 事件 approval 流）；来自 Gateway `stream: "approval"` 事件（phase requested/resolved）与 `exec.approval.requested` 独立事件；任务完成/取消后自动清空。
+> ⚠️ 失败统一返回 `{success:false, error:"..."}`；404 兜底文案：`{error: 'Not found. Use /search?q=, /compile_latex, /generate_office, /task[...], or /health'}`。
 
 ### 2.4 健壮性机制（openclaw_bridge.js）
 
 | 机制 | 说明 |
 |------|------|
-| **请求串行锁** `requestChain` | Gateway 事件只带 sessionKey、无法按 runId 匹配，并发请求会互相覆盖 waiter（run#7 曾发生响应错位）——串行化无性能损失（逐节生成本串行） |
+| **请求锁** `requestChains`（per-session） | run#7 曾因并发请求互相覆盖 waiter 发生响应错位，当时用全局 `requestChain` 串行；2026-08-12 升级为 per-sessionKey 锁 Map：同一 sessionKey 串行、不同 sessionKey 并行（任务用独立 sessionKey `agent:main:task-<id>`，多任务实测并行启动差 88ms）；`sendChatAndWait(query, timeoutMs, onActivity, sessionKey)` 按 sessionKey 取/放锁 |
 | **任务心跳** `lastActivityAt` | 任何 chat 中间事件（工具调用/增量输出/进度汇报）都算 agent 活跃；桌宠轮询「有进展就重置，连续无进展才熔断」 |
 | **不可重试错误分类** `classifyTaskError` | 连接类/超时类/元数据异常 → `fatal: true`；C# 侧见 `FATAL_PREFIX = "❌ [不可重试]"`，LLM 不再换说法反复重调（烧 token 元凶） |
 | **GATEWAY_TOKEN 自动轮换** | 优先 env，否则读 openclaw.json（strip BOM 防 JSON.parse 失败） |
 | **BOM 防护** | PowerShell Set-Content 写 BOM → `.replace(/^\uFEFF/, '')`（8/7 复现根因） |
 | **任务预算** | `buildTaskPrompt` 步骤预算（maxSteps 默认 20）+ 长任务心跳汇报规则 |
 | **CORS 关闭** | 不设 CORS 头——浏览器跨域读不到，Unity 原生客户端不受影响 |
+| **实时事件订阅** | Gateway WS `evt.event === 'agent'` → 按 `payload.stream` 分支：`"tool"`（phase:start/result, name, toolCallId, args, meta）、`"item"`（phase:start/end/update, itemId, kind, title, toolCallId）、`"approval"`（phase:requested/resolved, approvalId, approvalSlug, command, host, title）；`tool.call` 是轨迹导出事件名，实时不推送 |
+| **steps 去重** | `seenToolCalls` Set 按 `toolCallId` 去重——同一工具调用 start+result 只记一条，避免重复步骤 |
+| **审批回执** | `POST /task/{id}/approve` 校验 decision ∈ {allow-once, allow-always, deny} 后按 `pendingApproval.kind` 选决议 API：`kind='exec'` → `exec.approval.resolve`（RPC，`chatClient.client.request`），失败回退 plugin 通道；`kind='plugin'` → `resolvePluginApproval`（=`plugin.approval.resolve`），失败回退 exec 通道。⚠️ 2026-08-12 E2E 实测教训：exec 审批必须走 `exec.approval.resolve`，`plugin.approval.resolve` 不认识 exec 审批 id（报 `unknown or expired approval id`）；触发条件：openclaw.json `tools.exec.mode = "ask"` + security allowlist（**2026-08-12 已配置生效**） |
 
 ### 2.5 C# 侧方法（OpenClawBridge.cs，静态类）
 
@@ -74,7 +81,10 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | `CheckHealthAsync()` | `/health` | 3s | bool |
 | `CompileLatexAsync(source, outputPath, compiler, title, pinToDesktop, description)` | `/compile_latex` | 1800s | JSON 文本 |
 | `GenerateOfficeAsync(type, description, title, theme)` | `/generate_office` | 300s | 完整 raw JSON |
-| 任务系列（IsBusy/LastTaskId/LastTaskWasFatal） | `/task` | — | 轮询状态 |
+| `ExecuteTaskAndWaitAsync(task, mode, maxSteps)` | `/task` 提交+轮询 | 心跳熔断 | 任务结果文本；每轮轮询调 `RefreshTaskProgress` 更新进度状态 |
+| `RefreshTaskProgress(obj)` | `/task/{id}` 轮询解析 | — | 解析 `steps` JArray → `ActiveStepCount`/`ActiveStepLabel`（`第n步: tool summary`，summary 去换行截 48 字符）；解析 `pendingApproval` → `PendingApproval`（id 变化才刷新） |
+| `ApproveTaskAsync(taskId, decision)` | `/task/{id}/approve` | — | 校验 decision ∈ 三值后 POST；设置 `LastApprovalOk`/`LastError` |
+| 任务系列（IsBusy/LastTaskId/LastTaskWasFatal/HasActiveTask/ActiveTaskId/ActiveStepCount/ActiveStepLabel/LastTaskStepCount/PendingApproval/LastApprovalOk） | `/task` | — | 轮询状态 + 实时进度 + 审批回执（后台 Task.Run 线程写，主线程 OnGUI 只读的原子字段） |
 
 ## 三、开发历史迭代
 
@@ -85,6 +95,8 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | 8/7 | BOM 导致 JSON.parse 失败（PowerShell Set-Content）→ `.replace(/^\uFEFF/, '')` |
 | — | 任务不可重试错误分类（fatal）+ C# 侧 FATAL_PREFIX，修复 LLM 反复重调烧 token |
 | 2026-08-12 | **Phase A 办公工具链**：新增 `/generate_office` 端点 + `GenerateOfficeAsync` + 三 Python 生成器（ppt/docx/xlsx） |
+| 2026-08-12 | **Phase B 任务可视化（OpenClaw 类智能体入口）**：实时事件订阅（tool/item/approval）→ steps 去重收集（seenToolCalls）→ `GET /task/{id}` 返回 `steps`/`pendingApproval` → `POST /task/{id}/approve` 审批回执（decision ∈ allow-once/allow-always/deny）→ C# 侧 `OpenClawBridge` 新增 ActiveStepCount/ActiveStepLabel/ActiveTaskId/PendingApproval/LastApprovalOk 等静态原子属性 + `RefreshTaskProgress`/`ApproveTaskAsync` → 实测 steps=2 干净输出（echo step1/step2） |
+| 2026-08-12 | **并行化 + exec 审批打通**：全局 `requestChain` → per-session `requestChains`（同 sessionKey 串行、跨 sessionKey 并行，多任务实测差 88ms；任务独立 sessionKey `agent:main:task-<id>`）→ `pendingApproval` 加 `kind` 标记（exec/plugin）→ 审批决议按 kind 选 API（exec→`exec.approval.resolve` / plugin→`plugin.approval.resolve`）→ 配置 `tools.exec.mode=ask` → E2E 实测：提交 hostname 任务 → pendingApproval(kind=exec) 到达 bridge → approve 回执 success:true → 任务 done 且返回 hostname 输出（此前回执失败 `unknown or expired approval id`，根因：exec 审批误用 plugin.approval.resolve） |
 
 ## 四、编写注意事项
 
