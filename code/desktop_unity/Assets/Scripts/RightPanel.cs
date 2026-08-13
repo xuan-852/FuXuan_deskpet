@@ -27,7 +27,7 @@ public class RightPanel : MonoBehaviour
     [Header("窗口尺寸（常规窗口）")]
     public float panelWidth = 560f;        // 窗口宽度
     public float panelHeight = 720f;       // 窗口高度（长方形偏正方）
-    public float inputBarHeight = 48f;     // 底部输入框高度
+    public float inputBarHeight = 72f;     // 底部输入框高度（QQ 参照，1.5×48）
 
     [Header("热键")]
     public KeyCode toggleKey = KeyCode.BackQuote;  // ~ 键切换（窗口内）
@@ -123,6 +123,33 @@ public class RightPanel : MonoBehaviour
     private float _approvalShownAt = -1f;  // 审批弹窗打开时间（60s 自动拒绝）
     private bool _approvalDialogOpen = false; // 审批弹窗是否打开
 
+    // ==================== QQ 式两级界面（会话列表 ⇄ 聊天） ====================
+    /// <summary>窗口视图：SessionList=第一级窄条会话列表；Chat=第二级展开（左会话栏+右聊天区）</summary>
+    private enum PanelView { SessionList, Chat }
+    private PanelView _currentView = PanelView.SessionList;
+
+    // 尺寸参照 QQ 实测（Win32：324×846 窄条模式）；展开后左会话栏 280 + 右聊天区 580
+    // ★ QQ 实测基准 324x846，按 1.5 倍放大（边长），字体同步参照 QQ
+    private const float SESSION_LIST_W = 486f;   // 第一级窄条宽度（324×1.5）
+    private const float SESSION_LIST_H = 1269f;  // 第一级高度（846×1.5）
+    private const float CHAT_PANEL_W = 1290f;    // 第二级展开宽度（420 + 870）
+    private const float CHAT_PANEL_H = 1269f;    // 第二级高度
+    private const float SIDEBAR_W = 420f;        // 第二级左侧会话栏宽度（280×1.5）
+
+    private Vector2 _sessionScroll;              // 第一级会话列表滚动位置
+    private bool _sessionDirty = true;           // 会话列表数据待刷新（History 变化置 true）
+    private int _activeSession = 0;              // 当前会话索引（第二级左侧高亮）
+    private readonly List<ChatSession> _sessions = new List<ChatSession>(); // 会话列表（当前单角色，多角色扩展预留）
+
+    /// <summary>会话条目（QQ 式会话列表项）</summary>
+    private class ChatSession
+    {
+        public string name;        // 会话/角色名
+        public string lastMsg;     // 最后消息摘要（截断显示）
+        public string lastTime;    // 最后时间 HH:mm
+        public Texture2D avatar;   // 头像纹理
+    }
+
     // ==================== QQ 式对话气泡 ====================
     private GUIStyle _bubbleFxStyle;       // 符玄气泡（左，紫）
     private GUIStyle _bubbleUserStyle;     // 用户气泡（右，蓝）
@@ -151,7 +178,7 @@ public class RightPanel : MonoBehaviour
 
     // ==================== 窗口拉伸 ====================
     private bool _isResizing = false;
-    private const float MIN_PANEL_W = 400f;
+    private const float MIN_PANEL_W = 300f;
     private const float MIN_PANEL_H = 480f;
     private const float MAX_PANEL_W = 1920f;
     private const float MAX_PANEL_H = 1600f;
@@ -227,11 +254,14 @@ public class RightPanel : MonoBehaviour
         RefreshRefs();
         // 恢复字体档位（默认 1=A2 1.2×）
         _fontScaleLevel = Mathf.Clamp(PlayerPrefs.GetInt("RightPanelFontScale", 1), 0, FONT_SCALES.Length - 1);
-        // 常规窗口：居中显示（长方形偏正方）
-        float x = (Screen.width - panelWidth) / 2f;
-        float y = (Screen.height - panelHeight) / 2f;
-        _panelRect = new Rect(x, y, panelWidth, panelHeight);
-        Debug.Log($"[RightPanel] 已就绪，屏幕={Screen.width}x{Screen.height}，窗口={panelWidth}x{panelHeight} 居中=({x},{y})");
+        // QQ 式两级界面：初始为第一级「会话列表」窄条（324×846，贴 QQ 实测），热键打开后双击进聊天
+        _currentView = PanelView.SessionList;
+        float w = Mathf.Min(SESSION_LIST_W, Screen.width - 20f);
+        float h = Mathf.Min(SESSION_LIST_H, Screen.height - 40f);
+        float x = (Screen.width - w) / 2f;
+        float y = (Screen.height - h) / 2f;
+        _panelRect = new Rect(x, y, w, h);
+        Debug.Log($"[RightPanel] 已就绪，屏幕={Screen.width}x{Screen.height}，视图=会话列表 {w}x{h} 居中=({x},{y})");
 
         // 全局热键 Shift+~（轮询物理键盘状态，不依赖窗口焦点，防误触）
         Debug.Log("[RightPanel] 全局热键已启用: Shift+~ (GetAsyncKeyState 轮询)");
@@ -279,19 +309,29 @@ public class RightPanel : MonoBehaviour
         {
             _lastLogCount = _chat.HistoryCount;
             RebuildLog();
+            _sessionDirty = true;   // 会话列表最后消息同步刷新
             _pendingAutoScroll = true;
         }
 
         // 3. 标题栏拖动（鼠标按住时在 Update 里更新位置）
         if (_isDragging)
         {
-            Vector2 mp = Input.mousePosition;
-            mp.y = Screen.height - mp.y; // 转 GUI 坐标
-            Vector2 newPos = mp - _dragOffset;
-            newPos.x = Mathf.Clamp(newPos.x, 0, Screen.width - panelWidth);
-            newPos.y = Mathf.Clamp(newPos.y, 0, Screen.height - panelHeight);
-            _panelRect.x = newPos.x;
-            _panelRect.y = newPos.y;
+            // ★ 防吸鼠标：左键已松开但某视图漏了 MouseUp 复位时，强制结束拖动
+            if (!Input.GetMouseButton(0))
+            {
+                _isDragging = false;
+                _isResizing = false;
+            }
+            else
+            {
+                Vector2 mp = Input.mousePosition;
+                mp.y = Screen.height - mp.y; // 转 GUI 坐标
+                Vector2 newPos = mp - _dragOffset;
+                newPos.x = Mathf.Clamp(newPos.x, 0, Screen.width - panelWidth);
+                newPos.y = Mathf.Clamp(newPos.y, 0, Screen.height - panelHeight);
+                _panelRect.x = newPos.x;
+                _panelRect.y = newPos.y;
+            }
         }
 
         // 4. 订阅 AI 回复（用于形象跳跃反馈）+ 表情标记（用于徽章）
@@ -342,7 +382,56 @@ public class RightPanel : MonoBehaviour
         _isOpen = !_isOpen;
         if (_isOpen)
         {
+            // 热键打开默认落第一级「会话列表」（QQ 式：窄条列表 → 双击进聊天）
+            _currentView = PanelView.SessionList;
+            ApplyViewSize();
             _inputFocused = true; // 打开后自动聚焦输入框
+        }
+    }
+
+    /// <summary>按当前视图应用窗口尺寸（窄条 ⇄ 展开，左上角保持，超界自动收拢）</summary>
+    private void ApplyViewSize()
+    {
+        float w = _currentView == PanelView.SessionList ? SESSION_LIST_W : CHAT_PANEL_W;
+        float h = _currentView == PanelView.SessionList ? SESSION_LIST_H : CHAT_PANEL_H;
+        w = Mathf.Min(w, Screen.width - 20f);
+        h = Mathf.Min(h, Screen.height - 40f);
+        float nx = Mathf.Min(_panelRect.x, Screen.width - w - 4f);
+        float ny = Mathf.Min(_panelRect.y, Screen.height - h - 4f);
+        _panelRect = new Rect(Mathf.Max(nx, 0f), Mathf.Max(ny, 0f), w, h);
+        panelWidth = w;
+        panelHeight = h;
+        Debug.Log($"[RightPanel] 视图切换 → {_currentView}，窗口={w}x{h} @ ({_panelRect.x:F0},{_panelRect.y:F0})");
+    }
+
+    /// <summary>双击会话 → 进入聊天视图（窗口展开，左会话栏+右聊天区）</summary>
+    private void EnterChat(int sessionIdx)
+    {
+        if (sessionIdx < 0 || sessionIdx >= _sessions.Count) return;
+        _activeSession = sessionIdx;
+        _currentView = PanelView.Chat;
+        ApplyViewSize();
+        _inputFocused = true;          // 进入聊天后聚焦输入框
+        _pendingAutoScroll = true;     // 聊天日志滚到底
+        Debug.Log($"[RightPanel] 进入聊天: {_sessions[sessionIdx].name}");
+    }
+
+    /// <summary>聊天视图「◀ 返回」→ 回到会话列表（窗口收窄）</summary>
+    public void BackToSessionList()
+    {
+        _currentView = PanelView.SessionList;
+        ApplyViewSize();
+        Debug.Log("[RightPanel] 返回会话列表");
+    }
+
+    /// <summary>刷新标题栏时间（1s 节流）</summary>
+    private void RefreshTime()
+    {
+        _timeRefreshTimer += Time.deltaTime;
+        if (_timeRefreshTimer > 1f || string.IsNullOrEmpty(_timeDisplay))
+        {
+            _timeRefreshTimer = 0f;
+            _timeDisplay = System.DateTime.Now.ToString("HH:mm");
         }
     }
 
@@ -557,18 +646,41 @@ public class RightPanel : MonoBehaviour
         GUI.color = Color.white;
 
         // ═══════════════════════════════════════
+        //  视图分发 — QQ 式两级界面
+        //  第一级：会话列表窄条（热键打开默认）；第二级：左会话栏 + 右聊天区（双击进入）
+        // ═══════════════════════════════════════
+        if (_currentView == PanelView.SessionList)
+        {
+            DrawSessionListView(px, py, pw, ph, mp);
+            return; // 第一级不渲染聊天内容
+        }
+        // 第二级：左侧会话栏占 SIDEBAR_W，聊天区整体右移
+        DrawSessionSidebar(px, py, SIDEBAR_W, ph, mp);
+        px += SIDEBAR_W;
+        pw -= SIDEBAR_W;
+
+        // ═══════════════════════════════════════
         //  终端标题栏 — [像素符玄] 符玄@太卜司:~ + 状态 + 时间 + ✕
         // ═══════════════════════════════════════
-        float titleH = 36f;
+        float titleH = 54f;
         Rect titleBarRect = new Rect(px + 2f, py + 2f, pw - 4f, titleH);
         // 像素渐变标题栏背景
         GUI.DrawTexture(titleBarRect, _titleBarPixelTex);
         // 标题栏底部分隔线
         DrawPixelRect(new Rect(px + 2f, py + 2f + titleH, pw - 4f, 1f), new Color(0.58f, 0.42f, 0.88f, 0.6f));
 
+        // ◀ 返回会话列表（QQ 式展开窗口的收起按钮，聊天区左上角）
+        Rect backRect = new Rect(px + 10f, py + 10f, 34f, 34f);
+        if (backRect.Contains(mp))
+            DrawPixelRect(backRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
+        if (GUI.Button(backRect, "◀", _termToolBtnStyle))
+        {
+            BackToSessionList();
+        }
+
         // 符玄头像（标题栏左侧，30×30，带深色描边以增强对比）
-        float fxHeadSize = 30f;
-        Rect fxHeadRect = new Rect(px + 8f, py + 4f, fxHeadSize, fxHeadSize);
+        float fxHeadSize = 42f;
+        Rect fxHeadRect = new Rect(px + 54f, py + 6f, fxHeadSize, fxHeadSize);
         // 描边（在头像下方画一层深色方形，让小头像在亮背景上更易识别）
         DrawPixelRect(new Rect(fxHeadRect.x - 2f, fxHeadRect.y - 2f, fxHeadRect.width + 4f, fxHeadRect.height + 4f), new Color(0f, 0f, 0f, 0.65f));
         GUI.DrawTexture(fxHeadRect, _pixelFxTex);
@@ -598,18 +710,18 @@ public class RightPanel : MonoBehaviour
         }
 
         GUI.color = statusC;
-        GUI.DrawTexture(new Rect(px + fxHeadSize + 12f, py + titleH / 2f - 3f, 7f, 7f), _statusDotTex);
+        GUI.DrawTexture(new Rect(px + fxHeadSize + 16f, py + titleH / 2f - 4f, 9f, 9f), _statusDotTex);
         GUI.color = Color.white;
 
         // 卦象三爻装饰（金色，太卜司占卜符号）
         if (_hexagramTex != null)
-            GUI.DrawTexture(new Rect(px + fxHeadSize + 24f, py + titleH / 2f - 7f, 14f, 14f), _hexagramTex);
+            GUI.DrawTexture(new Rect(px + fxHeadSize + 32f, py + titleH / 2f - 10f, 18f, 18f), _hexagramTex);
 
-        GUI.Label(new Rect(px + fxHeadSize + 46f, py + 3f, pw - 220f, 16f), "符玄@太卜司: ~", _termTitleStyle);
-        GUI.Label(new Rect(px + fxHeadSize + 46f, py + 19f, pw - 220f, 14f), statusText, _termStatusStyle);
+        GUI.Label(new Rect(px + fxHeadSize + 60f, py + 4f, pw - 260f, 24f), "符玄@太卜司: ~", _termTitleStyle);
+        GUI.Label(new Rect(px + fxHeadSize + 60f, py + 29f, pw - 260f, 20f), statusText, _termStatusStyle);
 
         // ——— 字体档位按钮（时间左侧，点击循环 A → A2 → A3 → A4） ———
-        Rect fontBtnRect = new Rect(px + pw - 138f, py + 4f, 32f, 28f);
+        Rect fontBtnRect = new Rect(px + pw - 170f, py + 10f, 40f, 34f);
         if (fontBtnRect.Contains(mp))
             DrawPixelRect(fontBtnRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
         string fontLbl = _fontScaleLevel == 0 ? "A" : "A" + (_fontScaleLevel + 1);
@@ -618,17 +730,12 @@ public class RightPanel : MonoBehaviour
             CycleFontScale();
 
         // 时间（标题栏右，✕ 左侧）
-        _timeRefreshTimer += Time.deltaTime;
-        if (_timeRefreshTimer > 1f || string.IsNullOrEmpty(_timeDisplay))
-        {
-            _timeRefreshTimer = 0f;
-            _timeDisplay = System.DateTime.Now.ToString("HH:mm");
-        }
-        GUI.Label(new Rect(px + pw - 90f, py + 8f, 44f, 16f), _timeDisplay, _termTimeStyle);
+        RefreshTime();
+        GUI.Label(new Rect(px + pw - 110f, py + 14f, 56f, 20f), _timeDisplay, _termTimeStyle);
 
         // ——— ✕ 关闭按钮（右上角，像素方块风格） ———
-        float closeSize = 24f + _fontScaleLevel * 2f;
-        Rect closeRect = new Rect(px + pw - closeSize - 8f, py + 6f, closeSize, closeSize);
+        float closeSize = 32f + _fontScaleLevel * 2f;
+        Rect closeRect = new Rect(px + pw - closeSize - 12f, py + 10f, closeSize, closeSize);
         // hover 时画红色方块背景
         if (closeRect.Contains(mp))
             DrawPixelRect(closeRect, new Color(0.80f, 0.25f, 0.25f, 0.35f));
@@ -637,12 +744,15 @@ public class RightPanel : MonoBehaviour
             Close();
         }
 
-        // ——— 标题栏拖动（按住标题栏移动窗口，排除 ✕ 按钮区域防误触） ———
+        // ——— 标题栏拖动（按住标题栏移动窗口，排除 ✕ / ◀ 返回 / 字体按钮防误触） ———
         if (Event.current.type == EventType.MouseDown && Event.current.button == 0
-            && titleBarRect.Contains(mp) && !closeRect.Contains(mp))
+            && titleBarRect.Contains(mp)
+            && !closeRect.Contains(mp) && !backRect.Contains(mp) && !fontBtnRect.Contains(mp))
         {
             _isDragging = true;
-            _dragOffset = mp - new Vector2(px, py);
+            // ★ 修复：此处 px 已被 += SIDEBAR_W 右移，必须用窗口原点 _panelRect 计算偏移，
+            //   否则窗口会偏离鼠标点击点固定距离（拖拽吸边）
+            _dragOffset = mp - new Vector2(_panelRect.x, _panelRect.y);
             Event.current.Use();
         }
         else if (Event.current.type == EventType.MouseUp)
@@ -654,9 +764,9 @@ public class RightPanel : MonoBehaviour
         // ═══════════════════════════════════════
         //  工具行 — 终端式文本按钮 [聊] [设] [签] [告] [收]
         // ═══════════════════════════════════════
-        float toolRowY = py + titleH + 8f;
-        float toolBtnW = 48f;
-        float toolBtnH = 26f + _fontScaleLevel * 3f;
+        float toolRowY = py + titleH + 10f;
+        float toolBtnW = 60f;
+        float toolBtnH = 36f + _fontScaleLevel * 3f;
         float toolBtnGap = 8f;
         float toolTotalW = _tools.Length * toolBtnW + (_tools.Length - 1) * toolBtnGap;
         float toolStartX = px + (pw - toolTotalW) / 2f;
@@ -702,7 +812,7 @@ public class RightPanel : MonoBehaviour
 
         float logViewW = pw - 16f;
         float maxBubbleW = logViewW * 0.72f;   // 气泡最大宽度
-        float avatarSize = 24f + _fontScaleLevel * 2f;  // 头像尺寸（随档位略增）
+        float avatarSize = 36f + _fontScaleLevel * 2f;  // 头像尺寸（随档位略增）
         Rect logView = new Rect(px + 8f, logY, logViewW, logH);
 
         // 日志区背景（略深于面板）
@@ -863,12 +973,12 @@ public class RightPanel : MonoBehaviour
 
         // > 提示符
         float promptW = 16f;
-        float tfH = 28f + _fontScaleLevel * 3f;
+        float tfH = 44f + _fontScaleLevel * 4f;
         float tfY = inputY + (inputBarHeight - tfH) / 2f;
         GUI.Label(new Rect(inputX + fxSize + 8f, tfY, promptW, tfH), ">", _termPromptStyle);
 
         // 输入框（透明背景，文字直接绘在输入条上）
-        float sendBtnSize = 30f;
+        float sendBtnSize = 44f;
         float tfX = inputX + fxSize + promptW + 12f;
         float tfW = inputW - fxSize - promptW - 18f - sendBtnSize - 6f;
         Rect inputBgRect = new Rect(tfX, tfY, tfW, tfH);
@@ -940,15 +1050,15 @@ public class RightPanel : MonoBehaviour
             GUI.FocusControl("rightPanelInput");
         }
 
-        // ——— 右下角拉伸手柄（可调窗口大小，QQ 式） ———
+        // ——— 右下角拉伸手柄（可调窗口大小，QQ 式；用整体面板尺寸，含左侧会话栏） ———
         float handleSize = 20f;
-        Rect resizeRect = new Rect(px + pw - handleSize, py + ph - handleSize, handleSize, handleSize);
+        Rect resizeRect = new Rect(_panelRect.xMax - handleSize, _panelRect.yMax - handleSize, handleSize, handleSize);
         bool resizeHover = resizeRect.Contains(mp);
         // 手柄视觉：三条斜线
         float hc = resizeHover ? 1f : 0.6f;
-        DrawPixelRect(new Rect(px + pw - 16f, py + ph - 6f, 9f, 1f), new Color(0.66f, 0.50f, 0.95f, hc));
-        DrawPixelRect(new Rect(px + pw - 21f, py + ph - 11f, 9f, 1f), new Color(0.66f, 0.50f, 0.95f, hc * 0.8f));
-        DrawPixelRect(new Rect(px + pw - 26f, py + ph - 16f, 9f, 1f), new Color(0.66f, 0.50f, 0.95f, hc * 0.6f));
+        DrawPixelRect(new Rect(_panelRect.xMax - 16f, _panelRect.yMax - 6f, 9f, 1f), new Color(0.66f, 0.50f, 0.95f, hc));
+        DrawPixelRect(new Rect(_panelRect.xMax - 21f, _panelRect.yMax - 11f, 9f, 1f), new Color(0.66f, 0.50f, 0.95f, hc * 0.8f));
+        DrawPixelRect(new Rect(_panelRect.xMax - 26f, _panelRect.yMax - 16f, 9f, 1f), new Color(0.66f, 0.50f, 0.95f, hc * 0.6f));
 
         if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && resizeRect.Contains(mp))
         {
@@ -957,8 +1067,8 @@ public class RightPanel : MonoBehaviour
         }
         if (_isResizing && Event.current.type == EventType.MouseDrag)
         {
-            float newW = Mathf.Clamp(Event.current.mousePosition.x - px, MIN_PANEL_W, MAX_PANEL_W);
-            float newH = Mathf.Clamp(Event.current.mousePosition.y - py, MIN_PANEL_H, MAX_PANEL_H);
+            float newW = Mathf.Clamp(Event.current.mousePosition.x - _panelRect.x, MIN_PANEL_W, MAX_PANEL_W);
+            float newH = Mathf.Clamp(Event.current.mousePosition.y - _panelRect.y, MIN_PANEL_H, MAX_PANEL_H);
             _panelRect.width = newW;
             _panelRect.height = newH;
             panelWidth = newW;
@@ -983,9 +1093,9 @@ public class RightPanel : MonoBehaviour
             }
         }
 
-        // ——— OpenClaw 审批模态弹窗（最上层绘制，敏感命令必须人工确认） ———
+        // ——— OpenClaw 审批模态弹窗（最上层绘制，敏感命令必须人工确认；覆盖整个面板含侧栏） ———
         if (_approvalDialogOpen)
-            DrawApprovalDialog(px, py, pw, ph);
+            DrawApprovalDialog(_panelRect.x, _panelRect.y, _panelRect.width, _panelRect.height);
     }
 
     // ==================================================================
@@ -1042,6 +1152,193 @@ public class RightPanel : MonoBehaviour
             Event.current.Use();
     }
 
+    // ==================================================================
+    //  QQ 式两级界面：第一级「会话列表」视图（热键打开默认）
+    //  布局参照 QQ 窄条：标题栏 50 → 搜索/新建 32 → 会话列表（滚动）→ 底部工具
+    // ==================================================================
+    private void DrawSessionListView(float px, float py, float pw, float ph, Vector2 mp)
+    {
+        RefreshSessionList();
+        RefreshTime();
+
+        float titleH = 76f;
+        Rect titleBarRect = new Rect(px + 2f, py + 2f, pw - 4f, titleH);
+        GUI.DrawTexture(titleBarRect, _titleBarPixelTex);
+        DrawPixelRect(new Rect(px + 2f, py + 2f + titleH, pw - 4f, 1f), new Color(0.58f, 0.42f, 0.88f, 0.6f));
+
+        // —— 标题：符玄头像 + 名称 + 状态 ——
+        float headSize = 48f;
+        Rect headRect = new Rect(px + 12f, py + (titleH - headSize) / 2f, headSize, headSize);
+        DrawPixelRect(new Rect(headRect.x - 2f, headRect.y - 2f, headRect.width + 4f, headRect.height + 4f), new Color(0f, 0f, 0f, 0.65f));
+        GUI.DrawTexture(headRect, _pixelFxTex);
+        GUI.Label(new Rect(headRect.xMax + 12f, py + 9f, pw - 200f, 28f), "符玄·太卜司", _termTitleStyle);
+        bool waiting = _chat != null && _chat.IsWaiting;
+        GUI.Label(new Rect(headRect.xMax + 12f, py + 42f, pw - 200f, 22f), waiting ? "● 思考中…" : "● 就绪", _termStatusStyle);
+
+        // —— 时间 + ✕ 关闭 ——
+        GUI.Label(new Rect(px + pw - 130f, py + 20f, 60f, 22f), _timeDisplay, _termTimeStyle);
+        float closeSize = 36f;
+        Rect closeRect = new Rect(px + pw - closeSize - 14f, py + (titleH - closeSize) / 2f, closeSize, closeSize);
+        if (closeRect.Contains(mp))
+            DrawPixelRect(closeRect, new Color(0.80f, 0.25f, 0.25f, 0.35f));
+        if (GUI.Button(closeRect, "✕", _closeBtnStyle)) { Close(); }
+
+        // —— 标题栏拖拽（排除 ✕） ——
+        if (Event.current.type == EventType.MouseDown && Event.current.button == 0
+            && titleBarRect.Contains(mp) && !closeRect.Contains(mp))
+        {
+            _isDragging = true;
+            _dragOffset = mp - new Vector2(px, py);
+            Event.current.Use();
+        }
+        else if (Event.current.type == EventType.MouseUp)
+        {
+            _isDragging = false;   // ★ 会话列表视图也要复位，否则窗口一直吸在鼠标上
+            _isResizing = false;
+        }
+
+        // —— 搜索/新建区（QQ 式：搜索胶囊 + 新建按钮占位） ——
+        float searchY = py + titleH + 12f;
+        float searchH = 48f;
+        Rect searchRect = new Rect(px + 12f, searchY, pw - 76f, searchH);
+        GUI.DrawTexture(searchRect, _inputBgTex);
+        GUI.Label(new Rect(searchRect.x + 20f, searchRect.y + 10f, searchRect.width - 28f, 28f), "🔍 搜索会话", _termPlaceholderStyle);
+        Rect newBtnRect = new Rect(px + pw - 60f, searchY, 48f, searchH);
+        if (GUI.Button(newBtnRect, "＋", _termToolBtnStyle))
+            Debug.Log("[RightPanel] 新建会话（多角色扩展预留）");
+
+        // —— 会话列表（滚动，双击进入聊天） ——
+        float listY = searchY + searchH + 12f;
+        float listH = ph - (listY - py) - 80f;
+        if (listH < 40f) listH = 40f;
+        float itemH = 96f;
+        Rect listView = new Rect(px + 6f, listY, pw - 12f, listH);
+        DrawPixelRect(listView, new Color(0.05f, 0.04f, 0.09f, 0.35f));
+        float contentH = Mathf.Max(_sessions.Count * itemH + 8f, listH);
+        Rect contentRect = new Rect(0f, 0f, listView.width - 8f, contentH);
+        _sessionScroll = GUI.BeginScrollView(listView, _sessionScroll, contentRect, false, false, _invisibleScrollbar, _invisibleScrollbar);
+        Vector2 localMp = new Vector2(mp.x - listView.x + _sessionScroll.x, mp.y - listView.y + _sessionScroll.y);
+
+        for (int i = 0; i < _sessions.Count; i++)
+        {
+            var s = _sessions[i];
+            Rect itemRect = new Rect(2f, 8f + i * itemH, contentRect.width, itemH - 8f);
+            if (itemRect.Contains(localMp))
+                DrawPixelRect(itemRect, new Color(0.50f, 0.35f, 0.80f, 0.18f));
+            DrawPixelRect(new Rect(itemRect.x + 12f, itemRect.yMax - 1f, itemRect.width - 24f, 1f), new Color(0.45f, 0.35f, 0.65f, 0.18f));
+            // 头像 60px 圆角方块
+            float av = 60f;
+            Rect avRect = new Rect(itemRect.x + 12f, itemRect.y + (itemH - 8f - av) / 2f, av, av);
+            GUI.DrawTexture(avRect, s.avatar ?? _pixelFxTex);
+            // 名称（粗金）+ 时间（右上）
+            GUI.Label(new Rect(avRect.xMax + 14f, itemRect.y + 10f, contentRect.width - av - 130f, 28f), s.name, _termTitleStyle);
+            GUI.Label(new Rect(itemRect.x + itemRect.width - 96f, itemRect.y + 16f, 84f, 22f), s.lastTime, _termTimeStyle);
+            // 最后消息（灰，单行截断）
+            string msg = s.lastMsg ?? "";
+            if (msg.Length > 22) msg = msg.Substring(0, 22) + "…";
+            GUI.Label(new Rect(avRect.xMax + 14f, itemRect.y + 46f, contentRect.width - av - 34f, 26f), msg, _termLogDimStyle);
+            // 双击进入聊天（QQ 式交互）
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 0
+                && itemRect.Contains(localMp) && Event.current.clickCount == 2)
+            {
+                Event.current.Use();
+                EnterChat(i);
+            }        }
+        GUI.EndScrollView();
+
+        // —— 底部工具入口（设置/便签/报告 → BallPanel，QQ 底部工具栏位置） ——
+        float toolY = py + ph - 76f;
+        DrawPixelRect(new Rect(px + 2f, toolY - 8f, pw - 4f, 1f), new Color(0.58f, 0.42f, 0.88f, 0.4f));
+        float toolW = (pw - 48f) / 3f;
+        var toolDefs = new (string label, BallPanel.PanelType type)[]
+        {
+            ("⚙ 设置", BallPanel.PanelType.Settings),
+            ("📋 便签", BallPanel.PanelType.Reminders),
+            ("📝 报告", BallPanel.PanelType.Report)
+        };
+        for (int i = 0; i < toolDefs.Length; i++)
+        {
+            Rect btnRect = new Rect(px + 12f + i * toolW, toolY + 12f, toolW - 8f, 50f);
+            if (GUI.Button(btnRect, toolDefs[i].label, _termToolBtnStyle) && _ballPanel != null)
+                _ballPanel.ShowPanel(toolDefs[i].type, new Vector2(px - 440f, py + 40f));
+        }
+
+        // 右键关闭（快捷收面板）
+        if (Event.current.type == EventType.MouseDown && Event.current.button == 1)
+        {
+            Close();
+            Event.current.Use();
+        }
+    }
+
+    // ==================================================================
+    //  第二级：左侧会话栏（QQ 展开窗口的左栏：会话条目，点击切换角色）
+    // ==================================================================
+    private void DrawSessionSidebar(float px, float py, float w, float ph, Vector2 mp)
+    {
+        RefreshSessionList();
+        GUI.DrawTexture(new Rect(px, py, w, ph), _inputBarPixelTex);
+        DrawPixelRect(new Rect(px + w - 1f, py, 1f, ph), new Color(0.58f, 0.42f, 0.88f, 0.5f));
+        // 栏标题
+        GUI.Label(new Rect(px + 20f, py + 16f, w - 40f, 30f), "会话", _termTitleStyle);
+        DrawPixelRect(new Rect(px + 12f, py + 58f, w - 24f, 1f), new Color(0.45f, 0.35f, 0.65f, 0.25f));
+        // 会话条目（当前单角色，多角色扩展后此处渲染多个）
+        float itemH = 84f;
+        float listY = py + 66f;
+        for (int i = 0; i < _sessions.Count; i++)
+        {
+            var s = _sessions[i];
+            bool active = i == _activeSession;
+            Rect itemRect = new Rect(px + 6f, listY + i * itemH, w - 12f, itemH - 8f);
+            if (active)
+                DrawPixelRect(itemRect, new Color(0.55f, 0.40f, 0.85f, 0.30f));       // 选中高亮
+            else if (itemRect.Contains(mp))
+                DrawPixelRect(itemRect, new Color(0.50f, 0.35f, 0.80f, 0.15f));       // 悬停
+            float av = 54f;
+            Rect avRect = new Rect(itemRect.x + 12f, itemRect.y + (itemH - 8f - av) / 2f, av, av);
+            GUI.DrawTexture(avRect, s.avatar ?? _pixelFxTex);
+            GUI.Label(new Rect(avRect.xMax + 12f, itemRect.y + 12f, w - av - 40f, 26f), s.name,
+                active ? _termToolBtnHoverStyle : _termTitleStyle);
+            string msg = s.lastMsg ?? "";
+            if (msg.Length > 10) msg = msg.Substring(0, 10) + "…";
+            GUI.Label(new Rect(avRect.xMax + 12f, itemRect.y + 46f, w - av - 36f, 22f), msg, _termLogDimStyle);
+            // 单击切换会话（多角色切换）
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && itemRect.Contains(mp))
+            {
+                _activeSession = i;
+                _pendingAutoScroll = true;
+                Event.current.Use();
+            }
+        }
+    }
+
+    /// <summary>刷新会话列表数据：当前单角色「符玄」，最后消息取 ChatManager 历史最后一条非空</summary>
+    private void RefreshSessionList()
+    {
+        if (!_sessionDirty) return;
+        _sessionDirty = false;
+        _sessions.Clear();
+        var s = new ChatSession
+        {
+            name = "符玄",
+            avatar = _pixelFxTex,
+            lastMsg = "—",
+            lastTime = System.DateTime.Now.ToString("HH:mm")
+        };
+        if (_chat != null && _chat.HistoryCount > 0)
+        {
+            var hist = _chat.History;
+            for (int i = hist.Count - 1; i >= 0; i--)
+            {
+                if (string.IsNullOrEmpty(hist[i].content)) continue;
+                s.lastMsg = ChatManager.CleanDisplayText(hist[i].content);
+                if (s.lastMsg.Length > 24) s.lastMsg = s.lastMsg.Substring(0, 24) + "…";
+                break;
+            }
+        }
+        _sessions.Add(s);
+    }
+
     // ==================== 样式初始化 ====================
 
     private void InitStyles()
@@ -1087,7 +1384,7 @@ public class RightPanel : MonoBehaviour
             normal = { textColor = cTextMain, background = _inputBgTex },
             hover = { textColor = cTextMain, background = _inputHoverBgTex },
             focused = { textColor = Color.white, background = _inputHoverBgTex },
-            fontSize = 15,
+            fontSize = 18,
             padding = new RectOffset(16, 14, 8, 8),
             alignment = TextAnchor.MiddleLeft,
             border = new RectOffset(14, 14, 14, 14),
@@ -1099,7 +1396,7 @@ public class RightPanel : MonoBehaviour
         _placeholderStyle = new GUIStyle
         {
             normal = { textColor = new Color(0.72f, 0.68f, 0.82f, 0.9f) },
-            fontSize = 15,
+            fontSize = 18,
             padding = new RectOffset(14, 10, 8, 8),
             alignment = TextAnchor.MiddleLeft
         };
@@ -1117,63 +1414,63 @@ public class RightPanel : MonoBehaviour
 
         _termTitleStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 14, fontStyle = FontStyle.Bold,
+            font = _monoFont, fontSize = 19, fontStyle = FontStyle.Bold,
             normal = { textColor = new Color(0.90f, 0.80f, 0.58f, 1f) },  // 太卜司金
             alignment = TextAnchor.MiddleLeft
         };
         _termStatusStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 12,
+            font = _monoFont, fontSize = 17,
             normal = { textColor = new Color(0.58f, 0.55f, 0.65f, 0.9f) },
             alignment = TextAnchor.MiddleLeft
         };
         _termTimeStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 13,
+            font = _monoFont, fontSize = 17,
             normal = { textColor = new Color(0.58f, 0.55f, 0.65f, 0.9f) },
             alignment = TextAnchor.MiddleRight
         };
         _termToolBtnStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 14,
+            font = _monoFont, fontSize = 18,
             normal = { textColor = new Color(0.66f, 0.62f, 0.76f, 0.9f) },
             hover = { textColor = new Color(0.75f, 0.62f, 0.98f, 1f) },
             alignment = TextAnchor.MiddleCenter
         };
         _termToolBtnHoverStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 14, fontStyle = FontStyle.Bold,
+            font = _monoFont, fontSize = 18, fontStyle = FontStyle.Bold,
             normal = { textColor = new Color(0.80f, 0.68f, 1.00f, 1f) },
             hover = { textColor = Color.white },
             alignment = TextAnchor.MiddleCenter
         };
         _termLogStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 14,
+            font = _monoFont, fontSize = 18,
             normal = { textColor = new Color(0.80f, 0.72f, 0.95f, 1f) },
             alignment = TextAnchor.UpperLeft
         };
         _termLogUserStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 14,
+            font = _monoFont, fontSize = 18,
             normal = { textColor = new Color(0.80f, 0.90f, 0.98f, 1f) },
             alignment = TextAnchor.UpperLeft
         };
         _termLogDimStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 14, wordWrap = true,
+            font = _monoFont, fontSize = 18, wordWrap = true,
             normal = { textColor = new Color(0.55f, 0.54f, 0.60f, 0.9f) },
             alignment = TextAnchor.UpperLeft
         };
         _termPromptStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 17, fontStyle = FontStyle.Bold,
+            font = _monoFont, fontSize = 20, fontStyle = FontStyle.Bold,
             normal = { textColor = new Color(0.62f, 0.48f, 0.95f, 1f) },
             alignment = TextAnchor.MiddleLeft
         };
         _termInputStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 15,
+            font = _monoFont, fontSize = 18,
             normal = { textColor = Color.white },
             focused = { textColor = Color.white },
             alignment = TextAnchor.MiddleLeft,
@@ -1182,7 +1479,7 @@ public class RightPanel : MonoBehaviour
         };
         _termPlaceholderStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 14,
+            font = _monoFont, fontSize = 18,
             normal = { textColor = new Color(0.55f, 0.52f, 0.62f, 0.85f) },
             alignment = TextAnchor.MiddleLeft,
             padding = new RectOffset(8, 6, 4, 4)
@@ -1197,22 +1494,22 @@ public class RightPanel : MonoBehaviour
             new Color(0.55f, 0.72f, 0.95f, 0.9f));
         _bubbleFxStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 14, wordWrap = true,
+            font = _monoFont, fontSize = 17, wordWrap = true,
             normal = { background = _bubbleFxTex, textColor = new Color(0.90f, 0.85f, 0.99f, 1f) },
-            padding = new RectOffset(10, 10, 8, 8),
+            padding = new RectOffset(12, 12, 10, 10),
             border = new RectOffset(10, 10, 10, 10)
         };
         _bubbleUserStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 14, wordWrap = true,
+            font = _monoFont, fontSize = 17, wordWrap = true,
             normal = { background = _bubbleUserTex, textColor = new Color(0.85f, 0.92f, 0.99f, 1f) },
-            padding = new RectOffset(10, 10, 8, 8),
+            padding = new RectOffset(12, 12, 10, 10),
             border = new RectOffset(10, 10, 10, 10)
         };
         _userAvatarTex = GenRoundedRect(24, 24, 8, new Color(0.30f, 0.24f, 0.45f, 0.95f));
         _userAvatarStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 11, fontStyle = FontStyle.Bold,
+            font = _monoFont, fontSize = 14, fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleCenter,
             normal = { textColor = new Color(0.85f, 0.80f, 0.98f, 1f) }
         };
@@ -1235,7 +1532,7 @@ public class RightPanel : MonoBehaviour
             normal = { textColor = new Color(0.75f, 0.70f, 0.82f, 0.85f) },
             hover = { textColor = new Color(1f, 0.45f, 0.45f, 1f) },
             active = { textColor = Color.white },
-            fontSize = 14,
+            fontSize = 17,
             alignment = TextAnchor.MiddleCenter
         };
 

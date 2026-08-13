@@ -76,6 +76,38 @@
 - **次用途** → 桌宠本体（需 ×5~×6 放大，且与 Live2D 是两种美术，建议先做头像，本体切换做成可选项）
 - 建议补 2~4 帧：眨眼/说话口型/点头，共用同一精灵表
 
+### 2.6 QQ 式两级界面（会话列表 ⇄ 聊天，2026-08-13）
+
+**视图模型**：`PanelView` 枚举（`SessionList`=第一级窄条会话列表 / `Chat`=第二级展开）。热键打开**默认落 SessionList**（`Toggle()` 强制），双击会话条目进 `Chat`，◀ 返回收窄，✕ 关闭。
+
+**尺寸常量**（QQ Win32 实测 324×846 窄条为基准，**边长 ×1.5** 放大）：
+
+| 常量 | 值 | 含义 |
+|------|-----|------|
+| `SESSION_LIST_W/H` | 486 × 1269 | 第一级窄条（324×1.5 / 846×1.5） |
+| `CHAT_PANEL_W/H` | 1290 × 1269 | 第二级展开（420 + 870） |
+| `SIDEBAR_W` | 420 | 第二级左侧会话栏（280×1.5） |
+| `MIN_PANEL_W` | 300 | 拖拽最小宽度下限 |
+
+**视图分发**（OnGUI 顶部，RightPanel L652-660）：SessionList 直接 `DrawSessionListView` 并 return；Chat 先 `DrawSessionSidebar(px,py,SIDEBAR_W,ph,mp)` 画左会话栏，**然后 `px += SIDEBAR_W; pw -= SIDEBAR_W`** 把聊天区整体右移 420px（⚠️ 第二级拖拽必须意识到 px 已偏移，见下方拖拽修复）。
+
+**布局细节**：第一级标题栏 76px（头像 48 + 状态 + 时间 + ✕）+ 搜索胶囊 48px + 会话列表（滚动 itemH=96, av=60）+ 底部工具 50px；第二级左栏标题 30px、itemH=84、av=54、单击切换 `_activeSession`；聊天标题栏 titleH=54（◀ backRect 34×34、头像 42、状态/卦象、字体按钮 40×34、✕ 32+）。
+
+**字体 QQ 化**：Microsoft YaHei（`_monoFont`），标题 19 / 状态 17 / 时间 17 / 工具按钮 18 / 日志 18 / 气泡 17（padding 12,12,10,10）/ 输入 18 / 提示 20。字体档位按钮（A→A2→A3→A4，`CycleFontScale`）在标题栏时间左侧。
+
+**窗口尺寸切换**：`ApplyViewSize()` 按视图切宽（486⇄1290），**左上角保持**，超界自动收拢（`Mathf.Min` 夹到屏内），打 `视图切换 → {视图}，窗口={w}x{h} @ ({x},{y})` 日志（自动化验证靠它读窗口位置）。
+
+**★ 拖拽实现与坑（2026-08-13 修复验证）**：
+
+| 位置 | 代码 | 说明 |
+|------|------|------|
+| 第一级标题栏 | `_dragOffset = mp - new Vector2(px, py)` | px/py 即窗口原点（未偏移），正确 |
+| 第二级标题栏 | `_dragOffset = mp - new Vector2(_panelRect.x, _panelRect.y)` | ⚠️ **必须用窗口原点**——此处 px 已被 `+= SIDEBAR_W` 右移 420px，若用 `new Vector2(px, py)` 会把 420px 混入偏移，窗口固定在离鼠标点击点 420px 处拖动（用户报的「固定在离边框多远的地方」bug 根因） |
+| 防误触 | `!closeRect.Contains(mp) && !backRect.Contains(mp) && !fontBtnRect.Contains(mp)` | 拖标题栏时排除 ✕ / ◀ 返回 / 字体按钮 |
+| 防吸鼠标 | MouseUp 复位 `_isDragging=false; _isResizing=false`（两个视图都要）+ Update 中 `!Input.GetMouseButton(0)` 强制结束 | 漏复位会导致窗口一直吸在鼠标上 |
+
+拖拽更新在 `Update`（L317-336）：`newPos = mp - _dragOffset`，`Mathf.Clamp` 到屏内后写 `_panelRect.x/y`。**验证**：Chat @ (1037,166) 拖标题栏 (1300,190)→(1200,290)，`_dragOffset=(263,24)`，终点精确落 (937,266)（与理论值一致，跟手无偏移）。
+
 ## 三、开发历史迭代
 
 | 版本 | 日期 | 变更 |
@@ -83,6 +115,7 @@
 | — | — | 纯 IMGUI 界面 + 程序生成视觉（圆角/云纹/星点/CRT） |
 | N40 | 2026-08-08 | 17×24 像素化调研完成（`pixel-dialogue-optimization.md`）：开源方案汇总 + P0/P1/P2 落地清单 |
 | 2026-08-12 | **OpenClaw 任务可视化**（方案七）：标题栏状态区步骤显示（金色呼吸，优先级 任务>思考中>就绪）+ 日志区 `[openclaw]` 系统行 + 模态审批弹窗（红边三按钮，60s 自动拒绝，`DrawApprovalDialog`） |
+| 2026-08-13 | **QQ 式两级界面**：热键打开默认「会话列表」窄条（第一级），双击条目展开「左会话栏+右聊天区」（第二级），◀ 返回收窄；尺寸按 QQ 实测 324×846 基准 **1.5 倍放大**（486×1269 / 1290×1269 / SIDEBAR_W=420），字体全量 QQ 化（Microsoft YaHei，标题 19 / 气泡 17 / 输入 18）；**修复第二级拖拽偏移 bug**（`_dragOffset` 改用窗口原点 `_panelRect` 计算，排除 ✕/◀/字体按钮误触，MouseUp 复位 + Update 防吸保险），拖拽跟手验证通过 |
 
 ### 像素化落地清单（按成本排序，2026-08-08）
 
