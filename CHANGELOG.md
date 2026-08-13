@@ -4,6 +4,23 @@
 
 ---
 
+## N42 (2026-08-13)
+
+### 🔍 search_web 修复（双重根因，`WebSystemTools.cs` + `openclaw_bridge.js`）
+
+- **C# 侧 30s 超时**：`SearchWebTool.ExecuteAsyncTask` 传 `SearchWebAsync(query, 30)`，但真实搜索实测 60s+ → Unity 侧返回 `❌ 失联: Timeout`。修复：超时提升到 180s（与 `OpenClawBridge.cs` 默认一致，`docs/development-standards.md` 超时表本就规定搜索 180s）
+- **bridge unhandled rejection 崩溃**：`cancelTask()` 直接 `w.reject(new Error('Task cancelled'))`，若 `sendChatAndWait` 尚未 `await responsePromise`（还停在 `chatClient.client.request`），reject 先于 catch 注册 → Node v15+ 默认崩溃 → PM2 重启 14+ 次，请求撞上重启窗口。修复：`setImmediate(() => w.reject(...))` 延迟 reject
+- **断线自动重连**：原 `onDisconnected` 只置 `connected=false`，仅靠 PM2 兜底。新增 `reconnecting` 标志防重连风暴 + 断线 1s 后重连 + 失败 5s 后再试；waiter reject 同样 `setImmediate` 包装
+- **实测**：`/search?q=星穹铁道 符玄` 14.7s 返回 `{success:true}`；bridge restart_time 归零不再增长
+
+### 📜 日志机制修复（`DesktopPet.cs`，Player.log 0 B 根因）
+
+- **根因**：`Start()` 启动时 `fi.Delete()` 删除 Player.log + `CleanupLogFiles()` 超 2MB 删除重建——Unity 进程已持有文件句柄，删除后继续写"已删除句柄"，文件系统只剩 0 B 空壳，调试无日志
+- **修复**：移除删除逻辑；新增 `MirrorAllLogs`（`Application.logMessageReceivedThreaded +=`）全量镜像到 **`D:\DesktopPetData\logs\player_log.txt`**（每次追加即刷盘，Error/Exception 带堆栈，`_logLock` 防并发）；`CleanupLogFiles` 改为超 10MB 截断保留尾部 3000 行；启动时写 `===== 桌宠启动 =====` 标记
+- **实测**：启动后 player_log.txt 实时增长（182KB→184KB+），时间戳完整，65 术式/天气/LLM 全记录
+
+---
+
 ## N41 (2026-08-09)
 
 ### 🧩 像素表情包（`RightPanel.cs`）

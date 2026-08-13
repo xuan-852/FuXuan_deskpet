@@ -30,7 +30,9 @@ public class SearchWebTool : AsyncToolBase
             return "❌ 未说要搜什么";
 
         // 先发一条中间状态，由 AsyncToolBase 的 ExecuteAsync 处理首次返回
-        string result = await OpenClawBridge.SearchWebAsync(query, 30);
+        // ★ 超时 180s：与 bridge CHAT_TIMEOUT_MS 一致。此前传 30s，搜索经常耗时 60s+，
+        //    Unity 侧 30s 一到就返回「失联: Timeout」导致 search_web 频繁报错。
+        string result = await OpenClawBridge.SearchWebAsync(query, 180);
         if (string.IsNullOrEmpty(result) || result.StartsWith("❌"))
             return $"❌ 天机难测，未能搜到「{query}」：{result}";
 

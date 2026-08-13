@@ -166,6 +166,10 @@ public class DesktopPet : MonoBehaviour
     private const string CrashLogDir = @"D:\DesktopPetData\logs";
     private const string CrashLogPath = @"D:\DesktopPetData\logs\crash_log.txt";
     private const long CRASH_LOG_MAX_BYTES = 1024L * 1024L;  // crash_log.txt 超过1MB自动截断
+    // ★ 全量日志镜像：所有 Debug.Log/Warning/Error 追加到 player_log.txt（每次写入即刷盘，运行中可实时查看）
+    private const string FullLogPath = @"D:\DesktopPetData\logs\player_log.txt";
+    private const long FULL_LOG_MAX_BYTES = 10L * 1024L * 1024L; // player_log.txt 超过10MB自动截断
+    private static readonly object _logLock = new object(); // 日志镜像写锁（可能来自任意线程）
     private float _memoryCheckInterval = 30f;  // 每30秒检查一次内存
     private float _memoryCheckTimer = 0f;
     private const long MEMORY_WARNING_MB = 800L;  // 超过800MB触发GC
@@ -177,7 +181,6 @@ public class DesktopPet : MonoBehaviour
     private float _sysMemWarnCooldown = 0f;       // 防刷屏冷却
     private float _cleanupTimer = 0f;
     private const float CLEANUP_INTERVAL = 600f;  // 每10分钟清理一次旧日志
-    private const long PLAYER_LOG_MAX_BYTES = 2L * 1024L * 1024L; // Player.log 超过 2MB 自动删除重开
 
     /// <summary>监听 Unity 日志，捕获崩溃前最后一刻的痕迹</summary>
     private void CaptureCrashLog(string logString, string stackTrace, LogType type)
@@ -193,6 +196,30 @@ public class DesktopPet : MonoBehaviour
             {
                 // 崩溃处理器中不能抛异常，否则会覆盖原始崩溃信息
             }
+        }
+    }
+
+    /// <summary>
+    /// ★ 全量日志镜像：所有日志（含 Debug.Log/Warning）追加到 player_log.txt，每次写入即刷盘。
+    /// 解决 Unity Player.log 在运行中被删除句柄后永远 0 B 的问题，运行中可实时 tail 查看调试。
+    /// </summary>
+    private void MirrorAllLogs(string logString, string stackTrace, LogType type)
+    {
+        try
+        {
+            string msg = $"[{DateTime.Now:HH:mm:ss.fff}] {type}: {logString}\n";
+            if (type == LogType.Exception || type == LogType.Error)
+            {
+                msg += stackTrace + "\n";
+            }
+            lock (_logLock)
+            {
+                System.IO.File.AppendAllText(FullLogPath, msg);
+            }
+        }
+        catch
+        {
+            // 日志镜像失败绝不影响主程序
         }
     }
 
@@ -321,16 +348,20 @@ public class DesktopPet : MonoBehaviour
                 }
             }
 
-            // 3) Player.log 超过 2MB 时删除重建（Unity 会自动重建）
-            string playerLogPath = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
-                "Low", "DefaultCompany", "desktop pet", "Player.log");
-            var playerLogInfo = new System.IO.FileInfo(playerLogPath);
-            if (playerLogInfo.Exists && playerLogInfo.Length > PLAYER_LOG_MAX_BYTES)
+            // 3) ★ 不再删除 Unity 的 Player.log：进程已持有该文件句柄，删除后 Unity 继续写
+            //    "已删除句柄"，文件系统里只剩 0 B 空壳，运行日志全部丢失。
+            //    改为截断全量日志镜像 player_log.txt（超过 10MB 保留尾部 3000 行）
+            var fullLogInfo = new System.IO.FileInfo(FullLogPath);
+            if (fullLogInfo.Exists && fullLogInfo.Length > FULL_LOG_MAX_BYTES)
             {
-                // 先备份文件名，删除当前日志文件
-                System.IO.File.Delete(playerLogPath);
-                Debug.Log($"[DesktopPet] Player.log 超过 2MB，已删除释放空间");
+                string[] lines = System.IO.File.ReadAllLines(FullLogPath);
+                if (lines.Length > 3000)
+                {
+                    string tail = string.Join("\n", lines, lines.Length - 3000, 3000);
+                    System.IO.File.WriteAllText(FullLogPath,
+                        "=== player_log 已截断（保留最近3000行）===\n" + tail);
+                    Debug.Log($"[DesktopPet] 已截断 {FullLogPath} → 保留3000行");
+                }
             }
         }
         catch (System.Exception ex)
@@ -352,6 +383,8 @@ public class DesktopPet : MonoBehaviour
         // ---- 崩溃看门狗 ----
 #if !UNITY_EDITOR
         Application.logMessageReceivedThreaded += CaptureCrashLog;
+        // ★ 全量日志镜像（运行中实时可看 player_log.txt）
+        Application.logMessageReceivedThreaded += MirrorAllLogs;
 #endif
         // ★ 看门狗逻辑：检查上次是否正常退出（方式1: clean_exit 标记）
         bool previousCleanExit = PlayerPrefs.GetInt(PREF_CLEAN_EXIT, 0) == 1;
@@ -431,24 +464,17 @@ public class DesktopPet : MonoBehaviour
 
     private void Start()
     {
-        // ---- 启动时清理上次 Player.log（防止旧日志堆积）----
+        // ---- 启动时初始化全量日志镜像 ----
+        // ★ 不删除 Unity 的 Player.log：进程已持有该文件句柄，删除后 Unity 继续写
+        //   "已删除句柄"，文件系统里只剩 0 B 空壳，日志全部丢失。
+        //   改用 player_log.txt 镜像（每次追加即刷盘，运行中可实时查看调试）。
 #if !UNITY_EDITOR
         try
         {
-            string playerLogPath = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
-                "Low", "DefaultCompany", "desktop pet", "Player.log");
-            var fi = new System.IO.FileInfo(playerLogPath);
-            if (fi.Exists)
-            {
-                fi.Delete();
-                Debug.Log("[DesktopPet] 启动时已重置 Player.log，释放磁盘空间");
-            }
+            System.IO.Directory.CreateDirectory(CrashLogDir);
+            System.IO.File.AppendAllText(FullLogPath, $"\n===== [{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 桌宠启动 =====\n");
         }
-        catch (System.Exception ex)
-        {
-            Debug.LogWarning($"[DesktopPet] 启动重置 Player.log 失败（无害）: {ex.Message}");
-        }
+        catch { }
 #endif
 
         // ---- 智能性能监控（根据系统负载自适应帧率/分辨率）----
@@ -1145,6 +1171,9 @@ public class DesktopPet : MonoBehaviour
 
     private void OnDestroy()
     {
+#if !UNITY_EDITOR
+        Application.logMessageReceivedThreaded -= MirrorAllLogs;
+#endif
         ReleaseMutex();
     }
 

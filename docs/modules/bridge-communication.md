@@ -72,6 +72,8 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | **实时事件订阅** | Gateway WS `evt.event === 'agent'` → 按 `payload.stream` 分支：`"tool"`（phase:start/result, name, toolCallId, args, meta）、`"item"`（phase:start/end/update, itemId, kind, title, toolCallId）、`"approval"`（phase:requested/resolved, approvalId, approvalSlug, command, host, title）；`tool.call` 是轨迹导出事件名，实时不推送 |
 | **steps 去重** | `seenToolCalls` Set 按 `toolCallId` 去重——同一工具调用 start+result 只记一条，避免重复步骤 |
 | **审批回执** | `POST /task/{id}/approve` 校验 decision ∈ {allow-once, allow-always, deny} 后按 `pendingApproval.kind` 选决议 API：`kind='exec'` → `exec.approval.resolve`（RPC，`chatClient.client.request`），失败回退 plugin 通道；`kind='plugin'` → `resolvePluginApproval`（=`plugin.approval.resolve`），失败回退 exec 通道。⚠️ 2026-08-12 E2E 实测教训：exec 审批必须走 `exec.approval.resolve`，`plugin.approval.resolve` 不认识 exec 审批 id（报 `unknown or expired approval id`）；触发条件：openclaw.json `tools.exec.mode = "ask"` + security allowlist（**2026-08-12 已配置生效**） |
+| **取消任务防崩溃** `cancelTask()` | ⚠️ 2026-08-13 修复：原实现直接 `w.reject(new Error('Task cancelled'))`，若 `sendChatAndWait` 尚未 `await responsePromise`（还停在 `chatClient.client.request` 内），reject 先于 catch 注册 → Node v15+ unhandled rejection 默认崩溃 → PM2 重启 14+ 次（search_web 失败叠加根因）。修复：`setImmediate(() => w.reject(...))` 延迟到当前微任务/宏任务栈跑完后再 reject，确保 catch 已挂上 |
+| **断线自动重连** | ⚠️ 2026-08-13 新增：原 `onDisconnected` 只置 `connected=false`，无自动重连（仅靠 PM2 兜底）。修复：`reconnecting` 标志防重连风暴 + 断线后 1s 重连，失败 5s 后再试；waiter reject 同样 `setImmediate` 包装防 unhandled rejection |
 
 ### 2.5 C# 侧方法（OpenClawBridge.cs，静态类）
 

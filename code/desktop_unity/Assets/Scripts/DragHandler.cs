@@ -112,6 +112,9 @@ public class DragHandler : MonoBehaviour
             _rightPanel = GetComponent<RightPanel>() ?? FindObjectOfType<RightPanel>();
         }
 
+        // 本帧是否有面板需要接收输入（RightPanel 交互区 / BallPanel 打开）
+        bool panelOpenNow = false;
+
         // ========== 0a. RightPanel 展开时 ==========
         if (_rightPanel != null)
         {
@@ -119,9 +122,9 @@ public class DragHandler : MonoBehaviour
             bool overRightPanel = _rightPanel.IsPointInInteractiveArea(mousePos);
             if (overRightPanel)
             {
-                _lastFramePanelOpen = true;
+                panelOpenNow = true;
                 _window?.SetClickThrough(false); // 关穿透，让 Unity 接收点击
-                _mouseOverPet = false;
+                // 不重置 _mouseOverPet：让 UpdateClickThrough 统一管理缓存，避免每帧刷状态变更日志
                 // 不 return，让拖拽/点击等继续
             }
         }
@@ -129,7 +132,8 @@ public class DragHandler : MonoBehaviour
         // ========== 0b. BallPanel 子面板打开时 ==========
         if (_ballPanel != null && _ballPanel.IsOpen)
         {
-            _lastFramePanelOpen = true;
+            panelOpenNow = true;
+            _lastFramePanelOpen = true; // 保持标记：BallPanel 打开期间（含 return 分支）确保关闭时触发穿透重置
             Vector2 mousePos = GetMousePos();
             bool overPanel = _ballPanel.IsMouseOverPanel(mousePos);
             _window?.SetClickThrough(!overPanel);
@@ -146,15 +150,15 @@ public class DragHandler : MonoBehaviour
             }
         }
 
-        // ========== 面板关闭检测：前一帧还开着，这帧关了 ==========
-        if (_lastFramePanelOpen)
+        // ========== 面板关闭检测：上一帧开着、本帧关了 → 强制重置穿透 ==========
+        if (_lastFramePanelOpen && !panelOpenNow)
         {
-            _lastFramePanelOpen = false;
             _mouseOverPet = false;
             bool overPet = IsPointInPet(GetMousePos());
             _window?.SetClickThrough(!overPet);
             Debug.Log($"[DragHandler] 面板关闭，强制重置穿透: overPet={overPet}");
         }
+        _lastFramePanelOpen = panelOpenNow;
 
         // ========== 1. 每帧更新点击穿透 ==========
         UpdateClickThrough();
@@ -333,7 +337,11 @@ public class DragHandler : MonoBehaviour
         bool overRightPanel = _rightPanel != null
             && _rightPanel.IsPointInInteractiveArea(mousePos);
 
-        bool needInput = overPet || overPanel || overRightPanel;
+        // ★ 审批弹窗打开时全屏接收点击（模态遮罩居中绘制，鼠标常不在宠物/面板上）
+        bool approvalDialogOpen = _rightPanel != null
+            && _rightPanel.IsApprovalDialogOpen;
+
+        bool needInput = overPet || overPanel || overRightPanel || approvalDialogOpen;
 
         if (needInput != _mouseOverPet)
         {

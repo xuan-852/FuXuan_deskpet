@@ -186,6 +186,9 @@ public class RightPanel : MonoBehaviour
     /// <summary>面板完整区域（供 DragHandler 判断鼠标是否在面板交互区域内）</summary>
     public Rect PanelRect => _panelRect;
 
+    /// <summary>审批弹窗是否打开（模态遮罩，DragHandler 需强制关穿透才能点按钮）</summary>
+    public bool IsApprovalDialogOpen => _approvalDialogOpen;
+
     /// <summary>供 DragHandler 判断鼠标是否在面板交互区域内（用于点击穿透控制）</summary>
     public bool IsPointInInteractiveArea(Vector2 guiMousePos)
     {
@@ -964,7 +967,9 @@ public class RightPanel : MonoBehaviour
         }
 
         // ——— 窗口内点击 → 防穿透 ———
-        if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
+        // ★ 审批弹窗打开时跳过：弹窗按钮的 MouseDown 若在此被 Use() 吞掉，
+        //   后续 DrawApprovalDialog 的 GUI.Button 永远收不到点击（无法同意/拒绝）
+        if (!_approvalDialogOpen && Event.current.type == EventType.MouseDown && Event.current.button == 0)
         {
             if (bgRect.Contains(mp))
             {

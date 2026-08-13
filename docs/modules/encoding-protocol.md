@@ -67,7 +67,7 @@
 3. **PS 写 JSON 带 BOM**：PS 5.1 `Out-File -Encoding utf8` 会写 BOM → Python 读文件必须 `utf-8-sig`；JS 读配置 strip BOM（`.replace(/^\uFEFF/, '')`）
 4. **源文件乱码识别**：GBK 固化乱码含 PUA 字符（U+E000-F8FF）= 100% 乱码铁证；用 `scripts/encoding/scan_garbled_cs.py` 扫描
 5. **新增文件编码**：新增 C# 建议 UTF-8 with BOM（与存量 171 个一致）；.cmd 用 CRLF；其余 UTF-8 无 BOM
-6. **看日志**：`Get-Content -Encoding UTF8`（Player.log 是 UTF-8），PS 5.1 终端 GBK 显示 emoji 仍可能乱，重定向到文件用编辑器看
+6. **看日志**：**首选 `D:\DesktopPetData\logs\player_log.txt`**（N42 起全量镜像，每次追加即刷盘，Error/Exception 带堆栈，超 10MB 截断尾部 3000 行，启动带 `===== 桌宠启动 =====` 标记）；Player.log 是 UTF-8：`Get-Content -Encoding UTF8`，但 PS 5.1 终端 GBK 显示 emoji 仍可能乱，重定向到文件用编辑器看
 7. **验证命令**：
    ```powershell
    . .\scripts\encoding\init-utf8.ps1

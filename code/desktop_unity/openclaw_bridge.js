@@ -58,6 +58,7 @@ const CHAT_TIMEOUT_MS = parseInt(process.env.CHAT_TIMEOUT_MS || '180000', 10);
 let chatClient   = null;
 let connected    = false;
 let connectError = null;
+let reconnecting = false; // ★ 断线自动重连标志（防重连风暴）
 
 // Per-session waiters: Map<sessionKey, { resolve, reject, timeout }>
 const waiters = new Map();
@@ -84,9 +85,27 @@ async function connect_() {
             connected = false;
             for (const [, w] of waiters) {
                 clearTimeout(w.timeout);
-                w.reject(new Error(`Gateway disconnected: ${reason}`));
+                // ★ 同 cancelTask：延迟 reject，避免 sendChatAndWait 尚未 await 时
+                //   触发 unhandled rejection 导致进程崩溃（PM2 重启风暴根因）
+                setImmediate(() => w.reject(new Error(`Gateway disconnected: ${reason}`)));
             }
             waiters.clear();
+            // ★ 断线自动重连：tick timeout / 网络抖动后无需等 PM2 重启，
+            //   1 秒后自动尝试重连（connect_ 幂等，重复调用安全）
+            if (!reconnecting) {
+                reconnecting = true;
+                setTimeout(async () => {
+                    try {
+                        await connect_();
+                        console.log('[Bridge] Auto-reconnected after disconnect');
+                    } catch (e) {
+                        console.error(`[Bridge] Reconnect attempt failed: ${e.message}，将在 5s 后重试`);
+                        setTimeout(() => { reconnecting = false; connect_().catch(() => { /* 交给 PM2 */ }); }, 5000);
+                        return;
+                    }
+                    reconnecting = false;
+                }, 1000);
+            }
         };
 
         chatClient.start();
@@ -434,7 +453,13 @@ function cancelTask(taskId) {
         const w = waiters.get(entry.sessionKey);
         clearTimeout(w.timeout);
         waiters.delete(entry.sessionKey);
-        w.reject(new Error('Task cancelled'));
+        // ★ BUG 修复：延迟到下一个宏任务再 reject。
+        // 之前直接 reject 会在 sendChatAndWait 尚未执行到 `await responsePromise`
+        // （还停在 chatClient.client.request 阶段）时触发，Node 判定为
+        // unhandled rejection → v15+ 默认崩溃进程 → PM2 反复重启（实测 14 次）→
+        // 桌宠搜索/任务撞上重启窗口报错。setImmediate 确保调用栈先让出，
+        // sendChatAndWait 的 catch 已注册后再 reject，不再 unhandled。
+        setImmediate(() => w.reject(new Error('Task cancelled')));
     }
     entry.status = 'cancelled';
     entry.error = 'cancelled by user';

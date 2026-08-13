@@ -35,6 +35,7 @@
 - `scan_garbled_cs.py`：PUA 字符 + GBK→UTF-8 还原双重检测，扫描 .cs 固化乱码
 
 ## 四、运维提示
-- 看桌宠日志用 `Get-Content -Encoding UTF8`（Player.log 是 UTF-8），但 PS 5.1 终端按 GBK 显示中文 emoji 仍可能乱，重定向到文件用编辑器看更稳
+- **看桌宠日志首选 `D:\DesktopPetData\logs\player_log.txt`**（N42 起全量镜像，每次追加即刷盘，Error 带堆栈，超 10MB 截断尾部 3000 行）——Player.log 曾因句柄删除变 0 B，勿再依赖
+- Player.log 是 UTF-8：`Get-Content -Encoding UTF8`，但 PS 5.1 终端按 GBK 显示中文 emoji 仍可能乱，重定向到文件用编辑器看更稳
 - 写 .ps1 脚本含中文必须存 **UTF-8 with BOM**（否则 PS 5.1 按 GBK 解析中文串报错）
 - 新增 C# 文件建议 UTF-8 with BOM，与存量 171 个文件一致
