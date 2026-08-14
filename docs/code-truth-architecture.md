@@ -1,10 +1,10 @@
 # 代码真相架构文档（Code-Truth Architecture）
 
-> **审计方式**: 全部结论以 `code/desktop_unity/Assets/Scripts/` 下真实代码为准（2026-08-13 快照，含 N39 修复、N40 T1-T8 Token 优化、2026-08-12 任务可视化/审批/并行化）
-> **审计范围**: **92 个 .cs 文件**（2026-08-13 实测，含 N40 后新增的 Preferences/TaskTemplate/TaskTrajectory 等）
+> **审计方式**: 全部结论以 `code/desktop_unity/Assets/Scripts/` 下真实代码为准（2026-08-14 快照，含 N39 修复、N40 T1-T8 Token 优化、2026-08-12 任务可视化/审批/并行化、N41 像素表情、N42 搜索/日志修复、QQ 式聊天界面、PDF 知识索引）
+> **审计范围**: **92 个 .cs 文件**（2026-08-14 实测，含 N40 后新增的 Preferences/TaskTemplate/TaskTrajectory 等）
 > **重要声明**: 本项目的 md 文档（README / docs / 各类方案文档）**部分已过时**，存在多处与代码不符的陈述。本文档即为"唯一可信"的架构参照。
 > **引擎**: 团结引擎 Tuanjie 2022.3.62t7（Unity 派生版）+ Live2D Cubism SDK 5-r.4
-> **版本基准**: N38 审计（2026-08-02）→ N39 代码修复（2026-08-02）→ N40 Token 优化（2026-08-07，T1-T8 全部完成）→ 2026-08-12 任务可视化（exec 审批 E2E / per-session 并行 / 65 工具）
+> **版本基准**: N38 审计（2026-08-02）→ N39 代码修复（2026-08-02）→ N40 Token 优化（2026-08-07，T1-T8 全部完成）→ 2026-08-12 任务可视化（exec 审批 E2E / per-session 并行 / 65 工具）→ N41（2026-08-09 像素表情包/颜文字拦截）→ N42（2026-08-13 search_web 超时与桥接崩溃修复、日志镜像机制）→ 2026-08-14 QQ 式两级聊天界面（会话列表⇄聊天）与 PDF 知识索引（在途）
 
 ---
 
@@ -29,16 +29,21 @@ code/desktop_unity/Assets/
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `Scripts/Live2DRenderer.cs` | **3,466** | Live2D 渲染、表情、天气联动（全项目最大） |
-| `Editor/ParameterVisionScanner.cs` | 1,612 | 编辑器：参数视觉扫描 |
-| `ChatManager.cs` | **1,595** | AI 对话、工具循环、意图过滤、Token 优化 |
-| `Editor/VisualActionTester.cs` | 1,094 | 编辑器：视觉动作测试 |
-| `Live2DFramework/ActionAgent/MotionAgent.cs` | **1,092** | 动作决策智能体（N39 修复后略增） |
-| `DesktopPet.cs` | 1,081 | 主控制器、状态机 |
-| `Editor/SelfTrainingManager.cs` | 1,038 | 编辑器：自训练 |
-| `Live2DFramework/ActionAgent/MotionTranslator.cs` | **918** | LLM 动作翻译器（T2/T3 优化后） |
-| `Live2DFramework/ActionAgent/DualModelValidator.cs` | 801 | 视觉验证（实为单模型 GLM-4V） |
-| `ActivityTracker.cs` | **739** | 前台活动追踪（N39 新增 LastActivityTime） |
+| `Scripts/Live2DRenderer.cs` | **3,906** | Live2D 渲染、表情、天气联动（全项目最大） |
+| `RightPanel.cs` | **3,520** | 右键面板 + QQ 式聊天界面 + 页内子面板（设置/便签/报告）+ 测试收件箱 |
+| `ChatManager.cs` | **2,095** | AI 对话、工具循环、意图过滤、Token 优化 |
+| `Editor/ParameterVisionScanner.cs` | 1,851 | 编辑器：参数视觉扫描 |
+| `DesktopPet.cs` | 1,269 | 主控制器、状态机、日志镜像 |
+| `Live2DFramework/ActionAgent/MotionAgent.cs` | **1,262** | 动作决策智能体 |
+| `Editor/VisualActionTester.cs` | 1,246 | 编辑器：视觉动作测试 |
+| `Editor/SelfTrainingManager.cs` | 1,183 | 编辑器：自训练 |
+| `Editor/Live2DParameterVerifier.cs` | 1,135 | 编辑器：参数验证 |
+| `Live2DFramework/Live2DMotionTemplates.cs` | 1,052 | 动作模板集 |
+| `Live2DFramework/ActionAgent/MotionTranslator.cs` | **1,046** | LLM 动作翻译器 |
+| `ToolEngine/ToolHelpers.cs` | 960 | 工具辅助函数 |
+| `Live2DFramework/ActionAgent/DualModelValidator.cs` | 913 | 视觉验证（实为单模型 GLM-4V） |
+| `SystemTrayManager.cs` | 868 | 托盘、自启、剪贴板监听 |
+| `ActivityTracker.cs` | **845** | 前台活动追踪 |
 
 ---
 
@@ -115,7 +120,7 @@ flowchart TB
 
 ## 三、AI 核心层真相
 
-### 3.1 ChatManager（1,595 行）— 与文档差异显著
+### 3.1 ChatManager（2,095 行）— 与文档差异显著
 
 | 项 | README 声称 | **代码实际** |
 |---|---|---|
@@ -191,6 +196,8 @@ flowchart TB
 > **合计：65 个已注册工具**（12 个工具文件；README 未提及 Pogget、LaTeX、Office、偏好、任务模板等新工具）。
 > **注意**：`get_time`、`get_memories`、`write_memory`、`start_conversation` 等旧文档列出的工具在代码中**不存在**。
 > **工具清单权威参照**：逐工具签名 / 参数 / 审批配置见 [`docs/modules/tool-engine.md`](modules/tool-engine.md)（与本文档 2026-08-13 同步核对）。
+>
+> 📚 **knowledge_index 支持 PDF（2026-08-15）**：`indexExtensions` 含 `.pdf`。链路：`KnowledgeBaseManager.IndexFile` → `OpenClawBridge.ExtractPdfTextAsync`（桥接 `/extract_pdf`）→ Python `scripts/knowledge/pdf_extract.py`（PyMuPDF 优先 / pypdf 兜底）→ 标准分块嵌入。扫描版 PDF 返回 `is_scanned:true` 提示 OCR。详见 [`docs/modules/bridge-communication.md`](modules/bridge-communication.md) §2.3 与 [`docs/modules/tool-engine.md`](modules/tool-engine.md) §2.2。
 
 ### 4.2 意图 → 工具白名单映射（真实）
 
@@ -242,7 +249,7 @@ flowchart TB
 |---|---|
 | `MotionMemoryManager` | 30 条上限、负面 ≤10、冷却 120s、≥5 次尝试且最佳 ≤2 → 无望淘汰；`GetFailurePenalty`（≤2→0.3 / 近3次均值≤2.0→0.4 / ≤2.5→0.7）；11 个中文名映射；存储 `motion_memory.json` |
 | `MotionPlanner` | 静态类；**10 个硬编码动作模板** + 6 表情模板 + 6 曲线 |
-| `PersonalityManager` | 五维特质（勤奋0.5/温暖0.6/活泼0.5/自信0.5/好奇0.6）+ 三维关系（信任0.3/亲密0.2/熟悉0.1）；learningRate=0.01；drift 0.002/帧；**`DriftTowardNeutral` 在 ActionAgent 目录内无调用者** |
+| `PersonalityManager` | 五维特质（勤奋0.5/温暖0.6/活泼0.5/自信0.5/好奇0.6）+ 三维关系（信任0.3/亲密0.2/熟悉0.1）；learningRate=0.01；drift 0.002/帧；**`DriftTowardNeutral` 由 MotionAgent（L405）按帧调用**（此前审计认为无调用者，2026-08-14 复核已接线） |
 | `VisionMotionVerifier` | 静态；10 个视觉测试；先 MotionPlanner 后 LLM fallback；55% 进度截图；GLM 超时 180s；**用付费 GlmVisionModel（无余额降级）** |
 | `SafetyValidator` | 2 个互斥组、5 对对称肢体、极端值警告 |
 | `EmotionState` | valence/arousal/warmth/energy；120s 半衰期衰减；7 种主导情绪 |
@@ -263,11 +270,11 @@ flowchart TB
 | `KnowledgeBaseManager.GetFormattedContext()` 提供同步上下文 | ~~是 STUB，恒返回 ""~~ → **已修复（N39）**：新增 `LastFormattedContext` 缓存，由协程 `SearchAndFormat` 填充，同步 API 返回最近检索结果 |
 | `ChatManager.OnReflectRequest` 驱动反思 | ~~回调恒 null，反思未实际驱动~~ → **已修复（N39）**：反思经 `SendRequestCoroutine → CheckReflection → DoReflection → CommitReflection` 接线，死回调字段已删除 |
 | `HybridRenderer` 3D 模式可用 | **3D 模式不可用** — TODO 注释，强制走 Live2D |
-| `Model3DRenderer` 绿幕抠像（Color Key） | **实际设置纯黑背景**，注释与代码矛盾 |
+| `Model3DRenderer` 绿幕抠像（Color Key） | **实际设置纯黑背景**（黑色=透明，供 DWM 玻璃层抠像；代码注释已说明该设计，非矛盾，2026-08-14 澄清） |
 | `VisualHeartbeat` 默认表情 "curious" | **实际默认 "surprise"** |
-| README "36 个核心脚本" | **实际顶层 33 + 子目录 ~59（共 92 个 .cs，2026-08-13 实测）** |
-| `PerformanceMonitor.GetResolutionScale()` 动态降分辨率 | **恒返回 1.0f**（仅帧率降级） |
-| `WindowOverlay.isMultiMonitor` 支持多屏 | **恒为 false**（只用 `SM_CXSCREEN`，多屏逻辑死代码） |
+| README "36 个核心脚本" | **实际顶层 33 + 子目录 ~59（共 92 个 .cs，2026-08-14 实测）** |
+| `PerformanceMonitor.GetResolutionScale()` 动态降分辨率 | **恒返回 1.0f**（仅帧率降级；代码注释：始终全分辨率，防放大马赛克——**有意设计**，2026-08-14 澄清） |
+| `WindowOverlay.isMultiMonitor` 支持多屏 | **已真实实现（P4.4，2026-08-12）**：`SM_CXVIRTUALSCREEN` 差值法（`virtualW > w || virtualH > h`），供 AI 感知注入；主屏窗口定位仍用 `SM_CXSCREEN`（此前"恒 false"为过时结论） |
 
 ### 6.2 真实实现（已核实存在且可用）
 
@@ -308,7 +315,7 @@ flowchart TB
 
 ## 七、数据持久化真相
 
-> 根目录硬编码在 `DataPathConfig.cs`：**`D:\DesktopPetData\`**
+> 根目录硬编码在 `DataPathConfig.cs`：**`D:\DesktopPetData\`**（唯一事实源；2026-08-14 起扩展 `LogsDir` / `DocumentsDir` / `TestModeFile` / `InboxFile` 子路径，DesktopPet 日志、ChatManager 测试模式、OfficeTools 输出、ToolBenchmark、RightPanel 收件箱已全部收敛到该配置类）
 
 | 文件 | 用途 |
 |---|---|
@@ -345,7 +352,7 @@ flowchart TB
 | 构建脚本 | `build.ps1`（`-Quick` / `-RunTests` / `-OutputDir`） |
 | 构建产物 | `Build\DesktopPet.exe` |
 | 引擎 | Tuanjie 2022.3.62t7（团结引擎）；**路径拼接 bug：需 `cd` 到项目目录 + `-projectPath .`** |
-| 单元测试 | `build_test_results.xml` 存在（Unity Test Framework）；注意 `Debug.LogError/Warning` 会被计为失败，需 `LogAssert.Expect` |
+| 单元测试 | `Assets/Editor/Tests/` 四个测试文件（ToolEngineTests / P4PerceptionTests / P5TrajectoryTests / CleanDisplayTextTests）；**2026-08-14 实测 EditMode 78/78 全过**（`logs/build/test_results.xml`）；注意 `Debug.LogError/Warning` 会被计为失败，需 `LogAssert.Expect`；roadmap P2 记录的"异步 WaitForSeconds 失败用例"已不存在 |
 
 ---
 
@@ -365,9 +372,9 @@ flowchart TB
 | 8 | 知识库同步上下文 | ~~`GetFormattedContext()` 是 STUB~~ → **N39 已修复**（`LastFormattedContext` 缓存） | 高 | ✅ N39 已修复 |
 | 9 | 反思机制驱动 | ~~`OnReflectRequest` 恒 null~~ → **N39 已接线**（CheckReflection → DoReflection → CommitReflection） | 高 | ✅ N39 已修复 |
 | 10 | 3D 渲染可用 | HybridRenderer TODO，强制 Live2D | 中 | ⚠️ 保持现状（规划中） |
-| 11 | 绿幕抠像 | 纯黑背景 | 低 | ⚠️ 保持现状（3D 未落地） |
-| 12 | 多屏支持 | `isMultiMonitor` 恒 false | 中 | ⚠️ 保持现状（规划中） |
-| 13 | 动态分辨率降级 | `GetResolutionScale` 恒 1.0 | 低 | ⚠️ 保持现状（规划中） |
+| 11 | 绿幕抠像 | 纯黑背景（黑色=透明，DWM 玻璃层） | 低 | ✅ 2026-08-14 注释已澄清 |
+| 12 | 多屏支持 | `isMultiMonitor` 恒 false | 中 | ✅ P4.4 已实现（2026-08-12，`SM_CXVIRTUALSCREEN` 差值法） |
+| 13 | 动态分辨率降级 | `GetResolutionScale` 恒 1.0 | 低 | ✅ 有意设计（防放大马赛克），文档已澄清 |
 | 14 | 默认表情 curious | 默认 surprise | 低 | ✅ 已修正 |
 | 15 | 天气来源（文档/记忆称 QWeather 主） | 默认 wttr.in，QWeather 可选 | 中 | ✅ 已修正 |
 | 16 | AutoMotionCollector 活动采集 | ~~[Obsolete] 死代码 331 行~~ → **N39 已删除**（+ .meta + DesktopPet 自动添加逻辑） | 中 | ✅ N39 已删除 |

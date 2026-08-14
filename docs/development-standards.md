@@ -349,6 +349,27 @@ Assets/
 - 用 `unittest` 或轻量断言脚本；测试输入放 `%TEMP%`，不污染仓库；
 - 生成器测试：喂小型 JSON → 断言输出文件存在且可被库重新打开（`Presentation`/`Document`/`Workbook`）。
 
+### 6.6 UI 自动化测试链路（铁律：可终端触发）
+
+**原则**：UI 交互（按钮点击/视图切换/拖拽）不得依赖模拟鼠标点击坐标来验证——
+坐标定位难、视觉模型识别不可靠、CI 无屏幕。**每个可交互 UI 状态变更必须预留终端触发的测试链路**。
+
+现有链路（测试模式 `D:\DesktopPetData\.test_mode` 存在时启用，`RightPanel.CheckTestInbox` 每 0.25s 轮询）：
+
+- 写 `D:\DesktopPetData\inbox.txt` 一行文本 → 作为用户消息发送（走 LLM，需清理污染）；
+- `@@emote:xxx` → 注入表情（不走 LLM）；
+- `@@view:settings|reminders|report|chat|list|back|open|close` → 切换面板视图/子面板（`HandleTestViewCommand`）。
+
+**新增 UI 功能时**（新按钮/新视图/新面板）：
+
+1. 若该功能有外部可见状态，必须在代码中加等价的 `@@xxx:` 命令或专用测试文件链路，让测试脚本只写文件即可触发；
+2. 命令处理函数注释里列出全部支持的命令（见 `HandleTestViewCommand` 示例）；
+3. 未知命令必须 `Debug.LogWarning` 提示支持列表，便于排查拼写；
+4. 测试链路必须受 `ChatManager.IsTestMode` 保护，生产模式不响应任何注入文件。
+
+**执行测试时**：用 `Set-Content D:\DesktopPetData\inbox.txt -Value "@@view:settings"` 之类命令触发，
+再配合截图/日志验证，不移动真实鼠标。
+
 ---
 
 ## 七、日志规范

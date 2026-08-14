@@ -14,7 +14,7 @@ Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣
 
 | 层 | 位置 | 语言 |
 |----|------|------|
-| Unity 桌宠 | `code/desktop_unity/Assets/Scripts/` | C#（84 文件，架构见 `docs/code-truth-architecture.md`） |
+| Unity 桌宠 | `code/desktop_unity/Assets/Scripts/` | C#（92 文件，架构见 `docs/code-truth-architecture.md`） |
 | 桥接服务器 | `code/desktop_unity/openclaw_bridge.js` | Node.js，端口 19876，PM2 管理（进程名 `openclaw-bridge`） |
 | 工具系统 | `Assets/Scripts/ToolEngine/` | `IPetTool` → `AsyncToolBase` → 反射自动发现，危险工具需审批 |
 | Python 生成器 | `scripts/office/` 等 | python-pptx / python-docx / openpyxl |
@@ -60,6 +60,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 1. **测试必须开测试模式**：建空文件 `D:\DesktopPetData\.test_mode`（防污染 pet_memory/pet_personality），测后删 + `node tools/clean_test_pollution.cjs`
 2. **禁止空参数遍历调用所有工具**：`lock_screen` 真锁屏、`file_delete` 真删文件、`set_volume` 真改音量；空参测试只限只读白名单（`get_system_info`/`get_mouse_pos`/`get_clipboard`）
 3. **测试中日志**：预期日志用 `LogAssert.Expect(LogType.Warning, "...")` 声明（Unity 把 Error/Warning 计为失败）
+4. **UI 测试不靠模拟鼠标点击**：坐标难定位、视觉模型不可靠。必须用终端链路触发——写 `D:\DesktopPetData\inbox.txt`（测试模式启用）：`@@view:settings|reminders|report|chat|list|back|open|close` 切页、`@@emote:xxx` 注入表情。新 UI 状态必须预留等价命令（规范见 `development-standards.md` §6.6）
 4. **密钥不入库**：环境变量读取，模板用 `.example`；日志/输出禁含 Token
 5. **PM2 进程勿手动 kill/start**：改桥接后 `pm2 restart openclaw-bridge --update-env`
 6. **PS 5.1 写 JSON 会带 BOM**：Python 读文件用 `utf-8-sig`；中文路径验证用 `cmd /c dir /b`
