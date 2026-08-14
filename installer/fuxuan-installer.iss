@@ -37,7 +37,7 @@ AppMutex={#MyAppMutex}
 UninstallDisplayName=符玄桌宠
 VersionInfoVersion={#MyAppVersion}
 SetupLogging=yes
-CloseApplications=no
+CloseApplications=yes
 
 [Languages]
 Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
