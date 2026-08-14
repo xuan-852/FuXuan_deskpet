@@ -47,6 +47,8 @@ AsyncToolBase (异步/协程工具基类, ToolName 虚属性)
 | `PreferenceTools.cs` | 3 | set_preference（key/value/source/note）/ query_preferences / remove_preference（偏好结构化存储，P4.2） | 心之所向 |
 | `TaskTemplateTools.cs` | 3 | query_task_templates / save_task_template（name/template + 可选 description/category）/ remove_task_template（任务模板库 CRUD，P5.3，TaskTemplateManager 配套） | 太卜阵法图 |
 
+> 📚 **knowledge_index 支持 PDF（2026-08-15）**：`indexExtensions` 已含 `.pdf`。PDF 索引链路：`KnowledgeBaseManager.IndexFile` 检测到 `.pdf` → `OpenClawBridge.ExtractPdfTextAsync`（桥接 `/extract_pdf` 端点）→ 本地 Python `scripts/knowledge/pdf_extract.py`（PyMuPDF 优先，中文 CMap 解码最佳；pypdf 兜底）提取文本层 → 走标准分块/嵌入/存储流程。实测：控制理论.pdf（159 页/17.2 万字符）→ 170 个分块入库，`knowledge_search` 可检索到「PID 控制器」「串级 PID」等原文。⚠️ 扫描版图片 PDF（无文本层）返回 `is_scanned:true`，提示需先 OCR 转文字。依赖：桥接服务器运行中 + Python 已装 PyMuPDF（`py -3.12 -m pip install pymupdf`）。
+
 ### 2.3 基础设施（7 个 .cs）
 
 | 文件 | 职责 |

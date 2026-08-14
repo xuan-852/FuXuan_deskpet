@@ -179,7 +179,7 @@ public class KnowledgeSearchTool : IPetTool
 public class KnowledgeIndexTool : IPetTool
 {
     public string ToolName => "knowledge_index";
-    public string ToolDescription => "【藏书阁·编录术】索引一个文件夹或文件到本地知识库中。索引后，本座就能通过 knowledge_search 查询其中的内容。用户说「把我的项目加到知识库」「索引这个文件夹」「学习一下这个目录」「记住这个文件」时调用。路径支持正斜杠。递归默认为 true。";
+    public string ToolDescription => "【藏书阁·编录术】索引一个文件夹或文件到本地知识库中。索引后，本座就能通过 knowledge_search 查询其中的内容。用户说「把我的项目加到知识库」「索引这个文件夹」「学习一下这个目录」「记住这个文件」时调用。路径支持正斜杠。递归默认为 true。**支持 PDF**：可索引 .pdf 文档（自动提取文本层，中文友好）。注意：扫描版图片 PDF（无文本层）无法索引，需先 OCR 转文字。";
     public string ToolParametersJson => ToolSchema.Schema(
         ToolSchema.Req("path", "string", "要索引的文件或文件夹路径"),
         ToolSchema.Opt("recursive", "boolean", "是否递归索引子文件夹，默认 true")

@@ -282,6 +282,71 @@ public static class OpenClawBridge
         }
     }
 
+    /// <summary>
+    /// 提取 PDF 文本（供「藏书阁」knowledge_index 索引 PDF 用）。
+    /// 桥接服务器调用本地 Python（PyMuPDF，中文支持好）提取文本层。
+    /// </summary>
+    /// <param name="pdfPath">PDF 文件绝对路径</param>
+    /// <param name="maxChars">最多提取字符数（默认 50 万，防超大 PDF 拖垮索引）</param>
+    /// <returns>JSON 文本：{"success":true,"text":"...","pages":N,"chars":N}
+    ///          或 {"success":false,"error":"...","is_scanned":true}（扫描版 PDF 无文本层）</returns>
+    public static async Task<string> ExtractPdfTextAsync(string pdfPath, int maxChars = 500000)
+    {
+        if (string.IsNullOrWhiteSpace(pdfPath))
+            return "{\"success\":false,\"error\":\"未提供 PDF 路径\"}";
+
+        string url = $"{BASE_URL}/extract_pdf";
+        var payload = new Newtonsoft.Json.Linq.JObject
+        {
+            ["path"] = pdfPath,
+            ["max_chars"] = maxChars
+        };
+        string jsonBody = payload.ToString(Newtonsoft.Json.Formatting.None);
+
+        using (var req = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
+            req.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("x-bridge-token", BridgeToken);
+            // 大 PDF 提取可能耗时较长，给足余量
+            req.timeout = 180;
+
+            var op = req.SendWebRequest();
+            while (!op.isDone)
+                await Task.Yield();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                LastError = req.error;
+                return $"{{\"success\":false,\"error\":\"{req.error}\"}}";
+            }
+
+            string raw = req.downloadHandler?.text ?? "{}";
+            try
+            {
+                var obj = JObject.Parse(raw);
+                bool success = obj["success"]?.Value<bool>() ?? false;
+                if (success)
+                    return raw; // 完整 JSON（含 text）给工具层解析
+
+                string err = obj["error"]?.ToString() ?? "PDF 提取失败";
+                LastError = err;
+                // 透传 is_scanned 标记，让工具层给出针对性提示
+                bool isScanned = obj["is_scanned"]?.Value<bool>() ?? false;
+                if (isScanned)
+                    return $"{{\"success\":false,\"error\":\"{err}\",\"is_scanned\":true}}";
+                return $"{{\"success\":false,\"error\":\"{err}\"}}";
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                return $"{{\"success\":false,\"error\":\"{ex.Message}\"}}";
+            }
+        }
+    }
+
     /// <summary>当前是否有在途任务（提交后未完成）</summary>
     public static bool IsBusy { get; private set; } = false;
 

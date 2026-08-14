@@ -52,11 +52,12 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | `/task/{id}/approve` | POST | ✅ | `{decision: allow-once/allow-always/deny}` | `{success, task_id, decision, status}` | — |
 | `/compile_latex` | POST | ✅ | `{source?, output_path?, compiler?, title?, pin_to_desktop?, description?}` | `{success, pdf_path?, tex_path?, error?}` | C# 1800s |
 | `/generate_office` | POST | ✅ | `{type: ppt/docx/xlsx, description, title?, theme?}` | `{success, path?, title?, folder_path?, error?}` | C# 300s |
+| `/extract_pdf` | POST | ✅ | `{path, max_chars?}` | `{success, text?, pages?, chars?, is_scanned?, error?}` | C# 180s |
 
 > ⚠️ `/health` 鉴权注：代码中鉴权检查（`authToken !== BRIDGE_TOKEN`）在路径分发**之前**，即 `/health` 实际也要求 `x-bridge-token`（实测 401）——与早期文档「免鉴权」描述不符，已按代码真相修正。
 > ⚠️ `steps` 字段：工具调用轨迹数组 `[{tool, summary, ts}]`，桥接层实时事件（`stream: "tool"` phase start/result）按 `toolCallId` 去重收集，上限 `MAX_TASK_STEPS=200`。
 > ⚠️ `pendingApproval` 字段：`{kind, id, slug, command, cwd, host, createdAtMs, expiresAtMs}`，`kind` ∈ `exec`（exec.approval.requested 独立事件）/ `plugin`（agent 事件 approval 流）；来自 Gateway `stream: "approval"` 事件（phase requested/resolved）与 `exec.approval.requested` 独立事件；任务完成/取消后自动清空。
-> ⚠️ 失败统一返回 `{success:false, error:"..."}`；404 兜底文案：`{error: 'Not found. Use /search?q=, /compile_latex, /generate_office, /task[...], or /health'}`。
+> ⚠️ 失败统一返回 `{success:false, error:"..."}`；404 兜底文案：`{error: 'Not found. Use /search?q=, /compile_latex, /generate_office, /extract_pdf, /task[...], or /health'}`。
 
 ### 2.4 健壮性机制（openclaw_bridge.js）
 
@@ -83,6 +84,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | `CheckHealthAsync()` | `/health` | 3s | bool |
 | `CompileLatexAsync(source, outputPath, compiler, title, pinToDesktop, description)` | `/compile_latex` | 1800s | JSON 文本 |
 | `GenerateOfficeAsync(type, description, title, theme)` | `/generate_office` | 300s | 完整 raw JSON |
+| `ExtractPdfTextAsync(pdfPath, maxChars=500000)` | `/extract_pdf` | 180s | JSON 文本（含 text/pages/chars；扫描版带 is_scanned:true） |
 | `ExecuteTaskAndWaitAsync(task, mode, maxSteps)` | `/task` 提交+轮询 | 心跳熔断 | 任务结果文本；每轮轮询调 `RefreshTaskProgress` 更新进度状态 |
 | `RefreshTaskProgress(obj)` | `/task/{id}` 轮询解析 | — | 解析 `steps` JArray → `ActiveStepCount`/`ActiveStepLabel`（`第n步: tool summary`，summary 去换行截 48 字符）；解析 `pendingApproval` → `PendingApproval`（id 变化才刷新） |
 | `ApproveTaskAsync(taskId, decision)` | `/task/{id}/approve` | — | 校验 decision ∈ 三值后 POST；设置 `LastApprovalOk`/`LastError` |
@@ -99,6 +101,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | 2026-08-12 | **Phase A 办公工具链**：新增 `/generate_office` 端点 + `GenerateOfficeAsync` + 三 Python 生成器（ppt/docx/xlsx） |
 | 2026-08-12 | **Phase B 任务可视化（OpenClaw 类智能体入口）**：实时事件订阅（tool/item/approval）→ steps 去重收集（seenToolCalls）→ `GET /task/{id}` 返回 `steps`/`pendingApproval` → `POST /task/{id}/approve` 审批回执（decision ∈ allow-once/allow-always/deny）→ C# 侧 `OpenClawBridge` 新增 ActiveStepCount/ActiveStepLabel/ActiveTaskId/PendingApproval/LastApprovalOk 等静态原子属性 + `RefreshTaskProgress`/`ApproveTaskAsync` → 实测 steps=2 干净输出（echo step1/step2） |
 | 2026-08-12 | **并行化 + exec 审批打通**：全局 `requestChain` → per-session `requestChains`（同 sessionKey 串行、跨 sessionKey 并行，多任务实测差 88ms；任务独立 sessionKey `agent:main:task-<id>`）→ `pendingApproval` 加 `kind` 标记（exec/plugin）→ 审批决议按 kind 选 API（exec→`exec.approval.resolve` / plugin→`plugin.approval.resolve`）→ 配置 `tools.exec.mode=ask` → E2E 实测：提交 hostname 任务 → pendingApproval(kind=exec) 到达 bridge → approve 回执 success:true → 任务 done 且返回 hostname 输出（此前回执失败 `unknown or expired approval id`，根因：exec 审批误用 plugin.approval.resolve） |
+| 2026-08-15 | **PDF 文本提取端点**：新增 `/extract_pdf`（POST，`{path, max_chars?}`）+ `ExtractPdfTextAsync` + Python 脚本 `scripts/knowledge/pdf_extract.py`（双引擎：PyMuPDF 优先——中文内嵌子集字体 CMap 解码最佳；pypdf 兜底）。供「藏书阁」knowledge_index 索引 PDF。实测：控制理论.pdf 159 页 17.2 万字符提取成功，中文完整。扫描版 PDF（无文本层）返回 `is_scanned:true` |
 
 ## 四、编写注意事项
 
@@ -110,4 +113,4 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 6. **BOM 坑**：PS 5.1 `Out-File -Encoding utf8` 写 BOM → Python 读 JSON 用 `utf-8-sig`；JS 读配置 strip BOM
 7. **Token 安全**：密钥只从环境变量读取（模板用 .example）；日志/输出禁含 Token；内置默认 Token 仅兜底并告警
 8. **验证命令**：`node --check code/desktop_unity/openclaw_bridge.js`（JS 语法）；`curl http://127.0.0.1:19876/health`（健康检查）
-9. **超时选择**：search 180s / compile_latex 1800s（分块生成 10-20 分钟）/ generate_office 300s（AI 组织 + 本地渲染 10-60s）；新端点按实际耗时给足余量
+9. **超时选择**：search 180s / compile_latex 1800s（分块生成 10-20 分钟）/ generate_office 300s（AI 组织 + 本地渲染 10-60s）/ extract_pdf 180s（大 PDF 提取可能超 60s）；新端点按实际耗时给足余量

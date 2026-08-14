@@ -14,13 +14,33 @@
  *     exec.approval.requested { id, request, createdAtMs, expiresAtMs } - 敏感命令审批
  */
 
-import { GatewayChatClient } from 'file:///D:/openclaw/node_modules/openclaw/dist/gateway-chat-BW6uyvQL.js';
+// ─── OpenClaw 库动态解析（阶段0 移植改造：不再硬编码 D:/openclaw 与构建哈希文件名，换机/升级不再断）───
+function resolveOpenClawGatewayEntry() {
+    const candidates = [];
+    if (process.env.OPENCLAW_NODE_MODULES) candidates.push(process.env.OPENCLAW_NODE_MODULES);
+    candidates.push(join(dirname(fileURLToPath(import.meta.url)), 'node_modules', 'openclaw'));
+    try {
+        const npmRoot = execSync('npm root -g', { encoding: 'utf8', windowsHide: true }).trim();
+        if (npmRoot) candidates.push(join(npmRoot, 'openclaw'));
+    } catch { /* npm 不可用则跳过全局探测 */ }
+    for (const base of candidates) {
+        const dist = join(base, 'dist');
+        try {
+            if (!existsSync(dist)) continue;
+            const entry = readdirSync(dist).find(f => /^gateway-chat-.*\.js$/.test(f));
+            if (entry) return pathToFileURL(join(dist, entry)).href;
+        } catch { /* 目录不可读则尝试下一个候选 */ }
+    }
+    throw new Error('[Bridge] 无法定位 openclaw dist/gateway-chat-*.js：请设置 OPENCLAW_NODE_MODULES 或全局安装 openclaw（npm i -g openclaw）');
+}
+const { GatewayChatClient } = await import(resolveOpenClawGatewayEntry());
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
-import { writeFileSync, unlinkSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, copyFileSync } from 'node:fs';
+import { writeFileSync, unlinkSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, copyFileSync, readdirSync } from 'node:fs';
 import { dirname, basename, extname, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 const GATEWAY_URL     = process.env.GATEWAY_URL     || 'ws://127.0.0.1:18789';
@@ -1508,8 +1528,100 @@ function startHttpServer() {
             return;
         }
 
+        // ─── POST /extract_pdf ─────────────────────────────────────
+        // PDF 文本提取：供「藏书阁」knowledge_index 索引 PDF 用。
+        // body: { path: "D:\\xxx.pdf", max_chars?: 500000 }
+        // 返回: { success, text?, pages?, chars?, is_scanned?, error? }
+        if (path === '/extract_pdf' && req.method === 'POST') {
+            const bodyChunks = [];
+            req.on('data', chunk => bodyChunks.push(chunk));
+            req.on('end', () => {
+                const body = Buffer.concat(bodyChunks).toString('utf-8');
+                try {
+                    const { path: pdfPath, max_chars } = JSON.parse(body);
+                    if (!pdfPath || typeof pdfPath !== 'string') {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: '需要提供 path（PDF 文件路径）' }));
+                        return;
+                    }
+                    if (!existsSync(pdfPath)) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: `PDF 文件不存在: ${pdfPath}` }));
+                        return;
+                    }
+
+                    const python = resolvePython();
+                    if (!python) {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: '未找到 Python 解释器，无法提取 PDF。请安装 Python 3.10+ 并加入 PATH' }));
+                        return;
+                    }
+
+                    // 定位 pdf_extract.py（与 office 脚本同策略：环境变量 → 已知路径 → 向上探测）
+                    const scriptName = 'pdf_extract.py';
+                    const scriptCandidates = [];
+                    if (process.env.KNOWLEDGE_SCRIPTS_DIR) scriptCandidates.push(join(process.env.KNOWLEDGE_SCRIPTS_DIR, scriptName));
+                    scriptCandidates.push('D:\\Unity\\projects\\Desktop_per_pro\\scripts\\knowledge\\' + scriptName);
+                    for (const base of [process.cwd(), dirname(process.argv[1])]) {
+                        let probe = base;
+                        for (let depth = 0; depth < 5; depth++) {
+                            scriptCandidates.push(join(probe, 'scripts', 'knowledge', scriptName));
+                            const parent = dirname(probe);
+                            if (parent === probe) break;
+                            probe = parent;
+                        }
+                    }
+                    const scriptPath = scriptCandidates.find(p => existsSync(p));
+                    if (!scriptPath) {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: `未找到 PDF 提取脚本 ${scriptName}（请设置 KNOWLEDGE_SCRIPTS_DIR 环境变量）` }));
+                        return;
+                    }
+
+                    const maxChars = Number.isInteger(max_chars) && max_chars > 0 ? max_chars : 500000;
+                    // 文件路径经 JSON 序列化传给 Python，避免命令行转义问题
+                    const tmpJson = join(tmpdir(), `pdf_${Date.now().toString(36)}.json`);
+                    writeFileSync(tmpJson, JSON.stringify({ path: pdfPath, max_chars: maxChars }), 'utf-8');
+
+                    const pyCmd = `"${python}" "${scriptPath}" "${tmpJson}"`;
+                    console.log(`[Bridge] Extract PDF: ${pdfPath}`);
+                    const stdout = execSync(pyCmd, {
+                        windowsHide: true, timeout: 120000, encoding: 'utf-8', stdio: 'pipe',
+                        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
+                    });
+                    try { unlinkSync(tmpJson); } catch { /* ignore */ }
+
+                    const resultLine = stdout.trim().split('\n').pop(); // 取最后一行 JSON
+                    let parsed;
+                    try {
+                        parsed = JSON.parse(resultLine);
+                    } catch {
+                        throw new Error(`提取脚本输出无法解析: ${resultLine.slice(0, 200)}`);
+                    }
+                    if (!parsed || parsed.success !== true) {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify(parsed || { success: false, error: 'PDF 提取失败' }));
+                        return;
+                    }
+
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({
+                        success: true,
+                        text: parsed.text,
+                        pages: parsed.pages || 0,
+                        chars: parsed.chars || 0
+                    }));
+                } catch (err) {
+                    console.error(`[Bridge] Extract PDF error: ${err.message}`);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: err.message }));
+                }
+            });
+            return;
+        }
+
         res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Not found. Use /search?q=, /compile_latex, /generate_office, /task[/{id}[/cancel|/approve]], or /health' }));
+        res.end(JSON.stringify({ error: 'Not found. Use /search?q=, /compile_latex, /generate_office, /extract_pdf, /task[/{id}[/cancel|/approve]], or /health' }));
     });
 
     server.listen(BRIDGE_PORT, '127.0.0.1', () => {

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -43,11 +44,13 @@ public class KnowledgeBaseManager : MonoBehaviour
 
     [Header("◈ 索引过滤")]
     [Tooltip("索引文件扩展名，逗号分隔")]
-    public string indexExtensions = ".cs,.py,.js,.ts,.md,.txt,.json,.xml,.yaml,.yml,.html,.css,.sh,.ps1,.bat,.cfg,.ini,.tex,.csv,.lua,.java,.cpp,.h,.hpp";
+    public string indexExtensions = ".cs,.py,.js,.ts,.md,.txt,.json,.xml,.yaml,.yml,.html,.css,.sh,.ps1,.bat,.cfg,.ini,.tex,.csv,.lua,.java,.cpp,.h,.hpp,.pdf";
 
     [Header("◈ 容量保护")]
     [Tooltip("单文件最大字符数（超过跳过，防日志大文件）")]
     public int maxFileSizeChars = 1_000_000;
+    [Tooltip("PDF 最大提取字符数（超过截断，防超大 PDF 拖垮索引）")]
+    public int pdfMaxChars = 500_000;
     [Tooltip("最大分块数（超出后按时间淘汰最旧文档）")]
     public int maxTotalChunks = 3000;
     [Tooltip("最大原始字符数（所有文档原文总和）")]
@@ -170,29 +173,85 @@ public class KnowledgeBaseManager : MonoBehaviour
         IndexProgress = $"正在索引: {Path.GetFileName(filePath)}";
         IsIndexing = true;
 
-        // 读取文件（自动检测编码：先试 UTF-8，若含非法字符则回退到 GBK）
+        // 读取文件内容（PDF 走桥接 Python 提取文本层，其余按原流程编码检测读取）
         string content;
-        try
+        if (ext == ".pdf")
         {
-            byte[] rawBytes = File.ReadAllBytes(filePath);
-            string utf8Text = Encoding.UTF8.GetString(rawBytes);
-            // 若 UTF-8 解码没有产生替换字符 � (U+FFFD)，说明编码正确
-            if (!utf8Text.Contains('\uFFFD'))
+            // —— PDF：经桥接调用 PyMuPDF 提取文本（中文 CMap 支持好）——
+            // 先确认桥接健康（异步 Task，协程内用 WaitUntil 等待）
+            if (!OpenClawBridge.IsAvailable)
             {
-                content = utf8Text;
+                var healthTask = OpenClawBridge.CheckHealthAsync();
+                yield return new WaitUntil(() => healthTask.IsCompleted);
             }
-            else
+            if (!OpenClawBridge.IsAvailable)
             {
-                // 回退到系统默认编码（中文 Windows = GBK）
-                content = Encoding.Default.GetString(rawBytes);
-                Debug.Log($"[KnowledgeBase] 文件编码非 UTF-8，已使用 GBK 读取: {Path.GetFileName(filePath)}");
+                IsIndexing = false;
+                onComplete?.Invoke(false, $"PDF 索引需要桥接服务器（{OpenClawBridge.LastError}），请先启动 openclaw_bridge.js");
+                yield break;
+            }
+
+            string pdfJson = null;
+            var pdfTask = OpenClawBridge.ExtractPdfTextAsync(filePath, pdfMaxChars);
+            yield return new WaitUntil(() => pdfTask.IsCompleted);
+            if (pdfTask.IsFaulted)
+            {
+                IsIndexing = false;
+                onComplete?.Invoke(false, $"PDF 提取失败: {pdfTask.Exception?.InnerException?.Message}");
+                yield break;
+            }
+            pdfJson = pdfTask.Result;
+
+            try
+            {
+                var pdfObj = JObject.Parse(pdfJson);
+                bool pdfOk = pdfObj["success"]?.Value<bool>() ?? false;
+                if (!pdfOk)
+                {
+                    bool isScanned = pdfObj["is_scanned"]?.Value<bool>() ?? false;
+                    string err = pdfObj["error"]?.ToString() ?? "PDF 提取失败";
+                    IsIndexing = false;
+                    onComplete?.Invoke(false, isScanned
+                        ? "该 PDF 是扫描版（图片），没有文本层，无法直接索引。可先用 OCR 转文字，或告诉我转成 .txt 后再索引。"
+                        : $"PDF 提取失败: {err}");
+                    yield break;
+                }
+                content = pdfObj["text"]?.ToString() ?? "";
+                int pages = pdfObj["pages"]?.Value<int>() ?? 0;
+                Debug.Log($"[KnowledgeBase] PDF 提取成功: {Path.GetFileName(filePath)}（{pages} 页，{content.Length} 字符）");
+            }
+            catch (Exception e)
+            {
+                IsIndexing = false;
+                onComplete?.Invoke(false, $"PDF 提取结果解析失败: {e.Message}");
+                yield break;
             }
         }
-        catch (Exception e)
+        else
         {
-            IsIndexing = false;
-            onComplete?.Invoke(false, $"读取失败: {e.Message}");
-            yield break;
+            // 读取文件（自动检测编码：先试 UTF-8，若含非法字符则回退到 GBK）
+            try
+            {
+                byte[] rawBytes = File.ReadAllBytes(filePath);
+                string utf8Text = Encoding.UTF8.GetString(rawBytes);
+                // 若 UTF-8 解码没有产生替换字符 � (U+FFFD)，说明编码正确
+                if (!utf8Text.Contains('\uFFFD'))
+                {
+                    content = utf8Text;
+                }
+                else
+                {
+                    // 回退到系统默认编码（中文 Windows = GBK）
+                    content = Encoding.Default.GetString(rawBytes);
+                    Debug.Log($"[KnowledgeBase] 文件编码非 UTF-8，已使用 GBK 读取: {Path.GetFileName(filePath)}");
+                }
+            }
+            catch (Exception e)
+            {
+                IsIndexing = false;
+                onComplete?.Invoke(false, $"读取失败: {e.Message}");
+                yield break;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(content))
