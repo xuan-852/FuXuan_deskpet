@@ -22,7 +22,8 @@ using UnityEngine;
 /// </summary>
 public class PoggetAgentTool : IPetTool
 {
-    public static string AgentExePath { get; set; } = @"D:\pogget\agent\bin\PoggetAgent-debug.exe";
+    public static string AgentExePath { get; set; } =
+        System.Environment.GetEnvironmentVariable("POGGET_AGENT_EXE") ?? @"D:\pogget\agent\bin\PoggetAgent-debug.exe";
     public static int TimeoutMs { get; set; } = 15000;
 
     public string ToolName => "pogget_agent";

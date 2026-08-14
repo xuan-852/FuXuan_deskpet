@@ -37,9 +37,9 @@ public class ChatManager : MonoBehaviour
     // ==================================================================
     //  测试模式：存在标记文件时跳过所有持久化写入（记忆/人格/反思）
     //  防止自动化测试消息污染符玄的忆境与人格演化。
-    //  开启方式：在 D:\DesktopPetData\ 下创建空文件 .test_mode
+    //  开启方式：在 DataPathConfig.DataRoot 下创建空文件 .test_mode
     // ==================================================================
-    public static bool IsTestMode => System.IO.File.Exists(@"D:\DesktopPetData\.test_mode");
+    public static bool IsTestMode => System.IO.File.Exists(DataPathConfig.TestModeFile);
 
     void Awake()
     {

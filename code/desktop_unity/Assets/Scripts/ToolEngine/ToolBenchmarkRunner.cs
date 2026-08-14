@@ -23,9 +23,11 @@ using UnityEngine;
 /// </summary>
 public class ToolBenchmarkRunner : MonoBehaviour
 {
-    private const string BenchmarkFlag = @"D:\DesktopPetData\.benchmark";
-    private const string ResultFile = @"D:\DesktopPetData\tool_benchmark_results.json";
-    private const string BenchRoot = @"D:\DesktopPetData\_bench";
+    private static readonly string BenchmarkFlag = DataPathConfig.DataRoot + @"\.benchmark";
+    private static readonly string ResultFile = DataPathConfig.DataRoot + @"\tool_benchmark_results.json";
+    private static readonly string BenchRoot = DataPathConfig.DataRoot + @"\_bench";
+    // JSON 转义形式的数据根目录（供测试 payload 使用，与 BenchRoot 同源）
+    private static readonly string JsonDataRoot = DataPathConfig.DataRoot.Replace("\\", "\\\\");
     private const float DefaultTimeout = 120f;   // 普通异步工具超时
     private const float SlowTimeout = 180f;      // GLM 视觉/网络慢工具超时
 
@@ -79,8 +81,8 @@ public class ToolBenchmarkRunner : MonoBehaviour
         list.Add(new TestCase("get_system_info", "只读", "{}"));
         list.Add(new TestCase("get_mouse_pos", "只读", "{}"));
         list.Add(new TestCase("get_clipboard", "只读", "{}"));
-        list.Add(new TestCase("list_files", "只读", "{\"path\": \"D:\\\\DesktopPetData\"}"));
-        list.Add(new TestCase("file_info", "只读", "{\"path\": \"D:\\\\DesktopPetData\"}"));
+        list.Add(new TestCase("list_files", "只读", "{\"path\": \"" + JsonDataRoot + "\"}"));
+        list.Add(new TestCase("file_info", "只读", "{\"path\": \"" + JsonDataRoot + "\"}"));
         list.Add(new TestCase("search_files", "只读", "{\"query\": \"DesktopPet\", \"root\": \"D:\\\\Unity\"}", "", 60f));
         list.Add(new TestCase("search_file", "只读", "{\"query\": \"DesktopPet\", \"root\": \"D:\\\\Unity\"}", "", 60f));
         list.Add(new TestCase("query_reminders", "只读", "{}"));
@@ -118,7 +120,7 @@ public class ToolBenchmarkRunner : MonoBehaviour
         list.Add(new TestCase("open_url", "开窗", "{\"url\": \"https://example.com\"}"));
         list.Add(new TestCase("search", "开窗", "{\"query\": \"benchmark test\"}"));
         list.Add(new TestCase("open_app", "开窗", "{\"name\": \"notepad\"}"));
-        list.Add(new TestCase("open_folder", "开窗", "{\"path\": \"D:\\\\DesktopPetData\"}"));
+        list.Add(new TestCase("open_folder", "开窗", "{\"path\": \"" + JsonDataRoot + "\"}"));
         list.Add(new TestCase("file_open", "开窗", "{\"path\": \"" + BenchRoot + "_a.txt\"}"));
 
         // ── D. 危险工具（只验证拦截，绝不真执行）──────────────
@@ -146,7 +148,7 @@ public class ToolBenchmarkRunner : MonoBehaviour
         list.Add(new TestCase("generate_motion", "GLM", "{\"description\": \"点头微笑\"}", "", SlowTimeout));
         list.Add(new TestCase("explore_body_vision", "GLM", "{}", "", SlowTimeout));
         list.Add(new TestCase("self_review", "GLM", "{\"action\": \"wave\"}", "", SlowTimeout));
-        list.Add(new TestCase("knowledge_index", "GLM", "{\"path\": \"D:\\\\DesktopPetData\\\\Documents\", \"recursive\": false}", "", 60f));
+        list.Add(new TestCase("knowledge_index", "GLM", "{\"path\": \"" + JsonDataRoot + "\\\\Documents\", \"recursive\": false}", "", 60f));
 
         return list;
     }

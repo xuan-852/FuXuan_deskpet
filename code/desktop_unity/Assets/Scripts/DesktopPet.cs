@@ -162,12 +162,12 @@ public class DesktopPet : MonoBehaviour
     #region Unity 生命周期
 
     // ===== 崩溃日志 & 内存监控 =====
-    // 统一日志目录：D:\DesktopPetData\logs\（与持久化数据同根，不依赖启动工作目录）
-    private const string CrashLogDir = @"D:\DesktopPetData\logs";
-    private const string CrashLogPath = @"D:\DesktopPetData\logs\crash_log.txt";
+    // 统一日志目录：DataPathConfig.LogsDir（与持久化数据同根，不依赖启动工作目录）
+    private static readonly string CrashLogDir = DataPathConfig.LogsDir;
+    private static readonly string CrashLogPath = System.IO.Path.Combine(DataPathConfig.LogsDir, "crash_log.txt");
     private const long CRASH_LOG_MAX_BYTES = 1024L * 1024L;  // crash_log.txt 超过1MB自动截断
     // ★ 全量日志镜像：所有 Debug.Log/Warning/Error 追加到 player_log.txt（每次写入即刷盘，运行中可实时查看）
-    private const string FullLogPath = @"D:\DesktopPetData\logs\player_log.txt";
+    private static readonly string FullLogPath = System.IO.Path.Combine(DataPathConfig.LogsDir, "player_log.txt");
     private const long FULL_LOG_MAX_BYTES = 10L * 1024L * 1024L; // player_log.txt 超过10MB自动截断
     private static readonly object _logLock = new object(); // 日志镜像写锁（可能来自任意线程）
     private float _memoryCheckInterval = 30f;  // 每30秒检查一次内存
