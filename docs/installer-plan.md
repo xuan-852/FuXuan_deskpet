@@ -283,7 +283,7 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 | **1** | 便携目录原型：内置 Node/Python 解包 + `start-bridge.cmd` + 数据目录 + 环境变量脚本 | 1 天 | ✅ 2026-08-14 完成（`installer\build-portable.ps1` 组装 `installer\portable\`；便携桥 `/health`+`/extract_pdf` 通过、桌宠从便携目录启动零异常；**Node 锁定 v22.22.3+**（OpenClaw 要求 SQLite 3.51.3+，v22.14.0 实测启动报 WAL bug）；⚠️ Python embeddable 内置待补测，当前回退系统 Python） |
 | **2** | Inno Setup 安装器：§四全部页面/组件/注册/卸载 | 1~2 天 | ✅ 2026-08-15 完成（`fuxuan-installer.iss`：中文向导 + API 密钥收集页 + 数据目录页 + 组件选择 + 环境变量写入/卸载清理 + 卸载保留数据；`build-installer.ps1` 自动获取便携 ISCC；产物 `FuXuanSetup-1.0.0.exe` 112.9MB；本地静默安装→7 项产物校验→静默卸载 全过；⚠️ NSSM 服务注册与 OpenClaw/Ollama/TeX 组件自动化归入阶段 3） |
 | **3** | 组件安装脚本：OpenClaw npm 静默 + Ollama 拉模型 + MiKTeX + VC++ + Everything | 1 天 | ✅ 2026-08-15 完成（`installer\components\` 7 脚本均含 `/CHECK` 只检测模式：install-vcredist / install-openclaw（网关启动走内置 CLI，openclaw 包已内置故免 npm -g）/ install-ollama（含模型存在跳过）/ install-miktex / install-everything / install-service + uninstall-service（NSSM 2.24，wrapper+env 文件规避 LocalSystem 读不到用户环境变量）；已接入 [Run] 组件链 + [UninstallRun]，`/SKIPCOMPONENTS` 本地测试开关；本机实测：VC++/OpenClaw/Ollama 已装跳过、MiKTeX 缺失、NSSM 下载+检查正常） |
-| **4** | 虚拟机验收（§八清单）+ 版权/密钥文档 + 发布流程（构建→打包→版本号） | 0.5~1 天 | 🚧 就绪待跑（`installer\verify-acceptance.cjs` 验收脚本已内置进安装包 `extras\acceptance`：自动覆盖 §八 1/3/4/5/6/8，含安装产物/环境变量/服务/health/桌宠启动/聊天/工具/PPT/PDF 检查，记忆安全隔离；手动项 2/7/9/10/11/12 输出人工清单；本机 sanity：15 PASS + 7 预期差异） |
+| **4** | 虚拟机验收（§八清单）+ 版权/密钥文档 + 发布流程（构建→打包→版本号） | 0.5~1 天 | 🚧 就绪待跑（`installer\vm-acceptance-guide.md` 操作指南 + `verify-acceptance.cjs` 验收脚本已内置进安装包 `extras\acceptance`：自动覆盖 §八 1/3/4/5/6/8，手动项 2/7/9/10/11/12 输出人工清单；本机 sanity：15 PASS + 7 预期差异） |
 | 合计 | | **4~6 天** | |
 
 **关键路径**：阶段 0（代码）→ 阶段 1（原型验证内置运行时可行性，特别是 Python embeddable 跑 PyMuPDF/PIL）→ 阶段 2（安装器壳）→ 阶段 3（组件自动化）→ 阶段 4（验收）。
