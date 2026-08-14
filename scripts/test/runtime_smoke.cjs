@@ -86,9 +86,9 @@ async function main() {
     log(`[smoke] 数据目录: ${DATA_ROOT}`);
     log(`[smoke] Player.log: ${PLAYER_LOG}`);
 
-    // 1. 结束旧实例 + 清场
+    // 1. 结束旧实例 + 清场（等 3s 让旧窗口完全释放，避免 WindowOverlay 透明窗设置失败）
     killDesktopPet();
-    await sleep(1200);
+    await sleep(3000);
     try { fs.unlinkSync(PLAYER_LOG); } catch { /* 无旧日志 */ }
     writeFileSafe(inbox, '');
     fs.writeFileSync(testMode, ''); // 开测试模式（防污染记忆）
