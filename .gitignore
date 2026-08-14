@@ -110,6 +110,12 @@ code/desktop_unity/*.booproj
 code/desktop unity/*.svd
 
 # ================
+# 安装包便携目录产物（阶段1，不入库；打包脚本 installer\build-portable.ps1 入库）
+# ================
+installer/portable/
+installer/downloads/
+
+# ================
 # 原始模型文件（超大，不上传）
 # ================
 file/
