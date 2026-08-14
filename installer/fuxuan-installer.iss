@@ -65,8 +65,17 @@ Name: "{group}\卸载符玄桌宠"; Filename: "{uninstallexe}"; Components: core
 Name: "{autodesktop}\符玄桌宠"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; Components: core
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "立即运行符玄桌宠"; Flags: postinstall nowait skipifsilent; Tasks: ; Components: core
-Filename: "{app}\start-bridge.cmd"; Description: "启动桥接服务器（后台）"; Flags: postinstall nowait skipifsilent runhidden; Components: core
+; ── 阶段3 组件自动化（可按组件条件运行；/SKIPCOMPONENTS 时全部跳过，用于本地测试）──
+Filename: "{app}\extras\components\install-vcredist.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: core; Check: not SkipComps(); StatusMsg: "安装 VC++ 运行库..."
+Filename: "{app}\extras\components\install-openclaw.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: openclaw; Check: not SkipComps(); StatusMsg: "配置 OpenClaw Gateway..."
+Filename: "{app}\extras\components\install-ollama.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: ollama; Check: not SkipComps(); StatusMsg: "安装 Ollama 并拉取模型（可能数 GB，可跳过）..."
+Filename: "{app}\extras\components\install-miktex.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: tex; Check: not SkipComps(); StatusMsg: "安装 MiKTeX..."
+Filename: "{app}\extras\components\install-everything.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: extras; Check: not SkipComps(); StatusMsg: "配置 Everything 搜索..."
+Filename: "{app}\extras\components\install-service.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: core; Check: not SkipComps(); StatusMsg: "注册桥接为 Windows 服务..."
+Filename: "{app}\{#MyAppExeName}"; Description: "立即运行符玄桌宠"; Flags: postinstall nowait skipifsilent; Components: core
+
+[UninstallRun]
+Filename: "{app}\extras\components\uninstall-service.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "UninstallBridgeService"
 
 [Code]
 const
@@ -74,6 +83,7 @@ const
 
 var
   SkipEnv: Boolean;
+  KeepData: Boolean;   // 卸载时是否保留数据目录（默认保留；静默卸载默认也是保留）
   DataDirPage: TInputDirWizardPage;
   KeyPage: TWizardPage;
   edDeepSeek: TNewEdit;
@@ -88,6 +98,12 @@ begin
   for i := 1 to ParamCount do
     if CompareText(ParamStr(i), Param) = 0 then
       Result := True;
+end;
+
+// 测试模式：跳过全部组件安装脚本（本地静默验证用，避免安装 VC++/Ollama/服务等）
+function SkipComps(): Boolean;
+begin
+  Result := CmdLineParamExists('/SKIPCOMPONENTS');
 end;
 
 function GenerateToken: String;
@@ -176,29 +192,55 @@ begin
   end;
 end;
 
+function GetDataDirForUninstall: String;
+var
+  S: String;
+begin
+  S := GetExistingUserEnv('FU_XUAN_DATA');
+  if S = '' then S := 'D:\DesktopPetData';
+  Result := S;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   EnvWritten: Boolean;
+  DataDir: String;
 begin
   EnvWritten := FileExists(ExpandConstant('{app}\.env-written'));
   if CurUninstallStep = usUninstall then
   begin
+    KeepData := True; // 默认保留；仅用户明确选「否」才删除（静默卸载 = 保留）
     if MsgBox('是否保留数据目录（忆境/人格/文档）？' + #13#10 +
-      '选择「是」将保留 ' + GetExistingUserEnv('FU_XUAN_DATA') + #13#10 +
+      '选择「是」将保留 ' + GetDataDirForUninstall + #13#10 +
       '选择「否」将删除全部数据（不可恢复！）',
       mbConfirmation, MB_YESNO or MB_DEFBUTTON1) = IDNO then
-    begin
-      // 删除数据目录（用户明确选择）
-    end;
+      KeepData := False;
   end;
-  if (CurUninstallStep = usPostUninstall) and EnvWritten then
+  if CurUninstallStep = usPostUninstall then
   begin
-    RegDeleteValue(HKCU, 'Environment', 'FU_XUAN_DATA');
-    RegDeleteValue(HKCU, 'Environment', 'BRIDGE_TOKEN');
-    RegDeleteValue(HKCU, 'Environment', 'OFFICE_SCRIPTS_DIR');
-    RegDeleteValue(HKCU, 'Environment', 'KNOWLEDGE_SCRIPTS_DIR');
-    RegDeleteValue(HKCU, 'Environment', 'OPENCLAW_NODE_MODULES');
-    RegDeleteValue(HKCU, 'Environment', 'OFFICE_PYTHON');
+    if not KeepData then
+    begin
+      // ★ 用户明确选择删除：删数据目录（带安全护栏，防误删系统/安装目录）
+      DataDir := GetDataDirForUninstall;
+      if (DataDir <> '') and (DataDir <> ExpandConstant('{app}')) and
+         (DataDir <> 'C:\') and (DataDir <> 'D:\') and
+         (CompareText(DataDir, 'C:\Windows') <> 0) then
+      begin
+        if DelTree(DataDir, True, True, True) then
+          Log('FuXuan uninstall: data dir removed: ' + DataDir)
+        else
+          Log('FuXuan uninstall: data dir removal failed (may be in use): ' + DataDir);
+      end;
+    end;
+    if EnvWritten then
+    begin
+      RegDeleteValue(HKCU, 'Environment', 'FU_XUAN_DATA');
+      RegDeleteValue(HKCU, 'Environment', 'BRIDGE_TOKEN');
+      RegDeleteValue(HKCU, 'Environment', 'OFFICE_SCRIPTS_DIR');
+      RegDeleteValue(HKCU, 'Environment', 'KNOWLEDGE_SCRIPTS_DIR');
+      RegDeleteValue(HKCU, 'Environment', 'OPENCLAW_NODE_MODULES');
+      RegDeleteValue(HKCU, 'Environment', 'OFFICE_PYTHON');
+    end;
   end;
 end;
 

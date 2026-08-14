@@ -90,6 +90,10 @@ foreach ($sub in @("office", "latex", "knowledge")) {
     Copy-Tree (Join-Path $RootDir "scripts\$sub") (Join-Path $OutDir "scripts\$sub")
 }
 
+# ── 5b. 组件安装脚本（阶段3：VC++/OpenClaw/Ollama/MiKTeX/Everything/NSSM 服务）──
+Write-Host "`n── 组件脚本（extras\components）──"
+Copy-Tree (Join-Path $PSScriptRoot "components") (Join-Path $OutDir "extras\components")
+
 # ── 6. 可选：便携 Node / Python ──
 New-Item -ItemType Directory -Path $Downloads -Force | Out-Null
 if ($IncludeNode) {

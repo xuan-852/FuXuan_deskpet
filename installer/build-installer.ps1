@@ -105,10 +105,10 @@ if ($Test) {
     $testSetup = Join-Path $Dist "FuXuanSetup-$Version-test.exe"
     $testDir = "D:\FuXuanTest"
 
-    # 4a. 静默安装（最低权限 + 跳过环境变量，避免污染用户环境）
+    # 4a. 静默安装（最低权限 + 跳过环境变量/组件脚本，避免污染用户环境与安装真实软件）
     Write-Host "    静默安装到 $testDir ..."
     if (Test-Path $testDir) { Remove-Item $testDir -Recurse -Force }
-    $args = "/VERYSILENT /SUPPRESSMSGBOXES /SKIPENV /NORESTART /DIR=`"$testDir`""
+    $args = "/VERYSILENT /SUPPRESSMSGBOXES /SKIPENV /SKIPCOMPONENTS /NORESTART /DIR=`"$testDir`""
     $proc = Start-Process -FilePath $testSetup -ArgumentList $args -Wait -PassThru
     if ($proc.ExitCode -ne 0) { Write-Host "[ERROR] 静默安装失败 exit=$($proc.ExitCode)" -ForegroundColor Red; exit 1 }
 
