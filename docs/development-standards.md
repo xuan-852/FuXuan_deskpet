@@ -367,8 +367,20 @@ Assets/
 3. 未知命令必须 `Debug.LogWarning` 提示支持列表，便于排查拼写；
 4. 测试链路必须受 `ChatManager.IsTestMode` 保护，生产模式不响应任何注入文件。
 
-**执行测试时**：用 `Set-Content D:\DesktopPetData\inbox.txt -Value "@@view:settings"` 之类命令触发，
+**执行测试时**：优先用 `node scripts/test/runtime_smoke.cjs`（已内置**无记忆隔离**：以 `FU_XUAN_DATA` 指向 `%TEMP%\fuxuan_smoke_test` 启动桌宠 + `.test_mode` 双保险，测试结束断言生产记忆文件 mtime 零变化并清理隔离目录）；
+手动终端测试时用 `Set-Content D:\DesktopPetData\inbox.txt -Value "@@view:settings"` 之类命令触发，
 再配合截图/日志验证，不移动真实鼠标。
+
+**★ 数据隔离铁律（2026-08-15）**：
+
+1. **测试必须无记忆**：测试启动一律 `FU_XUAN_DATA=<临时目录>`（DataPathConfig 已支持环境变量），
+   让桌宠以空记忆运行——生产 `D:\DesktopPetData` 完全不被读写；
+2. `.test_mode` 是**第二道防线**（不落盘）：除 ChatManager 外，`MotionMemoryManager.Save` /
+   `ActivityTracker.Save` / `DualModelValidator.SaveLog` 均已加 `IsTestMode` 拦截；
+3. **防污染断言**：冒烟测试内置对 `pet_memory/pet_personality/motion_memory/activity_log/validation_log/knowledge_base/reminders` 的 mtime 快照比对，
+   任何测试若改动了生产文件立即判失败；
+4. **备份**：测试/清理前跑 `node scripts/backup_memory.cjs [--all]`，生产记忆至少保留一份副本
+   （`D:\DesktopPetData\_backup_YYYYMMDD\`）；卸载/清理时禁止删除 `_backup_*` 目录。
 
 ---
 

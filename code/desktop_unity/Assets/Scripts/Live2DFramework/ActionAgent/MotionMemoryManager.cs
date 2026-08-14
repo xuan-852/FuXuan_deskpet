@@ -631,6 +631,7 @@ public class MotionMemoryManager : MonoBehaviour
 
     private void Save()
     {
+        if (ChatManager.IsTestMode) return; // ★ 测试模式不落盘：动作记忆无污染（2026-08-15）
         try
         {
             string json = JsonUtility.ToJson(_data, prettyPrint: true);

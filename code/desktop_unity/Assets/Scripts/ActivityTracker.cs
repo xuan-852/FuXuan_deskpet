@@ -766,6 +766,7 @@ public class ActivityTracker : MonoBehaviour
 
     private void Save()
     {
+        if (ChatManager.IsTestMode) return; // ★ 测试模式不落盘：活动日志无污染（2026-08-15）
         try
         {
             Debug.Log($"[ActivityTracker] Save() 开始, dict.Count={_today.dict.Count}, 保存路径={FilePath}");

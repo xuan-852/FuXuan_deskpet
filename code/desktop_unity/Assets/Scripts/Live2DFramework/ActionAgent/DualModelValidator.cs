@@ -657,6 +657,7 @@ public class DualModelValidator : MonoBehaviour
 
     private void SaveLog()
     {
+        if (ChatManager.IsTestMode) return; // ★ 测试模式不落盘：校验日志无污染（2026-08-15）
         try
         {
             string json = JsonUtility.ToJson(_log, prettyPrint: true);
