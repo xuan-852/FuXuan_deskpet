@@ -94,6 +94,10 @@ foreach ($sub in @("office", "latex", "knowledge")) {
 Write-Host "`n── 组件脚本（extras\components）──"
 Copy-Tree (Join-Path $PSScriptRoot "components") (Join-Path $OutDir "extras\components")
 
+# ── 5c. 安装验收脚本（extras\acceptance，目标机用内置 Node 运行）──
+Write-Host "`n── 验收脚本（extras\acceptance）──"
+Copy-Tree (Join-Path $PSScriptRoot "verify-acceptance.cjs") (Join-Path $OutDir "extras\acceptance")
+
 # ── 6. 可选：便携 Node / Python ──
 New-Item -ItemType Directory -Path $Downloads -Force | Out-Null
 if ($IncludeNode) {

@@ -1496,10 +1496,11 @@ function startHttpServer() {
                     const content = await generateOfficeContent(type, description.trim(), title, theme);
                     console.log(`[Bridge] AI generated office content in ${Date.now() - t0}ms`);
 
-                    // 2) 确定输出目录（Documents 下按标题建文件夹）
+                    // 2) 确定输出目录（Documents 下按标题建文件夹；★数据目录跟随 FU_XUAN_DATA，禁止硬编码 D:\）
                     const docTitle = String(content.title || title || 'document').replace(/[<>:"\/\\|?*]/g, '_');
                     const folderName = `${docTitle}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}_${Date.now().toString(36)}`;
-                    const outDir = join('D:\\DesktopPetData\\Documents', folderName);
+                    const outRoot = process.env.FU_XUAN_DATA ? join(process.env.FU_XUAN_DATA, 'Documents') : 'D:\\DesktopPetData\\Documents';
+                    const outDir = join(outRoot, folderName);
                     mkdirSync(outDir, { recursive: true });
 
                     // 3) 本地 Python 渲染
