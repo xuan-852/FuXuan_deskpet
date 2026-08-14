@@ -1,7 +1,7 @@
 # 安装包与分发方案 — 让符玄在任意 Windows 电脑上跑起来
 
 > **文档作用**: 回答「怎么把符玄桌宠打包成常规软件样式的安装包，在别的电脑上完整安装运行」。给出运行时依赖全景、三个移植障碍、Inno Setup 安装器设计、组件安装流程、验收清单与分期计划。
-> **当前状态**: ✅ **阶段 0 已完成（2026-08-14）**——三个移植障碍代码改造全部落地并验证（import 动态解析 / `FU_XUAN_DATA` / requirements.txt / Pogget 路径配置化，见 §三清单）；✅ **阶段 1 便携原型已完成（2026-08-14）**——`installer\build-portable.ps1` 组装便携目录 `installer\portable\`，真机验证通过（便携桥 `/health` 200 且连上 Gateway、`/extract_pdf` 26 页 PDF 提取成功、桌宠从便携目录启动正常零异常）；⚠️ 遗留：Python embeddable 内置待补测（当前回退系统 Python）、阶段 2~4 未开始。
+> **当前状态**: ✅ **阶段 0 已完成（2026-08-14）**——三个移植障碍代码改造全部落地并验证；✅ **阶段 1 便携原型已完成（2026-08-14）**——`installer\build-portable.ps1` 组装 `installer\portable\`，真机验证通过；✅ **阶段 2 安装器已完成（2026-08-15）**——`installer\fuxuan-installer.iss` + `build-installer.ps1` 产出 `installer\dist\FuXuanSetup-1.0.0.exe`（112.9MB，中文向导 + API 密钥收集页 + 数据目录选择 + 环境变量写入 + 卸载保留数据），本地静默安装/卸载验证通过；⚠️ 遗留：Python embeddable 内置待补测、桥服务注册（NSSM）与 OpenClaw/Ollama 组件自动化归入阶段 3、干净 VM 全清单验收归入阶段 4。
 > **关联文档**: [`README.md`](../README.md)（环境依赖/快速上手）、[`code-truth-architecture.md`](code-truth-architecture.md)（六层架构）、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md)（功能路线）、[`development-standards.md`](development-standards.md)（通信/密钥规范）
 
 ---
@@ -281,7 +281,7 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 |---|---|---|---|
 | **0** | 三个移植障碍代码改造（§三清单）+ `build.ps1 -Quick` + 测试 + 更新架构文档 | 0.5~1 天 | ✅ 2026-08-14 完成（import 动态解析 / `FU_XUAN_DATA` / requirements.txt / Pogget 环境变量；EditMode 78/78 + 冒烟测试通过） |
 | **1** | 便携目录原型：内置 Node/Python 解包 + `start-bridge.cmd` + 数据目录 + 环境变量脚本 | 1 天 | ✅ 2026-08-14 完成（`installer\build-portable.ps1` 组装 `installer\portable\`；便携桥 `/health`+`/extract_pdf` 通过、桌宠从便携目录启动零异常；**Node 锁定 v22.22.3+**（OpenClaw 要求 SQLite 3.51.3+，v22.14.0 实测启动报 WAL bug）；⚠️ Python embeddable 内置待补测，当前回退系统 Python） |
-| **2** | Inno Setup 安装器：§四全部页面/组件/注册/卸载 | 1~2 天 | `setup.exe` |
+| **2** | Inno Setup 安装器：§四全部页面/组件/注册/卸载 | 1~2 天 | ✅ 2026-08-15 完成（`fuxuan-installer.iss`：中文向导 + API 密钥收集页 + 数据目录页 + 组件选择 + 环境变量写入/卸载清理 + 卸载保留数据；`build-installer.ps1` 自动获取便携 ISCC；产物 `FuXuanSetup-1.0.0.exe` 112.9MB；本地静默安装→7 项产物校验→静默卸载 全过；⚠️ NSSM 服务注册与 OpenClaw/Ollama/TeX 组件自动化归入阶段 3） |
 | **3** | 组件安装脚本：OpenClaw npm 静默 + Ollama 拉模型 + MiKTeX + VC++ + Everything | 1 天 | 组件自动化 |
 | **4** | 虚拟机验收（§八清单）+ 版权/密钥文档 + 发布流程（构建→打包→版本号） | 0.5~1 天 | 发布 v1.0 |
 | 合计 | | **4~6 天** | |

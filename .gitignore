@@ -114,6 +114,8 @@ code/desktop unity/*.svd
 # ================
 installer/portable/
 installer/downloads/
+installer/innosetup/
+installer/dist/
 
 # ================
 # 原始模型文件（超大，不上传）
