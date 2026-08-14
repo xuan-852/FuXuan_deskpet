@@ -108,6 +108,52 @@
 
 拖拽更新在 `Update`（L317-336）：`newPos = mp - _dragOffset`，`Mathf.Clamp` 到屏内后写 `_panelRect.x/y`。**验证**：Chat @ (1037,166) 拖标题栏 (1300,190)→(1200,290)，`_dragOffset=(263,24)`，终点精确落 (937,266)（与理论值一致，跟手无偏移）。
 
+### 2.7 设置/便签/报告页内子面板 + 淡入淡出 + 工具提示（2026-08-13）
+
+**子面板页内化**：设置/便签/报告不再开独立的灰色 BallPanel 窗口，而是在 RightPanel 对话框内以 860×900 子面板视图呈现（`SUB_PANEL_W/H`）。新增 `PanelView.Settings / Reminders / Report` 三个视图 + `IsSubPanelView()` 判断，由 `OpenSubPanel(BallPanel.PanelType)` 打开（记录 `_prevView` 供 ◀ 返回），`BackFromSubPanel()` 返回来源视图。BallPanel.cs 保留仅用于 `DragHandler` 兼容与 `PanelType` 枚举。
+
+**三个子面板内容**：
+- **设置（DrawSettingsSubPanel）**：⚙任务权重 5 行（`DrawWeightRowGui`，读写 `DesktopPet` 的 taskWeight 字段，✓应用权重即时生效）+ 📦预设（好动 3,3,3,3,1 / 均衡 2,2,2,2,2 / 安静 1,1,1,1,6）+ 💾持久化（💿保存配置 / 🗑清空忆境，走 PetConfig/PetMemory）；
+- **报告（DrawReportSubPanel）**：🔄刷新 / 📋复制 + `MotionMemoryManager.Instance.GetStatistics()` 统计展示（try/catch 兜底空数据）；
+- **便签（DrawRemindersSubPanel）**：✚新建（文本 + 时间输入）/ 🔄刷新 / ✅已完成⇄⏳看待办切换 / 列表项 MarkDone / DeleteReminder。
+
+**淡入淡出**：`_isOpen / _closing / _animAlpha / _panelTint`（每帧 `GUI.color = _panelTint` 施加全局透明度），`FADE_SPEED=5f`；Update 中推进 alpha，`_closing && _animAlpha<=0.001f` 时隐藏面板；`Toggle()` 第二次按下取消淡出，`Close()` 置 `_closing=true`。**坑**：① 绘制星星/拖尾等自设颜色的代码必须显式 `* _animAlpha`（它们覆盖 `GUI.color`）；② 任何 `GUI.color` 赋值后须在分支结束/OnGUI 末尾恢复 `Color.white`，否则全局淡入淡出失效。
+
+**工具提示（hover tooltip）**：鼠标悬停工具行「设/签/告」按钮时右侧浮出说明文字（工具按钮行 `toolY = py + ph - 76`，btnRect 高 50，实际 y≈1276-1326）。
+
+**★ 终端测试链路（铁律 §6.6）**：UI 自动化不依赖模拟鼠标点击。`CheckTestInbox()` 在测试模式（`D:\DesktopPetData\.test_mode` 存在）下每 0.25s 轮询 `D:\DesktopPetData\inbox.txt`：
+
+| 命令 | 效果 |
+|------|------|
+| `@@view:settings\|reminders\|report` | 打开对应页内子面板 |
+| `@@view:chat` | 切聊天视图（无会话时建默认会话） |
+| `@@view:list` | 切回会话列表 |
+| `@@view:back` | 子面板 ◀ 返回来源视图 |
+| `@@view:open\|close` | 打开 / 淡出关闭面板 |
+| `@@emote:xxx` | 注入表情（不走 LLM） |
+| 其他文本 | 作为用户消息发送（走 LLM） |
+
+命令处理在 `HandleTestViewCommand()`（未知命令 `Debug.LogWarning` 列出支持列表），命令执行留痕 `[TestInbox] @@view 命令: xxx` 于 Player.log。**新增 UI 视图/按钮时必须在命令表中补等价命令。**
+
+### 2.8 RightPanel 拆分（2026-08-14，文件 3520 → 1666 行）
+
+`RightPanel.cs` 曾为 3,520 行全项目第二大文件，按职责拆分为 **1 主文件 + 3 分部文件**（全部保持行为逐字节不变，EditMode 78/78 验证通过）：
+
+| 文件 | 行数 | 职责 |
+|---|---|---|
+| `RightPanel.cs` | 1,666 | 主控：生命周期/状态机/视图分发/样式初始化/像素头像/审批弹窗 |
+| `RightPanel.ChatView.cs` | 657 | 分部（partial）：会话字段 + `DrawChatArea`（聊天区整体）+ 会话列表/侧栏/刷新 |
+| `RightPanel.SubPanels.cs` | 573 | 分部（partial）：子面板（设置/便签/报告）+ `InitSubPanelStyles` |
+| `UiTextureFactory.cs` | 413 | **独立静态类**：17 个纹理生成函数（圆角/渐变/云纹/星空/太极/六芒星/气泡） |
+| `StarField.cs` | 272 | **独立类**：星空系统（分层星点/流星拖尾），`_animAlpha` 改为参数传入 |
+
+**拆分要点**：
+- 纯静态纹理生成 → `UiTextureFactory`（public static class，调用点加前缀）
+- 自包含状态的星空 → `StarField`（`Init(seed)` / `UpdateStarMotion()` / `DrawStars(..., animAlpha)`）
+- 强耦合实例状态的子面板/聊天区 → **partial class**（跨文件共用私有成员，零风险）
+- 坑：聊天区提取时 `bgRect`（OnGUI 局部变量）被带入，改用等价字段 `_panelRect`（语义=窗口矩形）；新文件 `.meta` 由 Unity 首次编译自动生成
+- **坑（2026-08-14 真机验证发现）**：`StarField _starField` 字段拆分后必须**实例化**（`= new StarField()`）。漏了会引发双重故障：① `InitStyles` 内 `_starField.Init(42)` 首帧 NRE，且 `_stylesReady=true` 在抛异常**之前**已置位 → 900 行后全部样式/纹理永不创建（半初始化锁定）；② 面板打开后 `_starField.UpdateStarMotion()` 每帧 NRE，OnGUI 在视图分发前中断 → 面板只剩背景、列表/聊天/输入框不渲染。EditMode（nographics）跑不到 OnGUI 测不出，**必须真机开面板验证**（`@@view:open` 后查 Player.log 无 `NullReferenceException` 洪流）
+
 ## 三、开发历史迭代
 
 | 版本 | 日期 | 变更 |
