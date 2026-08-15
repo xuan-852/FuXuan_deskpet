@@ -30,7 +30,7 @@ public class StarField
     private List<Vector2>[] _bigTrail;   // 大星尾迹（index0=最新采样点）
     private List<Vector2>[] _midTrail;   // 中星尾迹
     private List<Vector2>[] _smallTrail; // 小星尾迹
-    private int _trailTick;              // 尾迹采样计时（每 2 帧推一个采样点）
+    private float _trailTimer;            // 尾迹采样计时（时间累积，每 0.1s 推一个采样点，帧率无关）
 
     /// <summary>一次性初始化：创建星点纹理 + 生成分层星点（固定种子）</summary>
     public void Init(int seed)
@@ -118,7 +118,7 @@ public class StarField
         InitMotion(out _bigVel, out _bigPhase, out _bigTrail, _bigStars, 22, 5, 2.35f, 0.0022f, 0.0010f, rng);
         InitMotion(out _midVel, out _midPhase, out _midTrail, _midStars, 0, 0, 0f, 0f, 0f, rng);
         InitMotion(out _smallVel, out _smallPhase, out _smallTrail, _smallStars, 0, 0, 0f, 0f, 0f, rng);
-        _trailTick = 0;
+        _trailTimer = 0f;
     }
 
     /// <summary>初始化一层星点的运动：前 meteorCount 颗为流星（统一方向 meteorDir + 微散角 + 慢速），其余静止；
@@ -219,31 +219,40 @@ public class StarField
         GUI.color = prev;
     }
 
-    /// <summary>星点运动：仅流星层采样尾迹（每 2 帧一个点，index0=最新）；静止星跳过，越界回绕</summary>
+    /// <summary>星点运动：仅流星层采样尾迹；静止星跳过，越界回绕
+    /// ★ 2026-08-16 修复1：位移乘以 deltaTime——否则固定帧步进，60fps 内嵌快 / 15fps 外置慢
+    /// ★ 修复2：尾迹采样改为「时间累积」（每 ~0.1s 一个点），帧率无关——否则 60fps 渲染时
+    ///   22 点尾迹只覆盖 0.37s（变短），15fps 时覆盖 1.5s（变长），与外置渲染节流组合后长度不稳定</summary>
     public void UpdateStarMotion()
     {
         if (_bigStars == null || _bigVel == null) return;
         float t = Time.time;
-        _trailTick = (_trailTick + 1) % 2;
-        bool sample = _trailTick == 0;
-        UpdateLayer(_bigStars, _bigVel, _bigPhase, _bigTrail, 22, 0.00042f, sample);
-        UpdateLayer(_midStars, _midVel, _midPhase, _midTrail, 0, 0.00046f, sample);
-        UpdateLayer(_smallStars, _smallVel, _smallPhase, _smallTrail, 0, 0.0005f, sample);
+        float dt = Time.deltaTime;
+        // 时间累积采样：每 ~0.033s 一个尾迹点（帧率无关）
+        // ★ 间距 = 每秒位移 × 采样间隔 = 60·vx × 0.033 ≈ 2·vx，还原内嵌 60fps「每 2 帧一点」的自然连续拖尾
+        _trailTimer += dt;
+        bool sample = _trailTimer >= 0.033f;
+        if (sample) _trailTimer = 0f;
+        UpdateLayer(_bigStars, _bigVel, _bigPhase, _bigTrail, 22, 0.00042f, sample, dt);
+        UpdateLayer(_midStars, _midVel, _midPhase, _midTrail, 0, 0.00046f, sample, dt);
+        UpdateLayer(_smallStars, _smallVel, _smallPhase, _smallTrail, 0, 0.0005f, sample, dt);
     }
 
     private void UpdateLayer(Vector4[] stars, Vector2[] vels, float[] phases, List<Vector2>[] trails,
-                             int cap, float wobble, bool sample)
+                             int cap, float wobble, bool sample, float dt)
     {
         if (stars == null || vels == null) return;
         float t = Time.time;
+        // ★ 时间归一：速度常量按 60fps 基准设计（每帧位移），乘 dt*60 后任意帧率速度恒定
+        float timeScale = dt * 60f;
         for (int i = 0; i < stars.Length; i++)
         {
             if (vels[i].sqrMagnitude < 1e-8f) continue;   // 静止星（非流星）不移动不采样
             Vector4 s = stars[i];
             Vector2 v = vels[i];
             float ph = phases[i];
-            float vx = v.x + Mathf.Sin(t * 0.5f + ph) * wobble;
-            float vy = v.y + Mathf.Cos(t * 0.45f + ph * 1.31f) * wobble;
+            float vx = (v.x + Mathf.Sin(t * 0.5f + ph) * wobble) * timeScale;
+            float vy = (v.y + Mathf.Cos(t * 0.45f + ph * 1.31f) * wobble) * timeScale;
             s.x = Mathf.Repeat(s.x + vx, 1f);
             s.y = Mathf.Repeat(s.y + vy, 1f);
             stars[i] = s;

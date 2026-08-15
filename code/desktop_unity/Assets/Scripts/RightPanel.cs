@@ -121,8 +121,10 @@ public partial class RightPanel : MonoBehaviour
     private bool _externalMode;      // 独立窗口模式激活
     private bool _externalRender;    // 正在向独立窗口渲染（抑制屏幕事件处理）
     private RenderTexture _chatRT;   // 面板渲染目标（独立窗口显示用，尺寸跟随当前视图）
-    private Texture2D _chatReadTex;  // BGRA 像素读取
-    private float _lastExtCapture;   // 推送节流计时
+    private float _lastExtCapture;   // 渲染/推送节流计时
+    // ★ 异步读回（AsyncGPUReadback）：渲染保持 60fps 动画流畅，读回不阻塞主线程
+    private Unity.Collections.NativeArray<byte> _extReadBack;
+    private bool _extReadPending;    // 上一帧读回未完成（防止堆积）
     // ★ 外部交互命中表（Phase A3）：渲染外置面板时登记可点区域（矩形+动作），
     //   独立窗口点击坐标回来查表执行（IMGUI Event.current 无法注入，故手动命中）
     private readonly List<ExtHitZone> _extHitZones = new List<ExtHitZone>();
@@ -1779,7 +1781,7 @@ public partial class RightPanel : MonoBehaviour
         if (_inputBarPixelTex != null) Destroy(_inputBarPixelTex);
         if (_monoFont != null) Destroy(_monoFont);
         if (_chatRT != null) { _chatRT.Release(); Destroy(_chatRT); }
-        if (_chatReadTex != null) Destroy(_chatReadTex);
+        if (_extReadBack.IsCreated) _extReadBack.Dispose(); // ★ NativeArray 必须释放（泄漏=内存增长）
         DisableExternalMode();
     }
 
@@ -1854,20 +1856,28 @@ public partial class RightPanel : MonoBehaviour
     /// <summary>外置窗口自绘星空标题栏高度（与 ExternalChatWindow.TITLE_BAR_H 一致，逻辑像素）</summary>
     private const int EXT_TITLE_BAR_H = 44;
 
-    /// <summary>把整个面板渲染到独立窗口（IMGUI → RenderTexture → BGRA 像素流，15fps 节流）
-    /// ★ 无边框窗口：RT 顶部 44px 自绘星空标题栏（替代系统灰白标题栏），面板内容下移</summary>
+    /// <summary>把整个面板渲染到独立窗口（IMGUI → RenderTexture → 异步读回 BGRA → 推送）
+    /// ★ 无边框窗口：RT 顶部 44px 自绘星空标题栏
+    /// ★ 性能：渲染每帧执行（GPU 侧，60fps 星空动画流畅）；读回用 AsyncGPUReadback 异步
+    ///   （不阻塞主线程），推送按 _lastExtCapture 节流</summary>
     private void DrawExternalPanelToTexture()
     {
+        // IMGUI 只在 Repaint 事件提交绘制，非 Repaint 时直接返回（否则 RT 空）
+        if (Event.current.type != EventType.Repaint)
+            return;
+
         // 渲染尺寸 = 当前面板视图尺寸 + 顶部自绘标题栏
         int rtW = Mathf.Max(64, Mathf.RoundToInt(_panelRect.width));
         int rtH = Mathf.Max(64, Mathf.RoundToInt(_panelRect.height)) + EXT_TITLE_BAR_H;
-        // ★ 调试：IMGUI 只在 Repaint 事件提交绘制，非 Repaint 时直接返回（否则 RT 空）
-        if (Event.current.type != EventType.Repaint)
-            return;
         if (_chatRT == null || _chatRT.width != rtW || _chatRT.height != rtH)
         {
             if (_chatRT != null) _chatRT.Release();
-            _chatRT = new RenderTexture(rtW, rtH, 0, RenderTextureFormat.ARGB32);
+            // ★ BGRA32：AsyncGPUReadback 读出 BGRA 字节序，与 SetDIBitsToDevice 匹配（ARGB32 会 R/B 互换变橙色）
+            _chatRT = new RenderTexture(rtW, rtH, 0, RenderTextureFormat.BGRA32);
+            if (_extReadBack.IsCreated) _extReadBack.Dispose();
+            _extReadBack = new Unity.Collections.NativeArray<byte>(rtW * rtH * 4, Unity.Collections.Allocator.Persistent,
+                Unity.Collections.NativeArrayOptions.UninitializedMemory);
+            _extReadPending = false;
             ExternalChatWindow.SetSize(rtW, rtH); // 窗口客户区跟随（面板+标题栏）
         }
         RenderTexture prev = RenderTexture.active;
@@ -1876,7 +1886,7 @@ public partial class RightPanel : MonoBehaviour
         Matrix4x4 prevMatrix = GUI.matrix;
         GUI.matrix = Matrix4x4.identity;
         _externalRender = true;
-        _extHitZones.Clear(); // 每帧重建命中表
+        _extHitZones.Clear(); // 渲染帧重建命中表
         try
         {
             DrawExternalTitleBar(rtW); // ★ 自绘星空标题栏（含最小化/关闭按钮，登记命中）
@@ -1890,18 +1900,19 @@ public partial class RightPanel : MonoBehaviour
         GUI.matrix = prevMatrix;
         RenderTexture.active = prev;
 
-        // 节流推送（15fps）
-        if (Time.time - _lastExtCapture > 1f / 15f)
+        // 异步读回 + 推送（30fps 节流；读回不阻塞主线程，动画保持 60fps 渲染）
+        if (Time.time - _lastExtCapture >= 1f / 30f && !_extReadPending && _extReadBack.IsCreated)
         {
             _lastExtCapture = Time.time;
-            if (_chatReadTex == null || _chatReadTex.width != rtW || _chatReadTex.height != rtH)
-                _chatReadTex = new Texture2D(rtW, rtH, TextureFormat.BGRA32, false);
-            RenderTexture.active = _chatRT;
-            _chatReadTex.ReadPixels(new Rect(0, 0, rtW, rtH), 0, 0);
-            RenderTexture.active = prev;
-            _chatReadTex.Apply();
-            try { ExternalChatWindow.SetBuffer(_chatReadTex.GetRawTextureData(), rtW, rtH); }
-            catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部窗口像素推送失败: {e.Message}"); }
+            _extReadPending = true;
+            UnityEngine.Rendering.AsyncGPUReadback.RequestIntoNativeArray(
+                ref _extReadBack, _chatRT, 0, (req) =>
+                {
+                    if (req.hasError) { _extReadPending = false; return; }
+                    try { ExternalChatWindow.SetBuffer(_extReadBack, rtW, rtH); }
+                    catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部窗口像素推送失败: {e.Message}"); }
+                    _extReadPending = false;
+                });
         }
     }
 

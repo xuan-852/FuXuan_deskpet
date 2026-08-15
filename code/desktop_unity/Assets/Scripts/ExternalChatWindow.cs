@@ -284,6 +284,22 @@ public static class ExternalChatWindow
         InvalidateRect(_hwnd, IntPtr.Zero, false);
     }
 
+    /// <summary>把 BGRA 像素推给窗口显示（AsyncGPUReadback 回调版，NativeArray 输入；ToArray 安全拷贝）</summary>
+    public static void SetBuffer(Unity.Collections.NativeArray<byte> bgra, int w, int h)
+    {
+        if (!IsCreated || !IsVisible) return;
+        lock (_bufLock)
+        {
+            int need = w * h * 4;
+            if (_buffer == null || _buffer.Length != need) _buffer = new byte[need];
+            // NativeArray → 托管数组（ToArray 安全，无 unsafe；回调在主线程）
+            byte[] arr = bgra.ToArray();
+            Buffer.BlockCopy(arr, 0, _buffer, 0, Math.Min(need, arr.Length));
+            _bufW = w; _bufH = h;
+        }
+        InvalidateRect(_hwnd, IntPtr.Zero, false);
+    }
+
     /// <summary>向输入框追加文本（主线程调用，用于测试注入）</summary>
     public static void SetInputText(string text)
     {
