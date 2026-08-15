@@ -57,12 +57,14 @@ public partial class RightPanel
             PanelView.Settings => "⚙ 设置 · 任务权重",
             PanelView.Reminders => "📋 便签 · 卜算记事簿",
             PanelView.Report => "📝 报告 · 演武心经",
+            PanelView.Usage => "💰 消耗 · Token 统计",
             _ => ""
         };
         GUI.Label(new Rect(px + 56f, py + 8f, pw - 200f, 26f), subTitle, _termTitleStyle);
         GUI.Label(new Rect(px + 56f, py + 32f, pw - 200f, 18f),
             _currentView == PanelView.Settings ? "调教本座走位习惯，微调权重以符占卜之数" :
             _currentView == PanelView.Reminders ? "卜算记事簿 — 记要事，勿相忘" :
+            _currentView == PanelView.Usage ? "Token 消耗统计 — 看看本座每小时烧多少" :
             "演武心经 — 每次演武后 AI 自评记录的修为报告", _termLogDimStyle);
 
         // —— 时间 + ✕ 关闭 ——
@@ -98,6 +100,7 @@ public partial class RightPanel
             case PanelView.Settings: DrawSettingsSubPanel(contentX, contentY, contentW, contentH, mp); break;
             case PanelView.Reminders: DrawRemindersSubPanel(contentX, contentY, contentW, contentH, mp); break;
             case PanelView.Report: DrawReportSubPanel(contentX, contentY, contentW, contentH, mp); break;
+            case PanelView.Usage: DrawUsageSubPanel(contentX, contentY, contentW, contentH, mp); break;
         }
 
         // 右键关闭（快捷收面板）
@@ -303,6 +306,53 @@ public partial class RightPanel
         GUI.Label(new Rect(x, y + h - 30f, w, 24f),
             "💡 每次演武后 AI 会自评并记录，分数越高下次越倾向使用",
             new GUIStyle(_termLogDimStyle) { fontSize = 14 });
+    }
+
+    // ==================================================================
+    //  子面板内容：消耗（Token 统计）— 累计 + 近 1 小时 + 估算费用
+    // ==================================================================
+    private void DrawUsageSubPanel(float x, float y, float w, float h, Vector2 mp)
+    {
+        var (hourCalls, hourPrompt, hourHit, hourCompletion) = UsageStats.GetRecent(3600f);
+        float hourCost = UsageStats.EstimateCostYuan(hourPrompt, hourHit, hourCompletion);
+        long totalCalls = UsageStats.TotalCalls;
+        long totalPrompt = UsageStats.TotalPrompt;
+        long totalHit = UsageStats.TotalCacheHit;
+        long totalCompletion = UsageStats.TotalCompletion;
+        float totalCost = UsageStats.EstimateCostYuan(totalPrompt, totalHit, totalCompletion);
+
+        var big = new GUIStyle(_termLogStyle) { fontSize = 17, richText = true };
+        var dim = new GUIStyle(_termLogDimStyle) { fontSize = 14, richText = true };
+
+        // —— 近 1 小时卡片 ——
+        float cardH = 150f;
+        Rect cardRect = new Rect(x, y, w, cardH);
+        UiTextureFactory.DrawPixelRect(cardRect, new Color(0.22f, 0.16f, 0.35f, 0.45f));
+        GUI.Label(new Rect(x + 16f, y + 12f, w - 32f, 26f), "⏱ 近 1 小时消耗", new GUIStyle(_termTitleStyle) { fontSize = 18 });
+        GUI.Label(new Rect(x + 16f, y + 46f, w - 32f, 24f),
+            $"调用 <color=#d8ccff>{hourCalls}</color> 次 · 输入 <color=#d8ccff>{hourPrompt:N0}</color> tokens · 输出 <color=#d8ccff>{hourCompletion:N0}</color>", big);
+        GUI.Label(new Rect(x + 16f, y + 76f, w - 32f, 24f),
+            $"缓存命中率 <color=#ffd98a>{UsageStats.HitRate(hourPrompt, hourHit) * 100f:F1}%</color> · 估算 <color=#8aff8a>≈ ¥{hourCost:F2}</color> / 小时", big);
+        GUI.Label(new Rect(x + 16f, y + 106f, w - 32f, 20f),
+            $"（按非高峰价：输入未命中 ¥2/M · 命中 ¥0.5/M · 输出 ¥3/M 估算）", dim);
+
+        // —— 累计（本次会话） ——
+        float totalY = y + cardH + 20f;
+        Rect totalRect = new Rect(x, totalY, w, cardH);
+        UiTextureFactory.DrawPixelRect(totalRect, new Color(0.22f, 0.16f, 0.35f, 0.30f));
+        GUI.Label(new Rect(x + 16f, totalY + 12f, w - 32f, 26f), "📈 累计（本次会话）", new GUIStyle(_termTitleStyle) { fontSize = 18 });
+        GUI.Label(new Rect(x + 16f, totalY + 46f, w - 32f, 24f),
+            $"调用 <color=#d8ccff>{totalCalls}</color> 次 · 输入 <color=#d8ccff>{totalPrompt:N0}</color> tokens · 输出 <color=#d8ccff>{totalCompletion:N0}</color>", big);
+        GUI.Label(new Rect(x + 16f, totalY + 76f, w - 32f, 24f),
+            $"缓存命中率 <color=#ffd98a>{UsageStats.HitRate(totalPrompt, totalHit) * 100f:F1}%</color> · 估算 <color=#8aff8a>≈ ¥{totalCost:F2}</color>", big);
+
+        // —— 说明 ——
+        float noteY = totalY + cardH + 20f;
+        GUI.Label(new Rect(x + 16f, noteY, w - 32f, h - (noteY - y) - 10f),
+            "💡 说明：\n· 仅统计带 usage 的云端调用（DeepSeek/GLM），本地 Ollama 不花钱不计入\n" +
+            "· 数字在面板打开时实时刷新（每次绘制取最新）\n" +
+            "· 费用为估算：DeepSeek 8-17 起峰谷定价（高峰 9-12/14-18 点，峰值输出最高 ¥27/M），实际以账单为准\n" +
+            "· 想省钱：动作/闲话/天气已本地优先，聊天仍走云端大模型", dim);
     }
 
     // ==================================================================

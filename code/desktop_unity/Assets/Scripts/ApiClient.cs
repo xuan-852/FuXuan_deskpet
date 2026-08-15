@@ -83,6 +83,9 @@ public static class ApiClient
             long completion = usage["completion_tokens"]?.Value<long>() ?? 0;
             double hitRate = (hit + miss) > 0 ? (double)hit / (hit + miss) * 100.0 : 0.0;
 
+            // ★ 2026-08-15：同步累计到 UsageStats（「消耗」面板数据源）
+            UsageStats.Record((int)prompt, (int)hit, (int)completion);
+
             return $"prompt={prompt} (cache_hit={hit} miss={miss} 命中率={hitRate:F1}%) completion={completion}";
         }
         catch

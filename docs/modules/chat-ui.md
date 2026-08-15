@@ -112,20 +112,20 @@
 
 **子面板页内化**：设置/便签/报告不再开独立的灰色 BallPanel 窗口，而是在 RightPanel 对话框内以 860×900 子面板视图呈现（`SUB_PANEL_W/H`）。新增 `PanelView.Settings / Reminders / Report` 三个视图 + `IsSubPanelView()` 判断，由 `OpenSubPanel(BallPanel.PanelType)` 打开（记录 `_prevView` 供 ◀ 返回），`BackFromSubPanel()` 返回来源视图。BallPanel.cs 保留仅用于 `DragHandler` 兼容与 `PanelType` 枚举。
 
-**三个子面板内容**：
-- **设置（DrawSettingsSubPanel）**：⚙任务权重 5 行（`DrawWeightRowGui`，读写 `DesktopPet` 的 taskWeight 字段，✓应用权重即时生效）+ 📦预设（好动 3,3,3,3,1 / 均衡 2,2,2,2,2 / 安静 1,1,1,1,6）+ 💾持久化（💿保存配置 / 🗑清空忆境，走 PetConfig/PetMemory）；
+**三个子面板内容**：- **设置（DrawSettingsSubPanel）**：⚙任务权重 5 行（`DrawWeightRowGui`，读写 `DesktopPet` 的 taskWeight 字段，✓应用权重即时生效）+ 📦预设（好动 3,3,3,3,1 / 均衡 2,2,2,2,2 / 安静 1,1,1,1,6）+ 💾持久化（💿保存配置 / 🗑清空忆境，走 PetConfig/PetMemory）；
 - **报告（DrawReportSubPanel）**：🔄刷新 / 📋复制 + `MotionMemoryManager.Instance.GetStatistics()` 统计展示（try/catch 兜底空数据）；
 - **便签（DrawRemindersSubPanel）**：✚新建（文本 + 时间输入）/ 🔄刷新 / ✅已完成⇄⏳看待办切换 / 列表项 MarkDone / DeleteReminder。
+- **消耗（DrawUsageSubPanel，2026-08-15）**：💰 Token 统计——近 1 小时 + 累计两个口径（调用次数/输入输出 tokens/缓存命中率/估算费用）。数据源 `UsageStats.cs`（内存累计，`ApiClient.ExtractUsageSummary` 每次带 usage 的响应自动 `Record`，价格常量 DeepSeek 非高峰价 ¥2/0.5/3 每 M 可调）；本地 Ollama 不计入（免费）。测试命令 `@@view:usage`。
 
 **淡入淡出**：`_isOpen / _closing / _animAlpha / _panelTint`（每帧 `GUI.color = _panelTint` 施加全局透明度），`FADE_SPEED=5f`；Update 中推进 alpha，`_closing && _animAlpha<=0.001f` 时隐藏面板；`Toggle()` 第二次按下取消淡出，`Close()` 置 `_closing=true`。**坑**：① 绘制星星/拖尾等自设颜色的代码必须显式 `* _animAlpha`（它们覆盖 `GUI.color`）；② 任何 `GUI.color` 赋值后须在分支结束/OnGUI 末尾恢复 `Color.white`，否则全局淡入淡出失效。
 
-**工具提示（hover tooltip）**：鼠标悬停工具行「设/签/告」按钮时右侧浮出说明文字（工具按钮行 `toolY = py + ph - 76`，btnRect 高 50，实际 y≈1276-1326）。
+**工具提示（hover tooltip）**：鼠标悬停工具行「设/签/告/耗」按钮时右侧浮出说明文字（工具按钮行 `toolY = py + ph - 76`，btnRect 高 50，实际 y≈1276-1326）。
 
 **★ 终端测试链路（铁律 §6.6）**：UI 自动化不依赖模拟鼠标点击。`CheckTestInbox()` 在测试模式（`D:\DesktopPetData\.test_mode` 存在）下每 0.25s 轮询 `D:\DesktopPetData\inbox.txt`：
 
 | 命令 | 效果 |
 |------|------|
-| `@@view:settings\|reminders\|report` | 打开对应页内子面板 |
+| `@@view:settings\|reminders\|report\|usage` | 打开对应页内子面板（usage=Token 消耗统计） |
 | `@@view:chat` | 切聊天视图（无会话时建默认会话） |
 | `@@view:list` | 切回会话列表 |
 | `@@view:back` | 子面板 ◀ 返回来源视图 |

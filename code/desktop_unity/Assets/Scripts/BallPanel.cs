@@ -17,7 +17,7 @@ using System;
 /// </summary>
 public class BallPanel : MonoBehaviour
 {
-    public enum PanelType { None, Settings, Report, Reminders }
+    public enum PanelType { None, Settings, Report, Reminders, Usage }
 
     // ==================== 运行时状态 ====================
     private PanelType _currentPanel = PanelType.None;
