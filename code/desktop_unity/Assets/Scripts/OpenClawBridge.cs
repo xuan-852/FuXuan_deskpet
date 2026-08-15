@@ -375,6 +375,19 @@ public static class OpenClawBridge
     /// <summary>挂起的 exec 审批（null=无）；含 id/command/host/title/slug</summary>
     public static PendingApprovalInfo PendingApproval { get; private set; } = null;
 
+    /// <summary>测试模式注入审批（仅测试链路 @@approval:xxx 使用；生产流程走桥接轮询，不受影响）</summary>
+    public static void InjectTestApproval(string command, string title = "测试审批")
+    {
+        PendingApproval = new PendingApprovalInfo
+        {
+            approvalId = "test-" + UnityEngine.Random.Range(1000, 9999),
+            approvalSlug = "exec",
+            command = command,
+            host = "TEST",
+            title = title
+        };
+    }
+
     /// <summary>最近一次审批回执结果（成功 true / 失败 false），UI 提示用</summary>
     public static bool LastApprovalOk { get; private set; } = false;
 

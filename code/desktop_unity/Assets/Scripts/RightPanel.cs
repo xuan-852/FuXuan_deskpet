@@ -598,6 +598,19 @@ public partial class RightPanel : MonoBehaviour
             return;
         }
 
+        // ★ 测试审批注入：@@approval:命令文本 → 注入 OpenClaw 审批弹窗（仅测试模式）
+        if (content.StartsWith("@@approval:"))
+        {
+            string cmd = content.Substring("@@approval:".Length).Trim();
+            OpenClawBridge.InjectTestApproval(string.IsNullOrEmpty(cmd) ? "shutdown -s -t 0" : cmd);
+            // 直接打开审批弹窗（测试链路不走轮询检测沿，确保弹窗立即可见）
+            _approvalDialogOpen = true;
+            _approvalShownAt = Time.time;
+            _lastSeenApprovalId = OpenClawBridge.PendingApproval?.approvalId ?? "";
+            Debug.Log($"[TestInbox] 已注入测试审批: {cmd} → 审批弹窗打开");
+            return;
+        }
+
         if (_chat == null) return;
 
         // ★ 测试表情注入：@@emote:happy → 不走 LLM，直接左侧气泡 + 徽章
@@ -913,6 +926,8 @@ public partial class RightPanel : MonoBehaviour
         var pa = OpenClawBridge.PendingApproval;
         if (pa == null) { _approvalDialogOpen = false; return; }
 
+        // ★ 模态语义：审批弹窗打开时，下层视图命中区域全部失效（外置模式遮罩挡点击）
+        if (_externalRender) _extHitZones.Clear();
         // ——— 全面板半透明遮罩（模态，阻断下层交互） ———
         GUI.color = new Color(0f, 0f, 0f, 0.62f);
         GUI.DrawTexture(new Rect(px, py, pw, ph), _whiteTex);
@@ -952,6 +967,10 @@ public partial class RightPanel : MonoBehaviour
             ResolveApproval("allow-always");
         if (GUI.Button(new Rect(wx + 30f + bw * 2f, by, bw, 30f), "✕ 拒绝", _termToolBtnStyle))
             ResolveApproval("deny");
+        // 外部命中：审批三按钮（外置模式弹窗模态只响应这三个区域）
+        RegisterExtHit(new Rect(wx + 18f, by, bw, 30f), () => ResolveApproval("allow-once"));
+        RegisterExtHit(new Rect(wx + 24f + bw, by, bw, 30f), () => ResolveApproval("allow-always"));
+        RegisterExtHit(new Rect(wx + 30f + bw * 2f, by, bw, 30f), () => ResolveApproval("deny"));
 
         // 防穿透：弹窗打开时吞掉所有鼠标事件
         if (Event.current.type == EventType.MouseDown)
