@@ -19,7 +19,7 @@ $vbm = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
 if (-not (Test-Path $vbm)) { Write-Host "[ERROR] 未找到 VBoxManage，请先安装 VirtualBox 7+" -ForegroundColor Red; exit 1 }
 if (-not (Test-Path $IsoPath)) { Write-Host "[ERROR] 未找到 ISO: $IsoPath" -ForegroundColor Red; exit 1 }
 
-function VBox([string]$argsLine) { Write-Host "> VBoxManage $argsLine"; & $vbm $argsLine.Split(' ') | Out-Null; if ($LASTEXITCODE -ne 0) { Write-Host "[WARN] VBoxManage 返回 $LASTEXITCODE: $argsLine" -ForegroundColor Yellow } }
+function VBox([string]$argsLine) { Write-Host "> VBoxManage $argsLine"; & $vbm $argsLine.Split(' ') | Out-Null; if ($LASTEXITCODE -ne 0) { Write-Host "[WARN] VBoxManage 返回 $($LASTEXITCODE): $argsLine" -ForegroundColor Yellow } }
 
 Write-Host "== 1/7 删除旧 VM（如存在）=="
 VBox "unregistervm $VmName --delete"
