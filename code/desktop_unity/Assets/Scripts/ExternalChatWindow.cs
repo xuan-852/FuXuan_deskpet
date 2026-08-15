@@ -37,13 +37,15 @@ public static class ExternalChatWindow
     private static int _bufW, _bufH;
 
     // ─── Win32 常量 ───
-    private const int WS_OVERLAPPEDWINDOW = 0x00CF0000;
-    private const int WS_VISIBLE = 0x10000000;
-    private const int WS_CHILD = 0x40000000;
-    private const int WS_TABSTOP = 0x00010000;
-    private const int WS_BORDER = 0x00800000;
-    private const int ES_AUTOHSCROLL = 0x0080;
-    private const int WS_EX_CLIENTEDGE = 0x00000200;
+    private const uint WS_OVERLAPPEDWINDOW = 0x00CF0000;
+    private const uint WS_POPUP = 0x80000000;
+    private const uint WS_VISIBLE = 0x10000000;
+    private const uint WS_CHILD = 0x40000000;
+    private const uint WS_TABSTOP = 0x00010000;
+    private const uint WS_BORDER = 0x00800000;
+    private const uint ES_AUTOHSCROLL = 0x0080;
+    private const uint WS_EX_CLIENTEDGE = 0x00000200;
+    private const uint WS_EX_TOOLWINDOW = 0x00000080; // 无任务栏按钮（面板非主窗口）
     private const int WM_DESTROY = 0x0002;
     private const int WM_PAINT = 0x000F;
     private const int WM_SIZE = 0x0005;
@@ -53,10 +55,20 @@ public static class ExternalChatWindow
     private const int WM_EXITSIZEMOVE = 0x0232;
     private const int WM_LBUTTONDOWN = 0x0201;
     private const int WM_LBUTTONDBLCLK = 0x0203;
+    private const int WM_NCHITTEST = 0x0084;
+    private const int HTCAPTION = 2;
+    private const int HTCLIENT = 1;
+    private const int HTBOTTOMRIGHT = 17;
+    private const int HTNOWHERE = 0;
     private const int VK_RETURN = 0x0D;
     private const int BN_CLICKED = 0;
     private const int IDC_EDIT = 101;
     private const int IDC_SEND = 102;
+
+    // ★ 无边框窗口：自绘星空标题栏高度（逻辑像素，与 RightPanel.EXT_TITLE_BAR_H 一致）
+    public const int TITLE_BAR_H = 44;
+    // ★ 右下角缩放手柄尺寸（逻辑像素）
+    private const int RESIZE_GRIP = 20;
 
     private static IntPtr _hwnd, _edit, _sendBtn, _hInst;
     private static WndProcDelegate _wndProcDelegate; // 防止被 GC
@@ -225,16 +237,11 @@ public static class ExternalChatWindow
             ApplyClientSize(_width, _height);
     }
 
-    /// <summary>把客户区尺寸换算成窗口尺寸并 SetWindowPos（边框/标题栏补偿，客户区与 RT 1:1）</summary>
+    /// <summary>把客户区尺寸换算成窗口尺寸并 SetWindowPos（无边框：客户区=窗口区，RT 1:1）</summary>
     private static void ApplyClientSize(int clientW, int clientH)
     {
         if (_hwnd == IntPtr.Zero || !IsWindow(_hwnd)) return;
-        int style = GetWindowLong(_hwnd, GWL_STYLE);
-        int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
-        RECT r = new RECT { Left = 0, Top = 0, Right = clientW, Bottom = clientH };
-        AdjustWindowRectEx(ref r, (uint)style, false, (uint)ex);
-        SetWindowPos(_hwnd, IntPtr.Zero, 0, 0,
-            r.Right - r.Left, r.Bottom - r.Top,
+        SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, clientW, clientH,
             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
@@ -246,6 +253,21 @@ public static class ExternalChatWindow
             ShowWindow(_hwnd, 0 /*SW_HIDE*/);
             IsVisible = false;
         }
+    }
+
+    /// <summary>最小化窗口（自绘标题栏「—」按钮调用）</summary>
+    public static void Minimize()
+    {
+        if (IsCreated && IsVisible)
+            ShowWindow(_hwnd, 6 /*SW_MINIMIZE*/);
+    }
+
+    /// <summary>关闭窗口（自绘标题栏「✕」按钮调用 → 隐藏 + 通知 Unity 退出外置）</summary>
+    public static void RequestClose()
+    {
+        if (!IsCreated) return;
+        MainThreadDispatcher.Run(() => OnClosed?.Invoke());
+        PostMessageW(_hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
     }
 
     /// <summary>把聊天面板渲染的 BGRA 像素推给窗口显示（Unity 主线程调用，节流后）</summary>
@@ -290,14 +312,15 @@ public static class ExternalChatWindow
                 return;
             }
 
-            _hwnd = CreateWindowExW(0, "FuXuanChatWindowClass", "符玄 · 太卜司",
-                WS_OVERLAPPEDWINDOW | WS_VISIBLE, _startX, _startY, _width, _height, IntPtr.Zero, IntPtr.Zero, _hInst, IntPtr.Zero);
+            _hwnd = CreateWindowExW(WS_EX_TOOLWINDOW, "FuXuanChatWindowClass", "符玄 · 太卜司",
+                WS_POPUP | WS_VISIBLE, _startX, _startY, _width, _height, IntPtr.Zero, IntPtr.Zero, _hInst, IntPtr.Zero);
             if (_hwnd == IntPtr.Zero)
             {
                 Debug.LogError("[ExternalChat] CreateWindowExW 失败");
                 return;
             }
-            ApplyClientSize(_width, _height); // 客户区与面板 RT 1:1
+            // 无边框窗口：客户区 = 窗口区（WS_POPUP 无系统边框），直接 SetWindowPos 定尺寸
+            SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, _width, _height, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
             // 原生输入控件（底部：输入框 + 发送按钮）— 整面板模式下仍创建，由 ShowInputBar 控制显隐
             RECT rc; GetClientRect(_hwnd, out rc);
@@ -332,6 +355,32 @@ public static class ExternalChatWindow
     {
         switch (msg)
         {
+            case WM_NCHITTEST:
+            {
+                // 无边框窗口命中测试：顶部标题栏→拖动(HTCAPTION)，右下角→缩放(HTBOTTOMRIGHT)
+                int sx = lParam.ToInt32() & 0xFFFF;
+                int sy = (lParam.ToInt32() >> 16) & 0xFFFF;
+                RECT wr;
+                if (GetWindowRect(hWnd, out wr))
+                {
+                    int cx = sx - wr.Left;
+                    int cy = sy - wr.Top;
+                    int cw = Math.Max(1, wr.Right - wr.Left);
+                    int ch = Math.Max(1, wr.Bottom - wr.Top);
+                    // 物理→逻辑缩放
+                    float fx = (float)_width / cw;
+                    float fy = (float)_height / ch;
+                    int lx = (int)(cx * fx);
+                    int ly = (int)(cy * fy);
+                    // 右下角缩放手柄（逻辑 20px 区）
+                    if (lx >= _width - RESIZE_GRIP && ly >= _height - RESIZE_GRIP)
+                        return new IntPtr(HTBOTTOMRIGHT);
+                    // 顶部标题栏（逻辑 44px 区，全宽）
+                    if (ly <= TITLE_BAR_H)
+                        return new IntPtr(HTCAPTION);
+                }
+                return new IntPtr(HTCLIENT);
+            }
             case WM_CLOSE:
                 // ✕ = 隐藏（窗口生命周期归 Unity 管），先记忆位置
                 SavePos();

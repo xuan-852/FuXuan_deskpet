@@ -1810,9 +1810,9 @@ public partial class RightPanel : MonoBehaviour
         ExternalChatWindow.OnSendText += OnExternalSend;
         ExternalChatWindow.OnClosed += OnExternalClosed;
         ExternalChatWindow.OnPanelClick += OnExternalPanelClick;
-        // 整面板外置：尺寸 = 当前视图面板尺寸（客户区与 RT 1:1）
+        // 整面板外置：窗口尺寸 = 面板视图 + 自绘标题栏（客户区与 RT 1:1）
         int w = Mathf.Max(320, Mathf.RoundToInt(_panelRect.width));
-        int h = Mathf.Max(200, Mathf.RoundToInt(_panelRect.height));
+        int h = Mathf.Max(200, Mathf.RoundToInt(_panelRect.height)) + EXT_TITLE_BAR_H;
         ExternalChatWindow.Show(w, h);
         ExternalChatWindow.ShowInputBar(false); // 面板自带 IMGUI 输入栏视觉，原生输入栏默认隐藏
         Debug.Log("[RightPanel] ⧉ 已切换到独立面板窗口（可被其他窗口遮挡）");
@@ -1851,17 +1851,24 @@ public partial class RightPanel : MonoBehaviour
         DisableExternalMode();
     }
 
-    /// <summary>把整个面板渲染到独立窗口（IMGUI → RenderTexture → BGRA 像素流，15fps 节流）</summary>
+    /// <summary>外置窗口自绘星空标题栏高度（与 ExternalChatWindow.TITLE_BAR_H 一致，逻辑像素）</summary>
+    private const int EXT_TITLE_BAR_H = 44;
+
+    /// <summary>把整个面板渲染到独立窗口（IMGUI → RenderTexture → BGRA 像素流，15fps 节流）
+    /// ★ 无边框窗口：RT 顶部 44px 自绘星空标题栏（替代系统灰白标题栏），面板内容下移</summary>
     private void DrawExternalPanelToTexture()
     {
-        // 渲染尺寸 = 当前面板视图尺寸（客户区与 RT 1:1 对齐）
+        // 渲染尺寸 = 当前面板视图尺寸 + 顶部自绘标题栏
         int rtW = Mathf.Max(64, Mathf.RoundToInt(_panelRect.width));
-        int rtH = Mathf.Max(64, Mathf.RoundToInt(_panelRect.height));
+        int rtH = Mathf.Max(64, Mathf.RoundToInt(_panelRect.height)) + EXT_TITLE_BAR_H;
+        // ★ 调试：IMGUI 只在 Repaint 事件提交绘制，非 Repaint 时直接返回（否则 RT 空）
+        if (Event.current.type != EventType.Repaint)
+            return;
         if (_chatRT == null || _chatRT.width != rtW || _chatRT.height != rtH)
         {
             if (_chatRT != null) _chatRT.Release();
             _chatRT = new RenderTexture(rtW, rtH, 0, RenderTextureFormat.ARGB32);
-            ExternalChatWindow.SetSize(rtW, rtH); // 窗口客户区跟随面板尺寸
+            ExternalChatWindow.SetSize(rtW, rtH); // 窗口客户区跟随（面板+标题栏）
         }
         RenderTexture prev = RenderTexture.active;
         RenderTexture.active = _chatRT;
@@ -1870,7 +1877,15 @@ public partial class RightPanel : MonoBehaviour
         GUI.matrix = Matrix4x4.identity;
         _externalRender = true;
         _extHitZones.Clear(); // 每帧重建命中表
-        DrawPanelContent(0, 0, rtW, rtH, Vector2.zero);
+        try
+        {
+            DrawExternalTitleBar(rtW); // ★ 自绘星空标题栏（含最小化/关闭按钮，登记命中）
+            DrawPanelContent(0, EXT_TITLE_BAR_H, rtW, rtH - EXT_TITLE_BAR_H, Vector2.zero);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[RightPanel] 外部面板渲染异常: {e}");
+        }
         _externalRender = false;
         GUI.matrix = prevMatrix;
         RenderTexture.active = prev;
@@ -1888,5 +1903,45 @@ public partial class RightPanel : MonoBehaviour
             try { ExternalChatWindow.SetBuffer(_chatReadTex.GetRawTextureData(), rtW, rtH); }
             catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部窗口像素推送失败: {e.Message}"); }
         }
+    }
+
+    /// <summary>外置窗口自绘星空标题栏（紫色渐变 + 星点 + 标题 + 最小化/关闭按钮，像素风）</summary>
+    private void DrawExternalTitleBar(int rtW)
+    {
+        float h = EXT_TITLE_BAR_H;
+        Rect bar = new Rect(0, 0, rtW, h);
+        // 背景：紫色渐变（与面板 _bgTex 同风格）
+        if (_bgGlowTex != null)
+            GUI.DrawTexture(bar, _bgGlowTex, ScaleMode.StretchToFill);
+        if (_bgNebulaTex != null)
+            GUI.DrawTexture(bar, _bgNebulaTex, ScaleMode.StretchToFill);
+        UiTextureFactory.DrawPixelRect(new Rect(0, h - 1f, rtW, 1f), new Color(0.58f, 0.42f, 0.88f, 0.7f)); // 底部分隔线
+
+        // 标题：符玄·太卜司（左，带小头像）
+        if (_pixelFxTex != null)
+            GUI.DrawTexture(new Rect(8f, 7f, 30f, 30f), _pixelFxTex);
+        GUI.Label(new Rect(46f, 5f, rtW - 160f, 22f), "符玄·太卜司", _termTitleStyle);
+        GUI.Label(new Rect(46f, 25f, rtW - 160f, 14f), "独立面板 · 可被其他窗口遮挡", _termLogDimStyle);
+
+        // 右上角按钮：最小化「—」+ 关闭「✕」（像素方块，登记命中）
+        float btnSize = 30f;
+        float btnY = (h - btnSize) / 2f;
+        Rect minBtn = new Rect(rtW - btnSize * 2f - 8f, btnY, btnSize, btnSize);
+        Rect closeBtn = new Rect(rtW - btnSize - 4f, btnY, btnSize, btnSize);
+        // 最小化（暗紫底 + 横线）
+        UiTextureFactory.DrawPixelRect(minBtn, new Color(0.30f, 0.22f, 0.45f, 0.4f));
+        UiTextureFactory.DrawPixelRect(new Rect(minBtn.x + 8f, minBtn.center.y, minBtn.width - 16f, 2f),
+            new Color(0.78f, 0.66f, 0.98f, 0.9f));
+        // 关闭（暗红底 + ✕，程序画十字避免字形缺失）
+        UiTextureFactory.DrawPixelRect(closeBtn, new Color(0.40f, 0.15f, 0.15f, 0.45f));
+        UiTextureFactory.DrawPixelRect(new Rect(closeBtn.x + 8f, closeBtn.y + 8f, closeBtn.width - 16f, 2f), new Color(0.95f, 0.5f, 0.5f, 0.9f));
+        UiTextureFactory.DrawPixelRect(new Rect(closeBtn.x + 8f, closeBtn.y + closeBtn.height - 10f, closeBtn.width - 16f, 2f), new Color(0.95f, 0.5f, 0.5f, 0.9f));
+        // 斜线（✕ 两撇）
+        UiTextureFactory.DrawPixelRect(new Rect(closeBtn.x + 8f, closeBtn.y + 8f, 2f, closeBtn.height - 16f), new Color(0.95f, 0.5f, 0.5f, 0.9f));
+        UiTextureFactory.DrawPixelRect(new Rect(closeBtn.x + closeBtn.width - 10f, closeBtn.y + 8f, 2f, closeBtn.height - 16f), new Color(0.95f, 0.5f, 0.5f, 0.9f));
+
+        // 命中登记（外置点击：最小化 → 系统最小化；关闭 → 退出外置）
+        RegisterExtHit(minBtn, ExternalChatWindow.Minimize);
+        RegisterExtHit(closeBtn, ExternalChatWindow.RequestClose);
     }
 }
