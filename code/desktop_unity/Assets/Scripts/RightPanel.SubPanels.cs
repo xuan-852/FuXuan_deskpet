@@ -129,11 +129,11 @@ public partial class RightPanel
         UiTextureFactory.DrawPixelRect(new Rect(x, sec1.yMax - 1f, w, 1f), new Color(0.45f, 0.35f, 0.65f, 0.3f));
 
         float rowsY = sec1.yMax + 10f;
-        DrawWeightRowGui(x, rowsY, w, rowH, labelW, btnW, btnGap, "向左走到边缘", ref _wLeftEdge, 0, 10, "任务：走到屏幕左边缘的次数权重");
-        DrawWeightRowGui(x, rowsY + rowH * 1, w, rowH, labelW, btnW, btnGap, "向右走到边缘", ref _wRightEdge, 0, 10, "任务：走到屏幕右边缘的次数权重");
-        DrawWeightRowGui(x, rowsY + rowH * 2, w, rowH, labelW, btnW, btnGap, "向左走定时", ref _wLeftTime, 0, 10, "任务：向左走动的时间权重");
-        DrawWeightRowGui(x, rowsY + rowH * 3, w, rowH, labelW, btnW, btnGap, "向右走定时", ref _wRightTime, 0, 10, "任务：向右走动的时间权重");
-        DrawWeightRowGui(x, rowsY + rowH * 4, w, rowH, labelW, btnW, btnGap, "停止", ref _wStop, 0, 10, "任务：静止不动的权重");
+        DrawWeightRowGui(x, rowsY, w, rowH, labelW, btnW, btnGap, "向左走到边缘", ref _wLeftEdge, 0, 10, "任务：走到屏幕左边缘的次数权重", v => _wLeftEdge = v);
+        DrawWeightRowGui(x, rowsY + rowH * 1, w, rowH, labelW, btnW, btnGap, "向右走到边缘", ref _wRightEdge, 0, 10, "任务：走到屏幕右边缘的次数权重", v => _wRightEdge = v);
+        DrawWeightRowGui(x, rowsY + rowH * 2, w, rowH, labelW, btnW, btnGap, "向左走定时", ref _wLeftTime, 0, 10, "任务：向左走动的时间权重", v => _wLeftTime = v);
+        DrawWeightRowGui(x, rowsY + rowH * 3, w, rowH, labelW, btnW, btnGap, "向右走定时", ref _wRightTime, 0, 10, "任务：向右走动的时间权重", v => _wRightTime = v);
+        DrawWeightRowGui(x, rowsY + rowH * 4, w, rowH, labelW, btnW, btnGap, "停止", ref _wStop, 0, 10, "任务：静止不动的权重", v => _wStop = v);
 
         // —— 应用权重 ——
         float applyY = rowsY + rowH * 5 + 6f;
@@ -142,6 +142,7 @@ public partial class RightPanel
             UiTextureFactory.DrawPixelRect(applyRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
         if (GUI.Button(applyRect, "✓ 应用权重", _subBtnStyle))
             ApplyWeightsToPet();
+        RegisterExtHit(applyRect, ApplyWeightsToPet); // 外部命中：应用权重
 
         // —— 预设 ——
         float presetY = applyY + 56f;
@@ -166,6 +167,13 @@ public partial class RightPanel
                 _wLeftTime = presets[i].lt; _wRightTime = presets[i].rt; _wStop = presets[i].stop;
                 ApplyWeightsToPet();
             }
+            var ps = presets[i];
+            RegisterExtHit(pr, () => // 外部命中：预设
+            {
+                _wLeftEdge = ps.le; _wRightEdge = ps.re;
+                _wLeftTime = ps.lt; _wRightTime = ps.rt; _wStop = ps.stop;
+                ApplyWeightsToPet();
+            });
         }
 
         // —— 持久化 ——
@@ -183,6 +191,14 @@ public partial class RightPanel
                 PetConfig.Instance.Save();
             }
         }
+        RegisterExtHit(saveRect, () => // 外部命中：保存配置
+        {
+            if (PetConfig.Instance != null)
+            {
+                PetConfig.Instance.CollectAll();
+                PetConfig.Instance.Save();
+            }
+        });
         Rect clearRect = new Rect(x + 230f, sec3.yMax + 10f, 180f, 40f);
         if (clearRect.Contains(mp))
             UiTextureFactory.DrawPixelRect(clearRect, new Color(0.70f, 0.25f, 0.25f, 0.20f));
@@ -191,6 +207,11 @@ public partial class RightPanel
             if (PetMemory.Instance != null)
                 PetMemory.Instance.ClearMemories();
         }
+        RegisterExtHit(clearRect, () => // 外部命中：清空忆境
+        {
+            if (PetMemory.Instance != null)
+                PetMemory.Instance.ClearMemories();
+        });
 
         // 底部提示
         GUI.Label(new Rect(x, y + h - 34f, w, 24f),
@@ -198,9 +219,9 @@ public partial class RightPanel
             new GUIStyle(_termLogDimStyle) { fontSize = 14, alignment = TextAnchor.UpperLeft });
     }
 
-    /// <summary>权重调节行：标签 + [-] 数值 [+]</summary>
+    /// <summary>权重调节行：标签 + [-] 数值 [+]；onExtSet 为外部命中时的字段写入回调（null=不登记）</summary>
     private void DrawWeightRowGui(float x, float y, float w, float rowH, float labelW, float btnW, float btnGap,
-        string label, ref int value, int min, int max, string tip)
+        string label, ref int value, int min, int max, string tip, System.Action<int> onExtSet = null)
     {
         GUI.Label(new Rect(x, y, labelW, rowH), label, _subLabelStyle);
         float valX = x + labelW + 20f;
@@ -208,6 +229,11 @@ public partial class RightPanel
         // [-] 按钮
         Rect minusRect = new Rect(valX + valW + 8f, y + 4f, btnW, rowH - 8f);
         if (GUI.Button(minusRect, "−", _subBtnStyle)) value = Mathf.Max(min, value - 1);
+        if (onExtSet != null)
+        {
+            int mn = min;
+            RegisterExtHit(minusRect, () => onExtSet(Mathf.Max(mn, GetWeightRef(label) - 1)));
+        }
         // 数值（居中金底）
         Rect valBg = new Rect(valX, y + 6f, valW, rowH - 12f);
         UiTextureFactory.DrawPixelRect(valBg, new Color(0.20f, 0.14f, 0.32f, 0.6f));
@@ -221,9 +247,28 @@ public partial class RightPanel
         // [+] 按钮
         Rect plusRect = new Rect(valX + valW + 8f + btnW + btnGap, y + 4f, btnW, rowH - 8f);
         if (GUI.Button(plusRect, "＋", _subBtnStyle)) value = Mathf.Min(max, value + 1);
+        if (onExtSet != null)
+        {
+            int mx = max;
+            RegisterExtHit(plusRect, () => onExtSet(Mathf.Min(mx, GetWeightRef(label) + 1)));
+        }
         // 提示（hover 数值区时）
         if (valBg.Contains(Event.current.mousePosition))
             GUI.Label(new Rect(x, y + rowH, w, 20f), tip, new GUIStyle(_termLogDimStyle) { fontSize = 13 });
+    }
+
+    /// <summary>读取当前权重字段（外部命中用；label 匹配）</summary>
+    private int GetWeightRef(string label)
+    {
+        switch (label)
+        {
+            case "向左走到边缘": return _wLeftEdge;
+            case "向右走到边缘": return _wRightEdge;
+            case "向左走定时": return _wLeftTime;
+            case "向右走定时": return _wRightTime;
+            case "停止": return _wStop;
+            default: return 0;
+        }
     }
 
     /// <summary>将编辑中的权重应用给宠物 + 写入 PetConfig</summary>
@@ -257,6 +302,7 @@ public partial class RightPanel
         {
             // 下次绘制自动取最新（每次绘制都重新拉取，无需缓存）
         }
+        RegisterExtHit(refreshRect, () => { /* 刷新：下次绘制自动取最新 */ });
         Rect copyRect = new Rect(x + 110f, y, 100f, 38f);
         if (GUI.Button(copyRect, "📋 复制", _subBtnStyle))
         {
@@ -266,6 +312,14 @@ public partial class RightPanel
                 Debug.Log("[RightPanel] 报告已复制到剪贴板");
             }
         }
+        RegisterExtHit(copyRect, () => // 外部命中：复制报告
+        {
+            if (!string.IsNullOrEmpty(_lastReportText))
+            {
+                GUIUtility.systemCopyBuffer = _lastReportText;
+                Debug.Log("[RightPanel] 报告已复制到剪贴板（外部）");
+            }
+        });
 
         // —— 报告内容 ——
         string report = "";
@@ -385,18 +439,33 @@ public partial class RightPanel
             _showAddReminder = !_showAddReminder;
             if (!_showAddReminder) { _newReminderText = ""; _newReminderTime = ""; }
         }
+        RegisterExtHit(addRect, () => // 外部命中：新建/收起
+        {
+            _showAddReminder = !_showAddReminder;
+            if (!_showAddReminder) { _newReminderText = ""; _newReminderTime = ""; }
+        });
         Rect refreshRect = new Rect(x + w - 224f, btnY, 96f, 34f);
         if (GUI.Button(refreshRect, "🔄 刷新", _subBtnStyle))
         {
             _reminderStatusMsg = $"已刷新，{pendingCount} 项待办";
             _reminderStatusColor = new Color(0.55f, 0.85f, 0.55f, 1f);
         }
+        RegisterExtHit(refreshRect, () => // 外部命中：刷新
+        {
+            _reminderStatusMsg = $"已刷新，{_reminders.PendingCount} 项待办";
+            _reminderStatusColor = new Color(0.55f, 0.85f, 0.55f, 1f);
+        });
         Rect toggleRect = new Rect(x + w - 118f, btnY, 100f, 34f);
         if (GUI.Button(toggleRect, _showDoneReminders ? "⏳ 看待办" : "✅ 已完成", _subBtnStyle))
         {
             _showDoneReminders = !_showDoneReminders;
             _reminderScrollPos = Vector2.zero;
         }
+        RegisterExtHit(toggleRect, () => // 外部命中：待办/已完成切换
+        {
+            _showDoneReminders = !_showDoneReminders;
+            _reminderScrollPos = Vector2.zero;
+        });
 
         // —— 新建输入区 ——
         float cursorY = y + 48f;
@@ -421,32 +490,9 @@ public partial class RightPanel
             Rect okBtn = new Rect(x + 14f, cursorY + 120f, 120f, 36f);
             if (GUI.Button(okBtn, "✓ 添加", _subBtnStyle))
             {
-                if (!string.IsNullOrEmpty(_newReminderText))
-                {
-                    System.DateTime remindAt;
-                    if (string.IsNullOrEmpty(_newReminderTime))
-                        remindAt = System.DateTime.Now.AddHours(1);
-                    else if (!System.DateTime.TryParse(_newReminderTime, out remindAt))
-                    {
-                        _reminderStatusMsg = "❌ 时间格式有误";
-                        _reminderStatusColor = new Color(1f, 0.45f, 0.45f, 1f);
-                        remindAt = System.DateTime.Now.AddHours(1);
-                    }
-                    if (remindAt <= System.DateTime.Now)
-                        remindAt = System.DateTime.Now.AddMinutes(5);
-                    _reminders.AddReminder(_newReminderText, remindAt, null, "normal", "user");
-                    _reminderStatusMsg = $"✅ 已添加：{_newReminderText}";
-                    _reminderStatusColor = new Color(0.55f, 0.85f, 0.55f, 1f);
-                    _newReminderText = "";
-                    _newReminderTime = "";
-                    _showAddReminder = false;
-                }
-                else
-                {
-                    _reminderStatusMsg = "❌ 请输入内容";
-                    _reminderStatusColor = new Color(1f, 0.45f, 0.45f, 1f);
-                }
+                TryAddReminder();
             }
+            RegisterExtHit(okBtn, TryAddReminder); // 外部命中：添加便签
             Rect cancelBtn = new Rect(x + 144f, cursorY + 120f, 80f, 36f);
             if (GUI.Button(cancelBtn, "✕ 取消", _subBtnStyle))
             {
@@ -454,6 +500,12 @@ public partial class RightPanel
                 _newReminderText = "";
                 _newReminderTime = "";
             }
+            RegisterExtHit(cancelBtn, () => // 外部命中：取消新建
+            {
+                _showAddReminder = false;
+                _newReminderText = "";
+                _newReminderTime = "";
+            });
             cursorY += 186f;
         }
 
@@ -544,6 +596,18 @@ public partial class RightPanel
                     }
                     Event.current.Use();
                 }
+                // 外部命中：勾销（滚动偏移补偿）
+                Rect extDoneBox = new Rect(doneBox.x + viewRect.x - _reminderScrollPos.x,
+                    doneBox.y + viewRect.y - _reminderScrollPos.y, doneBox.width, doneBox.height);
+                RegisterExtHit(extDoneBox, () =>
+                {
+                    if (!r.done)
+                    {
+                        _reminders.MarkDone(r.id);
+                        _reminderStatusMsg = $"✅ 已勾销「{r.text}」";
+                        _reminderStatusColor = new Color(0.55f, 0.85f, 0.55f, 1f);
+                    }
+                });
                 statusX += 34f;
             }
             else
@@ -572,8 +636,48 @@ public partial class RightPanel
                 _reminderStatusMsg = $"🗑️ 已删除「{r.text}」";
                 _reminderStatusColor = Color.gray;
             }
+            // 外部命中：删除（滚动偏移补偿）
+            Rect extDelRect = new Rect(delRect.x + viewRect.x - _reminderScrollPos.x,
+                delRect.y + viewRect.y - _reminderScrollPos.y, delRect.width, delRect.height);
+            RegisterExtHit(extDelRect, () =>
+            {
+                _reminders.DeleteReminder(r.id);
+                _reminderStatusMsg = $"🗑️ 已删除「{r.text}」";
+                _reminderStatusColor = Color.gray;
+            });
         }
         GUI.EndScrollView();
+    }
+
+    /// <summary>添加便签（内嵌按钮与外部命中共用）</summary>
+    private void TryAddReminder()
+    {
+        if (_reminders == null) return;
+        if (!string.IsNullOrEmpty(_newReminderText))
+        {
+            System.DateTime remindAt;
+            if (string.IsNullOrEmpty(_newReminderTime))
+                remindAt = System.DateTime.Now.AddHours(1);
+            else if (!System.DateTime.TryParse(_newReminderTime, out remindAt))
+            {
+                _reminderStatusMsg = "❌ 时间格式有误";
+                _reminderStatusColor = new Color(1f, 0.45f, 0.45f, 1f);
+                remindAt = System.DateTime.Now.AddHours(1);
+            }
+            if (remindAt <= System.DateTime.Now)
+                remindAt = System.DateTime.Now.AddMinutes(5);
+            _reminders.AddReminder(_newReminderText, remindAt, null, "normal", "user");
+            _reminderStatusMsg = $"✅ 已添加：{_newReminderText}";
+            _reminderStatusColor = new Color(0.55f, 0.85f, 0.55f, 1f);
+            _newReminderText = "";
+            _newReminderTime = "";
+            _showAddReminder = false;
+        }
+        else
+        {
+            _reminderStatusMsg = "❌ 请输入内容";
+            _reminderStatusColor = new Color(1f, 0.45f, 0.45f, 1f);
+        }
     }
 
     /// <summary>子面板样式初始化（星空紫金主题；由 InitStyles 调用，幂等）</summary>
