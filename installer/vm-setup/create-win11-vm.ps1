@@ -2,11 +2,13 @@
 # 创建 Win11 验收虚拟机（VirtualBox 7+，命令行版）
 # 前置：VirtualBox 已安装 + Win11 ISO 已下载
 # 用法：powershell -ExecutionPolicy Bypass -File create-win11-vm.ps1
-#       -IsoPath D:\vm-setup\Win11.iso 可覆盖默认 ISO 路径
+#       -IsoPath D:\VirtualBox\Win11.iso 可覆盖默认 ISO 路径
+# 默认路径全部指向 D:\VirtualBox（C 盘空间紧张，D 盘 200G 充足）
 # ============================================================
 param(
     [string]$VmName = "FuXuanWin11",
-    [string]$IsoPath = "D:\vm-setup\Win11.iso",
+    [string]$IsoPath = "D:\VirtualBox\Win11.iso",
+    [string]$VmDir = "D:\VirtualBox\VMs",
     [int]$MemoryMB = 4096,
     [int]$Cpus = 4,
     [int]$DiskMB = 40960
@@ -22,16 +24,18 @@ function VBox([string]$argsLine) { Write-Host "> VBoxManage $argsLine"; & $vbm $
 Write-Host "== 1/7 删除旧 VM（如存在）=="
 VBox "unregistervm $VmName --delete"
 
-Write-Host "== 2/7 创建 VM（Win11_64, 4G 内存, 4 核, EFI+TPM2.0）=="
-VBox "createvm --name $VmName --ostype Windows11_64 --register"
+Write-Host "== 2/7 创建 VM（Win11_64, 4G 内存, 4 核, EFI+TPM2.0，机器文件在 D:\VirtualBox\VMs）=="
+New-Item -ItemType Directory -Path $VmDir -Force | Out-Null
+VBox "createvm --name $VmName --ostype Windows11_64 --register --basefolder `"$VmDir`""
 VBox "modifyvm $VmName --memory $MemoryMB --cpus $Cpus --firmware efi --tpm-type 2.0"
 VBox "modifyvm $VmName --graphicscontroller vmsvga --vram 128"
 VBox "modifyvm $VmName --vrde on --vrdeport 33891"
 VBox "modifyvm $VmName --audio none --usb off"
 VBox "modifyvm $VmName --nic1 nat"
 
-Write-Host "== 3/7 创建 40G 动态虚拟硬盘 =="
-$vdi = "$env:USERPROFILE\VirtualBox VMs\$VmName\$VmName.vdi"
+Write-Host "== 3/7 创建 40G 动态虚拟硬盘（D:\VirtualBox\VMs）=="
+New-Item -ItemType Directory -Path $VmDir -Force | Out-Null
+$vdi = Join-Path $VmDir "$VmName\$VmName.vdi"
 VBox "createmedium disk --filename `"$vdi`" --size $DiskMB --format VDI"
 
 Write-Host "== 4/7 挂载 SATA 控制器 + 硬盘 =="
