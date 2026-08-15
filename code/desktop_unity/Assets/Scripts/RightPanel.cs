@@ -116,15 +116,12 @@ public partial class RightPanel : MonoBehaviour
     private Texture2D _hexagramTex;      // 卦象三爻装饰（标题栏）
     private bool _stylesReady = false;
 
-    // ==================== 外部聊天窗口（独立窗口，QQ 式可被遮挡；2026-08-15 大工程 Phase1） ====================
+    // ==================== 外部面板窗口（独立普通窗口，QQ 式可被遮挡；2026-08-15 大工程） ====================
     private bool _externalMode;      // 独立窗口模式激活
     private bool _externalRender;    // 正在向独立窗口渲染（抑制屏幕事件处理）
-    private RenderTexture _chatRT;   // 聊天区渲染目标（独立窗口显示用）
+    private RenderTexture _chatRT;   // 面板渲染目标（独立窗口显示用，尺寸跟随当前视图）
     private Texture2D _chatReadTex;  // BGRA 像素读取
     private float _lastExtCapture;   // 推送节流计时
-    private const int EXT_CHAT_W = 640;
-    private const int EXT_CHAT_H = 480;
-    private const int EXT_INPUT_BAR_H = 44;   // 原生输入栏高度（独立窗口底部）
 
     // ==================== 字体档位缩放 ====================
     private int _fontScaleLevel = 1;                       // 0=最小 1/2/3=更大（默认 1=A2 1.2×）
@@ -629,9 +626,10 @@ public partial class RightPanel : MonoBehaviour
                 if (_isOpen) Close();
                 break;
             case "external":
-                // 独立聊天窗口（⧉ 等价命令）：先确保面板打开 + 聊天视图
+                // 独立面板窗口（⧉ 等价命令）：先确保面板打开，保持当前视图（整面板外置）
                 if (!_isOpen) Toggle();
-                if (_currentView != PanelView.Chat)
+                if (_currentView != PanelView.Chat && _currentView != PanelView.SessionList
+                    && !IsSubPanelView(_currentView))
                 {
                     if (_sessions == null || _sessions.Count == 0) RefreshSessionList();
                     if (_sessions != null && _sessions.Count > 0) EnterChat(0);
@@ -787,6 +785,30 @@ public partial class RightPanel : MonoBehaviour
         _panelTint = new Color(1f, 1f, 1f, _animAlpha);
         GUI.color = _panelTint;
 
+        // ★ 外部窗口模式（2026-08-15 大工程 Phase A1）：整个面板（含背景/视图/审批）渲染到独立普通窗口，
+        //   屏幕不再画面板。桌宠本体（Unity 置顶窗口）不受影响。
+        if (_externalMode)
+        {
+            DrawExternalPanelToTexture();
+            GUI.color = Color.white;
+            return;
+        }
+
+        DrawPanelContent(px, py, pw, ph, mp);
+
+        GUI.color = Color.white; // 恢复全局色，防止淡入淡出半透明残留影响其它 OnGUI
+    }
+
+    /// <summary>
+    /// 面板内容统一绘制（屏幕模式与外置 RT 模式共用）：
+    /// 背景质感分层 → 四角角饰 → 视图分发（会话列表/子面板/聊天）→ 审批模态弹窗。
+    /// 外部模式渲染时 px/py 传 0（RT 原点），mp 传独立窗口回传坐标（无回传时 Vector2.zero）。
+    /// </summary>
+    private void DrawPanelContent(float px, float py, float pw, float ph, Vector2 mp)
+    {
+        // 审批弹窗语义：覆盖整个面板（含会话侧栏）→ 保存调用方传入的原始面板矩形
+        float panelX = px, panelY = py, panelW = pw, panelH = ph;
+
         // ——— 面板背景 ——— 质感分层：渐变 → 左上紫光晕 → 星云 → 分层星点 → 圆角细边框
         Rect bgRect = new Rect(px, py, pw, ph);
         GUI.Box(bgRect, GUIContent.none, _panelStyle);
@@ -829,13 +851,6 @@ public partial class RightPanel : MonoBehaviour
             return;
         }
         // 第二级：左侧会话栏占 SIDEBAR_W，聊天区整体右移
-        // ★ 外部窗口模式（2026-08-15）：聊天区渲染到独立窗口（QQ 式可被遮挡），屏幕不再画聊天
-        if (_externalMode && _currentView == PanelView.Chat)
-        {
-            DrawExternalChatToTexture();
-            GUI.color = Color.white;
-            return;
-        }
         DrawSessionSidebar(px, py, SIDEBAR_W, ph, mp);
         px += SIDEBAR_W;
         pw -= SIDEBAR_W;
@@ -844,9 +859,7 @@ public partial class RightPanel : MonoBehaviour
 
         // ——— OpenClaw 审批模态弹窗（最上层绘制，敏感命令必须人工确认；覆盖整个面板含侧栏） ———
         if (_approvalDialogOpen)
-            DrawApprovalDialog(_panelRect.x, _panelRect.y, _panelRect.width, _panelRect.height);
-
-        GUI.color = Color.white; // 恢复全局色，防止淡入淡出半透明残留影响其它 OnGUI
+            DrawApprovalDialog(panelX, panelY, panelW, panelH);
     }
 
     // ==================================================================
@@ -1724,15 +1737,12 @@ public partial class RightPanel : MonoBehaviour
         _externalMode = true;
         ExternalChatWindow.OnSendText += OnExternalSend;
         ExternalChatWindow.OnClosed += OnExternalClosed;
-        ExternalChatWindow.Show(EXT_CHAT_W, EXT_CHAT_H + EXT_INPUT_BAR_H);
-        // 确保处于聊天视图（否则独立窗口无内容）
-        if (_currentView != PanelView.Chat)
-        {
-            if (_sessions == null || _sessions.Count == 0) RefreshSessionList();
-            if (_sessions != null && _sessions.Count > 0) EnterChat(0);
-            else { _currentView = PanelView.Chat; ApplyViewSize(); }
-        }
-        Debug.Log("[RightPanel] ⧉ 已切换到独立聊天窗口（可被其他窗口遮挡）");
+        // 整面板外置：尺寸 = 当前视图面板尺寸（客户区与 RT 1:1）
+        int w = Mathf.Max(320, Mathf.RoundToInt(_panelRect.width));
+        int h = Mathf.Max(200, Mathf.RoundToInt(_panelRect.height));
+        ExternalChatWindow.Show(w, h);
+        ExternalChatWindow.ShowInputBar(false); // 面板自带 IMGUI 输入栏视觉，原生输入栏默认隐藏
+        Debug.Log("[RightPanel] ⧉ 已切换到独立面板窗口（可被其他窗口遮挡）");
     }
 
     private void DisableExternalMode()
@@ -1742,7 +1752,7 @@ public partial class RightPanel : MonoBehaviour
         ExternalChatWindow.OnSendText -= OnExternalSend;
         ExternalChatWindow.OnClosed -= OnExternalClosed;
         ExternalChatWindow.Hide();
-        Debug.Log("[RightPanel] 已退出独立聊天窗口");
+        Debug.Log("[RightPanel] 已退出独立面板窗口");
     }
 
     private void OnExternalSend(string text)
@@ -1759,13 +1769,17 @@ public partial class RightPanel : MonoBehaviour
         DisableExternalMode();
     }
 
-    /// <summary>把聊天区渲染到独立窗口（IMGUI → RenderTexture → BGRA 像素流，15fps 节流）</summary>
-    private void DrawExternalChatToTexture()
+    /// <summary>把整个面板渲染到独立窗口（IMGUI → RenderTexture → BGRA 像素流，15fps 节流）</summary>
+    private void DrawExternalPanelToTexture()
     {
-        if (_chatRT == null || _chatRT.width != EXT_CHAT_W || _chatRT.height != EXT_CHAT_H)
+        // 渲染尺寸 = 当前面板视图尺寸（客户区与 RT 1:1 对齐）
+        int rtW = Mathf.Max(64, Mathf.RoundToInt(_panelRect.width));
+        int rtH = Mathf.Max(64, Mathf.RoundToInt(_panelRect.height));
+        if (_chatRT == null || _chatRT.width != rtW || _chatRT.height != rtH)
         {
             if (_chatRT != null) _chatRT.Release();
-            _chatRT = new RenderTexture(EXT_CHAT_W, EXT_CHAT_H, 0, RenderTextureFormat.ARGB32);
+            _chatRT = new RenderTexture(rtW, rtH, 0, RenderTextureFormat.ARGB32);
+            ExternalChatWindow.SetSize(rtW, rtH); // 窗口客户区跟随面板尺寸
         }
         RenderTexture prev = RenderTexture.active;
         RenderTexture.active = _chatRT;
@@ -1773,7 +1787,7 @@ public partial class RightPanel : MonoBehaviour
         Matrix4x4 prevMatrix = GUI.matrix;
         GUI.matrix = Matrix4x4.identity;
         _externalRender = true;
-        DrawChatArea(0, 0, EXT_CHAT_W, EXT_CHAT_H - EXT_INPUT_BAR_H, Vector2.zero);
+        DrawPanelContent(0, 0, rtW, rtH, Vector2.zero);
         _externalRender = false;
         GUI.matrix = prevMatrix;
         RenderTexture.active = prev;
@@ -1782,13 +1796,13 @@ public partial class RightPanel : MonoBehaviour
         if (Time.time - _lastExtCapture > 1f / 15f)
         {
             _lastExtCapture = Time.time;
-            if (_chatReadTex == null || _chatReadTex.width != EXT_CHAT_W || _chatReadTex.height != EXT_CHAT_H)
-                _chatReadTex = new Texture2D(EXT_CHAT_W, EXT_CHAT_H, TextureFormat.BGRA32, false);
+            if (_chatReadTex == null || _chatReadTex.width != rtW || _chatReadTex.height != rtH)
+                _chatReadTex = new Texture2D(rtW, rtH, TextureFormat.BGRA32, false);
             RenderTexture.active = _chatRT;
-            _chatReadTex.ReadPixels(new Rect(0, 0, EXT_CHAT_W, EXT_CHAT_H), 0, 0);
+            _chatReadTex.ReadPixels(new Rect(0, 0, rtW, rtH), 0, 0);
             RenderTexture.active = prev;
             _chatReadTex.Apply();
-            try { ExternalChatWindow.SetBuffer(_chatReadTex.GetRawTextureData(), EXT_CHAT_W, EXT_CHAT_H); }
+            try { ExternalChatWindow.SetBuffer(_chatReadTex.GetRawTextureData(), rtW, rtH); }
             catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部窗口像素推送失败: {e.Message}"); }
         }
     }

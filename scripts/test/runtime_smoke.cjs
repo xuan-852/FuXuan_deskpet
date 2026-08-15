@@ -86,8 +86,8 @@ const SIZES = ['窗口=486x1269', '窗口=1290x1269', '窗口=860x900'];
 const MARKERS = ['进入聊天: ', '返回会话列表', '淡出完成，已隐藏'];
 const EXT_MARKERS = [
     '[ExternalChat] 独立窗口已创建',
-    '[RightPanel] ⧉ 已切换到独立聊天窗口（可被其他窗口遮挡）',
-    '[RightPanel] 已退出独立聊天窗口',
+    '[RightPanel] ⧉ 已切换到独立面板窗口（可被其他窗口遮挡）',
+    '[RightPanel] 已退出独立面板窗口',
 ];
 
 async function main() {

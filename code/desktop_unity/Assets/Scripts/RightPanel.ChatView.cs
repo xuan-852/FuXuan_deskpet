@@ -343,10 +343,9 @@ public partial class RightPanel
 
         // ═══════════════════════════════════════
         //  底部终端输入行 — [像素符玄] > [输入框] (→)
-        //  ⚠️ 外部窗口模式（_externalRender）跳过整块：独立窗口用原生 EDIT 输入
+        //  ⚠️ 视觉始终绘制（外置模式画面保持一致）；交互（TextField/发送/聚焦）仅内嵌模式响应
         // ═══════════════════════════════════════
         Rect inputBgRect = default, fxRect = default, sendBtnRect = default;
-        if (!_externalRender)
         {
         float inputY = py + ph - inputBarHeight - 6f;
         float inputX = px + 8f;
@@ -380,6 +379,8 @@ public partial class RightPanel
         GUI.DrawTexture(inputBgRect, _inputBgTex);
         GUI.DrawTexture(inputBgRect, _inputGlowTex);
 
+        if (!_externalRender)
+        {
         GUI.SetNextControlName("rightPanelInput");
 
         // ★ Enter 发送（必须在 TextField 之前检测，因为 TextField 会消费 Enter 事件）
@@ -397,6 +398,12 @@ public partial class RightPanel
         }
 
         _inputText = GUI.TextField(inputBgRect, _inputText, MAX_INPUT_LENGTH, _termInputStyle);
+        }
+        else
+        {
+            // 外置模式：只绘制当前输入文本（交互由原生 EDIT 处理，Phase A3 接入）
+            GUI.Label(inputBgRect, _inputText, _termInputStyle);
+        }
 
         // ——— 发送按钮（太极图，符玄道法风，hover 紫色光晕） ———
         sendBtnRect = new Rect(tfX + tfW + 6f, inputY + (inputBarHeight - sendBtnSize) / 2f, sendBtnSize, sendBtnSize);
@@ -418,7 +425,7 @@ public partial class RightPanel
         UiTextureFactory.DrawPixelRect(new Rect(sendBtnRect.x, sendBtnRect.yMax - 1f, sendBtnRect.width, 1f), new Color(0.58f, 0.42f, 0.88f, 0.6f));
         UiTextureFactory.DrawPixelRect(new Rect(sendBtnRect.x, sendBtnRect.y, 1f, sendBtnRect.height), new Color(0.58f, 0.42f, 0.88f, 0.6f));
         UiTextureFactory.DrawPixelRect(new Rect(sendBtnRect.xMax - 1f, sendBtnRect.y, 1f, sendBtnRect.height), new Color(0.58f, 0.42f, 0.88f, 0.6f));
-        if (GUI.Button(sendBtnRect, new GUIContent(" ", "发送 (Enter)"), _sendBtnStyle))
+        if (!_externalRender && GUI.Button(sendBtnRect, new GUIContent(" ", "发送 (Enter)"), _sendBtnStyle))
         {
             string sendMsg = _inputText.Trim();
             if (sendMsg.Length > 0)
@@ -437,12 +444,12 @@ public partial class RightPanel
         }
 
         // 聚焦请求
-        if (_inputFocused)
+        if (!_externalRender && _inputFocused)
         {
             _inputFocused = false;
             GUI.FocusControl("rightPanelInput");
         }
-        } // ⚠️ 关闭 !_externalRender 输入栏块
+        } // ⚠️ 输入栏块结束
 
         // ——— 右下角拉伸手柄（可调窗口大小，QQ 式；用整体面板尺寸，含左侧会话栏） ———
         float handleSize = 20f;

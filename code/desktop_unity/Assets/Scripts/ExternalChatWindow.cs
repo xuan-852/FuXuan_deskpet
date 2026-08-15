@@ -25,6 +25,9 @@ public static class ExternalChatWindow
     public static bool IsCreated { get; private set; }
     public static bool IsVisible { get; private set; }
     private static int _width = 640, _height = 480;
+    private static int _startX = 200, _startY = 200;
+    private static bool _posRestored;
+    private static string PosPrefKey => "ExtPanel_Pos_" + UnityEngine.Screen.width + "x" + UnityEngine.Screen.height;
 
     // ─── 像素缓冲（Unity → 窗口线程） ───
     private static readonly object _bufLock = new object();
@@ -45,6 +48,7 @@ public static class ExternalChatWindow
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_COMMAND = 0x0111;
     private const int WM_CLOSE = 0x0010;
+    private const int WM_EXITSIZEMOVE = 0x0232;
     private const int VK_RETURN = 0x0D;
     private const int BN_CLICKED = 0;
     private const int IDC_EDIT = 101;
@@ -121,6 +125,47 @@ public static class ExternalChatWindow
     private static extern IntPtr GetFocus();
     [DllImport("user32.dll")]
     private static extern IntPtr SetFocus(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")]
+    private static extern bool AdjustWindowRectEx(ref RECT rect, uint style, bool menu, uint exStyle);
+    private const int GWL_STYLE = -16;
+    private const int GWL_EXSTYLE = -20;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOZORDER = 0x0004;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
+    /// <summary>保存窗口位置（WM_EXITSIZEMOVE / 关闭时）</summary>
+    private static void SavePos()
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        RECT r;
+        if (GetWindowRect(_hwnd, out r))
+            UnityEngine.PlayerPrefs.SetString(PosPrefKey, $"{r.Left},{r.Top}");
+    }
+
+    private static System.ValueTuple<int, int>? GetSavedPos()
+    {
+        string s = UnityEngine.PlayerPrefs.GetString(PosPrefKey, "");
+        if (string.IsNullOrEmpty(s)) return null;
+        var parts = s.Split(',');
+        if (parts.Length != 2) return null;
+        int x, y;
+        if (int.TryParse(parts[0], out x) && int.TryParse(parts[1], out y))
+        {
+            // 屏幕外校正：至少保留 40px 可见
+            int sw = UnityEngine.Screen.width, sh = UnityEngine.Screen.height;
+            x = Mathf.Clamp(x, -_width + 40, Mathf.Max(sw - 40, 40));
+            y = Mathf.Clamp(y, -_height + 40, Mathf.Max(sh - 40, 40));
+            return (x, y);
+        }
+        return null;
+    }
 
     // ──────────────────────────────────────────────
     //  生命周期（Unity 侧调用）
@@ -148,10 +193,45 @@ public static class ExternalChatWindow
         EnsureCreated();
         if (IsCreated && !IsVisible)
         {
+            // 恢复记忆位置（仅首次显示）
+            if (!_posRestored)
+            {
+                _posRestored = true;
+                var saved = GetSavedPos();
+                if (saved != null)
+                {
+                    _startX = saved.Value.Item1;
+                    _startY = saved.Value.Item2;
+                }
+            }
+            // 应用客户区尺寸（含边框补偿）
+            ApplyClientSize(_width, _height);
             PostMessageW(_hwnd, WM_SIZE, IntPtr.Zero, IntPtr.Zero); // 触发布局
             ShowWindow(_hwnd, 5 /*SW_SHOW*/);
             IsVisible = true;
         }
+    }
+
+    /// <summary>运行期调整客户区尺寸（Unity 侧面板尺寸变化时调用，含边框补偿）</summary>
+    public static void SetSize(int clientW, int clientH)
+    {
+        _width = Mathf.Max(320, clientW);
+        _height = Mathf.Max(200, clientH);
+        if (IsCreated && IsVisible)
+            ApplyClientSize(_width, _height);
+    }
+
+    /// <summary>把客户区尺寸换算成窗口尺寸并 SetWindowPos（边框/标题栏补偿，客户区与 RT 1:1）</summary>
+    private static void ApplyClientSize(int clientW, int clientH)
+    {
+        if (_hwnd == IntPtr.Zero || !IsWindow(_hwnd)) return;
+        int style = GetWindowLong(_hwnd, GWL_STYLE);
+        int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
+        RECT r = new RECT { Left = 0, Top = 0, Right = clientW, Bottom = clientH };
+        AdjustWindowRectEx(ref r, (uint)style, false, (uint)ex);
+        SetWindowPos(_hwnd, IntPtr.Zero, 0, 0,
+            r.Right - r.Left, r.Bottom - r.Top,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
     /// <summary>隐藏窗口</summary>
@@ -206,21 +286,24 @@ public static class ExternalChatWindow
                 return;
             }
 
-            _hwnd = CreateWindowExW(0, "FuXuanChatWindowClass", "符玄 · 对话",
-                WS_OVERLAPPEDWINDOW | WS_VISIBLE, 200, 200, _width, _height, IntPtr.Zero, IntPtr.Zero, _hInst, IntPtr.Zero);
+            _hwnd = CreateWindowExW(0, "FuXuanChatWindowClass", "符玄 · 太卜司",
+                WS_OVERLAPPEDWINDOW | WS_VISIBLE, _startX, _startY, _width, _height, IntPtr.Zero, IntPtr.Zero, _hInst, IntPtr.Zero);
             if (_hwnd == IntPtr.Zero)
             {
                 Debug.LogError("[ExternalChat] CreateWindowExW 失败");
                 return;
             }
+            ApplyClientSize(_width, _height); // 客户区与面板 RT 1:1
 
-            // 原生输入控件（底部：输入框 + 发送按钮）
+            // 原生输入控件（底部：输入框 + 发送按钮）— 整面板模式下仍创建，由 ShowInputBar 控制显隐
             RECT rc; GetClientRect(_hwnd, out rc);
             int barH = 44;
             _edit = CreateWindowExW(WS_EX_CLIENTEDGE, "EDIT", "", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | WS_BORDER,
                 8, rc.Bottom - barH + 6, rc.Right - 90, 30, _hwnd, (IntPtr)IDC_EDIT, _hInst, IntPtr.Zero);
             _sendBtn = CreateWindowExW(0, "BUTTON", "发送", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
                 rc.Right - 76, rc.Bottom - barH + 6, 68, 30, _hwnd, (IntPtr)IDC_SEND, _hInst, IntPtr.Zero);
+            ShowWindow(_edit, 0); // 整面板模式默认隐藏原生输入栏（面板自带 IMGUI 输入栏视觉）
+            ShowWindow(_sendBtn, 0);
 
             IsCreated = true;
             Debug.Log("[ExternalChat] 独立窗口已创建");
@@ -246,7 +329,8 @@ public static class ExternalChatWindow
         switch (msg)
         {
             case WM_CLOSE:
-                // ✕ = 隐藏（窗口生命周期归 Unity 管）
+                // ✕ = 隐藏（窗口生命周期归 Unity 管），先记忆位置
+                SavePos();
                 ShowWindow(hWnd, 0);
                 IsVisible = false;
                 MainThreadDispatcher.Run(() => OnClosed?.Invoke());
@@ -259,6 +343,10 @@ public static class ExternalChatWindow
                 break;
             case WM_SIZE:
                 LayoutChildren();
+                return IntPtr.Zero;
+            case WM_EXITSIZEMOVE:
+                // 拖动/缩放结束 → 记忆位置
+                SavePos();
                 return IntPtr.Zero;
             case WM_PAINT:
             {
@@ -297,6 +385,15 @@ public static class ExternalChatWindow
         if (text.Length == 0) return;
         SetWindowTextW(_edit, "");
         MainThreadDispatcher.Run(() => OnSendText?.Invoke(text));
+    }
+
+    /// <summary>控制原生输入栏显隐（整面板模式默认隐藏，聊天聚焦时可唤起；供后续 Phase 交互层使用）</summary>
+    public static void ShowInputBar(bool show)
+    {
+        if (!IsCreated) return;
+        ShowWindow(_edit, show ? 5 : 0);
+        ShowWindow(_sendBtn, show ? 5 : 0);
+        if (show) LayoutChildren();
     }
 
     private static void LayoutChildren()
