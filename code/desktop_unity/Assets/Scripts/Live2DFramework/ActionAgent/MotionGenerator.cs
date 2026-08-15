@@ -206,6 +206,16 @@ public class MotionGenerator
         foreach (var kv in final.Values)
             _mapper.Set(kv.Key, kv.Value);
 
+        // ★ 2026-08-15 残留防护：末帧未显式设置的被触碰参数 → 恢复动作前值。
+        //   本地/云端翻译偶发漏复位（末帧没把全部参数清 0），残留参数会污染后续动画——
+        //   实测表现：动作结束后切走路，身体歪斜（残留的转体/肢体值叠加到走路体态）。
+        //   末帧显式设置的参数保留（尊重有意保持的终态姿势），未设置的一律复原。
+        foreach (var kv in startValues)
+        {
+            if (!final.Values.ContainsKey(kv.Key))
+                _mapper.Set(kv.Key, kv.Value);
+        }
+
         Complete();
     }
 
