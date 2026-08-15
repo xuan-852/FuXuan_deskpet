@@ -100,10 +100,29 @@ public partial class RightPanel
 
         // ——— ⧉ 独立窗口切换（QQ 式：聊天面板可被其他窗口遮挡；2026-08-15） ———
         Rect extBtnRect = new Rect(px + pw - 210f, py + 10f, 40f, 34f);
+        // ★ 常态背景方块（细线符号在深底上不可见，加底衬突出按钮区域）
+        UiTextureFactory.DrawPixelRect(extBtnRect, _externalMode
+            ? new Color(0.55f, 0.40f, 0.85f, 0.45f)   // 外置激活中 → 亮紫
+            : new Color(0.30f, 0.22f, 0.45f, 0.30f)); // 未激活 → 暗紫
         if (extBtnRect.Contains(mp))
             UiTextureFactory.DrawPixelRect(extBtnRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
-        if (!_externalRender && GUI.Button(extBtnRect, new GUIContent("⧉", "独立窗口：聊天面板可被其他窗口遮挡（QQ 式）"), _termToolBtnStyle))
-            ToggleExternalMode();
+        // ★ 图标：程序绘制两窗方块（不用 ⧉ 字形——等宽字体无字形渲染空白）
+        if (_extWindowIconTex != null)
+        {
+            Rect iconR = new Rect(extBtnRect.center.x - 11f, extBtnRect.center.y - 10f, 22f, 20f);
+            GUI.DrawTexture(iconR, _extWindowIconTex);
+            if (!_externalRender && Event.current.type == EventType.MouseDown && Event.current.button == 0 && extBtnRect.Contains(mp))
+            {
+                Event.current.Use();
+                ToggleExternalMode();
+            }
+        }
+        else
+        {
+            if (!_externalRender && GUI.Button(extBtnRect, "独立", _termToolBtnStyle))
+                ToggleExternalMode();
+        }
+        RegisterExtHit(extBtnRect, ToggleExternalMode); // 外部命中：⧉ 退回内嵌/再外置
 
         // 时间（标题栏右，✕ 左侧）
         RefreshTime();
@@ -557,9 +576,35 @@ public partial class RightPanel
         if (GUI.Button(closeRect, "✕", _closeBtnStyle)) { Close(); }
         RegisterExtHit(closeRect, Close); // 外部命中：✕ 关闭面板
 
-        // —— 标题栏拖拽（排除 ✕） ——
+        // —— ⧉ 独立窗口切换（QQ 式：面板可被其他窗口遮挡；会话列表视图也有入口） ——
+        Rect sExtBtnRect = new Rect(px + pw - closeSize - 64f, py + (titleH - 34f) / 2f, 40f, 34f);
+        // ★ 常态背景方块（细线符号在深底上不可见，加底衬突出按钮区域）
+        UiTextureFactory.DrawPixelRect(sExtBtnRect, _externalMode
+            ? new Color(0.55f, 0.40f, 0.85f, 0.45f)   // 外置激活中 → 亮紫
+            : new Color(0.30f, 0.22f, 0.45f, 0.30f)); // 未激活 → 暗紫
+        if (sExtBtnRect.Contains(mp))
+            UiTextureFactory.DrawPixelRect(sExtBtnRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
+        // ★ 图标：程序绘制两窗方块（不用 ⧉ 字形——等宽字体无字形渲染空白）
+        if (_extWindowIconTex != null)
+        {
+            Rect sIconR = new Rect(sExtBtnRect.center.x - 11f, sExtBtnRect.center.y - 10f, 22f, 20f);
+            GUI.DrawTexture(sIconR, _extWindowIconTex);
+            if (!_externalRender && Event.current.type == EventType.MouseDown && Event.current.button == 0 && sExtBtnRect.Contains(mp))
+            {
+                Event.current.Use();
+                ToggleExternalMode();
+            }
+        }
+        else
+        {
+            if (!_externalRender && GUI.Button(sExtBtnRect, "独立", _termToolBtnStyle))
+                ToggleExternalMode();
+        }
+        RegisterExtHit(sExtBtnRect, ToggleExternalMode); // 外部命中：⧉ 退出/进入独立窗口
+
+        // —— 标题栏拖拽（排除 ✕ / ⧉） ——
         if (Event.current.type == EventType.MouseDown && Event.current.button == 0
-            && titleBarRect.Contains(mp) && !closeRect.Contains(mp))
+            && titleBarRect.Contains(mp) && !closeRect.Contains(mp) && !sExtBtnRect.Contains(mp))
         {
             _isDragging = true;
             _dragOffset = mp - new Vector2(px, py);

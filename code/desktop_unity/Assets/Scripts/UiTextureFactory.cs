@@ -410,4 +410,70 @@ public static class UiTextureFactory
         tex.Apply();
         return tex;
     }
+
+    /// <summary>
+    /// 生成「独立窗口」图标（两个重叠的小窗口方块，像素风）。
+    /// ⚠️ 不用字体字形（⧉ U+29C9 在等宽字体无字形渲染空白），纯程序绘制，任何环境可见。
+    /// </summary>
+    public static Texture2D GenExtWindowTex(int w, int h, Color c)
+    {
+        var tex = new Texture2D(w, h, TextureFormat.ARGB32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        Color clear = new Color(0, 0, 0, 0);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                tex.SetPixel(x, y, clear);
+
+        // 后窗（右上方，稍淡）：窗口方块
+        int bw = w / 2;          // 窗宽
+        int bh = h * 3 / 4;      // 窗高
+        int bx1 = w / 2;         // 后窗左
+        int by1 = h / 8;         // 后窗上
+        DrawWindowFrame(tex, bx1, by1, bw, bh, new Color(c.r, c.g, c.b, c.a * 0.55f));
+        // 前窗（左下方，主色）：窗口方块
+        int bx2 = w / 8;         // 前窗左
+        int by2 = h / 4;         // 前窗上
+        DrawWindowFrame(tex, bx2, by2, bw, bh, c);
+
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>画一个窗口方块边框（含标题条），供 GenExtWindowTex 使用</summary>
+    private static void DrawWindowFrame(Texture2D tex, int x0, int y0, int w, int h, Color c)
+    {
+        int x1 = Mathf.Min(x0 + w - 1, tex.width - 1);
+        int y1 = Mathf.Min(y0 + h - 1, tex.height - 1);
+        int barH = Mathf.Max(h / 6, 1); // 标题条高度
+        // 边框（四边 1px）
+        for (int x = x0; x <= x1; x++)
+        {
+            SetPx(tex, x, y0, c);
+            SetPx(tex, x, y1, c);
+        }
+        for (int y = y0; y <= y1; y++)
+        {
+            SetPx(tex, x0, y, c);
+            SetPx(tex, x1, y, c);
+        }
+        // 标题条填充（上 barH 行）
+        for (int y = y0; y < Mathf.Min(y0 + barH, y1); y++)
+            for (int x = x0 + 1; x < x1; x++)
+                SetPx(tex, x, y, new Color(c.r, c.g, c.b, c.a * 0.8f));
+        // 中间窗口分隔横线（视觉提示是窗口不是方块）
+        int midY = y0 + (y1 - y0) / 2;
+        for (int x = x0 + 1; x < x1; x++)
+            SetPx(tex, x, midY, new Color(c.r, c.g, c.b, c.a * 0.45f));
+    }
+
+    private static void SetPx(Texture2D tex, int x, int y, Color c)
+    {
+        if (x < 0 || y < 0 || x >= tex.width || y >= tex.height) return;
+        var old = tex.GetPixel(x, y);
+        tex.SetPixel(x, y, new Color(
+            Mathf.Lerp(old.r, c.r, c.a),
+            Mathf.Lerp(old.g, c.g, c.a),
+            Mathf.Lerp(old.b, c.b, c.a),
+            Mathf.Max(old.a, c.a)));
+    }
 }

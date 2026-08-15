@@ -114,6 +114,7 @@ public partial class RightPanel : MonoBehaviour
     private StarField _starField = new StarField();  // 星空背景系统（2026-08-14 拆分自本文件，必须实例化否则 Init/DrawStars NRE）
     private Texture2D _taijiTex;         // 太极图（发送按钮）
     private Texture2D _hexagramTex;      // 卦象三爻装饰（标题栏）
+    private Texture2D _extWindowIconTex; // 独立窗口图标（两窗方块，程序绘制，不依赖字形）
     private bool _stylesReady = false;
 
     // ==================== 外部面板窗口（独立普通窗口，QQ 式可被遮挡；2026-08-15 大工程） ====================
@@ -1020,6 +1021,8 @@ public partial class RightPanel : MonoBehaviour
         // 太极发送按钮 + 卦象装饰
         _taijiTex = UiTextureFactory.MakeTaijiTex(30);
         _hexagramTex = UiTextureFactory.GenHexagramTex(12, 12, new Color(0.92f, 0.82f, 0.56f, 0.92f));
+        // 独立窗口图标（两窗方块；不用 ⧉ 字形——等宽字体无字形会渲染空白）
+        _extWindowIconTex = UiTextureFactory.GenExtWindowTex(22, 20, new Color(0.78f, 0.66f, 0.98f, 0.95f));
 
         // ——— 顶部装饰线（紫） ———
         _accentLineTex = UiTextureFactory.MakeTex(1, 1, cAccent);
@@ -1795,6 +1798,14 @@ public partial class RightPanel : MonoBehaviour
     private void EnableExternalMode()
     {
         if (_externalMode) return;
+        // ★ 必须确保面板打开：OnGUI 开头 !_isOpen 会提前 return，外置窗口会空白
+        if (!_isOpen)
+        {
+            _isOpen = true;
+            _closing = false;
+            _animAlpha = 1f;
+            ApplyViewSize(); // 确保 _panelRect 有合法尺寸
+        }
         _externalMode = true;
         ExternalChatWindow.OnSendText += OnExternalSend;
         ExternalChatWindow.OnClosed += OnExternalClosed;
