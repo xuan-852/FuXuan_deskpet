@@ -44,6 +44,7 @@ public partial class RightPanel
         {
             if (!_externalRender) BackToSessionList();
         }
+        RegisterExtHit(backRect, BackToSessionList); // 外部命中：返回会话列表
 
         // 符玄头像（标题栏左侧，30×30，带深色描边以增强对比）
         float fxHeadSize = 42f;
@@ -95,6 +96,7 @@ public partial class RightPanel
         string fontTip = "字体大小: " + FONT_SCALES[_fontScaleLevel] + "x (档 " + (_fontScaleLevel + 1) + "/4)";
         if (!_externalRender && GUI.Button(fontBtnRect, new GUIContent(fontLbl, fontTip), _termToolBtnStyle))
             CycleFontScale();
+        RegisterExtHit(fontBtnRect, CycleFontScale); // 外部命中：字体档位
 
         // ——— ⧉ 独立窗口切换（QQ 式：聊天面板可被其他窗口遮挡；2026-08-15） ———
         Rect extBtnRect = new Rect(px + pw - 210f, py + 10f, 40f, 34f);
@@ -117,6 +119,7 @@ public partial class RightPanel
         {
             Close();
         }
+        RegisterExtHit(closeRect, Close); // 外部命中：✕ 关闭面板
 
         // ——— 标题栏拖动（按住标题栏移动窗口，排除 ✕ / ◀ 返回 / 字体按钮防误触） ———
         if (!_externalRender && Event.current.type == EventType.MouseDown && Event.current.button == 0
@@ -189,6 +192,17 @@ public partial class RightPanel
                 {
                     LaunchPogget();
                 }
+            }
+            // 外部命中：工具按钮（面板型直接开子面板；聊天聚焦输入；收纳忽略）
+            var tl = _tools[i];
+            if (tl.panelType.HasValue)
+            {
+                var pt = tl.panelType.Value;
+                RegisterExtHit(tbRect, () => OpenSubPanel(pt));
+            }
+            else if (tl.label == "聊天")
+            {
+                RegisterExtHit(tbRect, () => { _inputFocused = true; ExternalChatWindow.ShowInputBar(true); });
             }
         }
 
@@ -436,12 +450,29 @@ public partial class RightPanel
                 _inputFocused = true; // 发送后保持聚焦
             }
         }
+        // 外部命中：发送按钮（文本取 _inputText，Phase A3 输入框对接后生效）
+        RegisterExtHit(sendBtnRect, () =>
+        {
+            string sendMsg = _inputText.Trim();
+            if (sendMsg.Length > 0)
+            {
+                _inputText = "";
+                if (_chat != null)
+                    _chat.SendMessage(sendMsg, null);
+            }
+        });
 
         // 空输入框提示
         if (string.IsNullOrEmpty(_inputText) && GUI.GetNameOfFocusedControl() != "rightPanelInput")
         {
             GUI.Label(inputBgRect, "向符玄下达指令…", _termPlaceholderStyle);
         }
+        // 外部命中：点击输入框 → 唤起原生 EDIT 聚焦输入
+        RegisterExtHit(inputBgRect, () =>
+        {
+            ExternalChatWindow.ShowInputBar(true);
+            ExternalChatWindow.FocusInput();
+        });
 
         // 聚焦请求
         if (!_externalRender && _inputFocused)
@@ -524,6 +555,7 @@ public partial class RightPanel
         if (closeRect.Contains(mp))
             UiTextureFactory.DrawPixelRect(closeRect, new Color(0.80f, 0.25f, 0.25f, 0.35f));
         if (GUI.Button(closeRect, "✕", _closeBtnStyle)) { Close(); }
+        RegisterExtHit(closeRect, Close); // 外部命中：✕ 关闭面板
 
         // —— 标题栏拖拽（排除 ✕） ——
         if (Event.current.type == EventType.MouseDown && Event.current.button == 0
@@ -548,6 +580,7 @@ public partial class RightPanel
         Rect newBtnRect = new Rect(px + pw - 60f, searchY, 48f, searchH);
         if (GUI.Button(newBtnRect, "＋", _termToolBtnStyle))
             Debug.Log("[RightPanel] 新建会话（多角色扩展预留）");
+        RegisterExtHit(newBtnRect, () => Debug.Log("[RightPanel] 外部命中：新建会话（多角色扩展预留）"));
 
         // —— 会话列表（滚动，双击进入聊天） ——
         float listY = searchY + searchH + 12f;
@@ -585,7 +618,11 @@ public partial class RightPanel
             {
                 Event.current.Use();
                 EnterChat(i);
-            }        }
+            }
+            // 外部命中：会话项双击进聊天（矩形已含滚动偏移，命中表用同一坐标系）
+            int idx = i;
+            Rect extItemRect = new Rect(itemRect.x + listView.x - _sessionScroll.x, itemRect.y + listView.y - _sessionScroll.y, itemRect.width, itemRect.height);
+            RegisterExtHit(extItemRect, () => EnterChat(idx));        }
         GUI.EndScrollView();
 
         // —— 底部工具入口（设置/便签/报告/消耗 → 对话框内部子面板视图，QQ 底部工具栏位置） ——
@@ -604,6 +641,8 @@ public partial class RightPanel
             Rect btnRect = new Rect(px + 12f + i * toolW, toolY + 12f, toolW - 8f, 50f);
             if (GUI.Button(btnRect, toolDefs[i].label, _termToolBtnStyle))
                 OpenSubPanel(toolDefs[i].type);
+            var type = toolDefs[i].type;
+            RegisterExtHit(btnRect, () => OpenSubPanel(type)); // 外部命中：底部工具入口
         }
 
         // 右键关闭（快捷收面板）

@@ -122,6 +122,32 @@ public partial class RightPanel : MonoBehaviour
     private RenderTexture _chatRT;   // 面板渲染目标（独立窗口显示用，尺寸跟随当前视图）
     private Texture2D _chatReadTex;  // BGRA 像素读取
     private float _lastExtCapture;   // 推送节流计时
+    // ★ 外部交互命中表（Phase A3）：渲染外置面板时登记可点区域（矩形+动作），
+    //   独立窗口点击坐标回来查表执行（IMGUI Event.current 无法注入，故手动命中）
+    private readonly List<ExtHitZone> _extHitZones = new List<ExtHitZone>();
+    private struct ExtHitZone { public Rect rect; public System.Action action; }
+
+    /// <summary>外部窗口输入入口（独立窗口线程 → 主线程，经 MainThreadDispatcher 调用）</summary>
+    public void HandleExternalInput(float x, float y, bool isDoubleClick)
+    {
+        var p = new Vector2(x, y);
+        foreach (var zone in _extHitZones)
+        {
+            if (zone.rect.Contains(p))
+            {
+                try { zone.action(); }
+                catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部点击动作异常: {e.Message}"); }
+                return; // 只命中第一个（渲染顺序=绘制顺序，最上层优先）
+            }
+        }
+        Debug.Log($"[RightPanel] 外部点击未命中: ({x:F0},{y:F0})，可点区域 {_extHitZones.Count} 个");
+    }
+
+    /// <summary>登记一个外部可点区域（仅外部渲染时收集）</summary>
+    private void RegisterExtHit(Rect rect, System.Action action)
+    {
+        if (_externalRender) _extHitZones.Add(new ExtHitZone { rect = rect, action = action });
+    }
 
     // ==================== 字体档位缩放 ====================
     private int _fontScaleLevel = 1;                       // 0=最小 1/2/3=更大（默认 1=A2 1.2×）
@@ -642,7 +668,23 @@ public partial class RightPanel : MonoBehaviour
                 if (_externalMode) DisableExternalMode();
                 break;
             default:
-                Debug.LogWarning($"[TestInbox] 未知 @@view 命令: {cmd}（支持 settings/reminders/report/usage/chat/list/back/open/close/external/embed）");
+                // ★ 带参数命令（@@view:extclick:x,y[,dbl]）：前缀匹配
+                if (cmd.StartsWith("extclick:"))
+                {
+                    // 外部点击注入（铁律4 终端链路）：模拟独立窗口点击命中表
+                    string rest = cmd.Substring("extclick:".Length);
+                    var parts = rest.Split(',');
+                    float cx, cy; bool dbl = false;
+                    if (parts.Length >= 2 && float.TryParse(parts[0].Trim(), out cx) && float.TryParse(parts[1].Trim(), out cy))
+                    {
+                        if (parts.Length >= 3) bool.TryParse(parts[2].Trim(), out dbl);
+                        Debug.Log($"[TestInbox] 外部点击注入: ({cx:F0},{cy:F0}) dbl={dbl}");
+                        HandleExternalInput(cx, cy, dbl);
+                    }
+                    else Debug.LogWarning($"[TestInbox] extclick 参数格式错误: {rest}（应为 x,y[,dbl]）");
+                    break;
+                }
+                Debug.LogWarning($"[TestInbox] 未知 @@view 命令: {cmd}（支持 settings/reminders/report/usage/chat/list/back/open/close/external/embed/extclick）");
                 break;
         }
     }
@@ -1737,6 +1779,7 @@ public partial class RightPanel : MonoBehaviour
         _externalMode = true;
         ExternalChatWindow.OnSendText += OnExternalSend;
         ExternalChatWindow.OnClosed += OnExternalClosed;
+        ExternalChatWindow.OnPanelClick += OnExternalPanelClick;
         // 整面板外置：尺寸 = 当前视图面板尺寸（客户区与 RT 1:1）
         int w = Mathf.Max(320, Mathf.RoundToInt(_panelRect.width));
         int h = Mathf.Max(200, Mathf.RoundToInt(_panelRect.height));
@@ -1751,14 +1794,23 @@ public partial class RightPanel : MonoBehaviour
         _externalMode = false;
         ExternalChatWindow.OnSendText -= OnExternalSend;
         ExternalChatWindow.OnClosed -= OnExternalClosed;
+        ExternalChatWindow.OnPanelClick -= OnExternalPanelClick;
         ExternalChatWindow.Hide();
         Debug.Log("[RightPanel] 已退出独立面板窗口");
+    }
+
+    /// <summary>独立窗口面板区点击 → 命中表处理（主线程）</summary>
+    private void OnExternalPanelClick(float x, float y, bool isDoubleClick)
+    {
+        // 双击先走单击命中（会话列表双击进聊天由 EnterChat 处理；此处简化：双击查表执行）
+        HandleExternalInput(x, y, isDoubleClick);
     }
 
     private void OnExternalSend(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
         Debug.Log($"[RightPanel] 外部窗口发送: {text.Trim()}");
+        _inputText = text.Trim(); // 让面板内输入框视觉同步（外置模式显示文本）
         if (_chat != null) _chat.SendMessage(text.Trim(), null);
         else Debug.LogWarning("[RightPanel] 外部窗口发送时 ChatManager 未就绪");
     }
@@ -1787,6 +1839,7 @@ public partial class RightPanel : MonoBehaviour
         Matrix4x4 prevMatrix = GUI.matrix;
         GUI.matrix = Matrix4x4.identity;
         _externalRender = true;
+        _extHitZones.Clear(); // 每帧重建命中表
         DrawPanelContent(0, 0, rtW, rtH, Vector2.zero);
         _externalRender = false;
         GUI.matrix = prevMatrix;

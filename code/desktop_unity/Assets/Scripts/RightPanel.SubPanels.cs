@@ -50,6 +50,7 @@ public partial class RightPanel
             UiTextureFactory.DrawPixelRect(backRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
         if (GUI.Button(backRect, "◀", _termToolBtnStyle))
             BackFromSubPanel();
+        RegisterExtHit(backRect, BackFromSubPanel); // 外部命中：◀ 返回来源视图
 
         // —— 页面标题 ——
         string subTitle = _currentView switch
@@ -74,6 +75,7 @@ public partial class RightPanel
         if (closeRect.Contains(mp))
             UiTextureFactory.DrawPixelRect(closeRect, new Color(0.80f, 0.25f, 0.25f, 0.35f));
         if (GUI.Button(closeRect, "✕", _closeBtnStyle)) { Close(); }
+        RegisterExtHit(closeRect, Close); // 外部命中：✕ 关闭面板
 
         // —— 标题栏拖拽（排除 ◀ 返回 / ✕） ——
         if (Event.current.type == EventType.MouseDown && Event.current.button == 0

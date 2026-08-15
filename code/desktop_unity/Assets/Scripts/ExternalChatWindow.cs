@@ -20,6 +20,8 @@ public static class ExternalChatWindow
     public static event Action<string> OnSendText;
     /// <summary>用户点窗口 ✕（主线程回调，用于收起面板）</summary>
     public static event Action OnClosed;
+    /// <summary>用户在面板区点击（主线程回调，坐标=客户区/面板内坐标，双击标志）</summary>
+    public static event Action<float, float, bool> OnPanelClick;
 
     // ─── 状态 ───
     public static bool IsCreated { get; private set; }
@@ -49,6 +51,8 @@ public static class ExternalChatWindow
     private const int WM_COMMAND = 0x0111;
     private const int WM_CLOSE = 0x0010;
     private const int WM_EXITSIZEMOVE = 0x0232;
+    private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_LBUTTONDBLCLK = 0x0203;
     private const int VK_RETURN = 0x0D;
     private const int BN_CLICKED = 0;
     private const int IDC_EDIT = 101;
@@ -341,6 +345,25 @@ public static class ExternalChatWindow
             case WM_KEYDOWN:
                 if (wParam.ToInt32() == VK_RETURN && GetFocus() == _edit) { DoSend(); return IntPtr.Zero; }
                 break;
+            case WM_LBUTTONDOWN:
+            case WM_LBUTTONDBLCLK:
+                // 面板区点击 → 物理客户区坐标 → 逻辑面板坐标（×DPI 比例，客户区与 RT 逻辑 1:1）→ 主线程命中表
+            {
+                int x = lParam.ToInt32() & 0xFFFF;
+                int y = (lParam.ToInt32() >> 16) & 0xFFFF;
+                // 物理→逻辑换算：比例 = 逻辑尺寸 / 物理客户区
+                RECT cr;
+                GetClientRect(hWnd, out cr);
+                int physW = Math.Max(1, cr.Right - cr.Left);
+                int physH = Math.Max(1, cr.Bottom - cr.Top);
+                float fx = (float)_width / physW;
+                float fy = (float)_height / physH;
+                float lx = x * fx;
+                float ly = y * fy;
+                bool dbl = msg == WM_LBUTTONDBLCLK;
+                MainThreadDispatcher.Run(() => OnPanelClick?.Invoke(lx, ly, dbl));
+                return IntPtr.Zero;
+            }
             case WM_SIZE:
                 LayoutChildren();
                 return IntPtr.Zero;
@@ -394,6 +417,14 @@ public static class ExternalChatWindow
         ShowWindow(_edit, show ? 5 : 0);
         ShowWindow(_sendBtn, show ? 5 : 0);
         if (show) LayoutChildren();
+    }
+
+    /// <summary>聚焦原生输入框（外部模式点击输入区时唤起）</summary>
+    public static void FocusInput()
+    {
+        if (!IsCreated) return;
+        ShowInputBar(true);
+        SetFocus(_edit);
     }
 
     private static void LayoutChildren()
