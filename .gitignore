@@ -160,3 +160,7 @@ code/desktop unity/*.VC.opendb
 *.aux
 *.out
 *.toc
+
+# DSH harness 研究目录（不入库）
+.dsh-plugin-research/
+
