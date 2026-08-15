@@ -431,7 +431,7 @@ public static class ExternalChatWindow
                         var bmi = new BITMAPINFO();
                         bmi.bmiHeader.biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>();
                         bmi.bmiHeader.biWidth = _bufW;
-                        bmi.bmiHeader.biHeight = -_bufH; // top-down
+                        bmi.bmiHeader.biHeight = _bufH; // ★ 正数=bottom-up：Unity 纹理数组第一行是视觉底部，方向正确（负数 top-down 会上下颠倒）
                         bmi.bmiHeader.biPlanes = 1;
                         bmi.bmiHeader.biBitCount = 32;
                         bmi.bmiHeader.biCompression = 0; // BI_RGB
