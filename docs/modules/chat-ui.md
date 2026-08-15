@@ -130,38 +130,53 @@
 | `@@view:list` | 切回会话列表 |
 | `@@view:back` | 子面板 ◀ 返回来源视图 |
 | `@@view:open\|close` | 打开 / 淡出关闭面板 |
-| `@@view:external\|embed` | 进入 / 退出独立聊天窗口（等价标题栏 ⧉ 按钮） |
+| `@@view:external\|embed` | 进入 / 退出独立面板窗口（等价标题栏 ⧉ 按钮） |
+| `@@view:extclick:x,y[,dbl]` | 模拟独立窗口点击（坐标=面板逻辑坐标；dbl=true 双击） |
+| `@@approval:命令` | 注入 OpenClaw 审批弹窗（仅测试模式） |
 | `@@emote:xxx` | 注入表情（不走 LLM） |
 | 其他文本 | 作为用户消息发送（走 LLM） |
 
 命令处理在 `HandleTestViewCommand()`（未知命令 `Debug.LogWarning` 列出支持列表），命令执行留痕 `[TestInbox] @@view 命令: xxx` 于 Player.log。**新增 UI 视图/按钮时必须在命令表中补等价命令。**
 
-### 2.9 独立聊天窗口（2026-08-15，大工程 Phase 1）— QQ 式可被遮挡
+### 2.9 面板整体外置独立窗口（2026-08-16，大工程 Phase A1-A5）— QQ 式可被遮挡
 
-**背景**：用户要求聊天窗口「不需要始终置顶，按 QQ 那样可被其他窗口遮挡」，而桌宠本体（透明窗）保持置顶不变。方案：**原生 Win32 窗口**承载聊天，与桌宠窗口解耦。
+**背景**：用户要求 `~` 唤出的整个面板「不需要始终置顶，按 QQ 那样可被其他窗口遮挡」，桌宠本体（透明窗）保持置顶不变。方案：**原生 Win32 普通窗口**承载整个面板（所有视图），与桌宠窗口解耦——「普通窗口外壳 + Unity 渲染引擎 + 原生交互层」。
 
-**架构**（`ExternalChatWindow.cs`，311 行，静态类 + 后台 STA 线程）：
+**架构**（`ExternalChatWindow.cs`，静态类 + 后台 STA 线程；`RightPanel` 外部模式状态机）：
 
 | 环节 | 实现 | 说明 |
 |------|------|------|
-| 窗口 | `CreateWindowExW` + `RegisterClassW`（**非置顶** `WS_OVERLAPPEDWINDOW`，无 `WS_EX_TOPMOST`） | 可拖动/可遮挡/可最小化，标题「符玄 · 对话」 |
+| 窗口 | `CreateWindowExW` + `RegisterClassW`（**非置顶** `WS_OVERLAPPEDWINDOW`，无 `WS_EX_TOPMOST`） | 可拖动/可遮挡/可最小化/可缩放，标准标题栏，标题「符玄 · 太卜司」 |
 | 线程 | 后台线程 `FuXuanChatWindow`（STA + `GetMessageW` 消息循环） | 不阻塞 Unity 主线程 |
-| 渲染桥 | Unity 主线程 `DrawExternalChatToTexture()`：IMGUI → RenderTexture → `ReadPixels` BGRA → `SetBuffer` → 窗口线程 `WM_PAINT` 里 `SetDIBitsToDevice`（15fps 节流） | 聊天历史实时显示；`ValidateRect` 防 WM_PAINT 风暴 |
-| 输入 | **原生 EDIT 控件**（IDC_EDIT=101）+ 发送按钮（IDC_SEND=102）；Enter/按钮 → `DoSend` → `MainThreadDispatcher.Run` → 主线程 `OnSendText` → `ChatManager.SendMessage` | 不注入 IMGUI 键盘事件，输入可靠 |
-| 关闭 | ✕（`WM_CLOSE`）= 隐藏窗口 + 主线程 `OnClosed` → `DisableExternalMode` 退回内嵌 | 窗口生命周期归 Unity 管 |
+| 渲染桥 | 整个面板 → `DrawExternalPanelToTexture()`：IMGUI → RenderTexture（尺寸=当前视图）→ `ReadPixels` BGRA → `SetBuffer` → `WM_PAINT` `SetDIBitsToDevice`（15fps 节流） | **所有视图**（会话列表/聊天/设置/便签/报告/消耗）渲染；`ValidateRect` 防风暴 |
+| 尺寸 | `SetSize`/`ApplyClientSize`：客户区与 RT 1:1（`AdjustWindowRectEx` 边框补偿），随视图切换（486/1290/860 逻辑宽） | 客户区=面板逻辑尺寸 |
+| 位置 | `WM_EXITSIZEMOVE`/关闭时 `PlayerPrefs` 记忆，重开恢复（屏幕外校正） | 重启保持位置 |
+| 交互 | **手动命中表**（IMGUI `Event.current` 无法注入，故 `_extHitZones`：渲染时登记矩形+动作，每帧重建）；`WM_LBUTTONDOWN/DBLCLK` → 物理坐标×DPI 比例 → 逻辑面板坐标 → `MainThreadDispatcher` → `HandleExternalInput` 查表执行 | 会话双击/按钮/滚动条 |
+| 输入 | 原生 EDIT（IDC_EDIT=101）+ 发送（IDC_SEND=102），`ShowInputBar` 显隐；点输入区唤起聚焦 | 中文不乱码（CharSet.Unicode） |
+| 审批 | `DrawApprovalDialog` 外置渲染，模态（打开时清空下层命中区，只留三按钮）；`@@approval:` 测试注入 | 安全操作仍须人工确认 |
+| 关闭 | ✕（`WM_CLOSE`）= 隐藏 + 主线程 `OnClosed` → `DisableExternalMode` 退回内嵌 | 窗口生命周期归 Unity 管 |
 
-**状态切换**：标题栏 ⧉ 按钮 / `@@view:external` → `EnableExternalMode()`（订阅事件 + `Show(640, 480+44)`）；`@@view:embed` / ✕ → `DisableExternalMode()`（退订 + `Hide()`）。外部模式激活时 OnGUI 聊天分支改画到 RenderTexture（`_externalRender` 抑制屏幕事件处理，防幻影点击），屏幕不再画聊天。
+**状态切换**：标题栏 ⧉ 按钮 / `@@view:external` → `EnableExternalMode()`；`@@view:embed` / ✕ → `DisableExternalMode()`。外部模式激活时 OnGUI 改画到 RenderTexture（`_externalRender` 抑制屏幕事件处理），屏幕不再画面板。
+
+**测试链路**（铁律 §6.6 终端驱动，`scripts/test/runtime_smoke.cjs` 已覆盖）：
+- `@@view:external|embed` — 进出外置面板
+- `@@view:extclick:x,y[,dbl]` — 模拟外部点击（坐标=面板逻辑坐标，非屏幕坐标）
+- `@@approval:命令` — 注入审批弹窗（`OpenClawBridge.InjectTestApproval`，仅测试模式）
 
 **★ 已踩的坑（真机验证）**：
 
 1. `GetModuleHandleW` 在 **kernel32.dll**（不是 user32.dll）→ `EntryPointNotFoundException`；
 2. `RegisterClassExW` 收 `WNDCLASSEX`（首字段 cbSize），传 `WNDCLASS` 结构会失败 → 改用 `RegisterClassW`；
 3. `PAINTSTRUCT` 含 `System.Drawing.Rectangle` 不可封送（`BeginPaint` 包装层 NRE）→ 改用 `GetDC`/`ReleaseDC` + `ValidateRect` 直接画；
-4. **`Show()` 必须先赋值尺寸再 `EnsureCreated()`**——窗口线程按当时的 `_width/_height` 建窗，后赋值会丢输入栏 44px 高度（640×480 而非 640×524）；
-5. `GetWindowTextW`/`SetWindowTextW` 必须 `CharSet.Unicode`，否则中文经 ANSI 封送变乱码（真机发送中文验证发现）；
-6. `MainThreadDispatcher` 必须随 `DesktopPet` 自动挂载（`DesktopPet.cs` 加了 `AddComponent<MainThreadDispatcher>`），否则窗口线程回调进队列没人排空，发送静默丢失。
+4. **`Show()` 必须先赋值尺寸再 `EnsureCreated()`**——窗口线程按当时的 `_width/_height` 建窗，后赋值会丢高度；
+5. `GetWindowTextW`/`SetWindowTextW` 必须 `CharSet.Unicode`，否则中文经 ANSI 封送变乱码；
+6. `MainThreadDispatcher` 必须随 `DesktopPet` 自动挂载，否则窗口线程回调进队列没人排空，发送静默丢失；
+7. **外置点击坐标是物理像素，命中表是逻辑像素**——144 DPI 下必须 ×(逻辑/物理) 比例换算，否则点击错位（命中表坐标系=面板逻辑坐标）；
+8. **审批弹窗模态**：外置渲染时打开弹窗必须 `_extHitZones.Clear()`，否则下层视图按钮仍可点（模态被破坏）；
+9. 会话列表/便签滚动列表的命中矩形须加滚动偏移补偿（`+viewRect - scrollPos`）；
+10. `@@view:extclick:` 是**带参数命令**，不能放 switch 精确匹配，须 `StartsWith("extclick:")` 前缀匹配。
 
-**验证标准**（`scripts/test/runtime_smoke.cjs` 已含 `@@view:external/embed` 链路 + 3 个独立窗口标记）：窗口可见且 `exStyle` 无 0x8（非置顶）；桌宠主窗 `UnityWndClass` 仍带 `WS_EX_TOPMOST`；中文输入端到端不乱码；✕ 关闭后隐藏。手动验证用 Win32 枚举（`EnumWindows` 按类名 `FuXuanChatWindowClass` 找窗 + `GetDlgItem` 拿 EDIT/BUTTON + `SendMessageW WM_SETTEXT`/`WM_COMMAND` 注入），不移动真实鼠标。
+**验证标准**（`runtime_smoke.cjs` 已含 external/embed/extclick/approval 链路 + 交互闭环标记）：窗口可见且 `exStyle` 无 0x8（非置顶）；桌宠主窗仍带 `WS_EX_TOPMOST`；导航闭环（会话双击→聊天→设置→返回）命中；审批模态拦截+按钮执行；中文发送不乱码；窗口尺寸随视图变化；位置记忆生效。手动验证用 Win32 枚举（`EnumWindows` 找 `FuXuanChatWindowClass` + `GetDlgItem` + `SendMessageW`），不移动真实鼠标。
 
 
 
@@ -193,6 +208,7 @@
 | 2026-08-12 | **OpenClaw 任务可视化**（方案七）：标题栏状态区步骤显示（金色呼吸，优先级 任务>思考中>就绪）+ 日志区 `[openclaw]` 系统行 + 模态审批弹窗（红边三按钮，60s 自动拒绝，`DrawApprovalDialog`） |
 | 2026-08-13 | **QQ 式两级界面**：热键打开默认「会话列表」窄条（第一级），双击条目展开「左会话栏+右聊天区」（第二级），◀ 返回收窄；尺寸按 QQ 实测 324×846 基准 **1.5 倍放大**（486×1269 / 1290×1269 / SIDEBAR_W=420），字体全量 QQ 化（Microsoft YaHei，标题 19 / 气泡 17 / 输入 18）；**修复第二级拖拽偏移 bug**（`_dragOffset` 改用窗口原点 `_panelRect` 计算，排除 ✕/◀/字体按钮误触，MouseUp 复位 + Update 防吸保险），拖拽跟手验证通过 |
 | 2026-08-15 | **独立聊天窗口（大工程 Phase 1）**：原生 Win32 窗口（非置顶、可被遮挡、QQ 式）+ IMGUI→RenderTexture→BGRA 像素桥（15fps）+ 原生 EDIT 输入 + 发送按钮 → `MainThreadDispatcher` → `ChatManager`；标题栏 ⧉ 切换 + `@@view:external/embed` 终端命令；桌宠主窗保持置顶不变。详见 §2.9 |
+| 2026-08-16 | **面板整体外置（大工程 Phase A1-A5）**：整个 `~` 面板（全部视图）搬入独立普通窗口——渲染桥扩展为整面板（`DrawPanelContent` 双模式共用）、标准窗口行为（非置顶/拖动/缩放/位置记忆）、手动命中表交互（会话双击/按钮/滚动/审批三按钮，DPI 坐标换算 + 模态清空）、原生 EDIT 输入唤起；新增 `@@view:extclick`/`@@approval` 测试链路。详见 §2.9 |
 
 ### 像素化落地清单（按成本排序，2026-08-08）
 

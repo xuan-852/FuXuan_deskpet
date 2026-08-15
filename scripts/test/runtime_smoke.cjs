@@ -76,6 +76,11 @@ const COMMANDS = [
     ['@@view:back', '[TestInbox] @@view 命令: back'],
     ['@@view:list', '[TestInbox] @@view 命令: list'],
     ['@@view:external', '[TestInbox] @@view 命令: external'],
+    // ★ 外置面板交互链路（Phase A3/A4）：会话项双击进聊天 → 工具行进设置 → ◀ 返回 → 审批注入
+    ['@@view:extclick:100,200,true', '进入聊天: '],
+    ['@@view:extclick:753,87', '打开子面板 → Settings'],
+    ['@@view:extclick:15,15', '子面板返回 → Chat'],
+    ['@@approval:smoke test cmd', '已注入测试审批'],
     ['@@view:embed', '[TestInbox] @@view 命令: embed'],
     ['@@emote:happy', '已注入表情: happy'],
     ['@@view:close', '[TestInbox] @@view 命令: close'],
@@ -88,6 +93,10 @@ const EXT_MARKERS = [
     '[ExternalChat] 独立窗口已创建',
     '[RightPanel] ⧉ 已切换到独立面板窗口（可被其他窗口遮挡）',
     '[RightPanel] 已退出独立面板窗口',
+    // Phase A3/A4 交互闭环标记
+    '打开子面板 → Settings',
+    '子面板返回 → Chat',
+    '已注入测试审批',
 ];
 
 async function main() {

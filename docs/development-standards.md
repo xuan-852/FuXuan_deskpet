@@ -358,7 +358,9 @@ Assets/
 
 - 写 `D:\DesktopPetData\inbox.txt` 一行文本 → 作为用户消息发送（走 LLM，需清理污染）；
 - `@@emote:xxx` → 注入表情（不走 LLM）；
-- `@@view:settings|reminders|report|usage|chat|list|back|open|close|external|embed` → 切换面板视图/子面板/独立聊天窗口（`HandleTestViewCommand`）。
+- `@@view:settings|reminders|report|usage|chat|list|back|open|close|external|embed` → 切换面板视图/子面板/独立面板窗口（`HandleTestViewCommand`）；
+- `@@view:extclick:x,y[,dbl]` → 模拟独立面板窗口点击（坐标=面板逻辑坐标，命中表驱动，铁律：外置交互必须终端可触发）；
+- `@@approval:命令` → 注入 OpenClaw 审批弹窗（仅测试模式，验证外置审批模态/三按钮）。
 
 **新增 UI 功能时**（新按钮/新视图/新面板）：
 
