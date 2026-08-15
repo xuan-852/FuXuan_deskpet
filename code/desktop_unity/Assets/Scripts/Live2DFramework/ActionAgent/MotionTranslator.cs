@@ -171,8 +171,9 @@ public static class MotionTranslator
             "JSON output only:";
 
         // ——— 4. 翻译：本地模型优先（零成本，qwen2.5:3b），失败才回退 DeepSeek ———
-        // ★ 2026-08-15 成本优化：动作翻译占 API 调用 78%（677/869 次），
-        //   先走本地 Ollama（免费），本地不可用/解析失败才调 DeepSeek。
+        // ★ 2026-08-15 成本优化：动作翻译占 API 调用 78%（677/869 次），本地优先可省大头。
+        //   曾因「走路歪身子」回滚，后查明那是动作结束参数残留 bug（MotionGenerator 已修），
+        //   非本地翻译质量问题——恢复本地优先 + DeepSeek 兜底。
         if (LocalLLMClient.IsReady)
         {
             Debug.Log($"[MotionTranslator] 🏠 尝试本地模型翻译（免费）: \"{description}\"");

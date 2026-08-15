@@ -566,15 +566,16 @@ public partial class RightPanel
             }        }
         GUI.EndScrollView();
 
-        // —— 底部工具入口（设置/便签/报告 → 对话框内部子面板视图，QQ 底部工具栏位置） ——
+        // —— 底部工具入口（设置/便签/报告/消耗 → 对话框内部子面板视图，QQ 底部工具栏位置） ——
         float toolY = py + ph - 76f;
         UiTextureFactory.DrawPixelRect(new Rect(px + 2f, toolY - 8f, pw - 4f, 1f), new Color(0.58f, 0.42f, 0.88f, 0.4f));
-        float toolW = (pw - 48f) / 3f;
+        float toolW = (pw - 48f) / 4f;
         var toolDefs = new (string label, BallPanel.PanelType type)[]
         {
             ("⚙ 设置", BallPanel.PanelType.Settings),
             ("📋 便签", BallPanel.PanelType.Reminders),
-            ("📝 报告", BallPanel.PanelType.Report)
+            ("📝 报告", BallPanel.PanelType.Report),
+            ("💰 消耗", BallPanel.PanelType.Usage)
         };
         for (int i = 0; i < toolDefs.Length; i++)
         {
