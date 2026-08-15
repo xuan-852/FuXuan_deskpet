@@ -107,6 +107,7 @@
 | N40 T2 | 2026-08-07 | MotionTranslator body schema 按描述裁剪部位（~13k→~5k tokens） | `a78e62c` |
 | N40 T3 | 2026-08-07 | `max_tokens:1200` + 超时 30→60s；**追加**：显式 `"thinking":{"type":"disabled"}`（deepseek-v4-flash 推理模式吃满 max_tokens 致 `content=""`） | `52f9cec` |
 | N40 T8 | 2026-08-07 | `usage.prompt_cache_hit_tokens` 打日志（可观测缓存命中率） | `a78e62c` |
+| N43 | 2026-08-15 | **本地模型优先（成本优化）**：动作翻译/闲话问候/天气语录先走本地 Ollama（qwen2.5:3b，免费），失败才回退 DeepSeek——动作翻译占 API 调用 78%（实测 677/869），改造后本地成功率 100%（num_ctx 8192 解决大 schema 截断）；DeepSeek 调用量预计降 90%+（DeepSeek 8-17 起峰谷涨价，峰值输出 ¥27/M，本次优化正当其时） | — |
 | N40 T4 | 2026-08-07 | 工具回环只带相关工具子集（首轮 55→27，-51%） | `bad7487` |
 | N40 T5 | 2026-08-07 | 历史 15000 字符预算 + 被裁旧史 Ollama 摘要注入【旧事纪要】 | `5f0a048` |
 | N40 T7 | 2026-08-07 | Speculative Multi-Action（一次预测 2-3 步 tool_call，实测一次响应双工具） | `77645d4` |

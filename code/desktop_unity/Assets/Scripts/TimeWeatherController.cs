@@ -477,6 +477,34 @@ public class TimeWeatherController : MonoBehaviour
 - 湿度：{humidityPercent}%
 - 气压：{pressureHpa}hPa {lowPressure}";
 
+        // ★ 2026-08-15 成本优化：天气语录先走本地模型（免费），失败才回退 DeepSeek
+        if (LocalLLMClient.IsReady)
+        {
+            bool localOk = false;
+            string localText = "";
+            yield return LocalLLMClient.PromptAsync(systemPrompt, "请生成天气语录（按 system 要求，用 | 分隔）",
+                (ok, content) => { localOk = ok; localText = content ?? ""; }, 0.9f, 400);
+            if (localOk && !string.IsNullOrWhiteSpace(localText))
+            {
+                aiWeatherLines.Clear();
+                foreach (var line in localText.Split('|'))
+                {
+                    string t = line.Trim();
+                    if (!string.IsNullOrEmpty(t)) aiWeatherLines.Add(t);
+                }
+                if (aiWeatherLines.Count > 0)
+                {
+                    Debug.Log($"[TimeWeather] 🏠 本地模型生成天气语录（免 API）: {aiWeatherLines.Count} 句");
+                    yield break;
+                }
+                Debug.LogWarning("[TimeWeather] 本地模型语录无效，回退 DeepSeek");
+            }
+            else
+            {
+                Debug.LogWarning("[TimeWeather] 本地模型不可用，回退 DeepSeek");
+            }
+        }
+
         string url = aiApiUrl.TrimEnd('/') + "/v1/chat/completions";
         string jsonBody = $"{{\"model\":\"{EscapeJson(aiModel)}\",\"messages\":[{{\"role\":\"system\",\"content\":\"{EscapeJson(systemPrompt)}\"}}],\"max_tokens\":300,\"temperature\":0.9}}";
 

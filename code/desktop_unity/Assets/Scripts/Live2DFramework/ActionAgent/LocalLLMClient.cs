@@ -258,6 +258,9 @@ public static class LocalLLMClient
         sb.Append("\"model\":\"").Append(EscapeJson(ModelName)).Append("\",");
         sb.Append("\"temperature\":").Append(temperature.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(',');
         sb.Append("\"max_tokens\":").Append(maxTokens).Append(',');
+        // ★ 2026-08-15：显式扩展上下文窗口到 8K——动作翻译/闲话 prompt 较大（schema 可达 5K 字符），
+        //   默认 4K 上下文会截断导致本地模型 JSON 解析失败回退云端。Ollama 支持按请求覆盖 num_ctx。
+        sb.Append("\"options\":{\"num_ctx\":8192},");
         sb.Append("\"messages\":[");
         for (int i = 0; i < messages.Count; i++)
         {

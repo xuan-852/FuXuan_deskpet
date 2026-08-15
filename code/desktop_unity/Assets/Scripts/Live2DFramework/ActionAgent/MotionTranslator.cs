@@ -170,7 +170,36 @@ public static class MotionTranslator
             "REMEMBER: Use LARGE EXAGGERATED values (60-90% of range) so a visual AI can clearly see the pose!\n\n" +
             "JSON output only:";
 
-        // ——— 4. 调用 DeepSeek API ———
+        // ——— 4. 翻译：本地模型优先（零成本，qwen2.5:3b），失败才回退 DeepSeek ———
+        // ★ 2026-08-15 成本优化：动作翻译占 API 调用 78%（677/869 次），
+        //   先走本地 Ollama（免费），本地不可用/解析失败才调 DeepSeek。
+        if (LocalLLMClient.IsReady)
+        {
+            Debug.Log($"[MotionTranslator] 🏠 尝试本地模型翻译（免费）: \"{description}\"");
+            bool localOk = false;
+            string localText = "";
+            yield return LocalLLMClient.PromptAsync(systemPrompt, userPrompt,
+                (ok, content) => { localOk = ok; localText = content ?? ""; }, 0.3f, 1200);
+            if (localOk && !string.IsNullOrWhiteSpace(localText))
+            {
+                MotionPlanner.MotionPlan localPlan = ParseResponse(localText, description);
+                if (localPlan != null && localPlan.KeyFrames.Count > 0)
+                {
+                    // ——— 6. 参数分布检查：如果全是头/面参数，注入肢体参数 ———
+                    EnrichWithLimbParams(localPlan);
+                    Debug.Log($"[MotionTranslator] ✅ 本地模型翻译成功（免 API）：「{description}」→ {localPlan.KeyFrames.Count} 帧, {localPlan.TotalDuration:F1}s");
+                    onResult(localPlan);
+                    yield break;
+                }
+                Debug.LogWarning($"[MotionTranslator] 本地模型结果无效，回退 DeepSeek: {StringTruncateExtension.Truncate(localText, 150)}");
+            }
+            else
+            {
+                Debug.LogWarning("[MotionTranslator] 本地模型不可用/失败，回退 DeepSeek");
+            }
+        }
+
+        // ——— 4b. DeepSeek 兜底（原逻辑）———
         string jsonBody = BuildRequestBody(systemPrompt, userPrompt);
 
         using (UnityWebRequest req = new UnityWebRequest(API_URL, "POST"))

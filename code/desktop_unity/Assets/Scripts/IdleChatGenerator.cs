@@ -182,6 +182,28 @@ public class IdleChatGenerator : MonoBehaviour
             batchSize);
 
         string jsonBody = BuildSimpleRequestBody(sysPrompt, userPrompt);
+        // ★ 2026-08-15 成本优化：闲话生成本地模型优先（免费），失败才回退 DeepSeek
+        if (LocalLLMClient.IsReady)
+        {
+            bool localOk = false;
+            string localText = "";
+            yield return LocalLLMClient.PromptAsync(sysPrompt, userPrompt,
+                (ok, content) => { localOk = ok; localText = content ?? ""; }, 0.9f, 500);
+            if (localOk && !string.IsNullOrWhiteSpace(localText))
+            {
+                int added = 0;
+                string[] lines = localText.Split(new string[] { "|||" }, System.StringSplitOptions.RemoveEmptyEntries);
+                foreach (string line in lines)
+                {
+                    string trimmed = line.Trim().TrimStart('1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '.', '、', '，', ' ');
+                    if (trimmed.Length > 0 && trimmed.Length <= 50) { _idleCache.Enqueue(trimmed); added++; }
+                }
+                Debug.Log($"[IdleChatGenerator] 🏠 本地模型生成闲话（免 API），新增 {added} 条");
+                _isIdleGenerating = false;
+                yield break;
+            }
+            Debug.LogWarning("[IdleChatGenerator] 本地模型失败，回退 DeepSeek");
+        }
         yield return StartCoroutine(
             ApiClient.PostRequest(apiUrl, ApiKey, jsonBody, 30,
                 json => HandleIdleBatchResponse(json),
@@ -295,6 +317,28 @@ public class IdleChatGenerator : MonoBehaviour
             context);
 
         string jsonBody = BuildSimpleRequestBody(sysPrompt, userPrompt);
+        // ★ 2026-08-15 成本优化：问候生成本地模型优先（免费），失败才回退 DeepSeek
+        if (LocalLLMClient.IsReady)
+        {
+            bool localOk = false;
+            string localText = "";
+            yield return LocalLLMClient.PromptAsync(sysPrompt, userPrompt,
+                (ok, content) => { localOk = ok; localText = content ?? ""; }, 0.9f, 500);
+            if (localOk && !string.IsNullOrWhiteSpace(localText))
+            {
+                int added = 0;
+                string[] lines = localText.Split(new string[] { "|||" }, System.StringSplitOptions.RemoveEmptyEntries);
+                foreach (string line in lines)
+                {
+                    string trimmed = line.Trim().TrimStart('1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '.', '、', '，', ' ');
+                    if (trimmed.Length > 0 && trimmed.Length <= 50) { _greetingCache.Enqueue(trimmed); added++; }
+                }
+                Debug.Log($"[IdleChatGenerator] 🏠 本地模型生成问候（免 API），新增 {added} 条");
+                _isGreetingGenerating = false;
+                yield break;
+            }
+            Debug.LogWarning("[IdleChatGenerator] 本地模型失败，回退 DeepSeek");
+        }
         yield return StartCoroutine(
             ApiClient.PostRequest(apiUrl, ApiKey, jsonBody, 30,
                 json => HandleGreetingResponse(json),
