@@ -358,7 +358,7 @@ Assets/
 
 - 写 `D:\DesktopPetData\inbox.txt` 一行文本 → 作为用户消息发送（走 LLM，需清理污染）；
 - `@@emote:xxx` → 注入表情（不走 LLM）；
-- `@@view:settings|reminders|report|chat|list|back|open|close` → 切换面板视图/子面板（`HandleTestViewCommand`）。
+- `@@view:settings|reminders|report|usage|chat|list|back|open|close|external|embed` → 切换面板视图/子面板/独立聊天窗口（`HandleTestViewCommand`）。
 
 **新增 UI 功能时**（新按钮/新视图/新面板）：
 

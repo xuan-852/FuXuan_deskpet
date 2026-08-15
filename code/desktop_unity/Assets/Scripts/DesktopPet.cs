@@ -523,6 +523,13 @@ public class DesktopPet : MonoBehaviour
             Debug.Log("[DesktopPet] 自动添加了 WindowOverlay 组件");
         }
 
+        // 自动确保 MainThreadDispatcher 存在（后台线程 → 主线程回调调度，独立聊天窗口依赖）
+        if (GetComponent<MainThreadDispatcher>() == null)
+        {
+            gameObject.AddComponent<MainThreadDispatcher>();
+            Debug.Log("[DesktopPet] 自动添加了 MainThreadDispatcher 组件");
+        }
+
         // 初始化系统托盘管理器
         _trayManager = GetComponent<SystemTrayManager>();
         if (_trayManager == null)

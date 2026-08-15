@@ -116,6 +116,16 @@ public partial class RightPanel : MonoBehaviour
     private Texture2D _hexagramTex;      // 卦象三爻装饰（标题栏）
     private bool _stylesReady = false;
 
+    // ==================== 外部聊天窗口（独立窗口，QQ 式可被遮挡；2026-08-15 大工程 Phase1） ====================
+    private bool _externalMode;      // 独立窗口模式激活
+    private bool _externalRender;    // 正在向独立窗口渲染（抑制屏幕事件处理）
+    private RenderTexture _chatRT;   // 聊天区渲染目标（独立窗口显示用）
+    private Texture2D _chatReadTex;  // BGRA 像素读取
+    private float _lastExtCapture;   // 推送节流计时
+    private const int EXT_CHAT_W = 640;
+    private const int EXT_CHAT_H = 480;
+    private const int EXT_INPUT_BAR_H = 44;   // 原生输入栏高度（独立窗口底部）
+
     // ==================== 字体档位缩放 ====================
     private int _fontScaleLevel = 1;                       // 0=最小 1/2/3=更大（默认 1=A2 1.2×）
     private static readonly float[] FONT_SCALES = { 1f, 1.2f, 1.4f, 1.6f };
@@ -618,8 +628,23 @@ public partial class RightPanel : MonoBehaviour
             case "close":
                 if (_isOpen) Close();
                 break;
+            case "external":
+                // 独立聊天窗口（⧉ 等价命令）：先确保面板打开 + 聊天视图
+                if (!_isOpen) Toggle();
+                if (_currentView != PanelView.Chat)
+                {
+                    if (_sessions == null || _sessions.Count == 0) RefreshSessionList();
+                    if (_sessions != null && _sessions.Count > 0) EnterChat(0);
+                    else { _currentView = PanelView.Chat; ApplyViewSize(); }
+                }
+                if (!_externalMode) EnableExternalMode();
+                break;
+            case "embed":
+                // 退回内嵌聊天窗口
+                if (_externalMode) DisableExternalMode();
+                break;
             default:
-                Debug.LogWarning($"[TestInbox] 未知 @@view 命令: {cmd}（支持 settings/reminders/report/chat/list/back/open/close）");
+                Debug.LogWarning($"[TestInbox] 未知 @@view 命令: {cmd}（支持 settings/reminders/report/usage/chat/list/back/open/close/external/embed）");
                 break;
         }
     }
@@ -804,6 +829,13 @@ public partial class RightPanel : MonoBehaviour
             return;
         }
         // 第二级：左侧会话栏占 SIDEBAR_W，聊天区整体右移
+        // ★ 外部窗口模式（2026-08-15）：聊天区渲染到独立窗口（QQ 式可被遮挡），屏幕不再画聊天
+        if (_externalMode && _currentView == PanelView.Chat)
+        {
+            DrawExternalChatToTexture();
+            GUI.color = Color.white;
+            return;
+        }
         DrawSessionSidebar(px, py, SIDEBAR_W, ph, mp);
         px += SIDEBAR_W;
         pw -= SIDEBAR_W;
@@ -1669,5 +1701,95 @@ public partial class RightPanel : MonoBehaviour
         if (_titleBarPixelTex != null) Destroy(_titleBarPixelTex);
         if (_inputBarPixelTex != null) Destroy(_inputBarPixelTex);
         if (_monoFont != null) Destroy(_monoFont);
+        if (_chatRT != null) { _chatRT.Release(); Destroy(_chatRT); }
+        if (_chatReadTex != null) Destroy(_chatReadTex);
+        DisableExternalMode();
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  外部聊天窗口（独立窗口）— 开关 / 渲染捕获 / 输入桥
+    // ═══════════════════════════════════════════════════════════
+    public bool IsExternalMode => _externalMode;
+
+    /// <summary>切换独立窗口模式（聊天标题栏 ⧉ 按钮 / 测试命令触发）</summary>
+    public void ToggleExternalMode()
+    {
+        if (_externalMode) DisableExternalMode();
+        else EnableExternalMode();
+    }
+
+    private void EnableExternalMode()
+    {
+        if (_externalMode) return;
+        _externalMode = true;
+        ExternalChatWindow.OnSendText += OnExternalSend;
+        ExternalChatWindow.OnClosed += OnExternalClosed;
+        ExternalChatWindow.Show(EXT_CHAT_W, EXT_CHAT_H + EXT_INPUT_BAR_H);
+        // 确保处于聊天视图（否则独立窗口无内容）
+        if (_currentView != PanelView.Chat)
+        {
+            if (_sessions == null || _sessions.Count == 0) RefreshSessionList();
+            if (_sessions != null && _sessions.Count > 0) EnterChat(0);
+            else { _currentView = PanelView.Chat; ApplyViewSize(); }
+        }
+        Debug.Log("[RightPanel] ⧉ 已切换到独立聊天窗口（可被其他窗口遮挡）");
+    }
+
+    private void DisableExternalMode()
+    {
+        if (!_externalMode) return;
+        _externalMode = false;
+        ExternalChatWindow.OnSendText -= OnExternalSend;
+        ExternalChatWindow.OnClosed -= OnExternalClosed;
+        ExternalChatWindow.Hide();
+        Debug.Log("[RightPanel] 已退出独立聊天窗口");
+    }
+
+    private void OnExternalSend(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        Debug.Log($"[RightPanel] 外部窗口发送: {text.Trim()}");
+        if (_chat != null) _chat.SendMessage(text.Trim(), null);
+        else Debug.LogWarning("[RightPanel] 外部窗口发送时 ChatManager 未就绪");
+    }
+
+    private void OnExternalClosed()
+    {
+        // 独立窗口 ✕ → 退出外部模式（回到内嵌面板）
+        DisableExternalMode();
+    }
+
+    /// <summary>把聊天区渲染到独立窗口（IMGUI → RenderTexture → BGRA 像素流，15fps 节流）</summary>
+    private void DrawExternalChatToTexture()
+    {
+        if (_chatRT == null || _chatRT.width != EXT_CHAT_W || _chatRT.height != EXT_CHAT_H)
+        {
+            if (_chatRT != null) _chatRT.Release();
+            _chatRT = new RenderTexture(EXT_CHAT_W, EXT_CHAT_H, 0, RenderTextureFormat.ARGB32);
+        }
+        RenderTexture prev = RenderTexture.active;
+        RenderTexture.active = _chatRT;
+        GL.Clear(true, true, new Color(0.06f, 0.05f, 0.10f, 1f));
+        Matrix4x4 prevMatrix = GUI.matrix;
+        GUI.matrix = Matrix4x4.identity;
+        _externalRender = true;
+        DrawChatArea(0, 0, EXT_CHAT_W, EXT_CHAT_H - EXT_INPUT_BAR_H, Vector2.zero);
+        _externalRender = false;
+        GUI.matrix = prevMatrix;
+        RenderTexture.active = prev;
+
+        // 节流推送（15fps）
+        if (Time.time - _lastExtCapture > 1f / 15f)
+        {
+            _lastExtCapture = Time.time;
+            if (_chatReadTex == null || _chatReadTex.width != EXT_CHAT_W || _chatReadTex.height != EXT_CHAT_H)
+                _chatReadTex = new Texture2D(EXT_CHAT_W, EXT_CHAT_H, TextureFormat.BGRA32, false);
+            RenderTexture.active = _chatRT;
+            _chatReadTex.ReadPixels(new Rect(0, 0, EXT_CHAT_W, EXT_CHAT_H), 0, 0);
+            RenderTexture.active = prev;
+            _chatReadTex.Apply();
+            try { ExternalChatWindow.SetBuffer(_chatReadTex.GetRawTextureData(), EXT_CHAT_W, EXT_CHAT_H); }
+            catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部窗口像素推送失败: {e.Message}"); }
+        }
     }
 }

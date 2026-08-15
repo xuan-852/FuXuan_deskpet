@@ -42,7 +42,7 @@ public partial class RightPanel
             UiTextureFactory.DrawPixelRect(backRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
         if (GUI.Button(backRect, "◀", _termToolBtnStyle))
         {
-            BackToSessionList();
+            if (!_externalRender) BackToSessionList();
         }
 
         // 符玄头像（标题栏左侧，30×30，带深色描边以增强对比）
@@ -93,8 +93,15 @@ public partial class RightPanel
             UiTextureFactory.DrawPixelRect(fontBtnRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
         string fontLbl = _fontScaleLevel == 0 ? "A" : "A" + (_fontScaleLevel + 1);
         string fontTip = "字体大小: " + FONT_SCALES[_fontScaleLevel] + "x (档 " + (_fontScaleLevel + 1) + "/4)";
-        if (GUI.Button(fontBtnRect, new GUIContent(fontLbl, fontTip), _termToolBtnStyle))
+        if (!_externalRender && GUI.Button(fontBtnRect, new GUIContent(fontLbl, fontTip), _termToolBtnStyle))
             CycleFontScale();
+
+        // ——— ⧉ 独立窗口切换（QQ 式：聊天面板可被其他窗口遮挡；2026-08-15） ———
+        Rect extBtnRect = new Rect(px + pw - 210f, py + 10f, 40f, 34f);
+        if (extBtnRect.Contains(mp))
+            UiTextureFactory.DrawPixelRect(extBtnRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
+        if (!_externalRender && GUI.Button(extBtnRect, new GUIContent("⧉", "独立窗口：聊天面板可被其他窗口遮挡（QQ 式）"), _termToolBtnStyle))
+            ToggleExternalMode();
 
         // 时间（标题栏右，✕ 左侧）
         RefreshTime();
@@ -106,15 +113,15 @@ public partial class RightPanel
         // hover 时画红色方块背景
         if (closeRect.Contains(mp))
             UiTextureFactory.DrawPixelRect(closeRect, new Color(0.80f, 0.25f, 0.25f, 0.35f));
-        if (GUI.Button(closeRect, "✕", _closeBtnStyle))
+        if (!_externalRender && GUI.Button(closeRect, "✕", _closeBtnStyle))
         {
             Close();
         }
 
         // ——— 标题栏拖动（按住标题栏移动窗口，排除 ✕ / ◀ 返回 / 字体按钮防误触） ———
-        if (Event.current.type == EventType.MouseDown && Event.current.button == 0
+        if (!_externalRender && Event.current.type == EventType.MouseDown && Event.current.button == 0
             && titleBarRect.Contains(mp)
-            && !closeRect.Contains(mp) && !backRect.Contains(mp) && !fontBtnRect.Contains(mp))
+            && !closeRect.Contains(mp) && !backRect.Contains(mp) && !fontBtnRect.Contains(mp) && !extBtnRect.Contains(mp))
         {
             _isDragging = true;
             // ★ 修复：此处 px 已被 += SIDEBAR_W 右移，必须用窗口原点 _panelRect 计算偏移，
@@ -168,17 +175,17 @@ public partial class RightPanel
             if (GUI.Button(tbRect, "[" + _tools[i].icon + "]", tbHover ? _termToolBtnHoverStyle : _termToolBtnStyle))
             {
                 var tool = _tools[i];
-                if (tool.panelType.HasValue)
+                if (!_externalRender && tool.panelType.HasValue)
                 {
                     // ——— 重构：三个页面改为对话框内部视图（星空风格），不再弹独立灰窗 BallPanel ———
                     OpenSubPanel(tool.panelType.Value);
                 }
-                else if (tool.label == "聊天")
+                else if (!_externalRender && tool.label == "聊天")
                 {
                     _inputFocused = true;
                     GUI.FocusControl("rightPanelInput");
                 }
-                else if (tool.label == "收纳")
+                else if (!_externalRender && tool.label == "收纳")
                 {
                     LaunchPogget();
                 }
@@ -336,7 +343,11 @@ public partial class RightPanel
 
         // ═══════════════════════════════════════
         //  底部终端输入行 — [像素符玄] > [输入框] (→)
+        //  ⚠️ 外部窗口模式（_externalRender）跳过整块：独立窗口用原生 EDIT 输入
         // ═══════════════════════════════════════
+        Rect inputBgRect = default, fxRect = default, sendBtnRect = default;
+        if (!_externalRender)
+        {
         float inputY = py + ph - inputBarHeight - 6f;
         float inputX = px + 8f;
         float inputW = pw - 16f;
@@ -348,7 +359,7 @@ public partial class RightPanel
 
         // 符玄头像（输入框内最左，高清原图）★多模态资源：Resources/PixelFuXuan.png
         float fxSize = 56f; // 高清原图平滑显示
-        Rect fxRect = new Rect(inputX + 4f, inputY + (inputBarHeight - fxSize) / 2f, fxSize, fxSize);
+        fxRect = new Rect(inputX + 4f, inputY + (inputBarHeight - fxSize) / 2f, fxSize, fxSize);
         // 背景描边
         UiTextureFactory.DrawPixelRect(new Rect(fxRect.x - 3f, fxRect.y - 3f, fxRect.width + 6f, fxRect.height + 6f), new Color(0f, 0f, 0f, 0.7f));
         GUI.DrawTexture(fxRect, _pixelFxTex);
@@ -363,7 +374,7 @@ public partial class RightPanel
         float sendBtnSize = 44f;
         float tfX = inputX + fxSize + promptW + 12f;
         float tfW = inputW - fxSize - promptW - 18f - sendBtnSize - 6f;
-        Rect inputBgRect = new Rect(tfX, tfY, tfW, tfH);
+        inputBgRect = new Rect(tfX, tfY, tfW, tfH);
 
         // 输入框背景（圆角胶囊 + 发光描边）
         GUI.DrawTexture(inputBgRect, _inputBgTex);
@@ -388,7 +399,7 @@ public partial class RightPanel
         _inputText = GUI.TextField(inputBgRect, _inputText, MAX_INPUT_LENGTH, _termInputStyle);
 
         // ——— 发送按钮（太极图，符玄道法风，hover 紫色光晕） ———
-        Rect sendBtnRect = new Rect(tfX + tfW + 6f, inputY + (inputBarHeight - sendBtnSize) / 2f, sendBtnSize, sendBtnSize);
+        sendBtnRect = new Rect(tfX + tfW + 6f, inputY + (inputBarHeight - sendBtnSize) / 2f, sendBtnSize, sendBtnSize);
         bool sendHover = sendBtnRect.Contains(Event.current.mousePosition);
         if (_taijiTex != null)
         {
@@ -431,6 +442,7 @@ public partial class RightPanel
             _inputFocused = false;
             GUI.FocusControl("rightPanelInput");
         }
+        } // ⚠️ 关闭 !_externalRender 输入栏块
 
         // ——— 右下角拉伸手柄（可调窗口大小，QQ 式；用整体面板尺寸，含左侧会话栏） ———
         float handleSize = 20f;
@@ -438,6 +450,8 @@ public partial class RightPanel
         bool resizeHover = resizeRect.Contains(mp);
         // 手柄视觉：三条斜线
         float hc = resizeHover ? 1f : 0.6f;
+        if (!_externalRender)
+        {
         UiTextureFactory.DrawPixelRect(new Rect(_panelRect.xMax - 16f, _panelRect.yMax - 6f, 9f, 1f), new Color(0.66f, 0.50f, 0.95f, hc));
         UiTextureFactory.DrawPixelRect(new Rect(_panelRect.xMax - 21f, _panelRect.yMax - 11f, 9f, 1f), new Color(0.66f, 0.50f, 0.95f, hc * 0.8f));
         UiTextureFactory.DrawPixelRect(new Rect(_panelRect.xMax - 26f, _panelRect.yMax - 16f, 9f, 1f), new Color(0.66f, 0.50f, 0.95f, hc * 0.6f));
@@ -457,11 +471,12 @@ public partial class RightPanel
             panelHeight = newH;
             Event.current.Use();
         }
+        } // ⚠️ 关闭 !_externalRender 缩放块
 
         // ——— 窗口内点击 → 防穿透 ———
         // ★ 审批弹窗打开时跳过：弹窗按钮的 MouseDown 若在此被 Use() 吞掉，
         //   后续 DrawApprovalDialog 的 GUI.Button 永远收不到点击（无法同意/拒绝）
-        if (!_approvalDialogOpen && Event.current.type == EventType.MouseDown && Event.current.button == 0)
+        if (!_externalRender && !_approvalDialogOpen && Event.current.type == EventType.MouseDown && Event.current.button == 0)
         {
             if (_panelRect.Contains(mp))
             {
