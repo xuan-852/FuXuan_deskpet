@@ -88,8 +88,9 @@
 
 1. **命中表时序**：`_extHitZones` 在 `DrawExternalPanelToTexture` 每渲染帧重建（`EventType.Repaint` 才走）；`DrawPanelContent` 审批时 `_extHitZones.Clear()`（L991）会清空但**不重建**——若审批弹窗关闭后恰在非 Repaint 帧点击，命中表可能为空 → 「点击没反应」。
 2. **拖动边界判定**：`WM_NCHITTEST` 中 `ly <= TITLE_BAR_H`（44 逻辑）在 144 DPI 下 = 物理 66px，`WM_NCLBUTTONDOWN` 的 lParam 是屏幕坐标（物理），`WM_NCHITTEST` 的 lParam 也是屏幕坐标——两者应一致，但需实测边缘 2px 内是否抖动（时灵时不灵可能源于此）。
-3. **双击时序**：`WM_LBUTTONDOWN` 每次触发 `OnPanelClick`，双击 = 两次单击 + 一次 `WM_LBUTTONDBLCLK`；会话项双击进聊天若单击有副作用（如高亮/选中态），快速连点可能状态错乱。
-4. **拖动时命中表残留**：拖动（HTCAPTION）不经过 `OnPanelClick`，但若 `WM_NCLBUTTONDOWN` 未正确转发（DPI 边界判定漂移成 HTCLIENT），按下会走 `WM_LBUTTONDOWN` → 点击而非拖动 → 「拖动时灵时不灵」。
+3. **★ 带符号屏幕坐标（新增，高嫌疑）**：`WM_NCHITTEST` 中 `sx = lParam.ToInt32() & 0xFFFF`——**当窗口被拖到屏幕左侧/上方（屏幕坐标为负）时，`& 0xFFFF` 会把负坐标变成 65536-|x| 的大正数**，`cx = sx - wr.Left` 随之错乱 → 命中判定漂移（应 HTCAPTION 拖动却成 HTCLIENT）→「拖动时灵时不灵」的经典根因。正确做法：`(short)(lParam.ToInt32() & 0xFFFF)` 带符号解析。**复现路径**：把窗口拖到屏幕左缘外 20px → 再拖标题栏 → 观察是否失效；或拖到负坐标后点击按钮。
+4. **双击时序**：`WM_LBUTTONDOWN` 每次触发 `OnPanelClick`，双击 = 两次单击 + 一次 `WM_LBUTTONDBLCLK`；会话项双击进聊天若单击有副作用（如高亮/选中态），快速连点可能状态错乱。
+5. **拖动时命中表残留**：拖动（HTCAPTION）不经过 `OnPanelClick`，但若 `WM_NCLBUTTONDOWN` 未正确转发（DPI 边界判定漂移成 HTCLIENT），按下会走 `WM_LBUTTONDOWN` → 点击而非拖动 → 「拖动时灵时不灵」。
 
 ---
 

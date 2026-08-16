@@ -493,8 +493,10 @@ public static class ExternalChatWindow
             {
                 // 无边框窗口命中测试：顶部标题栏→拖动(HTCAPTION)，右下角→缩放(HTBOTTOMRIGHT)
                 // ★ 统一 DPI：屏幕物理坐标 → 客户区物理 → 逻辑（只走 ClientToLogical）
-                int sx = lParam.ToInt32() & 0xFFFF;
-                int sy = (lParam.ToInt32() >> 16) & 0xFFFF;
+                // ★ 2026-08-17 带符号修复：lParam 屏幕坐标可为负（窗口拖到屏幕左/上缘外），
+                //   & 0xFFFF 会把负坐标变成 65536-|x| 的大正数 → 命中判定错乱（拖动时灵时不灵根因）。
+                int sx = (short)(lParam.ToInt32() & 0xFFFF);
+                int sy = (short)((lParam.ToInt32() >> 16) & 0xFFFF);
                 RECT wr;
                 if (GetWindowRect(hWnd, out wr))
                 {
@@ -564,8 +566,11 @@ public static class ExternalChatWindow
             case WM_LBUTTONDBLCLK:
                 // 面板区点击 → 物理客户区坐标 → 逻辑面板坐标（统一 DPI 转换）→ 主线程命中表
             {
-                int x = lParam.ToInt32() & 0xFFFF;
-                int y = (lParam.ToInt32() >> 16) & 0xFFFF;
+                // ★ 带符号解析（客户区坐标通常非负，但保持与 WM_NCHITTEST 一致防御负值）
+                int x = (short)(lParam.ToInt32() & 0xFFFF);
+                int y = (short)((lParam.ToInt32() >> 16) & 0xFFFF);
+                if (x < 0) x = 0;
+                if (y < 0) y = 0;
                 float lx, ly;
                 ClientToLogical(x, y, out lx, out ly);
                 bool dbl = msg == WM_LBUTTONDBLCLK;
