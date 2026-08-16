@@ -128,13 +128,39 @@ public partial class RightPanel : MonoBehaviour
     private bool _extReadPending;    // 上一帧读回未完成（防止堆积）
     // ★ 外部交互命中表（Phase A3）：渲染外置面板时登记可点区域（矩形+动作），
     //   独立窗口点击坐标回来查表执行（IMGUI Event.current 无法注入，故手动命中）
+    // ★ 2026-08-17 坐标系统一修复：命中区分为两套——
+    //   _extHitZones  = 面板内容区（面板局部坐标，y 从 0 起，绘制时被整体下移 EXT_TITLE_BAR_H）
+    //   _extTitleZones= 自绘标题栏按钮（客户区坐标，y 在 [0, EXT_TITLE_BAR_H) 内，含 44px 标题栏）
+    //   WM_LBUTTONDOWN 传来的 (lx,ly) 是客户区坐标（含标题栏）：
+    //     标题栏区（ly < EXT_TITLE_BAR_H）→ 查 _extTitleZones（客户区坐标）
+    //     内容区（ly >= EXT_TITLE_BAR_H）→ ly 减去标题栏高度转面板局部坐标 → 查 _extHitZones
+    //   修复前用客户区坐标直接查面板局部命中表，所有内容区点击偏下 44px（输入框不聚焦根因）。
     private readonly List<ExtHitZone> _extHitZones = new List<ExtHitZone>();
+    private readonly List<ExtHitZone> _extTitleZones = new List<ExtHitZone>();
     private struct ExtHitZone { public Rect rect; public System.Action action; }
 
-    /// <summary>外部窗口输入入口（独立窗口线程 → 主线程，经 MainThreadDispatcher 调用）</summary>
+    /// <summary>外部窗口输入入口（独立窗口线程 → 主线程，经 MainThreadDispatcher 调用）
+    /// ★ 坐标 = 客户区坐标（含标题栏），内部按标题栏/内容区分流</summary>
     public void HandleExternalInput(float x, float y, bool isDoubleClick)
     {
-        var p = new Vector2(x, y);
+        // 标题栏区（含最小化/关闭按钮）：客户区坐标直接查标题栏命中表
+        if (y < EXT_TITLE_BAR_H)
+        {
+            var tp = new Vector2(x, y);
+            foreach (var zone in _extTitleZones)
+            {
+                if (zone.rect.Contains(tp))
+                {
+                    try { zone.action(); }
+                    catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部标题栏点击动作异常: {e.Message}"); }
+                    return;
+                }
+            }
+            Debug.Log($"[RightPanel] 外部标题栏点击未命中: ({x:F0},{y:F0})，可点区域 {_extTitleZones.Count} 个");
+            return;
+        }
+        // 内容区：客户区坐标 → 面板局部坐标（减去标题栏高度）
+        var p = new Vector2(x, y - EXT_TITLE_BAR_H);
         foreach (var zone in _extHitZones)
         {
             if (zone.rect.Contains(p))
@@ -144,13 +170,19 @@ public partial class RightPanel : MonoBehaviour
                 return; // 只命中第一个（渲染顺序=绘制顺序，最上层优先）
             }
         }
-        Debug.Log($"[RightPanel] 外部点击未命中: ({x:F0},{y:F0})，可点区域 {_extHitZones.Count} 个");
+        Debug.Log($"[RightPanel] 外部点击未命中: ({x:F0},{y:F0})→内容({p.x:F0},{p.y:F0})，可点区域 {_extHitZones.Count} 个");
     }
 
-    /// <summary>登记一个外部可点区域（仅外部渲染时收集）</summary>
+    /// <summary>登记一个外部可点区域（仅外部渲染时收集，面板局部坐标）</summary>
     private void RegisterExtHit(Rect rect, System.Action action)
     {
         if (_externalRender) _extHitZones.Add(new ExtHitZone { rect = rect, action = action });
+    }
+
+    /// <summary>登记一个外部标题栏按钮可点区域（客户区坐标，仅外部渲染时收集）</summary>
+    private void RegisterExtTitleHit(Rect rect, System.Action action)
+    {
+        if (_externalRender) _extTitleZones.Add(new ExtHitZone { rect = rect, action = action });
     }
 
     // ==================== 字体档位缩放 ====================
@@ -618,6 +650,22 @@ public partial class RightPanel : MonoBehaviour
             return;
         }
 
+        // ★ 测试退出命令：@@test:quit → 走与托盘「退出」完全相同的回调（2026-08-17 验收 P10）
+        //   （不直接 taskkill：必须验证 ExternalChatWindow.Shutdown + OnDestroy 清理链）
+        if (content.StartsWith("@@test:quit"))
+        {
+            Debug.Log("[TestInbox] @@test:quit → 执行完整退出（等同托盘退出）");
+            var pet = GameObject.FindObjectOfType<DesktopPet>();
+            if (pet != null)
+            {
+                // 先关外置窗口线程，再走托盘退出回调（OnDestroy 会释放互斥体 + Application.Quit）
+                if (ExternalChatWindow.IsCreated) ExternalChatWindow.Shutdown();
+                pet.QuitFromTestCommand();
+            }
+            else Debug.LogWarning("[TestInbox] @@test:quit 未找到 DesktopPet");
+            return;
+        }
+
         if (_chat == null) return;
 
         // ★ 测试表情注入：@@emote:happy → 不走 LLM，直接左侧气泡 + 徽章
@@ -698,8 +746,10 @@ public partial class RightPanel : MonoBehaviour
                     if (parts.Length >= 2 && float.TryParse(parts[0].Trim(), out cx) && float.TryParse(parts[1].Trim(), out cy))
                     {
                         if (parts.Length >= 3) bool.TryParse(parts[2].Trim(), out dbl);
-                        Debug.Log($"[TestInbox] 外部点击注入: ({cx:F0},{cy:F0}) dbl={dbl}");
-                        HandleExternalInput(cx, cy, dbl);
+                        Debug.Log($"[TestInbox] 外部点击注入: 面板局部({cx:F0},{cy:F0}) dbl={dbl}");
+                        // ★ 2026-08-17 坐标修复：extclick 坐标 = 面板局部坐标（与 smoke 一致），
+                        //   转客户区坐标（+标题栏高）后走 HandleExternalInput 分流
+                        HandleExternalInput(cx, cy + EXT_TITLE_BAR_H, dbl);
                     }
                     else Debug.LogWarning($"[TestInbox] extclick 参数格式错误: {rest}（应为 x,y[,dbl]）");
                     break;
@@ -902,27 +952,31 @@ public partial class RightPanel : MonoBehaviour
         if (_currentView == PanelView.SessionList)
         {
             DrawSessionListView(px, py, pw, ph, mp);
-            GUI.color = Color.white; // 恢复全局色，防止半透明残留影响其它 OnGUI
-            return; // 第一级不渲染聊天内容
         }
         // ——— 子面板视图（设置/便签/报告/消耗） ———
-        if (_currentView == PanelView.Settings || _currentView == PanelView.Reminders
+        else if (_currentView == PanelView.Settings || _currentView == PanelView.Reminders
             || _currentView == PanelView.Report || _currentView == PanelView.Usage)
         {
             DrawSubPanelView(px, py, pw, ph, mp);
-            GUI.color = Color.white;
-            return;
         }
-        // 第二级：左侧会话栏占 SIDEBAR_W，聊天区整体右移
-        DrawSessionSidebar(px, py, SIDEBAR_W, ph, mp);
-        px += SIDEBAR_W;
-        pw -= SIDEBAR_W;
+        else
+        {
+            // 第二级：左侧会话栏占 SIDEBAR_W，聊天区整体右移
+            DrawSessionSidebar(px, py, SIDEBAR_W, ph, mp);
+            px += SIDEBAR_W;
+            pw -= SIDEBAR_W;
 
-        DrawChatArea(px, py, pw, ph, mp);
+            DrawChatArea(px, py, pw, ph, mp);
+        }
 
-        // ——— OpenClaw 审批模态弹窗（最上层绘制，敏感命令必须人工确认；覆盖整个面板含侧栏） ———
+        // ——— OpenClaw 审批模态弹窗（所有视图最上层绘制，敏感命令必须人工确认） ———
+        // 不能放在 Chat 分支内部：SessionList/Settings/Reminders/Report/Usage
+        // 也可能在外置窗口中收到审批请求，必须覆盖整块面板并阻断下层命中区。
         if (_approvalDialogOpen)
+        {
+            GUI.color = _panelTint;
             DrawApprovalDialog(panelX, panelY, panelW, panelH);
+        }
     }
 
     // ==================================================================
@@ -954,13 +1008,15 @@ public partial class RightPanel : MonoBehaviour
 
         // 标题
         GUI.Label(new Rect(wx + 18f, wy + 14f, w - 36f, 24f), "⚠ OpenClaw 请求执行系统命令", _termTitleStyle);
-        // 说明
-        GUI.Label(new Rect(wx + 18f, wy + 46f, w - 36f, 18f), "以下命令为敏感操作，需本座主人亲自批准：", _termLogDimStyle);
-        // 命令内容（等宽高亮，换行显示）
+        // 说明（★ 2026-08-17 验收 P2：提亮避免红边上对比度不足——改用浅灰高亮样式）
+        GUI.Label(new Rect(wx + 18f, wy + 46f, w - 36f, 18f), "以下命令为敏感操作，需本座主人亲自批准：", _termLogStyle);
+        // 命令内容（等宽高亮，换行显示；★ 加暗色底衬提升可读性）
         string cmd = string.IsNullOrEmpty(pa.command) ? (pa.title ?? "(无命令描述)") : pa.command;
         float cmdH = _termPromptStyle.CalcHeight(new GUIContent(cmd), w - 52f);
         if (cmdH > 52f) cmdH = 52f; // 命令最多显示 3 行
-        GUI.Label(new Rect(wx + 18f, wy + 70f, w - 52f, cmdH), cmd, _termPromptStyle);
+        Rect cmdRect = new Rect(wx + 18f, wy + 70f, w - 52f, cmdH);
+        UiTextureFactory.DrawPixelRect(cmdRect, new Color(0.10f, 0.06f, 0.16f, 0.85f)); // 暗紫底衬
+        GUI.Label(cmdRect, cmd, _termPromptStyle);
         // 超时倒计时
         float remain = Mathf.Max(0f, 60f - (Time.time - _approvalShownAt));
         GUI.Label(new Rect(wx + 18f, wy + 70f + cmdH + 10f, w - 36f, 16f),
@@ -1894,7 +1950,8 @@ public partial class RightPanel : MonoBehaviour
         Matrix4x4 prevMatrix = GUI.matrix;
         GUI.matrix = Matrix4x4.identity;
         _externalRender = true;
-        _extHitZones.Clear(); // 渲染帧重建命中表
+        _extHitZones.Clear();    // 渲染帧重建命中表（面板局部坐标）
+        _extTitleZones.Clear();  // 渲染帧重建标题栏命中表（客户区坐标）
         try
         {
             DrawExternalTitleBar(rtW); // ★ 自绘星空标题栏（含最小化/关闭按钮，登记命中）
@@ -1968,7 +2025,8 @@ public partial class RightPanel : MonoBehaviour
         UiTextureFactory.DrawPixelRect(new Rect(closeBtn.x + closeBtn.width - 10f, closeBtn.y + 8f, 2f, closeBtn.height - 16f), new Color(0.95f, 0.5f, 0.5f, 0.9f));
 
         // 命中登记（外置点击：最小化 → 系统最小化；关闭 → 退出外置）
-        RegisterExtHit(minBtn, ExternalChatWindow.Minimize);
-        RegisterExtHit(closeBtn, ExternalChatWindow.RequestClose);
+        // ★ 2026-08-17 坐标修复：标题栏按钮走客户区坐标专用命中表（内容区命中表是面板局部坐标）
+        RegisterExtTitleHit(minBtn, ExternalChatWindow.Minimize);
+        RegisterExtTitleHit(closeBtn, ExternalChatWindow.RequestClose);
     }
 }

@@ -1,5 +1,7 @@
 # Token 消耗与测试指南（AI 第一优先阅读）
 
+> **测试脚本注意**：`scripts/test/runtime_smoke.cjs` 未显式设置 `PLAYER_LOG` 时，读取测试隔离目录 `<FU_XUAN_TEST_DATA>/logs/player_log.txt`（应用日志镜像），避免误读旧的默认 Unity `Player.log` 导致冒烟测试假失败。
+
 > **文档作用**: 让 AI **第一时间**了解三件事——① 常规运行（生产）与测试模式在 Token 消耗上的**本质区别**；② 测试时关于消耗的**铁律与常见误判**；③ 当前**未解决的痛点**。任何涉及"改测试逻辑 / 改云端调用 / 排查烧钱 / 写测试"的工作，先读本文再动手。
 > **基本架构**: 观测链路 = `ApiClient`（云端调用点）→ `UsageStats`（内存，面板实时）→ `UsageLogger`（JSONL 落盘，跨重启）；拦截开关 = `ApiClient.BlockCloudInTestMode`（默认跟随测试模式）。
 > **开发历史迭代**: 2026-08-15 本地模型优先（N43）；2026-08-16 测试模式禁云端（N44，`51cbecb`）+ UsageLogger 持久化（`08494dd`）。

@@ -1,5 +1,7 @@
 # 对话界面 UI — IMGUI 界面与像素化优化
 
+> **2026-08-16 验证记录**：审批弹窗现统一在 `DrawPanelContent` 的视图分发之后绘制，因此会覆盖会话列表、设置、便签、报告和消耗等外置视图；`ExternalChatWindow.Shutdown()` 通过窗口线程消息执行 `DestroyWindow`，并用 `PostQuitMessage` 结束消息循环，避免 Unity 主线程跨线程销毁窗口。`WindowOverlay` 会按 `FuXuanChatWindowClass` 排除外置窗口，防止延迟重试误加全屏透明置顶样式。`build.ps1 -Quick`、完整构建、EditMode 测试 78/78 和隔离冒烟测试已通过；真实退出崩溃仍需后续运行时观察。
+
 > **文档作用**: 本模块文档描述桌宠「交互界面」子系统的**代码真相**——纯 IMGUI 架构（无 UGUI/无 Prefab）、四类界面元素（悬浮球/BallPanel/RightPanel/ChatBubble）、对话核心事件链，以及 17×24 像素符玄 × 对话界面的开源方案可移植汇总（换字体/换头像/加表情差分三件事）。改任何 UI 相关代码前必读。
 > **基本架构**: 全部界面为 **IMGUI**（`OnGUI`/`GUI.DrawTexture`，无 UGUI、无 Prefab、无美术贴图管线），视觉元素（圆角气泡/云纹/星点/CRT 扫描线/像素边框）均运行时 `Texture2D.SetPixel` 程序生成。核心：`RightPanel.cs`（终端窗）、`ChatBubble.cs`（头顶气泡）、`ChatManager.cs`（Entry 历史 + SplitSentences 逐句事件）、`AutoChat.cs`（气泡驱动）。2026-08-12 起 RightPanel 支持 OpenClaw 任务进度可视化：标题栏状态区（思考中部位）步骤显示 + 模态审批弹窗（todo 5/6）。
 > **开发历史迭代**: 2026-08-08 像素化调研（Fusion Pixel 字体/17×24 精灵表/ink 对话引擎）；P0 落地清单（半天）：17×24 头像 + FilterMode.Point + 整数倍绘制 + 程序描边；P1（1 天）：Fusion Pixel 12px + 表情差分 + 气泡小立绘；P2 可选：程序化微动/ink/像素本体模式。

@@ -32,7 +32,10 @@ const path = require('path');
 const EXE_DEFAULT = path.join(__dirname, '..', '..', 'Build', 'DesktopPet.exe');
 const TEST_DATA_ROOT = process.env.FU_XUAN_TEST_DATA || path.join(os.tmpdir(), 'fuxuan_smoke_test'); // 隔离数据目录（无记忆起点）
 const PROD_DATA_ROOT = process.env.FU_XUAN_DATA || 'D:\\DesktopPetData'; // 生产数据目录（只读校验）
-const PLAYER_LOG = process.env.PLAYER_LOG || path.join(os.homedir(), 'AppData', 'LocalLow', 'DefaultCompany', 'desktop pet', 'Player.log');
+// DesktopPet 会把全量日志镜像写入 DataPathConfig.LogsDir。
+// 测试进程通过 FU_XUAN_DATA 使用隔离目录，因此默认必须读取隔离镜像；
+// 不能读取默认 Player.log，否则可能拿到旧实例日志，造成“启动成功但所有 UI 命令缺失”的假失败。
+const PLAYER_LOG = process.env.PLAYER_LOG || path.join(TEST_DATA_ROOT, 'logs', 'player_log.txt');
 const BOOT_MARKER = '[DesktopPet] 落地';
 const POLL_MS = 300;
 const BOOT_TIMEOUT_MS = 90000;

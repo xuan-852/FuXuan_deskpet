@@ -490,6 +490,8 @@ public partial class RightPanel
         // 外部命中：点击输入框 → 透明原生 EDIT 覆盖在输入框位置聚焦输入（视觉融合，无白框）
         RegisterExtHit(inputBgRect, () =>
         {
+            // ★ 输入聚焦状态机第 1 步（codex 2026-08-17 建议 5.2）：Unity 侧命中输入区
+            Debug.Log("[ExternalChat] input hit");
             ExternalChatWindow.SetInputRect(
                 Mathf.RoundToInt(inputBgRect.x), Mathf.RoundToInt(inputBgRect.y),
                 Mathf.RoundToInt(inputBgRect.width), Mathf.RoundToInt(inputBgRect.height));

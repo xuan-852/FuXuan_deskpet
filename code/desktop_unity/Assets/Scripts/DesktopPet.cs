@@ -1107,6 +1107,18 @@ public class DesktopPet : MonoBehaviour
         Application.Quit();
     }
 
+    /// <summary>
+    /// 测试模式完整退出入口（@@test:quit，2026-08-17 验收 P10）：
+    /// 与托盘「退出」走同一清理链（ExternalChatWindow.Shutdown 已由调用方执行，
+    /// 此处负责互斥体释放 + Application.Quit），供终端链路验收完整退出。
+    /// </summary>
+    public void QuitFromTestCommand()
+    {
+        Debug.Log("[DesktopPet] 测试命令请求完整退出");
+        OnDestroy();
+        Application.Quit();
+    }
+
     private void OnApplicationQuit()
     {
         // 标记正常退出（看门狗用）

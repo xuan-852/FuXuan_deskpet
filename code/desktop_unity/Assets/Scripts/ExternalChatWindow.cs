@@ -59,6 +59,7 @@ public static class ExternalChatWindow
     private const int WM_NCHITTEST = 0x0084;
     private const int WM_CTLCOLOREDIT = 0x0133;
     private const int WM_APP_FOCUS_INPUT = 0x8000 + 1; // 自定义：请求窗口线程聚焦输入框
+    private const int WM_APP_SHUTDOWN = 0x8000 + 2;    // 自定义：由窗口线程自己销毁窗口并退出消息循环
     private const int HTCAPTION = 2;
     private const int HTCLIENT = 1;
     private const int HTBOTTOMRIGHT = 17;
@@ -72,12 +73,17 @@ public static class ExternalChatWindow
     public const int TITLE_BAR_H = 44;
     // ★ 右下角缩放手柄尺寸（逻辑像素）
     private const int RESIZE_GRIP = 20;
+    // ★ 右上角按钮区宽度（逻辑像素，最小化/关闭按钮统一命中区）
+    public const int BTN_AREA_W = 68;
 
     private static IntPtr _hwnd, _edit, _sendBtn, _hInst;
     private static WndProcDelegate _wndProcDelegate; // 防止被 GC
+    private static EditWndProcDelegate _editWndProcDelegate; // 防止被 GC（EDIT 子类化）
+    private static IntPtr _origEditProc;             // 原 EDIT 窗口过程
     private static Thread _windowThread;
 
     private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    private delegate IntPtr EditWndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT { public int Left, Top, Right, Bottom; }
@@ -121,6 +127,8 @@ public static class ExternalChatWindow
     private static extern bool TranslateMessage(ref MSG msg);
     [DllImport("user32.dll")]
     private static extern IntPtr DispatchMessageW(ref MSG msg);
+    [DllImport("user32.dll")]
+    private static extern void PostQuitMessage(int exitCode);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr GetModuleHandleW([MarshalAs(UnmanagedType.LPWStr)] string name);
     [DllImport("user32.dll")]
@@ -146,6 +154,12 @@ public static class ExternalChatWindow
     private static extern IntPtr GetFocus();
     [DllImport("user32.dll")]
     private static extern IntPtr SetFocus(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallWindowProcW(IntPtr prevWndProc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    // ★ 2026-08-17 修复：32 位进程没有 SetWindowLongPtrW/GetWindowLongPtrW（EntryPointNotFoundException 杀窗口线程）。
+    //   统一用 SetWindowLongW/GetWindowLongW（32 位下与指针同宽，兼容 x86 构建）。
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+    private static extern IntPtr SetWindowLong(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
     [DllImport("gdi32.dll")]
     private static extern uint SetTextColor(IntPtr hdc, uint color);
     [DllImport("gdi32.dll")]
@@ -154,6 +168,8 @@ public static class ExternalChatWindow
     private static extern IntPtr GetStockObject(int fnObject);
     [DllImport("user32.dll")]
     private static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")]
     private static extern bool ReleaseCapture();
     [DllImport("user32.dll")]
@@ -164,6 +180,7 @@ public static class ExternalChatWindow
     private static extern bool AdjustWindowRectEx(ref RECT rect, uint style, bool menu, uint exStyle);
     private const int GWL_STYLE = -16;
     private const int GWL_EXSTYLE = -20;
+    private const int GWLP_WNDPROC = -4;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOZORDER = 0x0004;
@@ -176,6 +193,62 @@ public static class ExternalChatWindow
         RECT r;
         if (GetWindowRect(_hwnd, out r))
             UnityEngine.PlayerPrefs.SetString(PosPrefKey, $"{r.Left},{r.Top}");
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  DPI 坐标统一转换（2026-08-17 验收 P1-1 修复）
+    //  所有「物理像素 ⇄ 面板逻辑像素」换算只走这里，禁止在 WndProc 各处
+    //  分别计算缩放比例（144 DPI 下 GetWindowRect/GetClientRect/lParam
+    //  返回值尺度不一致曾导致按钮/输入区命中错位）。
+    //  约定：_width/_height = 面板逻辑尺寸（客户区 1:1）；窗口物理像素
+    //  = 逻辑 × DPI 比例。lParam 鼠标坐标为物理像素。
+    // ══════════════════════════════════════════════════════════════
+
+    /// <summary>物理客户区坐标 → 面板逻辑坐标（鼠标消息统一入口）</summary>
+    private static void ClientToLogical(int physX, int physY, out float lx, out float ly)
+    {
+        RECT cr;
+        GetClientRect(_hwnd, out cr);
+        int cw = Math.Max(1, cr.Right - cr.Left);
+        int ch = Math.Max(1, cr.Bottom - cr.Top);
+        lx = physX * (float)_width / cw;
+        ly = physY * (float)_height / ch;
+    }
+
+    /// <summary>面板逻辑坐标 → 物理客户区坐标（原生控件布局统一入口）</summary>
+    private static void LogicalToClient(float lx, float ly, out int physX, out int physY)
+    {
+        RECT cr;
+        GetClientRect(_hwnd, out cr);
+        int cw = Math.Max(1, cr.Right - cr.Left);
+        int ch = Math.Max(1, cr.Bottom - cr.Top);
+        physX = (int)(lx * cw / (float)_width);
+        physY = (int)(ly * ch / (float)_height);
+    }
+
+    /// <summary>面板逻辑尺寸 → 物理客户区尺寸（原生控件宽高统一入口）</summary>
+    private static void LogicalToClientSize(float lw, float lh, out int physW, out int physH)
+    {
+        RECT cr;
+        GetClientRect(_hwnd, out cr);
+        int cw = Math.Max(1, cr.Right - cr.Left);
+        int ch = Math.Max(1, cr.Bottom - cr.Top);
+        physW = Math.Max(1, (int)(lw * cw / (float)_width));
+        physH = Math.Max(1, (int)(lh * ch / (float)_height));
+    }
+
+    /// <summary>诊断：打印当前窗口/客户区/DPI 关系（144 DPI 验收用）</summary>
+    private static void LogDpiDiagnostics(string tag)
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        RECT wr, cr;
+        GetWindowRect(_hwnd, out wr);
+        GetClientRect(_hwnd, out cr);
+        float scaleX = (cr.Right - cr.Left) > 0 ? (float)_width / (cr.Right - cr.Left) : 1f;
+        float scaleY = (cr.Bottom - cr.Top) > 0 ? (float)_height / (cr.Bottom - cr.Top) : 1f;
+        Debug.Log($"[ExternalChat] {tag} 窗口物理=({wr.Right - wr.Left}x{wr.Bottom - wr.Top}) " +
+                  $"客户区物理=({cr.Right - cr.Left}x{cr.Bottom - cr.Top}) " +
+                  $"逻辑={_width}x{_height} 比例=({scaleX:F3},{scaleY:F3})");
     }
 
     private static System.ValueTuple<int, int>? GetSavedPos()
@@ -263,15 +336,21 @@ public static class ExternalChatWindow
     public static void Shutdown()
     {
         if (!IsCreated) return;
-        if (_hwnd != IntPtr.Zero)
+        // DestroyWindow 必须由创建该窗口的线程调用。此前 Unity 主线程直接调用
+        // DestroyWindow，窗口线程仍可能在 WM_PAINT 访问像素缓冲，存在退出竞态，
+        // 也是 destroyTJDevice 崩溃风险的一部分。改为投递自定义消息，让窗口线程
+        // 在自己的消息循环中销毁窗口并 PostQuitMessage。
+        IntPtr hwnd = _hwnd;
+        if (hwnd != IntPtr.Zero)
         {
-            DestroyWindow(_hwnd);
-            _hwnd = IntPtr.Zero;
+            PostMessageW(hwnd, WM_APP_SHUTDOWN, IntPtr.Zero, IntPtr.Zero);
         }
-        // 等窗口线程退出（最多 1s）
-        for (int i = 0; i < 100 && IsCreated; i++) Thread.Sleep(10);
-        IsCreated = false;
-        IsVisible = false;
+        // 等窗口线程退出（最多 1s）；不要在超时后强行伪造 IsCreated=false，
+        // 否则仍在运行的窗口线程会继续使用已释放的 Unity 资源。
+        if (_windowThread != null && _windowThread != Thread.CurrentThread)
+            _windowThread.Join(1000);
+        if (IsCreated)
+            Debug.LogWarning("[ExternalChat] 窗口线程退出超时，保留线程状态等待自然退出");
     }
 
     /// <summary>隐藏窗口</summary>
@@ -373,11 +452,22 @@ public static class ExternalChatWindow
                 8, 0, 100, 30, _hwnd, (IntPtr)IDC_EDIT, _hInst, IntPtr.Zero);
             _sendBtn = CreateWindowExW(0, "BUTTON", "发送", WS_CHILD | WS_TABSTOP,
                 8, 0, 68, 30, _hwnd, (IntPtr)IDC_SEND, _hInst, IntPtr.Zero);
+            // ★ 2026-08-17 修复回车发送：子类化 EDIT——真实用户按键时焦点在 edit，
+            //   WM_KEYDOWN 由 edit 默认过程消费，不会冒泡到父窗口；子类化拦截 VK_RETURN → DoSend。
+            _editWndProcDelegate = EditProc;
+            // ★ SetWindowLongW 返回值 = 原窗口过程指针（32 位 int 位宽足够）；GetWindowLong 是 int 版
+            _origEditProc = SetWindowLong(_edit, GWLP_WNDPROC,
+                Marshal.GetFunctionPointerForDelegate(_editWndProcDelegate));
+            if (_origEditProc == IntPtr.Zero)
+                Debug.LogWarning($"[ExternalChat] EDIT 子类化失败（SetWindowLongW 返回 0，lastError={Marshal.GetLastWin32Error()}）—— 回车发送将不可用");
+            else
+                Debug.Log($"[ExternalChat] EDIT 子类化成功 原过程=0x{_origEditProc.ToInt64():X}");
             ShowWindow(_edit, 0); // 默认隐藏，点击输入框区域才显示（透明覆盖）
             ShowWindow(_sendBtn, 0);
 
             IsCreated = true;
             Debug.Log("[ExternalChat] 独立窗口已创建");
+            LogDpiDiagnostics("创建时");
 
             // 消息循环
             MSG msg = new MSG();
@@ -402,29 +492,25 @@ public static class ExternalChatWindow
             case WM_NCHITTEST:
             {
                 // 无边框窗口命中测试：顶部标题栏→拖动(HTCAPTION)，右下角→缩放(HTBOTTOMRIGHT)
+                // ★ 统一 DPI：屏幕物理坐标 → 客户区物理 → 逻辑（只走 ClientToLogical）
                 int sx = lParam.ToInt32() & 0xFFFF;
                 int sy = (lParam.ToInt32() >> 16) & 0xFFFF;
                 RECT wr;
                 if (GetWindowRect(hWnd, out wr))
                 {
-                    int cx = sx - wr.Left;
+                    int cx = sx - wr.Left;   // 窗口内物理坐标（客户区=窗口区，无边框）
                     int cy = sy - wr.Top;
-                    int cw = Math.Max(1, wr.Right - wr.Left);
-                    int ch = Math.Max(1, wr.Bottom - wr.Top);
-                    // 物理→逻辑缩放
-                    float fx = (float)_width / cw;
-                    float fy = (float)_height / ch;
-                    int lx = (int)(cx * fx);
-                    int ly = (int)(cy * fy);
+                    float lx, ly;
+                    ClientToLogical(cx, cy, out lx, out ly);
                     // 右下角缩放手柄（逻辑 20px 区）
                     if (lx >= _width - RESIZE_GRIP && ly >= _height - RESIZE_GRIP)
                         return new IntPtr(HTBOTTOMRIGHT);
                     // 顶部标题栏（逻辑 44px 区，全宽）
                     if (ly <= TITLE_BAR_H)
                     {
-                        // ★ 右上角按钮区（最小化/关闭，逻辑 68px 宽）→ HTCLIENT 让命中表处理按钮点击；
+                        // ★ 右上角按钮区（最小化/关闭，逻辑 BTN_AREA_W 宽）→ HTCLIENT 让命中表处理按钮点击；
                         //   其余标题栏 → HTCAPTION 拖动
-                        if (lx >= _width - 68)
+                        if (lx >= _width - BTN_AREA_W)
                             return new IntPtr(HTCLIENT);
                         return new IntPtr(HTCAPTION);
                     }
@@ -433,13 +519,22 @@ public static class ExternalChatWindow
             }
             case WM_APP_FOCUS_INPUT:
             {
-                // 窗口线程内聚焦输入框（同线程 SetFocus 可靠）
+                // 输入聚焦状态机（2026-08-17 验收 P1 修复，codex 建议 5.2）：
+                //   hit(Unity 命中) → shown(控件显示) → focused(SetFocus) → send(回车/按钮)
+                //   每步留痕，144 DPI 验收可直接看日志定位断点。
                 ShowWindow(_edit, 5);
                 ShowWindow(_sendBtn, 5);
                 LayoutChildren();
                 SetFocus(_edit);
+                LogInputState("focused");
                 return IntPtr.Zero;
             }
+            case WM_APP_SHUTDOWN:
+                // 该消息只由 Shutdown 投递，当前 WndProc 就运行在窗口创建线程上。
+                ShowWindow(hWnd, 0 /*SW_HIDE*/);
+                IsVisible = false;
+                DestroyWindow(hWnd);
+                return IntPtr.Zero;
             case WM_CLOSE:
                 // ✕ = 隐藏（窗口生命周期归 Unity 管），先记忆位置
                 SavePos();
@@ -451,6 +546,9 @@ public static class ExternalChatWindow
                 if (wParam.ToInt32() == IDC_SEND) { DoSend(); return IntPtr.Zero; }
                 break;
             case WM_KEYDOWN:
+                // ★ 2026-08-17 修复：回车的实际处理在 EDIT 子类化过程（EditProc）里拦截——
+                //   真实用户按键焦点在 edit，WM_KEYDOWN 发给 edit 不会冒泡到父窗口 WndProc。
+                //   这里仅保留父窗口兜底（PostMessage 直接发给父窗口的场景，如测试注入）。
                 if (wParam.ToInt32() == VK_RETURN && GetFocus() == _edit) { DoSend(); return IntPtr.Zero; }
                 break;
             case WM_NCLBUTTONDOWN:
@@ -464,18 +562,12 @@ public static class ExternalChatWindow
             }
             case WM_LBUTTONDOWN:
             case WM_LBUTTONDBLCLK:
-                // 面板区点击 → 物理客户区坐标 → 逻辑面板坐标（×DPI 比例，客户区与 RT 逻辑 1:1）→ 主线程命中表
+                // 面板区点击 → 物理客户区坐标 → 逻辑面板坐标（统一 DPI 转换）→ 主线程命中表
             {
                 int x = lParam.ToInt32() & 0xFFFF;
                 int y = (lParam.ToInt32() >> 16) & 0xFFFF;
-                RECT cr;
-                GetClientRect(hWnd, out cr);
-                int physW = Math.Max(1, cr.Right - cr.Left);
-                int physH = Math.Max(1, cr.Bottom - cr.Top);
-                float fx = (float)_width / physW;
-                float fy = (float)_height / physH;
-                float lx = x * fx;
-                float ly = y * fy;
+                float lx, ly;
+                ClientToLogical(x, y, out lx, out ly);
                 bool dbl = msg == WM_LBUTTONDBLCLK;
                 // ★ 标题栏点击一律走命中表（含最小化/关闭按钮）——WM_NCHITTEST 已返回
                 //   HTCAPTION 的区域系统会走 WM_NCLBUTTONDOWN 拖动，到这里的都是
@@ -521,10 +613,29 @@ public static class ExternalChatWindow
                 return IntPtr.Zero;
             }
             case WM_DESTROY:
-                PostMessageW(_hwnd, 0x0012 /*WM_QUIT*/, IntPtr.Zero, IntPtr.Zero);
+                if (_hwnd == hWnd) _hwnd = IntPtr.Zero;
+                // WM_QUIT 不能通过 PostMessage 投递到窗口；必须使用
+                // PostQuitMessage 才能让本窗口线程的 GetMessage 循环退出。
+                PostQuitMessage(0);
                 return IntPtr.Zero;
         }
         return DefWindowProcW(hWnd, msg, wParam, lParam);
+    }
+
+    /// <summary>EDIT 子类化窗口过程（2026-08-17 修复回车发送）：
+    /// 拦截 VK_RETURN → DoSend（清空 + 回调 Unity）；其余消息转原过程。
+    /// 真实用户输入时焦点在 edit，回车必须先在这里拦截，否则被 edit 默认过程消费。</summary>
+    private static IntPtr EditProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
+        if (msg == WM_KEYDOWN)
+            Debug.Log($"[ExternalChat] EditProc WM_KEYDOWN vk=0x{wParam.ToInt32():X} (VK_RETURN=0x{VK_RETURN:X})");
+        if (msg == WM_KEYDOWN && wParam.ToInt32() == VK_RETURN)
+        {
+            // 单行 EDIT：回车不换行，直接触发发送
+            DoSend();
+            return IntPtr.Zero;
+        }
+        return CallWindowProcW(_origEditProc, hWnd, msg, wParam, lParam);
     }
 
     private static void DoSend()
@@ -534,6 +645,8 @@ public static class ExternalChatWindow
         string text = sb.ToString().Trim();
         if (text.Length == 0) return;
         SetWindowTextW(_edit, "");
+        // 发送留痕（不记录真实内容，防敏感信息入日志——codex 建议 5.2）
+        LogInputState($"send length={text.Length}");
         MainThreadDispatcher.Run(() => OnSendText?.Invoke(text));
     }
 
@@ -547,11 +660,24 @@ public static class ExternalChatWindow
         if (show) LayoutChildren();
     }
 
-    /// <summary>设置原生输入框位置（Unity 主线程调用，坐标为逻辑像素=客户区 1:1）</summary>
+    /// <summary>设置原生输入框位置（Unity 主线程调用，坐标为面板逻辑像素）
+    /// ★ 2026-08-17 统一 DPI：逻辑 → 物理客户区转换后才 SetWindowPos（144 DPI 下 Edit 位置正确）</summary>
     public static void SetInputRect(int x, int y, int w, int h)
     {
         if (!IsCreated) return;
-        SetWindowPos_Edit(x, y, w, h);
+        int px, py, pw, ph;
+        LogicalToClient(x, y, out px, out py);
+        LogicalToClientSize(w, h, out pw, out ph);
+        SetWindowPos_Edit(px, py, pw, ph);
+        LogInputState("hit+rect");
+    }
+
+    /// <summary>输入聚焦状态机日志（2026-08-17）：每步留痕，144 DPI 验收定位断点用</summary>
+    private static void LogInputState(string step)
+    {
+        IntPtr focus = GetFocus();
+        bool editVisible = IsWindowVisible(_edit);
+        Debug.Log($"[ExternalChat] input {step} | edit可见={editVisible} focus=0x{focus.ToInt64():X} (edit=0x{_edit.ToInt64():X})");
     }
 
     /// <summary>请求窗口线程聚焦输入框（★ PostMessage 跨线程：SetFocus 必须由窗口线程自己执行，
@@ -565,7 +691,7 @@ public static class ExternalChatWindow
     private static void LayoutChildren()
     {
         if (_edit == IntPtr.Zero || _sendBtn == IntPtr.Zero) return;
-        // 输入框位置由 Unity 侧 SetInputRect 同步；按钮仅作参考（透明样式下隐藏）
+        // 输入框位置由 Unity 侧 SetInputRect 同步（已统一 DPI 转换）；按钮仅作参考（透明样式下隐藏）
         RECT rc; GetClientRect(_hwnd, out rc);
         int barH = 44;
         if (_inputRectSet)

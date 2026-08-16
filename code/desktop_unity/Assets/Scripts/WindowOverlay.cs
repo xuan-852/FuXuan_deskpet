@@ -36,6 +36,7 @@ public class WindowOverlay : MonoBehaviour
     private const uint WS_EX_TOOLWINDOW = 0x00000080;
     private const uint WS_EX_TRANSPARENT = 0x00000020;
     private const uint WS_EX_APPWINDOW = 0x00040000;
+    private const string EXTERNAL_CHAT_WINDOW_CLASS = "FuXuanChatWindowClass";
 
     private const int GWL_STYLE = -16;
     private const int GWL_EXSTYLE = -20;
@@ -83,6 +84,9 @@ public class WindowOverlay : MonoBehaviour
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetWindowTextW(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern int GetClassNameW(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
@@ -469,7 +473,11 @@ public class WindowOverlay : MonoBehaviour
                 int len = (int)GetWindowTextW(mainHwnd, sb, sb.Capacity);
                 string title = len > 0 ? sb.ToString().Trim() : "(空标题)";
                 Log($"Process.MainWindowHandle → '{title}' ({mainHwnd.ToInt64():X8})");
-                if (len > 0)
+                if (IsExternalChatWindow(mainHwnd))
+                {
+                    Log($"跳过外置对话窗口 ({mainHwnd.ToInt64():X8})，继续查找 Unity 主窗口");
+                }
+                else if (len > 0)
                 {
                     Log($"匹配窗口: '{title}' ({mainHwnd.ToInt64():X8})");
                     return mainHwnd;
@@ -493,6 +501,12 @@ public class WindowOverlay : MonoBehaviour
             GetWindowThreadProcessId(hWnd, out uint pid);
             if (pid == currentPid)
             {
+                if (IsExternalChatWindow(hWnd))
+                {
+                    Log($"  跳过外置对话窗口: {hWnd.ToInt64():X8}");
+                    return true;
+                }
+
                 StringBuilder sb = new StringBuilder(256);
                 int len = (int)GetWindowTextW(hWnd, sb, sb.Capacity);
                 string title = len > 0 ? sb.ToString().Trim() : "(空标题)";
@@ -547,6 +561,13 @@ public class WindowOverlay : MonoBehaviour
         }
 
         return found;
+    }
+
+    private static bool IsExternalChatWindow(IntPtr hWnd)
+    {
+        StringBuilder className = new StringBuilder(256);
+        int len = GetClassNameW(hWnd, className, className.Capacity);
+        return len > 0 && className.ToString().Equals(EXTERNAL_CHAT_WINDOW_CLASS, StringComparison.Ordinal);
     }
 
     public void SetClickThrough(bool enabled)
