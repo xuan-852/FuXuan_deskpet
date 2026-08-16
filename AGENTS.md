@@ -4,7 +4,7 @@
 > 详细规范见 [`docs/development-standards.md`](docs/development-standards.md)（两者冲突时以详细版为准）。
 > 📚 **文档总索引**：[`docs/README.md`](docs/README.md)——顶层权威文档表 + 9 个模块文档（`docs/modules/`）。
 >
-> **AI 读文档优先级**：`AGENTS.md` → `docs/README.md` → `development-standards.md` → `code-truth-architecture.md` → 对应 `docs/modules/<模块>.md`
+> **AI 读文档优先级**：`AGENTS.md` → `docs/README.md` → `development-standards.md` → `code-truth-architecture.md` → `docs/token-cost-testing.md`（涉及云端调用/测试/排查烧钱时**必须先读**）→ 对应 `docs/modules/<模块>.md`
 
 ## 项目是什么
 

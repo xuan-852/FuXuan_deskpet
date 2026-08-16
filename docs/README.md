@@ -16,6 +16,7 @@
 | [`README.md`](../README.md) | GitHub 项目介绍（特性亮点/架构图/快速上手/展示，**GitHub 默认渲染页**） | 访客首次了解项目 |
 | [`AGENTS.md`](../AGENTS.md) | AI 协作快速入口（7 条铁律） | **每次开工前** |
 | [`development-standards.md`](development-standards.md) | 唯一权威开发规范（9 章） | 写任何代码前 |
+| [`token-cost-testing.md`](token-cost-testing.md) | **Token 消耗与测试指南**（生产 vs 测试区别、消耗铁律、未解决痛点） | **涉及云端调用/测试/排查烧钱前** |
 | [`code-truth-architecture.md`](code-truth-architecture.md) | 代码真相架构审计（六层架构） | 改架构/子系统前 |
 | [`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) | 项目演进路线图（v0.2） | 规划新功能前 |
 | [`installer-plan.md`](installer-plan.md) | 安装包与分发方案（Inno Setup、组件安装、移植障碍清单） | 打包/分发/换机部署前 |
