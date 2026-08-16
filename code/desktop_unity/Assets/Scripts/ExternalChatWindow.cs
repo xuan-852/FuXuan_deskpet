@@ -55,6 +55,7 @@ public static class ExternalChatWindow
     private const int WM_EXITSIZEMOVE = 0x0232;
     private const int WM_LBUTTONDOWN = 0x0201;
     private const int WM_LBUTTONDBLCLK = 0x0203;
+    private const int WM_NCLBUTTONDOWN = 0x00A1;
     private const int WM_NCHITTEST = 0x0084;
     private const int WM_CTLCOLOREDIT = 0x0133;
     private const int WM_APP_FOCUS_INPUT = 0x8000 + 1; // 自定义：请求窗口线程聚焦输入框
@@ -113,6 +114,8 @@ public static class ExternalChatWindow
     [DllImport("user32.dll")]
     private static extern bool PostMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")]
+    private static extern IntPtr SendMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")]
     private static extern int GetMessageW(ref MSG msg, IntPtr hWnd, uint min, uint max);
     [DllImport("user32.dll")]
     private static extern bool TranslateMessage(ref MSG msg);
@@ -151,6 +154,8 @@ public static class ExternalChatWindow
     private static extern IntPtr GetStockObject(int fnObject);
     [DllImport("user32.dll")]
     private static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
     [DllImport("user32.dll")]
     private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")]
@@ -426,13 +431,23 @@ public static class ExternalChatWindow
             case WM_KEYDOWN:
                 if (wParam.ToInt32() == VK_RETURN && GetFocus() == _edit) { DoSend(); return IntPtr.Zero; }
                 break;
+            case WM_NCLBUTTONDOWN:
+            {
+                // ★ 标题栏拖动：显式转发 DefWindowProc 启动 MoveLoop。
+                //   无边框窗口必须处理此消息，否则系统可能不进入拖动模式
+                //   （用户实测「拖动着拖不动了」）。
+                if (wParam.ToInt32() == HTCAPTION || wParam.ToInt32() == HTBOTTOMRIGHT)
+                    return DefWindowProcW(hWnd, msg, wParam, lParam);
+                break;
+            }
             case WM_LBUTTONDOWN:
             case WM_LBUTTONDBLCLK:
                 // 面板区点击 → 物理客户区坐标 → 逻辑面板坐标（×DPI 比例，客户区与 RT 逻辑 1:1）→ 主线程命中表
             {
+                // ★ 标题栏手动拖动兜底：若 NCHITTEST 因坐标换算误差返回 HTCLIENT，
+                //   但点击位置在逻辑标题栏内，则转发 NC 消息启动 MoveLoop（防拖不动）
                 int x = lParam.ToInt32() & 0xFFFF;
                 int y = (lParam.ToInt32() >> 16) & 0xFFFF;
-                // 物理→逻辑换算：比例 = 逻辑尺寸 / 物理客户区
                 RECT cr;
                 GetClientRect(hWnd, out cr);
                 int physW = Math.Max(1, cr.Right - cr.Left);
@@ -442,6 +457,13 @@ public static class ExternalChatWindow
                 float lx = x * fx;
                 float ly = y * fy;
                 bool dbl = msg == WM_LBUTTONDBLCLK;
+                // 标题栏区域（逻辑 44px）→ 转成非客户区拖动
+                if (ly <= TITLE_BAR_H && msg == WM_LBUTTONDOWN)
+                {
+                    ReleaseCapture();
+                    SendMessageW(hWnd, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
+                    return IntPtr.Zero;
+                }
                 MainThreadDispatcher.Run(() => OnPanelClick?.Invoke(lx, ly, dbl));
                 return IntPtr.Zero;
             }
