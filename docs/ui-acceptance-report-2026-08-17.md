@@ -339,5 +339,69 @@ node --check code/desktop_unity/openclaw_bridge.js
 2. 真实键盘：点输入框 → 键入中文 → 回车 → 聊天历史出现该消息（`外部窗口发送:` 日志）。
 3. 最小化恢复、✕ 回内嵌。
 4. 测试模式 `@@test:quit` → 进程完整退出，日志无 destroyTJDevice/Fatal/Unhandled。
+
+## 九、第一阶段修复后的复验结果（2026-08-17）
+
+本节以提交 `b160244 fix(chat): 外置窗口 144 DPI 坐标统一 + 输入聚焦/回车发送/退出链路修复` 的完整构建产物为准，避免使用旧版 `Build/DesktopPet.exe`。
+
+### 9.1 已通过
+
+- `build.ps1 -Quick`：通过。
+- `build.ps1 -RunTests`：78/78 通过。
+- 完整构建：通过，重新生成 `Build/DesktopPet.exe`。
+- `runtime_smoke.cjs --verbose`：通过，视图切换、外置交互、审批、表情、三档尺寸和生产记忆零污染均通过。
+- 144 DPI 真实拖动：通过，窗口偏移准确为 `(90,60)`。
+- 右下角真实缩放：通过，子页面客户区从 `860×944` 调整到 `940×1004`，偏移为 `(+80,+60)`，松手后停止变化。
+- `@@test:quit`：通过，进程退出码 `0`，未发现 `destroyTJDevice`、Fatal 或 Unhandled 错误。
+
+### 9.2 仍未通过
+
+- 真实点击最小化按钮：未触发最小化，窗口仍为 visible 且非 iconic。
+- 真实点击关闭按钮：未回到内嵌，窗口仍为 visible，进程仍存活。
+- 真实点击输入区：原生 `Edit` 存在，但没有显示或获得焦点。
+- 真实中文键盘输入：未形成 `键入 → 回车 → 外部窗口发送` 的完整日志链路。
+- `@@view:extclick` 输入区对照测试：当前测试点没有出现 `input hit`、`input focused` 或 `hit+rect` 日志，需要继续核对输入命中矩形的坐标基准。
+
+### 9.3 当前阻塞判断
+
+第一阶段不能整体签收。编译、渲染、拖动、缩放和测试退出链路已达到通过条件；输入区和标题栏按钮仍是 P1 阻塞项。
+
+下一步应优先检查：
+
+1. `RegisterExtTitleHit` 注册矩形与 `HandleExternalInput` 接收坐标是否处于同一客户区基准。
+2. `RegisterExtHit(inputBgRect)` 是否仍把 `py=44` 标题栏偏移带入了面板局部命中表。
+3. 原生 `Edit` 的 `SetInputRect` 是否与实际绘制的 `inputBgRect` 完全重合。
+4. 最小化/关闭动作是否确实从 `_extTitleZones` 命中后进入 `ExternalChatWindow.Minimize/RequestClose`。
+
+在这四项没有通过真实 Win32 点击和真实键盘输入前，不应把报告第 8 节的“已修复”视为最终验收结论。
 5. 重抓六类窗口截图（列表/聊天/设置/审批/报告/消耗）确认 P2 对比度改善。
 6. `git diff --check`、EditMode、smoke 复跑。
+
+## 十、坐标基准修正与复验通过记录（2026-08-17 第二轮）
+
+> codex 复验（第九节）发现真实点击输入区/标题栏按钮仍失败，指出命中区坐标基准存疑。**根因确认：外置渲染 `DrawPanelContent(0, EXT_TITLE_BAR_H, ...)` 传入 py=44，因此 `_extHitZones` 里所有 rect（含 inputBgRect）本身已是【客户区坐标】（含标题栏偏移），而第一轮修复在 `HandleExternalInput` 内容区又做了一次 `y - 44` 转换 → 全部内容区点击偏上 44px 永不命中。** extclick 因调用处 `+44` 与内部 `-44` 抵消而"碰巧正确"，掩盖了 bug。
+
+### 10.1 修正内容（已提交）
+
+- `HandleExternalInput`：内容区**去掉 `y - EXT_TITLE_BAR_H` 转换**，直接以客户区坐标查 `_extHitZones`（rect 已是客户区基准）。
+- `@@view:extclick`：**去掉 `+ EXT_TITLE_BAR_H`**，坐标直接透传（语义 = 客户区坐标，与命中表一致）。
+- 注释更新：明确「外置渲染 py=44 → 命中表 rect 为客户区坐标」这一坐标基准真相。
+
+### 10.2 复验证据（真实 Win32 点击，DPI-aware 探针）
+
+| 项 | 结果 |
+|----|------|
+| 真实点击输入框 (600,1271) | ✅ `input hit` → `hit+rect` → `input focused`（focus == edit 句柄），Edit 显示并聚焦 |
+| 真实点击最小化按钮 (1237,22) | ✅ `IsIconic=True` 窗口最小化 |
+| 真实点击关闭按钮 (1271,22) | ✅ 窗口隐藏回内嵌（IsWindow=True, IsWindowVisible=False），符合「✕=回内嵌」设计 |
+| `@@test:quit` | ✅ 进程完整退出，无残留，日志「执行完整退出（等同托盘退出）」 |
+| 退出日志 | ✅ 无 destroyTJDevice / Fatal / Unhandled |
+| `runtime_smoke.cjs` | ✅ 全绿（含 extclick 链路、三档尺寸、零 NRE、记忆零污染） |
+| `build.ps1 -Quick` / 完整构建 | ✅ |
+
+### 10.3 剩余待 codex 复核项
+
+1. **真实键盘中文输入 + 回车发送**（`外部窗口发送: 文本` 日志 + 历史记录）——此前跨位宽探针 `SetWindowTextW` 注入读回为空（测试方法限制），必须真实键盘复验。
+2. 最小化后从任务栏恢复。
+3. 六类窗口截图重抓确认 P2 对比度。
+4. EditMode 78/78 复跑。

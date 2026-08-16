@@ -128,22 +128,21 @@ public partial class RightPanel : MonoBehaviour
     private bool _extReadPending;    // 上一帧读回未完成（防止堆积）
     // ★ 外部交互命中表（Phase A3）：渲染外置面板时登记可点区域（矩形+动作），
     //   独立窗口点击坐标回来查表执行（IMGUI Event.current 无法注入，故手动命中）
-    // ★ 2026-08-17 坐标系统一修复：命中区分为两套——
-    //   _extHitZones  = 面板内容区（面板局部坐标，y 从 0 起，绘制时被整体下移 EXT_TITLE_BAR_H）
-    //   _extTitleZones= 自绘标题栏按钮（客户区坐标，y 在 [0, EXT_TITLE_BAR_H) 内，含 44px 标题栏）
-    //   WM_LBUTTONDOWN 传来的 (lx,ly) 是客户区坐标（含标题栏）：
-    //     标题栏区（ly < EXT_TITLE_BAR_H）→ 查 _extTitleZones（客户区坐标）
-    //     内容区（ly >= EXT_TITLE_BAR_H）→ ly 减去标题栏高度转面板局部坐标 → 查 _extHitZones
-    //   修复前用客户区坐标直接查面板局部命中表，所有内容区点击偏下 44px（输入框不聚焦根因）。
+    // ★ 2026-08-17 坐标基准（codex 复验后修正）：外置渲染 DrawPanelContent(0, EXT_TITLE_BAR_H, ...)
+    //   传入 py=44，因此 _extHitZones 里所有 rect（含 inputBgRect）已经是【客户区坐标】（含标题栏偏移）；
+    //   _extTitleZones 标题栏按钮同样是客户区坐标（y 在 [0, EXT_TITLE_BAR_H)）。
+    //   WM_LBUTTONDOWN 的 ClientToLogical 输出也是客户区坐标 → 两者直接同基准，
+    //   **内容区命中不再做 y-44 转换**（此前减 44 导致全部内容区点击偏上 44px，codex 复验命中）。
     private readonly List<ExtHitZone> _extHitZones = new List<ExtHitZone>();
     private readonly List<ExtHitZone> _extTitleZones = new List<ExtHitZone>();
     private struct ExtHitZone { public Rect rect; public System.Action action; }
 
     /// <summary>外部窗口输入入口（独立窗口线程 → 主线程，经 MainThreadDispatcher 调用）
-    /// ★ 坐标 = 客户区坐标（含标题栏），内部按标题栏/内容区分流</summary>
+    /// ★ 坐标 = 客户区坐标（含标题栏），与命中表 rect 同基准：
+    ///   标题栏区（y &lt; EXT_TITLE_BAR_H）查 _extTitleZones；内容区直接查 _extHitZones（不再减 44）</summary>
     public void HandleExternalInput(float x, float y, bool isDoubleClick)
     {
-        // 标题栏区（含最小化/关闭按钮）：客户区坐标直接查标题栏命中表
+        // 标题栏区（含最小化/关闭按钮）：客户区坐标查标题栏命中表
         if (y < EXT_TITLE_BAR_H)
         {
             var tp = new Vector2(x, y);
@@ -159,8 +158,8 @@ public partial class RightPanel : MonoBehaviour
             Debug.Log($"[RightPanel] 外部标题栏点击未命中: ({x:F0},{y:F0})，可点区域 {_extTitleZones.Count} 个");
             return;
         }
-        // 内容区：客户区坐标 → 面板局部坐标（减去标题栏高度）
-        var p = new Vector2(x, y - EXT_TITLE_BAR_H);
+        // 内容区：客户区坐标直接查命中表（rect 已是客户区基准）
+        var p = new Vector2(x, y);
         foreach (var zone in _extHitZones)
         {
             if (zone.rect.Contains(p))
@@ -170,7 +169,7 @@ public partial class RightPanel : MonoBehaviour
                 return; // 只命中第一个（渲染顺序=绘制顺序，最上层优先）
             }
         }
-        Debug.Log($"[RightPanel] 外部点击未命中: ({x:F0},{y:F0})→内容({p.x:F0},{p.y:F0})，可点区域 {_extHitZones.Count} 个");
+        Debug.Log($"[RightPanel] 外部点击未命中: ({x:F0},{y:F0})，可点区域 {_extHitZones.Count} 个");
     }
 
     /// <summary>登记一个外部可点区域（仅外部渲染时收集，面板局部坐标）</summary>
@@ -746,10 +745,10 @@ public partial class RightPanel : MonoBehaviour
                     if (parts.Length >= 2 && float.TryParse(parts[0].Trim(), out cx) && float.TryParse(parts[1].Trim(), out cy))
                     {
                         if (parts.Length >= 3) bool.TryParse(parts[2].Trim(), out dbl);
-                        Debug.Log($"[TestInbox] 外部点击注入: 面板局部({cx:F0},{cy:F0}) dbl={dbl}");
-                        // ★ 2026-08-17 坐标修复：extclick 坐标 = 面板局部坐标（与 smoke 一致），
-                        //   转客户区坐标（+标题栏高）后走 HandleExternalInput 分流
-                        HandleExternalInput(cx, cy + EXT_TITLE_BAR_H, dbl);
+                        Debug.Log($"[TestInbox] 外部点击注入: 客户区({cx:F0},{cy:F0}) dbl={dbl}");
+                        // ★ 2026-08-17 坐标基准修正：extclick 坐标 = 客户区坐标（与 HandleExternalInput/命中表同基准），
+                        //   直接传，不做 ±44 转换（此前 +44 与 HandleExternalInput 内 -44 抵消，属巧合正确）
+                        HandleExternalInput(cx, cy, dbl);
                     }
                     else Debug.LogWarning($"[TestInbox] extclick 参数格式错误: {rest}（应为 x,y[,dbl]）");
                     break;
