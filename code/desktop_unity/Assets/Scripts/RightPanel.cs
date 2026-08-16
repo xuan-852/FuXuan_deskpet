@@ -1782,9 +1782,12 @@ public partial class RightPanel : MonoBehaviour
         if (_titleBarPixelTex != null) Destroy(_titleBarPixelTex);
         if (_inputBarPixelTex != null) Destroy(_inputBarPixelTex);
         if (_monoFont != null) Destroy(_monoFont);
+        // ★ 退出顺序：先停外置窗口线程（避免窗口线程访问已释放的 RT/NativeArray 或与
+        //   引擎 D3D 设备销毁竞态 → destroyTJDevice 崩溃），再释放渲染资源
+        DisableExternalMode();
+        ExternalChatWindow.Shutdown();
         if (_chatRT != null) { _chatRT.Release(); Destroy(_chatRT); }
         if (_extReadBack.IsCreated) _extReadBack.Dispose(); // ★ NativeArray 必须释放（泄漏=内存增长）
-        DisableExternalMode();
     }
 
     // ═══════════════════════════════════════════════════════════

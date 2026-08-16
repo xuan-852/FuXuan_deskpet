@@ -258,6 +258,22 @@ public static class ExternalChatWindow
             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
+    /// <summary>关闭窗口线程（Unity OnDestroy 时调用；★ 优雅退出避免窗口线程与引擎
+    ///   D3D 设备销毁竞态 → destroyTJDevice 崩溃）</summary>
+    public static void Shutdown()
+    {
+        if (!IsCreated) return;
+        if (_hwnd != IntPtr.Zero)
+        {
+            DestroyWindow(_hwnd);
+            _hwnd = IntPtr.Zero;
+        }
+        // 等窗口线程退出（最多 1s）
+        for (int i = 0; i < 100 && IsCreated; i++) Thread.Sleep(10);
+        IsCreated = false;
+        IsVisible = false;
+    }
+
     /// <summary>隐藏窗口</summary>
     public static void Hide()
     {
