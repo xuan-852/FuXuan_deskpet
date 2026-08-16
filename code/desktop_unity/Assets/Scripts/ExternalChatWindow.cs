@@ -57,6 +57,7 @@ public static class ExternalChatWindow
     private const int WM_LBUTTONDBLCLK = 0x0203;
     private const int WM_NCHITTEST = 0x0084;
     private const int WM_CTLCOLOREDIT = 0x0133;
+    private const int WM_APP_FOCUS_INPUT = 0x8000 + 1; // 自定义：请求窗口线程聚焦输入框
     private const int HTCAPTION = 2;
     private const int HTCLIENT = 1;
     private const int HTBOTTOMRIGHT = 17;
@@ -142,9 +143,9 @@ public static class ExternalChatWindow
     private static extern IntPtr GetFocus();
     [DllImport("user32.dll")]
     private static extern IntPtr SetFocus(IntPtr hWnd);
-    [DllImport("user32.dll")]
+    [DllImport("gdi32.dll")]
     private static extern uint SetTextColor(IntPtr hdc, uint color);
-    [DllImport("user32.dll")]
+    [DllImport("gdi32.dll")]
     private static extern int SetBkMode(IntPtr hdc, int mode);
     [DllImport("gdi32.dll")]
     private static extern IntPtr GetStockObject(int fnObject);
@@ -403,6 +404,15 @@ public static class ExternalChatWindow
                 }
                 return new IntPtr(HTCLIENT);
             }
+            case WM_APP_FOCUS_INPUT:
+            {
+                // 窗口线程内聚焦输入框（同线程 SetFocus 可靠）
+                ShowWindow(_edit, 5);
+                ShowWindow(_sendBtn, 5);
+                LayoutChildren();
+                SetFocus(_edit);
+                return IntPtr.Zero;
+            }
             case WM_CLOSE:
                 // ✕ = 隐藏（窗口生命周期归 Unity 管），先记忆位置
                 SavePos();
@@ -506,12 +516,12 @@ public static class ExternalChatWindow
         SetWindowPos_Edit(x, y, w, h);
     }
 
-    /// <summary>聚焦原生输入框（外部模式点击输入区时唤起）</summary>
+    /// <summary>请求窗口线程聚焦输入框（★ PostMessage 跨线程：SetFocus 必须由窗口线程自己执行，
+    ///   否则跨线程 SetFocus 失败 →「点击输入框无法输入」）</summary>
     public static void FocusInput()
     {
         if (!IsCreated) return;
-        ShowInputBar(true);
-        SetFocus(_edit);
+        PostMessageW(_hwnd, WM_APP_FOCUS_INPUT, IntPtr.Zero, IntPtr.Zero);
     }
 
     private static void LayoutChildren()
