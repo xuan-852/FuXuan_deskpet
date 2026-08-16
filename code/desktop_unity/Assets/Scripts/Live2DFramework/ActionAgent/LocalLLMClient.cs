@@ -180,6 +180,8 @@ public static class LocalLLMClient
                     {
                         content = extracted;
                         success = true;
+                        // ★ 2026-08-16：本地调用也记录（免费，供消耗对比分析）
+                        UsageLogger.Record("local", ModelName, 0, 0, 0, 0);
                         break;
                     }
                     Debug.LogWarning($"[LocalLLM] 解析响应为空 (retry={retry}): {StringTruncateExtension.Truncate(responseText, 100)}");

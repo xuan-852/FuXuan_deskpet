@@ -392,21 +392,52 @@ public partial class RightPanel
         GUI.Label(new Rect(x + 16f, y + 106f, w - 32f, 20f),
             $"（按非高峰价：输入未命中 ¥2/M · 命中 ¥0.5/M · 输出 ¥3/M 估算）", dim);
 
-        // —— 累计（本次会话） ——
+        // —— 累计（含跨重启历史） ——
         float totalY = y + cardH + 20f;
         Rect totalRect = new Rect(x, totalY, w, cardH);
         UiTextureFactory.DrawPixelRect(totalRect, new Color(0.22f, 0.16f, 0.35f, 0.30f));
-        GUI.Label(new Rect(x + 16f, totalY + 12f, w - 32f, 26f), "📈 累计（本次会话）", new GUIStyle(_termTitleStyle) { fontSize = 18 });
+        GUI.Label(new Rect(x + 16f, totalY + 12f, w - 32f, 26f), "📈 累计（跨重启）", new GUIStyle(_termTitleStyle) { fontSize = 18 });
         GUI.Label(new Rect(x + 16f, totalY + 46f, w - 32f, 24f),
             $"调用 <color=#d8ccff>{totalCalls}</color> 次 · 输入 <color=#d8ccff>{totalPrompt:N0}</color> tokens · 输出 <color=#d8ccff>{totalCompletion:N0}</color>", big);
         GUI.Label(new Rect(x + 16f, totalY + 76f, w - 32f, 24f),
             $"缓存命中率 <color=#ffd98a>{UsageStats.HitRate(totalPrompt, totalHit) * 100f:F1}%</color> · 估算 <color=#8aff8a>≈ ¥{totalCost:F2}</color>", big);
 
+        // —— 来源明细（长效日志，钱花在哪一目了然） ——
+        float srcY = totalY + cardH + 12f;
+        var srcSummary = UsageLogger.SummarizeBySource();
+        if (srcSummary.Count > 0)
+        {
+            float srcCardH = 40f + srcSummary.Count * 24f;
+            Rect srcRect = new Rect(x, srcY, w, Mathf.Min(srcCardH, h - (srcY - y) - 110f));
+            UiTextureFactory.DrawPixelRect(srcRect, new Color(0.16f, 0.20f, 0.32f, 0.35f));
+            GUI.Label(new Rect(x + 16f, srcY + 10f, w - 32f, 24f), "🧾 来源明细（长效日志）", new GUIStyle(_termTitleStyle) { fontSize = 16 });
+            float ly = srcY + 40f;
+            foreach (var kv in srcSummary)
+            {
+                string name = kv.Key switch
+                {
+                    "chat" => "聊天/工具",
+                    "motion" => "动作翻译",
+                    "idle" => "闲话问候",
+                    "weather" => "天气语录",
+                    "reflect" => "记忆提炼",
+                    "glm" => "GLM视觉",
+                    "local" => "本地Ollama",
+                    _ => kv.Key
+                };
+                string costStr = kv.Key == "local" ? "免费" : $"¥{kv.Value.Item5:F2}";
+                GUI.Label(new Rect(x + 16f, ly, w - 32f, 20f),
+                    $"· {name}：{kv.Value.Item1} 次 · 输入{kv.Value.Item2:N0} · 输出{kv.Value.Item4:N0} · <color=#8aff8a>{costStr}</color>", dim);
+                ly += 24f;
+            }
+            srcY = ly + 12f;
+        }
+
         // —— 说明 ——
-        float noteY = totalY + cardH + 20f;
+        float noteY = srcY;
         GUI.Label(new Rect(x + 16f, noteY, w - 32f, h - (noteY - y) - 10f),
-            "💡 说明：\n· 仅统计带 usage 的云端调用（DeepSeek/GLM），本地 Ollama 不花钱不计入\n" +
-            "· 数字在面板打开时实时刷新（每次绘制取最新）\n" +
+            "💡 说明：\n· 长效日志落盘于 usage_log.jsonl（上限 2MB，重启保留）\n" +
+            "· 仅统计带 usage 的云端调用（DeepSeek/GLM），本地 Ollama 记免费对比\n" +
             "· 费用为估算：DeepSeek 8-17 起峰谷定价（高峰 9-12/14-18 点，峰值输出最高 ¥27/M），实际以账单为准\n" +
             "· 想省钱：动作/闲话/天气已本地优先，聊天仍走云端大模型", dim);
     }

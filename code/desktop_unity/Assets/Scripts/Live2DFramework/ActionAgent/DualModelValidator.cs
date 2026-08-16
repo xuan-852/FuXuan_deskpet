@@ -204,6 +204,7 @@ public class DualModelValidator : MonoBehaviour
                 if (req.result == UnityWebRequest.Result.Success)
                 {
                     string response = req.downloadHandler.text;
+                    ApiClient.LogUsage(response, "glm"); // 长效消耗日志（GLM）
                     Debug.Log($"[DualModelValidator] GLM({model}) 响应: {Truncate(response, 300)}");
                     ParseScoreResponse(response, out int score, out string review);
 
@@ -314,6 +315,7 @@ public class DualModelValidator : MonoBehaviour
                 if (req.result == UnityWebRequest.Result.Success)
                 {
                     string response = req.downloadHandler.text;
+                    ApiClient.LogUsage(response, "glm"); // 长效消耗日志（GLM）
                     Debug.Log($"[DualModelValidator] GLM({model}) 描述响应: {Truncate(response, 300)}");
                     ParseDescribeResponse(response, out string description, out int confidence);
 

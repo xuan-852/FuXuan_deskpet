@@ -307,6 +307,9 @@ public partial class RightPanel : MonoBehaviour
 
         // 全局热键 Shift+~（轮询物理键盘状态，不依赖窗口焦点，防误触）
         Debug.Log("[RightPanel] 全局热键已启用: Shift+~ (GetAsyncKeyState 轮询)");
+
+        // ★ 2026-08-16：加载长效消耗日志历史（跨重启累计，「消耗」面板显示累计含历史）
+        UsageLogger.LoadHistoryIntoUsageStats();
     }
 
     private void RefreshRefs()

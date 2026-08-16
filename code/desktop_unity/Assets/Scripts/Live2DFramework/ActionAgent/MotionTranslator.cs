@@ -217,7 +217,7 @@ public static class MotionTranslator
             if (req.result == UnityWebRequest.Result.Success)
             {
                 string responseText = req.downloadHandler.text;
-                ApiClient.LogUsage(responseText); // T8: 记录缓存命中
+                ApiClient.LogUsage(responseText, "motion"); // T8+ 记录缓存命中 + 长效消耗日志
                 MotionPlanner.MotionPlan plan = ParseResponse(responseText, description);
                 if (plan != null && plan.KeyFrames.Count > 0)
                 {

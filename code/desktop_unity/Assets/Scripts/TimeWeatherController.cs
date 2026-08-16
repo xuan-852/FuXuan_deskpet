@@ -521,6 +521,7 @@ public class TimeWeatherController : MonoBehaviour
             if (req.result == UnityWebRequest.Result.Success)
             {
                 string text = req.downloadHandler.text;
+                ApiClient.LogUsage(text, "weather"); // 长效消耗日志（天气语录 DeepSeek 回退）
                 string content = ExtractContent(text);
                 if (!string.IsNullOrEmpty(content))
                 {

@@ -30,7 +30,8 @@ public static class ApiClient
     /// <param name="onError">失败时回调，参数为人类可读错误描述</param>
     public static IEnumerator PostRequest(
         string baseUrl, string apiKey, string jsonBody, int timeout,
-        Action<string> onSuccess, Action<string> onError)
+        Action<string> onSuccess, Action<string> onError,
+        string source = "chat")
     {
         string fullUrl = baseUrl.TrimEnd('/') + "/v1/chat/completions";
 
@@ -50,7 +51,7 @@ public static class ApiClient
             if (req.result == UnityWebRequest.Result.Success)
             {
                 onSuccess?.Invoke(req.downloadHandler.text);
-                LogUsage(req.downloadHandler.text);
+                LogUsage(req.downloadHandler.text, source);
             }
             else
             {
@@ -68,7 +69,7 @@ public static class ApiClient
     // ================================================================
 
     /// <summary>从 DeepSeek 响应中提取 usage 缓存命中摘要；无 usage 字段时返回 null</summary>
-    public static string ExtractUsageSummary(string json)
+    public static string ExtractUsageSummary(string json, string source = "chat", string model = "")
     {
         if (string.IsNullOrEmpty(json)) return null;
         try
@@ -83,8 +84,13 @@ public static class ApiClient
             long completion = usage["completion_tokens"]?.Value<long>() ?? 0;
             double hitRate = (hit + miss) > 0 ? (double)hit / (hit + miss) * 100.0 : 0.0;
 
+            if (string.IsNullOrEmpty(model))
+                model = root["model"]?.ToString() ?? "";
+
             // ★ 2026-08-15：同步累计到 UsageStats（「消耗」面板数据源）
+            // ★ 2026-08-16：持久化到 UsageLogger（跨重启保留，定位消耗来源）
             UsageStats.Record((int)prompt, (int)hit, (int)completion);
+            UsageLogger.Record(source, model, prompt, hit, completion);
 
             return $"prompt={prompt} (cache_hit={hit} miss={miss} 命中率={hitRate:F1}%) completion={completion}";
         }
@@ -94,10 +100,10 @@ public static class ApiClient
         }
     }
 
-    /// <summary>响应中带 usage 时打日志（Debug.Log，用于观察缓存命中）</summary>
-    public static void LogUsage(string responseJson)
+    /// <summary>响应中带 usage 时打日志 + 记录长效消耗（Debug.Log，用于观察缓存命中）</summary>
+    public static void LogUsage(string responseJson, string source = "chat")
     {
-        string summary = ExtractUsageSummary(responseJson);
+        string summary = ExtractUsageSummary(responseJson, source);
         if (summary != null)
             Debug.Log($"[ApiClient] 💰 usage: {summary}");
     }
@@ -184,7 +190,8 @@ public static class ApiClient
         string baseUrl, string apiKey, string jsonBody, int timeout,
         Action<string> onContentDelta,   // 每段 content delta
         Action<string, string> onFinish, // (fullContent, toolCallsJsonOrNull)
-        Action<string> onError)
+        Action<string> onError,
+        string source = "chat")
     {
         string fullUrl = baseUrl.TrimEnd('/') + "/v1/chat/completions";
         var handler = new SSEDownloadHandler();
@@ -211,14 +218,14 @@ public static class ApiClient
             {
                 string raw = handler.Drain();
                 if (raw.Length > 0)
-                    ProcessStreamData(raw, lineBuf, ref accumulatedContent, toolCallAcc, onContentDelta);
+                    ProcessStreamData(raw, lineBuf, ref accumulatedContent, toolCallAcc, onContentDelta, source);
                 yield return null;
             }
 
             // 最后一轮
             string final = handler.Drain();
             if (final.Length > 0)
-                ProcessStreamData(final, lineBuf, ref accumulatedContent, toolCallAcc, onContentDelta);
+                ProcessStreamData(final, lineBuf, ref accumulatedContent, toolCallAcc, onContentDelta, source);
 
             if (req.result == UnityWebRequest.Result.Success)
             {
@@ -252,7 +259,8 @@ public static class ApiClient
         string raw, StringBuilder lineBuf,
         ref string accumulatedContent,
         List<ToolCallAccumulator> toolCallAcc,
-        Action<string> onContentDelta)
+        Action<string> onContentDelta,
+        string source)
     {
         lineBuf.Append(raw);
         string buf = lineBuf.ToString();
@@ -276,7 +284,7 @@ public static class ApiClient
 
                 // T8：流式最后一块常带 usage（choices 为空），记录缓存命中
                 if (data.IndexOf("\"usage\"", StringComparison.Ordinal) >= 0)
-                    LogUsage(data);
+                    LogUsage(data, source);
 
                 if (!string.IsNullOrEmpty(delta.content))
                 {

@@ -207,7 +207,8 @@ public class IdleChatGenerator : MonoBehaviour
         yield return StartCoroutine(
             ApiClient.PostRequest(apiUrl, ApiKey, jsonBody, 30,
                 json => HandleIdleBatchResponse(json),
-                err => { Debug.LogWarning($"[IdleChatGenerator] ⚠️ {err}"); _isIdleGenerating = false; }));
+                err => { Debug.LogWarning($"[IdleChatGenerator] ⚠️ {err}"); _isIdleGenerating = false; },
+                "idle"));
     }
 
     private void HandleIdleBatchResponse(string responseJson)
@@ -342,7 +343,8 @@ public class IdleChatGenerator : MonoBehaviour
         yield return StartCoroutine(
             ApiClient.PostRequest(apiUrl, ApiKey, jsonBody, 30,
                 json => HandleGreetingResponse(json),
-                err => { Debug.LogWarning($"[IdleChatGenerator] ⚠️ {err}"); _isGreetingGenerating = false; }));
+                err => { Debug.LogWarning($"[IdleChatGenerator] ⚠️ {err}"); _isGreetingGenerating = false; },
+                "idle"));
     }
 
     private void HandleGreetingResponse(string responseJson)

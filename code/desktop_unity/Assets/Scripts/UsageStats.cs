@@ -52,6 +52,19 @@ public static class UsageStats
         }
     }
 
+    /// <summary>回灌持久化历史（UsageLogger 启动时调用；近 1 小时口径不含历史，仅累计口径）</summary>
+    public static void LoadPersisted(long calls, long prompt, long cacheHit, long completion)
+    {
+        lock (_lock)
+        {
+            TotalCalls += calls;
+            TotalPrompt += prompt;
+            TotalCacheHit += cacheHit;
+            TotalCompletion += completion;
+            // 不塞入 _samples（那是"近1小时"采样队列，历史数据不应污染实时窗口）
+        }
+    }
+
     /// <summary>近 seconds 秒内的统计（如 3600 = 近 1 小时）</summary>
     public static (long calls, long prompt, long cacheHit, long completion) GetRecent(float seconds)
     {
