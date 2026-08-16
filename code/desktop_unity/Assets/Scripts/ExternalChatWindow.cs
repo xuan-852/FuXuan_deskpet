@@ -56,6 +56,7 @@ public static class ExternalChatWindow
     private const int WM_LBUTTONDOWN = 0x0201;
     private const int WM_LBUTTONDBLCLK = 0x0203;
     private const int WM_NCHITTEST = 0x0084;
+    private const int WM_CTLCOLOREDIT = 0x0133;
     private const int HTCAPTION = 2;
     private const int HTCLIENT = 1;
     private const int HTBOTTOMRIGHT = 17;
@@ -141,6 +142,12 @@ public static class ExternalChatWindow
     private static extern IntPtr GetFocus();
     [DllImport("user32.dll")]
     private static extern IntPtr SetFocus(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    private static extern uint SetTextColor(IntPtr hdc, uint color);
+    [DllImport("user32.dll")]
+    private static extern int SetBkMode(IntPtr hdc, int mode);
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr GetStockObject(int fnObject);
     [DllImport("user32.dll")]
     private static extern bool IsWindow(IntPtr hWnd);
     [DllImport("user32.dll")]
@@ -338,14 +345,13 @@ public static class ExternalChatWindow
             // 无边框窗口：客户区 = 窗口区（WS_POPUP 无系统边框），直接 SetWindowPos 定尺寸
             SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, _width, _height, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
-            // 原生输入控件（底部：输入框 + 发送按钮）— 整面板模式下仍创建，由 ShowInputBar 控制显隐
-            RECT rc; GetClientRect(_hwnd, out rc);
-            int barH = 44;
-            _edit = CreateWindowExW(WS_EX_CLIENTEDGE, "EDIT", "", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | WS_BORDER,
-                8, rc.Bottom - barH + 6, rc.Right - 90, 30, _hwnd, (IntPtr)IDC_EDIT, _hInst, IntPtr.Zero);
-            _sendBtn = CreateWindowExW(0, "BUTTON", "发送", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                rc.Right - 76, rc.Bottom - barH + 6, 68, 30, _hwnd, (IntPtr)IDC_SEND, _hInst, IntPtr.Zero);
-            ShowWindow(_edit, 0); // 整面板模式默认隐藏原生输入栏（面板自带 IMGUI 输入栏视觉）
+            // 原生输入控件 — ★ 透明样式（无白底/无边框，覆盖在 IMGUI 星空输入框位置作为隐形输入通道；
+            //   用户反馈白框输入框突兀 + 原生控件遮挡点击）。位置由 SetInputRect 从 Unity 侧同步。
+            _edit = CreateWindowExW(0, "EDIT", "", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
+                8, 0, 100, 30, _hwnd, (IntPtr)IDC_EDIT, _hInst, IntPtr.Zero);
+            _sendBtn = CreateWindowExW(0, "BUTTON", "发送", WS_CHILD | WS_TABSTOP,
+                8, 0, 68, 30, _hwnd, (IntPtr)IDC_SEND, _hInst, IntPtr.Zero);
+            ShowWindow(_edit, 0); // 默认隐藏，点击输入框区域才显示（透明覆盖）
             ShowWindow(_sendBtn, 0);
 
             IsCreated = true;
@@ -432,6 +438,14 @@ public static class ExternalChatWindow
             case WM_SIZE:
                 LayoutChildren();
                 return IntPtr.Zero;
+            case WM_CTLCOLOREDIT:
+            {
+                // ★ 透明 EDIT：白字 + 透明背景（融合星空面板，无白框）
+                IntPtr hdcEdit = wParam;
+                SetTextColor(hdcEdit, 0x00D8CCFF);      // 白紫字
+                SetBkMode(hdcEdit, 1 /*TRANSPARENT*/);
+                return GetStockObject(5 /*NULL_BRUSH*/);
+            }
             case WM_EXITSIZEMOVE:
                 // 拖动/缩放结束 → 记忆位置
                 SavePos();
@@ -475,13 +489,21 @@ public static class ExternalChatWindow
         MainThreadDispatcher.Run(() => OnSendText?.Invoke(text));
     }
 
-    /// <summary>控制原生输入栏显隐（整面板模式默认隐藏，聊天聚焦时可唤起；供后续 Phase 交互层使用）</summary>
+    /// <summary>控制原生输入框显隐（★ 透明覆盖在 IMGUI 输入框上：无白底无边框，视觉融合）
+    /// 位置由 SetInputRect 从 Unity 侧同步（IMGUI 输入框的逻辑矩形）</summary>
     public static void ShowInputBar(bool show)
     {
         if (!IsCreated) return;
         ShowWindow(_edit, show ? 5 : 0);
         ShowWindow(_sendBtn, show ? 5 : 0);
         if (show) LayoutChildren();
+    }
+
+    /// <summary>设置原生输入框位置（Unity 主线程调用，坐标为逻辑像素=客户区 1:1）</summary>
+    public static void SetInputRect(int x, int y, int w, int h)
+    {
+        if (!IsCreated) return;
+        SetWindowPos_Edit(x, y, w, h);
     }
 
     /// <summary>聚焦原生输入框（外部模式点击输入区时唤起）</summary>
@@ -495,14 +517,25 @@ public static class ExternalChatWindow
     private static void LayoutChildren()
     {
         if (_edit == IntPtr.Zero || _sendBtn == IntPtr.Zero) return;
+        // 输入框位置由 Unity 侧 SetInputRect 同步；按钮仅作参考（透明样式下隐藏）
         RECT rc; GetClientRect(_hwnd, out rc);
         int barH = 44;
-        SetWindowPos_Edit(8, rc.Bottom - barH + 6, rc.Right - 90, 30);
+        if (_inputRectSet)
+            SetWindowPos_Edit(_inputX, _inputY, _inputW, _inputH);
+        else
+            SetWindowPos_Edit(8, rc.Bottom - barH + 6, rc.Right - 90, 30);
         SetWindowPos_Button(rc.Right - 76, rc.Bottom - barH + 6, 68, 30);
+    }
+
+    private static bool _inputRectSet;
+    private static int _inputX, _inputY, _inputW, _inputH;
+    private static void SetWindowPos_Edit(int x, int y, int w, int h)
+    {
+        _inputRectSet = true; _inputX = x; _inputY = y; _inputW = w; _inputH = h;
+        SetWindowPos(_edit, IntPtr.Zero, x, y, w, h, 0x0004 /*SWP_NOZORDER*/);
     }
 
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
-    private static void SetWindowPos_Edit(int x, int y, int w, int h) => SetWindowPos(_edit, IntPtr.Zero, x, y, w, h, 0x0004 /*SWP_NOZORDER*/);
     private static void SetWindowPos_Button(int x, int y, int w, int h) => SetWindowPos(_sendBtn, IntPtr.Zero, x, y, w, h, 0x0004);
 }

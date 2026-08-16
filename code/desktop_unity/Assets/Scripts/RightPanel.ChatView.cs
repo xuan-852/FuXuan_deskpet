@@ -221,7 +221,8 @@ public partial class RightPanel
             }
             else if (tl.label == "聊天")
             {
-                RegisterExtHit(tbRect, () => { _inputFocused = true; ExternalChatWindow.ShowInputBar(true); });
+                // 外部命中：聊天按钮 = 聚焦输入（不弹原生输入栏——用户反馈白框突兀）
+                RegisterExtHit(tbRect, () => { _inputFocused = true; });
             }
         }
 
@@ -486,10 +487,12 @@ public partial class RightPanel
         {
             GUI.Label(inputBgRect, "向符玄下达指令…", _termPlaceholderStyle);
         }
-        // 外部命中：点击输入框 → 唤起原生 EDIT 聚焦输入
+        // 外部命中：点击输入框 → 透明原生 EDIT 覆盖在输入框位置聚焦输入（视觉融合，无白框）
         RegisterExtHit(inputBgRect, () =>
         {
-            ExternalChatWindow.ShowInputBar(true);
+            ExternalChatWindow.SetInputRect(
+                Mathf.RoundToInt(inputBgRect.x), Mathf.RoundToInt(inputBgRect.y),
+                Mathf.RoundToInt(inputBgRect.width), Mathf.RoundToInt(inputBgRect.height));
             ExternalChatWindow.FocusInput();
         });
 
