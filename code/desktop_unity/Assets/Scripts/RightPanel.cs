@@ -122,6 +122,7 @@ public partial class RightPanel : MonoBehaviour
     private bool _externalRender;    // 正在向独立窗口渲染（抑制屏幕事件处理）
     private RenderTexture _chatRT;   // 面板渲染目标（独立窗口显示用，尺寸跟随当前视图）
     private float _lastExtCapture;   // 渲染/推送节流计时
+    private float _lastExtReadStart; // 异步读回开始时间（超时兜底防冻结）
     // ★ 异步读回（AsyncGPUReadback）：渲染保持 60fps 动画流畅，读回不阻塞主线程
     private Unity.Collections.NativeArray<byte> _extReadBack;
     private bool _extReadPending;    // 上一帧读回未完成（防止堆积）
@@ -1901,9 +1902,17 @@ public partial class RightPanel : MonoBehaviour
         RenderTexture.active = prev;
 
         // 异步读回 + 推送（30fps 节流；读回不阻塞主线程，动画保持 60fps 渲染）
+        // ★ 防卡死：_extReadPending 超时兜底（读回 >0.5s 未完成视为异常，重置继续）——
+        //   RT 重建/NativeArray 更换时旧回调可能永不触发，导致 pending 永久 true 画面冻结
+        if (_extReadPending && Time.time - _lastExtReadStart > 0.5f)
+        {
+            Debug.LogWarning("[RightPanel] 异步读回超时，重置 pending（防冻结）");
+            _extReadPending = false;
+        }
         if (Time.time - _lastExtCapture >= 1f / 30f && !_extReadPending && _extReadBack.IsCreated)
         {
             _lastExtCapture = Time.time;
+            _lastExtReadStart = Time.time;
             _extReadPending = true;
             UnityEngine.Rendering.AsyncGPUReadback.RequestIntoNativeArray(
                 ref _extReadBack, _chatRT, 0, (req) =>
@@ -1928,11 +1937,11 @@ public partial class RightPanel : MonoBehaviour
             GUI.DrawTexture(bar, _bgNebulaTex, ScaleMode.StretchToFill);
         UiTextureFactory.DrawPixelRect(new Rect(0, h - 1f, rtW, 1f), new Color(0.58f, 0.42f, 0.88f, 0.7f)); // 底部分隔线
 
-        // 标题：符玄·太卜司（左，带小头像）
-        if (_pixelFxTex != null)
-            GUI.DrawTexture(new Rect(8f, 7f, 30f, 30f), _pixelFxTex);
-        GUI.Label(new Rect(46f, 5f, rtW - 160f, 22f), "符玄·太卜司", _termTitleStyle);
-        GUI.Label(new Rect(46f, 25f, rtW - 160f, 14f), "独立面板 · 可被其他窗口遮挡", _termLogDimStyle);
+        // ★ 标题文字精简为「独立面板」：面板自带标题栏（符玄·太卜司/状态）已显示主标题，
+        //   外置标题栏再写会重复（用户反馈）。此处只保留窗口操作按钮区。
+        if (_extWindowIconTex != null)
+            GUI.DrawTexture(new Rect(10f, 7f, 30f, 30f), _extWindowIconTex); // 独立窗口图标
+        GUI.Label(new Rect(48f, 12f, rtW - 180f, 20f), "独立面板", _termTitleStyle);
 
         // 右上角按钮：最小化「—」+ 关闭「✕」（像素方块，登记命中）
         float btnSize = 30f;

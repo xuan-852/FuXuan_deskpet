@@ -284,7 +284,8 @@ public static class ExternalChatWindow
         InvalidateRect(_hwnd, IntPtr.Zero, false);
     }
 
-    /// <summary>把 BGRA 像素推给窗口显示（AsyncGPUReadback 回调版，NativeArray 输入；ToArray 安全拷贝）</summary>
+    /// <summary>把 BGRA 像素推给窗口显示（AsyncGPUReadback 回调版，NativeArray 输入）
+    /// ★ 消除 ToArray 高频大分配（6.7MB/次 → GC 停顿卡顿）：预分配 _buffer + CopyTo 零分配</summary>
     public static void SetBuffer(Unity.Collections.NativeArray<byte> bgra, int w, int h)
     {
         if (!IsCreated || !IsVisible) return;
@@ -292,9 +293,8 @@ public static class ExternalChatWindow
         {
             int need = w * h * 4;
             if (_buffer == null || _buffer.Length != need) _buffer = new byte[need];
-            // NativeArray → 托管数组（ToArray 安全，无 unsafe；回调在主线程）
-            byte[] arr = bgra.ToArray();
-            Buffer.BlockCopy(arr, 0, _buffer, 0, Math.Min(need, arr.Length));
+            // NativeArray → 托管数组：CopyTo 目标已预分配，零新分配
+            bgra.CopyTo(_buffer);
             _bufW = w; _bufH = h;
         }
         InvalidateRect(_hwnd, IntPtr.Zero, false);
