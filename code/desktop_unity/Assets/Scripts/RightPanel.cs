@@ -902,8 +902,9 @@ public partial class RightPanel : MonoBehaviour
             GUI.color = Color.white; // 恢复全局色，防止半透明残留影响其它 OnGUI
             return; // 第一级不渲染聊天内容
         }
-        // ——— 子面板视图（设置/便签/报告） ———
-        if (_currentView == PanelView.Settings || _currentView == PanelView.Reminders || _currentView == PanelView.Report)
+        // ——— 子面板视图（设置/便签/报告/消耗） ———
+        if (_currentView == PanelView.Settings || _currentView == PanelView.Reminders
+            || _currentView == PanelView.Report || _currentView == PanelView.Usage)
         {
             DrawSubPanelView(px, py, pw, ph, mp);
             GUI.color = Color.white;
