@@ -113,6 +113,7 @@
 | N40 T7 | 2026-08-07 | Speculative Multi-Action（一次预测 2-3 步 tool_call，实测一次响应双工具） | `77645d4` |
 | N40 T6 | 2026-08-07 | SystemPrompt.txt 5012→2972 字符（-41%，工具表与硬性铁则原样保留） | `77645d4` |
 | N40 | 2026-08-08 | **T4 竞态修复**（`_intentReady` + 3s 兜底）；**新增 IsTestMode** 防测试污染（实测 3 条测试消息后 pet_memory 28 条无新增、人格 totalInteractions 56 无变化） | — |
+| N44 | 2026-08-16 | **测试模式禁云端 + 长效消耗日志**：`ApiClient.BlockCloudInTestMode`（默认跟随 IsTestMode）短路所有云端调用，绕过 ApiClient 的直连方（GLM 视觉×6、DeepSeek 兜底×2）补 `ShouldBlockCloudPublic` 拦截，本地 Ollama 不受影响；新增 `UsageLogger` JSONL 持久化（`DataRoot/usage_log.jsonl`，2MB/2 万行封顶，按 source 记录 chat/motion/idle/weather/reflect/glm/local），面板「来源明细」按源统计——定位 ¥5/天消耗源头（实测 45s 测试运行 usage_log 零云端行，仅 local 免费调用） | `08494dd` `51cbecb` |
 
 ### 实测数据（2026-08-08，Player.log）
 

@@ -115,7 +115,7 @@
 **三个子面板内容**：- **设置（DrawSettingsSubPanel）**：⚙任务权重 5 行（`DrawWeightRowGui`，读写 `DesktopPet` 的 taskWeight 字段，✓应用权重即时生效）+ 📦预设（好动 3,3,3,3,1 / 均衡 2,2,2,2,2 / 安静 1,1,1,1,6）+ 💾持久化（💿保存配置 / 🗑清空忆境，走 PetConfig/PetMemory）；
 - **报告（DrawReportSubPanel）**：🔄刷新 / 📋复制 + `MotionMemoryManager.Instance.GetStatistics()` 统计展示（try/catch 兜底空数据）；
 - **便签（DrawRemindersSubPanel）**：✚新建（文本 + 时间输入）/ 🔄刷新 / ✅已完成⇄⏳看待办切换 / 列表项 MarkDone / DeleteReminder。
-- **消耗（DrawUsageSubPanel，2026-08-15）**：💰 Token 统计——近 1 小时 + 累计两个口径（调用次数/输入输出 tokens/缓存命中率/估算费用）。数据源 `UsageStats.cs`（内存累计，`ApiClient.ExtractUsageSummary` 每次带 usage 的响应自动 `Record`，价格常量 DeepSeek 非高峰价 ¥2/0.5/3 每 M 可调）；本地 Ollama 不计入（免费）。测试命令 `@@view:usage`。
+- **消耗（DrawUsageSubPanel，2026-08-15）**：💰 Token 统计——近 1 小时 + 累计两个口径（调用次数/输入输出 tokens/缓存命中率/估算费用）+「来源明细」（chat/motion/idle/weather/reflect/glm/local 分源）。数据源 `UsageStats.cs`（内存近期窗口，`ApiClient.ExtractUsageSummary` 每次带 usage 的响应自动 `Record`）+ `UsageLogger.cs`（JSONL 持久化 `DataRoot/usage_log.jsonl`，启动时 `LoadHistoryIntoUsageStats` 回填跨重启累计，2MB/2 万行封顶）；本地 Ollama 不计费（src=local cost=0）。价格常量 DeepSeek 非高峰价 ¥2/0.5/3 每 M 可调。测试命令 `@@view:usage`。
 
 **淡入淡出**：`_isOpen / _closing / _animAlpha / _panelTint`（每帧 `GUI.color = _panelTint` 施加全局透明度），`FADE_SPEED=5f`；Update 中推进 alpha，`_closing && _animAlpha<=0.001f` 时隐藏面板；`Toggle()` 第二次按下取消淡出，`Close()` 置 `_closing=true`。**坑**：① 绘制星星/拖尾等自设颜色的代码必须显式 `* _animAlpha`（它们覆盖 `GUI.color`）；② 任何 `GUI.color` 赋值后须在分支结束/OnGUI 末尾恢复 `Color.white`，否则全局淡入淡出失效。
 
