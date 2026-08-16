@@ -403,6 +403,14 @@ public static class VisionMotionVerifier
         string imageDataUrl,
         Action<string> onResult)
     {
+        // ★ 测试模式禁云端（2026-08-16）：动作评测 GLM 也拦截，防测试烧 token
+        if (ApiClient.ShouldBlockCloudPublic())
+        {
+            Debug.Log("[VisionMotionVerifier] 🛡 测试模式：已拦截 GLM 动作评测调用");
+            onResult("");
+            yield break;
+        }
+
         string prompt = "你是一名动作评审专家。下面给你一张桌面宠物（符玄/玄机）的动作截图。\n\n"
             + "AI 被要求做出这个动作：**「" + tc.Description + "」**\n"
             + "期望的姿势特征：" + tc.ExpectedPoseSummary + "\n\n"

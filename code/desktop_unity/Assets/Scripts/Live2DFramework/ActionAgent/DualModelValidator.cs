@@ -167,6 +167,14 @@ public class DualModelValidator : MonoBehaviour
             yield break;
         }
 
+        // ★ 测试模式禁云端（2026-08-16）：测试时 GLM 视觉也拦截，防烧 token
+        if (ApiClient.ShouldBlockCloudPublic())
+        {
+            Debug.Log("[DualModelValidator] 🛡 测试模式：已拦截 GLM 视觉调用");
+            onResult(0, "");
+            yield break;
+        }
+
         string prompt = BuildScorePrompt(description);
 
         // ★ 余额检测：先选付费模型，失败时 fallback 到免费 flash
@@ -274,6 +282,14 @@ public class DualModelValidator : MonoBehaviour
         if (string.IsNullOrEmpty(apiKey))
         {
             Debug.LogWarning("[DualModelValidator] GLM API Key 未配置，跳过描述");
+            onResult("", 0);
+            yield break;
+        }
+
+        // ★ 测试模式禁云端（2026-08-16）：描述式 GLM 视觉也拦截，防烧 token
+        if (ApiClient.ShouldBlockCloudPublic())
+        {
+            Debug.Log("[DualModelValidator] 🛡 测试模式：已拦截 GLM 视觉描述调用");
             onResult("", 0);
             yield break;
         }

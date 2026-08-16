@@ -201,6 +201,15 @@ public static class MotionTranslator
         }
 
         // ——— 4b. DeepSeek 兜底（原逻辑）———
+
+        // ★ 测试模式禁云端（2026-08-16）：本地失败也不回退 DeepSeek，防测试烧 token
+        if (ApiClient.ShouldBlockCloudPublic())
+        {
+            Debug.Log("[MotionTranslator] 🛡 测试模式：已拦截 DeepSeek 兜底调用");
+            onResult(null);
+            yield break;
+        }
+
         string jsonBody = BuildRequestBody(systemPrompt, userPrompt);
 
         using (UnityWebRequest req = new UnityWebRequest(API_URL, "POST"))

@@ -505,6 +505,13 @@ public class TimeWeatherController : MonoBehaviour
             }
         }
 
+        // ★ 测试模式禁云端（2026-08-16）：本地失败也不回退 DeepSeek，防测试烧 token
+        if (ApiClient.ShouldBlockCloudPublic())
+        {
+            Debug.Log("[TimeWeather] 🛡 测试模式：已拦截天气语录 DeepSeek 回退调用");
+            yield break;
+        }
+
         string url = aiApiUrl.TrimEnd('/') + "/v1/chat/completions";
         string jsonBody = $"{{\"model\":\"{EscapeJson(aiModel)}\",\"messages\":[{{\"role\":\"system\",\"content\":\"{EscapeJson(systemPrompt)}\"}}],\"max_tokens\":300,\"temperature\":0.9}}";
 

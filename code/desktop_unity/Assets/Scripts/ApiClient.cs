@@ -20,6 +20,21 @@ using Newtonsoft.Json.Linq;
 public static class ApiClient
 {
     /// <summary>
+    /// ★ 测试模式禁云端（2026-08-16）：测试/调试时每次启动 AutoChat 问候、主动消息、
+    ///   动作翻译等都会调 DeepSeek/GLM（一次问候就 1.1 万输入 tokens），烧钱。
+    ///   为 true 时所有云端调用（走本类 Post/Stream 的）直接短路，不发起 HTTP；
+    ///   本地 Ollama（LocalLLMClient，免费）不受影响。
+    ///   默认跟随 IsTestMode：测试模式自动开启，生产模式可手动开（如"只测 UI 不想烧钱"）。
+    /// </summary>
+    public static bool BlockCloudInTestMode { get; set; } = true;
+
+    /// <summary>当前是否应短路云端调用（测试模式 + 开关打开）；供非 ApiClient 的直接 UnityWebRequest 调用方检查</summary>
+    public static bool ShouldBlockCloudPublic() => ChatManager.IsTestMode && BlockCloudInTestMode;
+
+    /// <summary>内部短路判断</summary>
+    private static bool ShouldBlockCloud() => ShouldBlockCloudPublic();
+
+    /// <summary>
     /// 发送 POST 请求到 OpenAI 兼容的 /v1/chat/completions 端点
     /// </summary>
     /// <param name="baseUrl">API 基础地址，例如 "https://api.deepseek.com"</param>
@@ -33,6 +48,14 @@ public static class ApiClient
         Action<string> onSuccess, Action<string> onError,
         string source = "chat")
     {
+        // ★ 测试模式禁云端：直接短路，不烧 token
+        if (ShouldBlockCloud())
+        {
+            UnityEngine.Debug.Log($"[ApiClient] 🛡 测试模式：已拦截云端调用（{source}），不消耗 token");
+            onError?.Invoke("测试模式已拦截云端调用");
+            yield break;
+        }
+
         string fullUrl = baseUrl.TrimEnd('/') + "/v1/chat/completions";
 
         using (UnityWebRequest req = new UnityWebRequest(fullUrl, "POST"))
@@ -193,6 +216,14 @@ public static class ApiClient
         Action<string> onError,
         string source = "chat")
     {
+        // ★ 测试模式禁云端：直接短路，不烧 token
+        if (ShouldBlockCloud())
+        {
+            UnityEngine.Debug.Log($"[ApiClient] 🛡 测试模式：已拦截云端流式调用（{source}），不消耗 token");
+            onError?.Invoke("测试模式已拦截云端调用");
+            yield break;
+        }
+
         string fullUrl = baseUrl.TrimEnd('/') + "/v1/chat/completions";
         var handler = new SSEDownloadHandler();
         string errorMsg = null;

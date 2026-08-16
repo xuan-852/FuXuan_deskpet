@@ -24,6 +24,13 @@ public class TakeScreenshotTool : IPetTool
 
     public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
+        // ★ 测试模式禁云端（2026-08-16）：法眼（GLM 视觉）调用也拦截，防测试烧 token
+        if (ApiClient.ShouldBlockCloudPublic())
+        {
+            onResult?.Invoke("🛡 测试模式：已拦截法眼（GLM 视觉）调用");
+            yield break;
+        }
+
         // ——— 1. 截图 ———
         string screenshotPath = ToolHelpers.SaveScreenshotTemp();
         if (screenshotPath == null || !File.Exists(screenshotPath))

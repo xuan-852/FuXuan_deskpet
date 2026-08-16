@@ -153,6 +153,13 @@ public class ExploreBodyVisionTool : IPetTool
 
     public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
+        // ★ 测试模式禁云端（2026-08-16）：内观 GLM 调用也拦截，防测试烧 token
+        if (ApiClient.ShouldBlockCloudPublic())
+        {
+            onResult?.Invoke("🛡 测试模式：已拦截内观（GLM 视觉）调用");
+            yield break;
+        }
+
         var renderer = GameObject.FindObjectOfType<Live2DRenderer>();
         if (renderer == null || renderer.Mapper == null || renderer.CubismModel == null)
         {
@@ -454,6 +461,13 @@ public class SelfReviewTool : IPetTool
 
     public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
+        // ★ 测试模式禁云端（2026-08-16）：动作评价 GLM 调用也拦截，防测试烧 token
+        if (ApiClient.ShouldBlockCloudPublic())
+        {
+            onResult?.Invoke("🛡 测试模式：已拦截动作评价（GLM 视觉）调用");
+            yield break;
+        }
+
         string actionName = ToolHelpers.JsonRead(argsJson, "action");
         if (string.IsNullOrEmpty(actionName))
         {
