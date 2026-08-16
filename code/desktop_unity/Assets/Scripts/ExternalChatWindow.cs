@@ -405,7 +405,13 @@ public static class ExternalChatWindow
                         return new IntPtr(HTBOTTOMRIGHT);
                     // 顶部标题栏（逻辑 44px 区，全宽）
                     if (ly <= TITLE_BAR_H)
+                    {
+                        // ★ 右上角按钮区（最小化/关闭，逻辑 68px 宽）→ HTCLIENT 让命中表处理按钮点击；
+                        //   其余标题栏 → HTCAPTION 拖动
+                        if (lx >= _width - 68)
+                            return new IntPtr(HTCLIENT);
                         return new IntPtr(HTCAPTION);
+                    }
                 }
                 return new IntPtr(HTCLIENT);
             }
@@ -444,8 +450,6 @@ public static class ExternalChatWindow
             case WM_LBUTTONDBLCLK:
                 // 面板区点击 → 物理客户区坐标 → 逻辑面板坐标（×DPI 比例，客户区与 RT 逻辑 1:1）→ 主线程命中表
             {
-                // ★ 标题栏手动拖动兜底：若 NCHITTEST 因坐标换算误差返回 HTCLIENT，
-                //   但点击位置在逻辑标题栏内，则转发 NC 消息启动 MoveLoop（防拖不动）
                 int x = lParam.ToInt32() & 0xFFFF;
                 int y = (lParam.ToInt32() >> 16) & 0xFFFF;
                 RECT cr;
@@ -457,13 +461,9 @@ public static class ExternalChatWindow
                 float lx = x * fx;
                 float ly = y * fy;
                 bool dbl = msg == WM_LBUTTONDBLCLK;
-                // 标题栏区域（逻辑 44px）→ 转成非客户区拖动
-                if (ly <= TITLE_BAR_H && msg == WM_LBUTTONDOWN)
-                {
-                    ReleaseCapture();
-                    SendMessageW(hWnd, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
-                    return IntPtr.Zero;
-                }
+                // ★ 标题栏点击一律走命中表（含最小化/关闭按钮）——WM_NCHITTEST 已返回
+                //   HTCAPTION 的区域系统会走 WM_NCLBUTTONDOWN 拖动，到这里的都是
+                //   HTCLIENT 区域；不做拖动兜底（兜底会吞掉标题栏按钮点击）
                 MainThreadDispatcher.Run(() => OnPanelClick?.Invoke(lx, ly, dbl));
                 return IntPtr.Zero;
             }
