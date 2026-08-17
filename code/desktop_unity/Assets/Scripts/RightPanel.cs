@@ -123,6 +123,7 @@ public partial class RightPanel : MonoBehaviour
     private bool _externalRender;    // 正在向独立窗口渲染（抑制屏幕事件处理）
     private bool _runInBackgroundBeforeExternal;
     private Vector2 _externalMousePos = new Vector2(-1f, -1f);
+    private bool _testExternalMouseOverride;
     private RenderTexture _chatRT;   // 面板渲染目标（独立窗口显示用，尺寸跟随当前视图）
     private float _lastExtCapture;   // 渲染/推送节流计时
     private float _lastExtReadStart; // 异步读回开始时间（超时兜底防冻结）
@@ -911,6 +912,7 @@ public partial class RightPanel : MonoBehaviour
                     if (parts.Length >= 2 && float.TryParse(parts[0].Trim(), out hx) && float.TryParse(parts[1].Trim(), out hy))
                     {
                         _externalMousePos = new Vector2(hx, hy);
+                        _testExternalMouseOverride = true;
                         GUI.changed = true;
                         Debug.Log($"[TestInbox] 外置悬停注入: 客户区({hx:F0},{hy:F0})");
                     }
@@ -2133,6 +2135,7 @@ public partial class RightPanel : MonoBehaviour
 
     private void OnExternalPanelMouseMove(float x, float y)
     {
+        if (_testExternalMouseOverride) return;
         _externalMousePos = new Vector2(x, y);
         // 鼠标移动只改变外置 RT 中的 hover 提示，不改变命中表或业务状态。
         GUI.changed = true;
@@ -2195,9 +2198,9 @@ public partial class RightPanel : MonoBehaviour
         // 原生窗口消息在拖动、DPI 缩放或子控件焦点切换时可能暂时不派发；
         // 每帧从窗口坐标轮询，确保外置 RT 的 hover 与真实鼠标保持同步。
         float polledMouseX, polledMouseY;
-        if (ExternalChatWindow.TryGetMousePosition(out polledMouseX, out polledMouseY))
+        if (!_testExternalMouseOverride && ExternalChatWindow.TryGetMousePosition(out polledMouseX, out polledMouseY))
             _externalMousePos = new Vector2(polledMouseX, polledMouseY);
-        else if (_externalMousePos.x >= 0f || _externalMousePos.y >= 0f)
+        else if (!_testExternalMouseOverride && (_externalMousePos.x >= 0f || _externalMousePos.y >= 0f))
             _externalMousePos = new Vector2(-1f, -1f);
         _extHitZones.Clear();    // 渲染帧重建命中表（面板局部坐标）
         _extTitleZones.Clear();  // 渲染帧重建标题栏命中表（客户区坐标）

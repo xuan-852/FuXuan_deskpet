@@ -521,3 +521,24 @@ node --check code/desktop_unity/openclaw_bridge.js
 - 调整时间文本区域，为最小化和关闭按钮保留独立命中空间。
 
 多模态桌面截图复核：外置标题栏已消失；关闭 X 后再次截图，独立窗口和紫色 RT 残留均消失。最终 `build.ps1 -Quick`、EditMode 78/78、完整构建和隔离 `runtime_smoke.cjs --verbose` 均通过。
+
+## 十七、外置窗口视觉与构建回归验收（2026-08-17）
+
+本轮按 `docs/build-workflow.md` 的绝对路径构建流程，对最新源码和生成的 `Build/DesktopPet.exe` 完成回归：
+
+| 验证项 | 结果 |
+|---|---|
+| `build.ps1 -Quick` | 通过 |
+| 完整构建 `build.ps1` | 通过，生成 `Build/DesktopPet.exe` |
+| `build.ps1 -RunTests` | 通过，EditMode 78/78 |
+| `runtime_smoke.cjs --verbose` | 通过，包含外置窗口、输入、审批、嵌入、表情和关闭链路 |
+| 生产记忆隔离 | 通过，临时测试目录零污染 |
+
+多模态桌面截图与真实窗口复测结果：
+
+- DPI 144 环境下，外置窗口客户区物理尺寸约 `860×846`，IMGUI 逻辑尺寸约 `1290×1269`；按实际缩放换算移动鼠标后，“聊”按钮出现 hover 高亮并显示“聊天”提示，确认不是缺少提示逻辑，而是此前测试坐标未换算到逻辑坐标。
+- 输入框点击日志依次出现 `input hit`、`hit+rect`、`input focused`；截图中没有黑色原生发送控件覆盖 Unity 输入栏。
+- 使用无 BOM UTF-8 中文消息复测用户/符玄窗口气泡，左右布局、头像、内边距和自动换行正常，未发现裁切、重叠或越界。
+- 现有测试链路未发现 NRE、Fatal 或 Unhandled；手动日志中仍可见既有的 `star_spin` 配置解析警告和 UIAutomation fallback 警告，但不影响本轮 UI 验收与自动化结果。
+
+结论：本轮构建、自动化回归和重点外置窗口视觉项均通过，最新可验收文件为 `Build/DesktopPet.exe`。后续人工验收可重点确认真实机器上的 DPI 缩放差异和自启动后本地 Ollama 首次对话。

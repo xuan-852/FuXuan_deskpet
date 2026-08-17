@@ -267,3 +267,13 @@
 - 最小化 `—` 与标题行 X 同行显示；外置模式下 X 注册为 `ExternalChatWindow.RequestClose`。
 - 外置关闭回调先立即隐藏 Unity 内嵌面板状态，再解除外置模式，避免淡出期间闪回 Unity 面板或留下紫色 RT 最后一帧。
 - 外置窗口使用面板标题行中间区域作为原生拖动带，返回、字体、最小化和 X 区域交由 Unity 命中表处理。
+
+## 九、外置窗口视觉回归与构建验收（2026-08-17）
+
+- 外置窗口通过 `GetCursorPos`、`GetWindowRect` 和 `ClientToLogical` 将真实 Windows 鼠标坐标转换为 IMGUI 逻辑坐标；DPI 144 环境下实测客户区物理尺寸约 `860×846`、渲染逻辑尺寸约 `1290×1269`。
+- 真实鼠标移动到“聊”按钮后，按钮出现 hover 高亮并显示“聊天”提示；工具提示绘制在内容层、Live2D 和 CRT 扫描线之后，避免被后续绘制覆盖。
+- 保留隐藏原生 `EDIT` 作为键盘输入通道，`GetInputText()` 每帧轮询文本；聚焦链路实测为 `input hit → hit+rect → focused`，原生黑色发送控件未覆盖 Unity 输入栏。
+- 用户与符玄的窗口气泡继续使用独立的左右布局、头像和自动换行；UTF-8 中文消息实测无裁切、无越界、无字符重叠。
+- 测试模式新增 `@@view:exthover:x,y`，仅用于稳定注入 hover 坐标，不改变生产鼠标链路。
+
+最终回归通过：`build.ps1 -Quick`、完整构建、`build.ps1 -RunTests`（78/78）和隔离 `runtime_smoke.cjs --verbose`；测试数据使用临时目录，生产记忆零污染。
