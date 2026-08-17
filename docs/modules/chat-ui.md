@@ -286,3 +286,9 @@
 - 子面板（设置/便签/报告/消耗）的 X 统一走 `RequestClosePanel()`：内嵌模式播放淡出，外置模式直接请求原生窗口关闭，避免停留在紫色 RenderTexture。
 
 验证：最终 Quick、完整构建、EditMode 78/78、隔离 `runtime_smoke.cjs --verbose` 均通过；真实外置输入日志达到 `input hit → hit+rect → input focused`，子面板 X 日志确认已退出独立窗口。
+
+## 十一、热键唤出前台层级（2026-08-17）
+
+- 外置窗口首次由热键或统一唤出链路显示时，窗口线程执行 `ShowWindow(SW_RESTORE)`、`BringWindowToTop` 和 `SetForegroundWindow`，确保瞬间显示在当前普通窗口之上。
+- 不使用 `HWND_TOPMOST`；唤出后的聊天窗口仍是普通 Windows 窗口，后续可被用户新激活的其他窗口遮挡。Live2D 所在 Unity 透明窗口继续由 `WindowOverlay` 保持 TOPMOST。
+- 实测日志：`raised=True foreground=True topmost=false`。

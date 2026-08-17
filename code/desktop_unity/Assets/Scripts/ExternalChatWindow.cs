@@ -67,6 +67,7 @@ public static class ExternalChatWindow
     private const int WM_SETCURSOR = 0x0020;
     private const int WM_APP_FOCUS_INPUT = 0x8000 + 1; // 自定义：请求窗口线程聚焦输入框
     private const int WM_APP_SHUTDOWN = 0x8000 + 2;    // 自定义：由窗口线程自己销毁窗口并退出消息循环
+    private const int WM_APP_ACTIVATE = 0x8000 + 3;    // 自定义：热键唤出时恢复并带到前台
     private const int HTCAPTION = 2;
     private const int HTCLIENT = 1;
     private const int HTBOTTOMRIGHT = 17;
@@ -77,6 +78,7 @@ public static class ExternalChatWindow
     private const int IDC_SEND = 102;
     private const int IDC_ARROW = 32512;
     private const int IDC_IBEAM = 32513;
+    private const int SW_RESTORE = 9;
 
     // ★ 无边框窗口：使用面板自身标题行作为拖动带，不再额外绘制“独立面板”标题栏。
     public const int TITLE_BAR_H = 54;
@@ -165,6 +167,10 @@ public static class ExternalChatWindow
     private static extern bool SetWindowTextW(IntPtr hWnd, string text);
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int cmdShow);
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
     [DllImport("user32.dll")]
     private static extern IntPtr GetDC(IntPtr hWnd);
     [DllImport("user32.dll")]
@@ -340,7 +346,18 @@ public static class ExternalChatWindow
             ShowWindow(_hwnd, 5 /*SW_SHOW*/);
             _closeNotificationSent = false;
             IsVisible = true;
+            ActivateWindow();
         }
+    }
+
+    /// <summary>
+    /// 将普通外置窗口恢复到当前普通窗口层级的最前方。
+    /// 不使用 HWND_TOPMOST：唤出瞬间显示在其他窗口上方，但随后仍允许被新激活的窗口遮挡。
+    /// </summary>
+    public static void ActivateWindow()
+    {
+        if (!IsCreated || !IsVisible || _hwnd == IntPtr.Zero) return;
+        PostMessageW(_hwnd, WM_APP_ACTIVATE, IntPtr.Zero, IntPtr.Zero);
     }
 
     /// <summary>运行期调整客户区尺寸（Unity 侧面板尺寸变化时调用，含边框补偿）</summary>
@@ -569,6 +586,15 @@ public static class ExternalChatWindow
                 SetFocus(_edit);
                 _inputFocusActive = true;
                 LogInputState("focused");
+                return IntPtr.Zero;
+            }
+            case WM_APP_ACTIVATE:
+            {
+                // 由窗口创建线程执行，避免跨线程激活/置前不稳定。
+                ShowWindow(hWnd, SW_RESTORE);
+                bool raised = BringWindowToTop(hWnd);
+                bool foreground = SetForegroundWindow(hWnd);
+                Debug.Log($"[ExternalChat] 热键唤出：普通窗口置前 raised={raised} foreground={foreground} topmost=false");
                 return IntPtr.Zero;
             }
             case WM_APP_SHUTDOWN:

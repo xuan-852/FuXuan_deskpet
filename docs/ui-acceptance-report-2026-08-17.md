@@ -565,3 +565,15 @@ node --check code/desktop_unity/openclaw_bridge.js
 | 遗留 BallPanel | 手动隔离日志无绘制/打开记录 |
 
 最新验收实例已使用 `FU_XUAN_DATA=C:\Users\25295\AppData\Local\Temp\fuxuan_ui_bugfix_final_v17` 隔离启动，并保持仅一个 DesktopPet 进程供人工复验。
+
+## 十九、热键唤出前台层级修复（2026-08-17）
+
+用户反馈“热键唤出后应显示在其他窗口上面”。本轮明确采用“唤出时前台置顶、运行中普通层级”的 Windows 语义：
+
+- 外置窗口唤出时恢复最小化状态，并调用 `BringWindowToTop` + `SetForegroundWindow`。
+- 未设置 `HWND_TOPMOST`，因此聊天窗口不会永久压住其他应用；用户激活新窗口后仍可正常遮挡聊天窗口。
+- Live2D 主窗口的 TOPMOST 行为不变，仍保持最高桌面优先级。
+
+层级实测日志：`[ExternalChat] 热键唤出：普通窗口置前 raised=True foreground=True topmost=false`。
+
+回归结果：Quick、完整构建、EditMode 78/78、隔离 `runtime_smoke.cjs --verbose` 均通过。
