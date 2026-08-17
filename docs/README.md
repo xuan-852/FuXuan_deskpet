@@ -18,6 +18,7 @@
 | [`development-standards.md`](development-standards.md) | 唯一权威开发规范（9 章） | 写任何代码前 |
 | [`build-workflow.md`](build-workflow.md) | **编译工作流（AI 必读）**（构建入口/卡死处理/验证闭环/坑清单） | **改 C# 后构建、或构建卡死时** |
 | [`token-cost-testing.md`](token-cost-testing.md) | **Token 消耗与测试指南**（生产 vs 测试区别、消耗铁律、未解决痛点） | **涉及云端调用/测试/排查烧钱前** |
+| [`token-saving-architecture.md`](token-saving-architecture.md) | **省 Token 基础架构**（请求分级、上下文预算、成本闸门与阶段路线） | **设计/修改 Token 成本控制前** |
 | [`project-bugs-and-acceptance.md`](project-bugs-and-acceptance.md) | **项目已知 Bug 与验收点**（活跃问题/已修防回归清单/验收标准） | **改外置窗口/渲染/退出/测试代码前** |
 | [`ui-acceptance-checklist.md`](ui-acceptance-checklist.md) | **UI 验收清单（考评师版）**（排版/功能/进阶/回归红线，含多模态验证项） | **UI 回归验收 / 交付签发前** |
 | [`ui-external-window-test-plan-2026-08-17.md`](ui-external-window-test-plan-2026-08-17.md) | **外置独立面板专项测评方案**（真实鼠标/键盘优先，点击/拖动 P0 项） | **外置窗口交互回归（codex 第三轮）** |
@@ -85,5 +86,5 @@
 1. **新增模块**：在 `modules/` 新建文档 → 套用四要素模板 → 在 1.2 节加一行 → 更新 `AGENTS.md` 技术栈表
 2. **修改模块文档**：功能级改动**测试通过后**再更新对应 `modules/` 文档（先代码后文档），并核对 1.2 节索引表
 3. **修改顶层文档**：确认是否影响索引（标题/路径/作用变化时同步更新）
-4. **文档优先级**（AI 读取顺序）：`AGENTS.md` → `development-standards.md` → `code-truth-architecture.md` → 对应模块文档
+4. **文档优先级**（AI 读取顺序）：`AGENTS.md` → `development-standards.md` → `code-truth-architecture.md` → `token-cost-testing.md` → `token-saving-architecture.md` → 对应模块文档
 5. **数据真实性**：模块文档中的组件名/工具数/行号必须以代码为准（参考 `code-truth-architecture.md` 的审计方法），禁止沿用过时描述

@@ -102,6 +102,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | 2026-08-12 | **Phase B 任务可视化（OpenClaw 类智能体入口）**：实时事件订阅（tool/item/approval）→ steps 去重收集（seenToolCalls）→ `GET /task/{id}` 返回 `steps`/`pendingApproval` → `POST /task/{id}/approve` 审批回执（decision ∈ allow-once/allow-always/deny）→ C# 侧 `OpenClawBridge` 新增 ActiveStepCount/ActiveStepLabel/ActiveTaskId/PendingApproval/LastApprovalOk 等静态原子属性 + `RefreshTaskProgress`/`ApproveTaskAsync` → 实测 steps=2 干净输出（echo step1/step2） |
 | 2026-08-12 | **并行化 + exec 审批打通**：全局 `requestChain` → per-session `requestChains`（同 sessionKey 串行、跨 sessionKey 并行，多任务实测差 88ms；任务独立 sessionKey `agent:main:task-<id>`）→ `pendingApproval` 加 `kind` 标记（exec/plugin）→ 审批决议按 kind 选 API（exec→`exec.approval.resolve` / plugin→`plugin.approval.resolve`）→ 配置 `tools.exec.mode=ask` → E2E 实测：提交 hostname 任务 → pendingApproval(kind=exec) 到达 bridge → approve 回执 success:true → 任务 done 且返回 hostname 输出（此前回执失败 `unknown or expired approval id`，根因：exec 审批误用 plugin.approval.resolve） |
 | 2026-08-15 | **PDF 文本提取端点**：新增 `/extract_pdf`（POST，`{path, max_chars?}`）+ `ExtractPdfTextAsync` + Python 脚本 `scripts/knowledge/pdf_extract.py`（双引擎：PyMuPDF 优先——中文内嵌子集字体 CMap 解码最佳；pypdf 兜底）。供「藏书阁」knowledge_index 索引 PDF。实测：控制理论.pdf 159 页 17.2 万字符提取成功，中文完整。扫描版 PDF（无文本层）返回 `is_scanned:true` |
+| 2026-08-17 | **修复 `/task` 首次连接无响应**：Gateway 未连接时，旧实现只等待 `connect_()` 的失败回调，连接成功后未继续创建任务或发送 `task_id`，导致 C# 提交请求超时；改为 `await connect_()`，成功后继续入队，失败仍返回 503。 |
 
 ## 四、编写注意事项
 

@@ -1058,7 +1058,7 @@ function startHttpServer() {
         if (path === '/task' && req.method === 'POST') {
             const bodyChunks = [];
             req.on('data', chunk => bodyChunks.push(chunk));
-            req.on('end', () => {
+            req.on('end', async () => {
                 try {
                     const body = JSON.parse(Buffer.concat(bodyChunks).toString('utf-8') || '{}');
                     const task = (body.task || '').trim();
@@ -1068,11 +1068,16 @@ function startHttpServer() {
                         return;
                     }
                     if (!connected) {
-                        connect_().catch(err => {
+                        try {
+                            // 等待连接完成后再创建任务并返回 task_id。
+                            // 旧实现只注册 catch，连接成功时不会继续发送响应，
+                            // 导致 Unity 侧一直等到 SubmitTaskAsync 超时。
+                            await connect_();
+                        } catch (err) {
                             res.writeHead(503, { 'Content-Type': 'application/json' });
                             res.end(JSON.stringify({ success: false, error: `Connection failed: ${err.message}` }));
-                        });
-                        return;
+                            return;
+                        }
                     }
                     const entry = startTask(task, body.mode || 'agent', parseInt(body.timeoutMs || CHAT_TIMEOUT_MS, 10), parseInt(body.maxSteps || 0, 10));
                     console.log(`[Bridge] Task ${entry.id} queued (mode=${entry.mode}, timeout=${entry.timeoutMs}ms, maxSteps=${entry.maxSteps}): "${task.substring(0, 80)}..."`);

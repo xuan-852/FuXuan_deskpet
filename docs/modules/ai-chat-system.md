@@ -2,7 +2,7 @@
 
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
 > **基本架构**: 用户输入 → `ChatManager`（10 轮回环 / 意图过滤 / 600s 看门狗）→ `ApiClient`（DeepSeek SSE 流式，Function Calling）→ `ToolEngine/` 插件调度；`LocalLLMAgentService`（Ollama qwen2.5:3b）提供 4 项离线能力兜底；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`（1,595 行）、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
-> **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀；2026-08-12 P5 注入链新增任务轨迹（TaskTrajectoryManager，太卜手札）与任务模板（TaskTemplateManager，太卜阵法图），同样置于【当前时刻】之前。
+> **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀；2026-08-12 P5 注入链新增任务轨迹（TaskTrajectoryManager，太卜手札）与任务模板（TaskTemplateManager，太卜阵法图），同样置于【当前时刻】之前；2026-08-18 成本闸门接入全部主要云端直连点，新增 `PromptContextBudget` / `ToolResultBudget`，EditMode 96/96 通过。
 > **编写注意事项**: ①测试必须开测试模式（`D:\DesktopPetData\.test_mode`）否则污染 pet_memory/pet_personality；②`{current_time}` 等动态内容**必须放 system prompt 尾部**（放开头会摧毁 DeepSeek 缓存命中，全价 ¥1/M）；③deepseek-v4-flash 是推理模型，必须显式 `"thinking":{"type":"disabled"}` + `max_tokens:1200` 否则 `content=""`；④历史裁剪须按字符预算且向前对齐最近 user 消息，防止切断 tool_calls↔tool 配对导致 API 400。
 
 ---

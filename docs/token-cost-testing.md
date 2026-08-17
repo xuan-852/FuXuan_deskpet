@@ -3,7 +3,7 @@
 > **测试脚本注意**：`scripts/test/runtime_smoke.cjs` 未显式设置 `PLAYER_LOG` 时，读取测试隔离目录 `<FU_XUAN_TEST_DATA>/logs/player_log.txt`（应用日志镜像），避免误读旧的默认 Unity `Player.log` 导致冒烟测试假失败。
 
 > **文档作用**: 让 AI **第一时间**了解三件事——① 常规运行（生产）与测试模式在 Token 消耗上的**本质区别**；② 测试时关于消耗的**铁律与常见误判**；③ 当前**未解决的痛点**。任何涉及"改测试逻辑 / 改云端调用 / 排查烧钱 / 写测试"的工作，先读本文再动手。
-> **基本架构**: 观测链路 = `ApiClient`（云端调用点）→ `UsageStats`（内存，面板实时）→ `UsageLogger`（JSONL 落盘，跨重启）；拦截开关 = `ApiClient.BlockCloudInTestMode`（默认跟随测试模式）。
+> **基本架构**: 观测链路 = `ApiClient`（云端调用点）→ `TokenBudgetManager`（后台来源频率闸门）→ `UsageStats`（内存，面板实时）→ `UsageLogger`（JSONL 落盘，跨重启）；测试拦截开关 = `ApiClient.BlockCloudInTestMode`（默认跟随测试模式）。完整设计见 [`token-saving-architecture.md`](token-saving-architecture.md)。
 > **开发历史迭代**: 2026-08-15 本地模型优先（N43）；2026-08-16 测试模式禁云端（N44，`51cbecb`）+ UsageLogger 持久化（`08494dd`）。
 > **编写注意事项**: 本文记录的是**已验证的代码真相** + 痛点现状；痛点状态变化时（如 ¥5/天来源已定位）必须同步更新第五节。
 
@@ -93,6 +93,8 @@ Get-Content D:\DesktopPetData\usage_log.jsonl | ForEach-Object { $_ | ConvertFro
 5. **schannel TLS 全坏（系统级）**：`SEC_E_NO_CREDENTIALS (0x8009030e)`，Node/curl/.NET 全部 HTTPS 失败（浏览器 OK，因 BoringSSL），连 baidu.com 都连不上。影响 DSH harness 切 GPT（`dsh-codex-auth` 已装但连不上）。修复需用户操作：重启 → `sfc /scannow` → `DISM /Online /Cleanup-Image /RestoreHealth` → 卸 SteamTools MITM 证书。**注意：codex CLI（Rust/rustls）不受 schannel 影响，可直接用**。
 6. **缓存即记忆（成本优化构想）未实施**：复用 LLM 上下文缓存做记忆、把非文档内容放进同一滚动历史、消除 tool schema 重复发送——预期再降输入 tokens 50%+。**前提：先用 usage_log 收集到真实分源数据**，验证当前主要消耗在哪，再动上下文结构（动 system prompt 前缀会摧毁 98.6% 缓存命中，须谨慎）。
 7. **测试模式禁云端的开关粒度**：`BlockCloudInTestMode` 是全局布尔，没有按 source 粒度（如"只拦 chat 放行 idle"）或按时间窗口的开关——后续如需精细化可扩展。
+8. **后台来源预算闸门已落地（2026-08-18）**：`idle`/`reflect`/`weather`/`motion`/`glm` 均已接入 `TokenBudgetManager`，`chat` 仍只观测不硬限流；预算拒绝带不可重试前缀，避免自动重试绕过闸门。
+9. **上下文与工具结果预算已落地（2026-08-18）**：`PromptContextBudget` 限制动态上下文段，`ToolResultBudget` 只压缩回填模型历史的工具结果副本；两者均不改变 UI 原始结果和固定 Prompt 前缀。
 
 ---
 
