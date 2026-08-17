@@ -487,3 +487,12 @@ node --check code/desktop_unity/openclaw_bridge.js
 | `FU_XUAN_OLLAMA=1` 隔离冒烟 | 通过 |
 
 当前结论：本轮代码级 bug 已修复并通过编译、EditMode、隔离运行回归；真实用户环境下仍建议重点复核输入栏、发送图标 hover、符玄点击互动，以及自启动后首次聊天是否命中本地 Ollama。
+## 十四、窗口层级与关闭链路修复（2026-08-17）
+
+针对第二轮人工验收反馈完成修复：
+
+- 移除外置聊天窗口在 Unity 透明置顶层上的矩形挖洞；Live2D 所在 Unity 窗口持续保持 `TOPMOST`，独立聊天窗口不设置 `TOPMOST`，维持普通 Windows 窗口层级。
+- 原生发送 `BUTTON` 始终隐藏并移出客户区；原生 `EDIT` 增加透明扩展样式，避免黑色原生控件覆盖 Unity 输入栏。
+- `Shift+~` 在面板打开时改为幂等 `Close()`，不再使用会取消淡出的 `Toggle()`，修复第一次面板关闭不稳定。
+
+本轮自动验证：`build.ps1 -Quick`、EditMode 78/78、隔离 `runtime_smoke.cjs --verbose` 均通过；最新构建已启动供人工验收。

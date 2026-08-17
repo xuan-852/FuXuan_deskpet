@@ -465,7 +465,10 @@ public static class ExternalChatWindow
 
             // 原生输入控件 — ★ 透明样式（无白底/无边框，覆盖在 IMGUI 星空输入框位置作为隐形输入通道；
             //   用户反馈白框输入框突兀 + 原生控件遮挡点击）。位置由 SetInputRect 从 Unity 侧同步。
-            _edit = CreateWindowExW(0, "EDIT", "", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
+            // EDIT 仅作为键盘输入通道；发送按钮不参与交互，输入通道自身也使用
+            // 透明扩展样式，避免原生控件背景覆盖 Unity 绘制的输入栏。
+            _edit = CreateWindowExW(0x00000020 /* WS_EX_TRANSPARENT */, "EDIT", "",
+                WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                 8, 0, 100, 30, _hwnd, (IntPtr)IDC_EDIT, _hInst, IntPtr.Zero);
             _sendBtn = CreateWindowExW(0, "BUTTON", "发送", WS_CHILD | WS_TABSTOP,
                 8, 0, 68, 30, _hwnd, (IntPtr)IDC_SEND, _hInst, IntPtr.Zero);
@@ -480,7 +483,7 @@ public static class ExternalChatWindow
             else
                 Debug.Log($"[ExternalChat] EDIT 子类化成功 原过程=0x{_origEditProc.ToInt64():X}");
             ShowWindow(_edit, 0); // 默认隐藏，点击输入框区域才显示（透明覆盖）
-            ShowWindow(_sendBtn, 0);
+            HideNativeSendButton();
 
             IsCreated = true;
             Debug.Log("[ExternalChat] 独立窗口已创建");
@@ -544,7 +547,7 @@ public static class ExternalChatWindow
                 ShowWindow(_edit, 5);
                 // 发送按钮由 Unity 位图和外置命中表绘制/处理；不要显示原生 BUTTON，
                 // 否则它会以黑色控件覆盖输入栏右侧。
-                ShowWindow(_sendBtn, 0);
+                HideNativeSendButton();
                 LayoutChildren();
                 SetFocus(_edit);
                 LogInputState("focused");
@@ -697,7 +700,7 @@ public static class ExternalChatWindow
         if (!IsCreated) return;
         ShowWindow(_edit, show ? 5 : 0);
         // 原生发送按钮不参与外置模式交互，始终隐藏，避免黑色控件覆盖 Unity 发送图标。
-        ShowWindow(_sendBtn, 0);
+        HideNativeSendButton();
         if (show) LayoutChildren();
     }
 
@@ -753,6 +756,16 @@ public static class ExternalChatWindow
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
     private static void SetWindowPos_Button(int x, int y, int w, int h) => SetWindowPos(_sendBtn, IntPtr.Zero, x, y, w, h, 0x0004);
+
+    private static void HideNativeSendButton()
+    {
+        if (_sendBtn == IntPtr.Zero) return;
+        // 除了隐藏，再移到客户区外并缩成 1x1，防止某些 DWM/主题在刷新子控件
+        // 时留下旧的黑色 invalidated 区域。
+        ShowWindow(_sendBtn, 0 /* SW_HIDE */);
+        SetWindowPos(_sendBtn, IntPtr.Zero, -2, -2, 1, 1,
+            0x0004 /* SWP_NOZORDER */ | 0x0010 /* SWP_NOACTIVATE */);
+    }
 
     private static void TrackMouseLeave(IntPtr hWnd)
     {

@@ -917,7 +917,10 @@ public partial class RightPanel : MonoBehaviour
         if (shiftDown && tildeDown && !_globalTildeWasDown && Time.frameCount != _hotkeyFrame)
         {
             _hotkeyFrame = Time.frameCount;
-            Toggle();
+            // 全局热键的关闭语义必须是幂等 Close；Toggle 在淡出期间会取消关闭，
+            // 导致用户按一次 ~ 后面板仍然停留或重新出现。
+            if (_isOpen) Close();
+            else Toggle();
         }
         _globalTildeWasDown = tildeDown;
     }

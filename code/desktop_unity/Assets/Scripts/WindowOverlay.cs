@@ -603,83 +603,29 @@ public class WindowOverlay : MonoBehaviour
     }
 
     /// <summary>
-    /// 在 Unity 全屏置顶层中为外置窗口挖出动态矩形区域。
-    /// 外置窗口仍是普通非置顶窗口，Unity 的宠物区域和置顶属性不变。
+    /// 刷新独立窗口层级关系。
+    ///
+    /// 独立聊天窗口必须保持普通 Windows 窗口等级；桌宠 Live2D 所在的 Unity
+    /// 透明层则始终保持 TOPMOST。旧实现会给 Unity 置顶层挖出聊天窗口矩形，
+    /// 结果是聊天窗口在该区域反过来压住 Live2D，因此这里不再挖洞。
+    /// 黑色透明像素仍会让聊天窗口正常可见，WM_NCHITTEST/WS_EX_TRANSPARENT
+    /// 继续负责输入穿透。
     /// </summary>
     public void RefreshExternalWindowHole(bool enabled = true)
     {
         if (_hwnd == IntPtr.Zero || !_applied || _suspended || !IsWindow(_hwnd)) return;
 
-        IntPtr external = IntPtr.Zero;
-        if (enabled)
+        // 兼容旧版本运行时可能已经设置过的 region：进入/退出外置模式都清掉。
+        if (_externalHoleApplied || !enabled)
         {
-            EnumWindows((hWnd, lParam) =>
-            {
-                if (IsWindowVisible(hWnd) && IsExternalChatWindow(hWnd))
-                {
-                    external = hWnd;
-                    return false;
-                }
-                return true;
-            }, IntPtr.Zero);
+            SetWindowRgn(_hwnd, IntPtr.Zero, true);
+            _externalHoleApplied = false;
         }
 
-        if (external == IntPtr.Zero || !GetWindowRect(_hwnd, out RECT mainRect)
-            || !GetWindowRect(external, out RECT extRect))
-        {
-            if (_externalHoleApplied)
-            {
-                SetWindowRgn(_hwnd, IntPtr.Zero, true);
-                _externalHoleApplied = false;
-            }
-            return;
-        }
-
-        int mainW = mainRect.Right - mainRect.Left;
-        int mainH = mainRect.Bottom - mainRect.Top;
-        int left = Math.Max(extRect.Left, mainRect.Left) - mainRect.Left;
-        int top = Math.Max(extRect.Top, mainRect.Top) - mainRect.Top;
-        int right = Math.Min(extRect.Right, mainRect.Right) - mainRect.Left;
-        int bottom = Math.Min(extRect.Bottom, mainRect.Bottom) - mainRect.Top;
-        if (right <= left || bottom <= top)
-        {
-            if (_externalHoleApplied)
-            {
-                SetWindowRgn(_hwnd, IntPtr.Zero, true);
-                _externalHoleApplied = false;
-            }
-            return;
-        }
-
-        if (_externalHoleApplied
-            && _externalHoleRect.Left == extRect.Left && _externalHoleRect.Top == extRect.Top
-            && _externalHoleRect.Right == extRect.Right && _externalHoleRect.Bottom == extRect.Bottom)
-            return;
-
-        IntPtr full = CreateRectRgn(0, 0, mainW, mainH);
-        IntPtr hole = CreateRectRgn(left, top, right, bottom);
-        IntPtr result = CreateRectRgn(0, 0, 0, 0);
-        if (full == IntPtr.Zero || hole == IntPtr.Zero || result == IntPtr.Zero)
-        {
-            if (full != IntPtr.Zero) DeleteObject(full);
-            if (hole != IntPtr.Zero) DeleteObject(hole);
-            if (result != IntPtr.Zero) DeleteObject(result);
-            return;
-        }
-
-        CombineRgn(result, full, hole, RGN_DIFF);
-        // SetWindowRgn 接管 result 的所有权，成功后不能再 DeleteObject(result)。
-        if (SetWindowRgn(_hwnd, result, true) != 0)
-        {
-            _externalHoleApplied = true;
-            _externalHoleRect = extRect;
-        }
-        else
-        {
-            DeleteObject(result);
-        }
-        DeleteObject(full);
-        DeleteObject(hole);
+        // 再次明确声明 Unity 桌宠层为 TOPMOST。独立聊天窗口不调用 TOPMOST，
+        // 因此它仍是普通窗口，但 Live2D 永远位于普通窗口之上。
+        SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
 
     public void SetClickThrough(bool enabled)
