@@ -179,40 +179,31 @@ public partial class RightPanel
         //  工具行 — 终端式文本按钮 [聊] [设] [签] [告] [收]
         // ═══════════════════════════════════════
         float toolRowY = py + titleH + 10f;
-        float toolBtnW = 60f;
+        float toolBtnW = 64f;
         float toolBtnH = 36f + _fontScaleLevel * 3f;
-        float toolBtnGap = 8f;
+        float toolBtnGap = 6f;
         float toolTotalW = _tools.Length * toolBtnW + (_tools.Length - 1) * toolBtnGap;
         float toolStartX = px + (pw - toolTotalW) / 2f;
 
         int hoveredTool = -1;
+        Rect hoveredToolRect = default;
         for (int i = 0; i < _tools.Length; i++)
         {
             Rect tbRect = new Rect(toolStartX + i * (toolBtnW + toolBtnGap), toolRowY, toolBtnW, toolBtnH);
-            bool tbHover = _panelRect.Contains(mp) && tbRect.Contains(mp);
-            if (tbHover) hoveredTool = i;
+            // 外置 RT 的 mp 是客户区局部坐标，不能再拿 Unity 屏幕坐标的 _panelRect 判断。
+            bool tbHover = (_externalRender || _panelRect.Contains(mp)) && tbRect.Contains(mp);
+            if (tbHover)
+            {
+                hoveredTool = i;
+                hoveredToolRect = tbRect;
+            }
             // hover 时画淡紫方块背景
             if (tbHover)
                 UiTextureFactory.DrawPixelRect(tbRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
             // 底部 1px 强调线
             UiTextureFactory.DrawPixelRect(new Rect(tbRect.x, tbRect.yMax - 1f, tbRect.width, 1f),
                 tbHover ? new Color(0.66f, 0.50f, 0.95f, 0.8f) : new Color(0.40f, 0.28f, 0.65f, 0.3f));
-            // ——— 自然提示：hover 时按钮下方浮现名称小字（半透明胶囊） ———
-            if (tbHover)
-            {
-                float tipW = _termToolBtnStyle.CalcSize(new GUIContent(_tools[i].label)).x + 14f;
-                Rect tipRect = new Rect(tbRect.x + (tbRect.width - tipW) / 2f, tbRect.yMax + 4f, tipW, 20f);
-                Color tipBg = new Color(0.10f, 0.07f, 0.16f, 0.92f);
-                UiTextureFactory.DrawPixelRect(tipRect, tipBg);
-                // 提示上沿 1px 紫线
-                UiTextureFactory.DrawPixelRect(new Rect(tipRect.x, tipRect.y, tipRect.width, 1f), new Color(0.66f, 0.50f, 0.95f, 0.6f));
-                GUI.Label(tipRect, _tools[i].label, new GUIStyle(_termLogDimStyle)
-                {
-                    alignment = TextAnchor.MiddleCenter,
-                    fontSize = 12
-                });
-            }
-            if (GUI.Button(tbRect, "[" + _tools[i].icon + "]", tbHover ? _termToolBtnHoverStyle : _termToolBtnStyle))
+            if (GUI.Button(tbRect, _tools[i].icon, tbHover ? _termToolBtnHoverStyle : _termToolBtnStyle))
             {
                 var tool = _tools[i];
                 if (!_externalRender && tool.panelType.HasValue)
@@ -312,14 +303,8 @@ public partial class RightPanel
                 avatarRect = new Rect(logViewW - 8f - avatarSize, yCursor + 2f, avatarSize, avatarSize);
                 bubbleRect = new Rect(avatarRect.x - 8f - bubbleW, yCursor, bubbleW, bubbleH);
                 GUI.DrawTexture(avatarRect, _userAvatarTex);
-                // ★ 中文基线修正：雅黑等字体的 MiddleCenter 对中文视觉中心偏左下，
-                //   按头像尺寸比例向右上补偿（实测 26px 头像约偏 -3px x / +5px y）
-                float avatarTextOffX = avatarSize * 0.12f;
-                float avatarTextOffY = -avatarSize * 0.20f;
-                GUI.Label(
-                    new Rect(avatarRect.x + avatarTextOffX, avatarRect.y + avatarTextOffY,
-                             avatarRect.width, avatarRect.height),
-                    "我", _userAvatarStyle);
+                // 头像文字直接使用完整头像矩形居中，避免旧的手工偏移造成“我”字漂移。
+                GUI.Label(avatarRect, "我", _userAvatarStyle);
             }
             else
             {
@@ -391,6 +376,19 @@ public partial class RightPanel
         Rect scanUV = new Rect(0f, 0f, 1f, logView.height / 4f);
         GUI.DrawTextureWithTexCoords(scanRect, _scanlineTex, scanUV);
         GUI.color = prevColor;
+
+        // 提示必须在日志背景、滚动内容和 CRT 扫描线之后绘制，确保文字不会被覆盖。
+        if (hoveredTool >= 0)
+        {
+            string tipText = _tools[hoveredTool].label;
+            float tipW = Mathf.Max(58f, _toolTipStyle.CalcSize(new GUIContent(tipText)).x + 8f);
+            Rect tipRect = new Rect(hoveredToolRect.x + (hoveredToolRect.width - tipW) / 2f,
+                hoveredToolRect.yMax + 4f, tipW, 24f);
+            UiTextureFactory.DrawPixelRect(tipRect, new Color(0.08f, 0.06f, 0.14f, 0.98f));
+            UiTextureFactory.DrawPixelRect(new Rect(tipRect.x, tipRect.y, tipRect.width, 2f),
+                new Color(0.70f, 0.54f, 0.98f, 0.95f));
+            GUI.Label(tipRect, tipText, _toolTipStyle);
+        }
 
         // 新增日志 → 自动滚到底
         if (_pendingAutoScroll)
@@ -507,7 +505,7 @@ public partial class RightPanel
         });
 
         // 空输入框提示
-        if (string.IsNullOrEmpty(_inputText) && GUI.GetNameOfFocusedControl() != "rightPanelInput")
+        if (string.IsNullOrEmpty(_inputText) && (_externalRender || GUI.GetNameOfFocusedControl() != "rightPanelInput"))
         {
             GUI.Label(inputBgRect, "向符玄下达指令…", _termPlaceholderStyle);
         }
@@ -723,18 +721,39 @@ public partial class RightPanel
         float toolW = (pw - 48f) / 4f;
         var toolDefs = new (string label, BallPanel.PanelType type)[]
         {
-            ("⚙ 设置", BallPanel.PanelType.Settings),
-            ("📋 便签", BallPanel.PanelType.Reminders),
-            ("📝 报告", BallPanel.PanelType.Report),
-            ("💰 消耗", BallPanel.PanelType.Usage)
+            ("设置", BallPanel.PanelType.Settings),
+            ("便签", BallPanel.PanelType.Reminders),
+            ("报告", BallPanel.PanelType.Report),
+            ("消耗", BallPanel.PanelType.Usage)
         };
+        int hoveredSessionTool = -1;
+        Rect hoveredSessionToolRect = default;
         for (int i = 0; i < toolDefs.Length; i++)
         {
             Rect btnRect = new Rect(px + 12f + i * toolW, toolY + 12f, toolW - 8f, 50f);
-            if (GUI.Button(btnRect, toolDefs[i].label, _termToolBtnStyle))
+            bool btnHover = btnRect.Contains(mp);
+            if (btnHover)
+            {
+                hoveredSessionTool = i;
+                hoveredSessionToolRect = btnRect;
+            }
+            if (btnHover)
+                UiTextureFactory.DrawPixelRect(btnRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
+            if (GUI.Button(btnRect, toolDefs[i].label, btnHover ? _termToolBtnHoverStyle : _termToolBtnStyle))
                 OpenSubPanel(toolDefs[i].type);
             var type = toolDefs[i].type;
             RegisterExtHit(btnRect, () => OpenSubPanel(type)); // 外部命中：底部工具入口
+        }
+        if (hoveredSessionTool >= 0)
+        {
+            string tipText = toolDefs[hoveredSessionTool].label;
+            float tipW = Mathf.Max(72f, _toolTipStyle.CalcSize(new GUIContent(tipText)).x + 8f);
+            Rect tipRect = new Rect(hoveredSessionToolRect.x + (hoveredSessionToolRect.width - tipW) / 2f,
+                hoveredSessionToolRect.y - 28f, tipW, 24f);
+            UiTextureFactory.DrawPixelRect(tipRect, new Color(0.08f, 0.06f, 0.14f, 0.96f));
+            UiTextureFactory.DrawPixelRect(new Rect(tipRect.x, tipRect.yMax - 2f, tipRect.width, 2f),
+                new Color(0.70f, 0.54f, 0.98f, 0.9f));
+            GUI.Label(tipRect, tipText, _toolTipStyle);
         }
 
         // 右键关闭（快捷收面板）

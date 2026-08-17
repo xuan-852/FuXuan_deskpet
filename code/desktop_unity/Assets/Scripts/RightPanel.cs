@@ -379,6 +379,7 @@ public partial class RightPanel : MonoBehaviour
     private GUIStyle _termTimeStyle;       // 时间
     private GUIStyle _termToolBtnStyle;    // 工具文本按钮
     private GUIStyle _termToolBtnHoverStyle;
+    private GUIStyle _toolTipStyle;        // 工具按钮 hover 提示
     private GUIStyle _termLogStyle;        // 日志-符玄（紫）
     private GUIStyle _termLogUserStyle;    // 日志-用户（浅蓝白）
     private GUIStyle _termLogDimStyle;     // 日志-系统/工具（灰）
@@ -494,6 +495,18 @@ public partial class RightPanel : MonoBehaviour
     void Update()
     {
         RefreshRefs();
+
+        // 外置输入框是不可见的原生键盘通道，文字由此同步到 Unity RT；
+        // 不再让原生 EDIT 覆盖 IMGUI 输入框，避免黑框与真实输入框交替闪烁。
+        if (_externalMode)
+        {
+            string nativeInput = ExternalChatWindow.GetInputText();
+            if (nativeInput != _inputText)
+            {
+                _inputText = nativeInput;
+                GUI.changed = true;
+            }
+        }
 
         // 外置窗口是独立线程，拖动/缩放不会触发 Unity 的 IMGUI 事件；
         // 每帧同步透明层缺口，保证普通外置窗口移动后仍可点击。
@@ -871,7 +884,7 @@ public partial class RightPanel : MonoBehaviour
                 if (_externalMode) DisableExternalMode();
                 break;
             default:
-                // ★ 带参数命令（@@view:extclick:x,y[,dbl]）：前缀匹配
+                // ★ 带参数命令（@@view:extclick:x,y[,dbl] / @@view:exthover:x,y）：前缀匹配
                 if (cmd.StartsWith("extclick:"))
                 {
                     // 外部点击注入（铁律4 终端链路）：模拟独立窗口点击命中表
@@ -889,7 +902,22 @@ public partial class RightPanel : MonoBehaviour
                     else Debug.LogWarning($"[TestInbox] extclick 参数格式错误: {rest}（应为 x,y[,dbl]）");
                     break;
                 }
-                Debug.LogWarning($"[TestInbox] 未知 @@view 命令: {cmd}（支持 settings/reminders/report/usage/chat/list/back/open/close/external/embed/extclick）");
+                if (cmd.StartsWith("exthover:"))
+                {
+                    // 外置 RT 悬停注入：只改变 hover 坐标，不触发点击，供视觉验收和自动化回归使用。
+                    string rest = cmd.Substring("exthover:".Length);
+                    var parts = rest.Split(',');
+                    float hx, hy;
+                    if (parts.Length >= 2 && float.TryParse(parts[0].Trim(), out hx) && float.TryParse(parts[1].Trim(), out hy))
+                    {
+                        _externalMousePos = new Vector2(hx, hy);
+                        GUI.changed = true;
+                        Debug.Log($"[TestInbox] 外置悬停注入: 客户区({hx:F0},{hy:F0})");
+                    }
+                    else Debug.LogWarning($"[TestInbox] exthover 参数格式错误: {rest}（应为 x,y）");
+                    break;
+                }
+                Debug.LogWarning($"[TestInbox] 未知 @@view 命令: {cmd}（支持 settings/reminders/report/usage/chat/list/back/open/close/external/embed/extclick/exthover）");
                 break;
         }
     }
@@ -1307,63 +1335,71 @@ public partial class RightPanel : MonoBehaviour
 
         _termTitleStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 19, fontStyle = FontStyle.Bold,
+            font = _monoFont, fontSize = 16, fontStyle = FontStyle.Bold,
             normal = { textColor = new Color(0.90f, 0.80f, 0.58f, 1f) },  // 太卜司金
             alignment = TextAnchor.MiddleLeft
         };
         _termStatusStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 17,
+            font = _monoFont, fontSize = 14,
             normal = { textColor = new Color(0.58f, 0.55f, 0.65f, 0.9f) },
             alignment = TextAnchor.MiddleLeft
         };
         _termTimeStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 17,
+            font = _monoFont, fontSize = 14,
             normal = { textColor = new Color(0.58f, 0.55f, 0.65f, 0.9f) },
             alignment = TextAnchor.MiddleRight
         };
         _termToolBtnStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 18,
+            font = _monoFont, fontSize = 15,
             normal = { textColor = new Color(0.66f, 0.62f, 0.76f, 0.9f) },
             hover = { textColor = new Color(0.75f, 0.62f, 0.98f, 1f) },
             alignment = TextAnchor.MiddleCenter
         };
         _termToolBtnHoverStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 18, fontStyle = FontStyle.Bold,
+            font = _monoFont, fontSize = 15, fontStyle = FontStyle.Bold,
             normal = { textColor = new Color(0.80f, 0.68f, 1.00f, 1f) },
             hover = { textColor = Color.white },
             alignment = TextAnchor.MiddleCenter
         };
+        _toolTipStyle = new GUIStyle
+        {
+            font = _monoFont, fontSize = 12,
+            normal = { textColor = new Color(0.88f, 0.83f, 0.98f, 1f) },
+            alignment = TextAnchor.MiddleCenter,
+            padding = new RectOffset(8, 8, 2, 2),
+            clipping = TextClipping.Clip
+        };
         _termLogStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 18,
+            font = _monoFont, fontSize = 15,
             normal = { textColor = new Color(0.80f, 0.72f, 0.95f, 1f) },
             alignment = TextAnchor.UpperLeft
         };
         _termLogUserStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 18,
+            font = _monoFont, fontSize = 15,
             normal = { textColor = new Color(0.80f, 0.90f, 0.98f, 1f) },
             alignment = TextAnchor.UpperLeft
         };
         _termLogDimStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 18, wordWrap = true,
+            font = _monoFont, fontSize = 15, wordWrap = true,
             normal = { textColor = new Color(0.55f, 0.54f, 0.60f, 0.9f) },
             alignment = TextAnchor.UpperLeft
         };
         _termPromptStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 20, fontStyle = FontStyle.Bold,
+            font = _monoFont, fontSize = 17, fontStyle = FontStyle.Bold,
             normal = { textColor = new Color(0.62f, 0.48f, 0.95f, 1f) },
             alignment = TextAnchor.MiddleLeft
         };
         _termInputStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 18,
+            font = _monoFont, fontSize = 15,
             normal = { textColor = Color.white },
             focused = { textColor = Color.white },
             alignment = TextAnchor.MiddleLeft,
@@ -1372,7 +1408,7 @@ public partial class RightPanel : MonoBehaviour
         };
         _termPlaceholderStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 18,
+            font = _monoFont, fontSize = 15,
             normal = { textColor = new Color(0.55f, 0.52f, 0.62f, 0.85f) },
             alignment = TextAnchor.MiddleLeft,
             padding = new RectOffset(8, 6, 4, 4)
@@ -1387,23 +1423,28 @@ public partial class RightPanel : MonoBehaviour
             new Color(0.55f, 0.72f, 0.95f, 0.9f));
         _bubbleFxStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 17, wordWrap = true,
+            font = _monoFont, fontSize = 14, wordWrap = true, richText = false,
             normal = { background = _bubbleFxTex, textColor = new Color(0.90f, 0.85f, 0.99f, 1f) },
-            padding = new RectOffset(12, 12, 10, 10),
-            border = new RectOffset(10, 10, 10, 10)
+            padding = new RectOffset(14, 14, 11, 11),
+            border = new RectOffset(10, 10, 10, 10),
+            alignment = TextAnchor.UpperLeft,
+            clipping = TextClipping.Clip
         };
         _bubbleUserStyle = new GUIStyle
         {
-            font = _monoFont, fontSize = 17, wordWrap = true,
+            font = _monoFont, fontSize = 14, wordWrap = true, richText = false,
             normal = { background = _bubbleUserTex, textColor = new Color(0.85f, 0.92f, 0.99f, 1f) },
-            padding = new RectOffset(12, 12, 10, 10),
-            border = new RectOffset(10, 10, 10, 10)
+            padding = new RectOffset(14, 14, 11, 11),
+            border = new RectOffset(10, 10, 10, 10),
+            alignment = TextAnchor.UpperLeft,
+            clipping = TextClipping.Clip
         };
         _userAvatarTex = UiTextureFactory.GenRoundedRect(24, 24, 8, new Color(0.30f, 0.24f, 0.45f, 0.95f));
         _userAvatarStyle = new GUIStyle
         {
             font = _monoFont, fontSize = 14, fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleCenter,
+            padding = new RectOffset(0, 0, 0, 0),
             normal = { textColor = new Color(0.85f, 0.80f, 0.98f, 1f) }
         };
         _inputBarBgStyle = new GUIStyle
@@ -1425,7 +1466,7 @@ public partial class RightPanel : MonoBehaviour
             normal = { textColor = new Color(0.75f, 0.70f, 0.82f, 0.85f) },
             hover = { textColor = new Color(1f, 0.45f, 0.45f, 1f) },
             active = { textColor = Color.white },
-            fontSize = 17,
+            fontSize = 14,
             alignment = TextAnchor.MiddleCenter
         };
 
@@ -1940,7 +1981,7 @@ public partial class RightPanel : MonoBehaviour
     {
         float h = bubble.CalcHeight(new GUIContent(text), bubbleW);
         if (naturalW > bubbleW + 1f)
-            h += bubble.fontSize; // 多行：补偿行高/换行点偏差，避免尾部省略号
+            h += 4f; // 仅留少量中文换行余量，避免旧版按整字号补偿造成气泡上下间距过大
         return h;
     }
 
@@ -2151,6 +2192,13 @@ public partial class RightPanel : MonoBehaviour
         Matrix4x4 prevMatrix = GUI.matrix;
         GUI.matrix = Matrix4x4.identity;
         _externalRender = true;
+        // 原生窗口消息在拖动、DPI 缩放或子控件焦点切换时可能暂时不派发；
+        // 每帧从窗口坐标轮询，确保外置 RT 的 hover 与真实鼠标保持同步。
+        float polledMouseX, polledMouseY;
+        if (ExternalChatWindow.TryGetMousePosition(out polledMouseX, out polledMouseY))
+            _externalMousePos = new Vector2(polledMouseX, polledMouseY);
+        else if (_externalMousePos.x >= 0f || _externalMousePos.y >= 0f)
+            _externalMousePos = new Vector2(-1f, -1f);
         _extHitZones.Clear();    // 渲染帧重建命中表（面板局部坐标）
         _extTitleZones.Clear();  // 渲染帧重建标题栏命中表（客户区坐标）
         try

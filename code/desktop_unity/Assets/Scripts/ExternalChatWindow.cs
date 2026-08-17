@@ -147,6 +147,8 @@ public static class ExternalChatWindow
     private static extern IntPtr GetModuleHandleW([MarshalAs(UnmanagedType.LPWStr)] string name);
     [DllImport("user32.dll")]
     private static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out POINT point);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool GetWindowTextW(IntPtr hWnd, System.Text.StringBuilder text, int count);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -550,6 +552,7 @@ public static class ExternalChatWindow
                 // 否则它会以黑色控件覆盖输入栏右侧。
                 HideNativeSendButton();
                 LayoutChildren();
+                MoveEditOffscreen();
                 SetFocus(_edit);
                 LogInputState("focused");
                 return IntPtr.Zero;
@@ -713,8 +716,40 @@ public static class ExternalChatWindow
         int px, py, pw, ph;
         LogicalToClient(x, y, out px, out py);
         LogicalToClientSize(w, h, out pw, out ph);
-        SetWindowPos_Edit(px, py, pw, ph);
+        // 原生 EDIT 只作为键盘通道，不再覆盖 Unity 绘制的输入框。
+        // 显示它会造成黑色原生背景与 IMGUI 输入框交替闪烁；保持 1x1 隐藏位置，
+        // 仍可获得焦点并通过 GetWindowTextW 同步文字到 Unity RT。
+        _inputRectSet = true;
+        _inputX = px; _inputY = py; _inputW = pw; _inputH = ph;
+        MoveEditOffscreen();
         LogInputState("hit+rect");
+    }
+
+    /// <summary>读取隐形原生输入通道的当前文字，由 Unity 主线程同步到 IMGUI。</summary>
+    public static string GetInputText()
+    {
+        if (!IsCreated || _edit == IntPtr.Zero) return string.Empty;
+        var sb = new System.Text.StringBuilder(1024);
+        GetWindowTextW(_edit, sb, sb.Capacity);
+        return sb.ToString();
+    }
+
+    /// <summary>轮询外置窗口的真实鼠标位置，统一转换为面板逻辑坐标。</summary>
+    public static bool TryGetMousePosition(out float lx, out float ly)
+    {
+        lx = -1f;
+        ly = -1f;
+        if (!IsCreated || !IsVisible || _hwnd == IntPtr.Zero) return false;
+
+        POINT cursor;
+        RECT window;
+        if (!GetCursorPos(out cursor) || !GetWindowRect(_hwnd, out window)) return false;
+        if (cursor.X < window.Left || cursor.X >= window.Right
+            || cursor.Y < window.Top || cursor.Y >= window.Bottom)
+            return false;
+
+        ClientToLogical(cursor.X - window.Left, cursor.Y - window.Top, out lx, out ly);
+        return true;
     }
 
     /// <summary>输入聚焦状态机日志（2026-08-17）：每步留痕，144 DPI 验收定位断点用</summary>
@@ -740,7 +775,7 @@ public static class ExternalChatWindow
         RECT rc; GetClientRect(_hwnd, out rc);
         int barH = 44;
         if (_inputRectSet)
-            SetWindowPos_Edit(_inputX, _inputY, _inputW, _inputH);
+            MoveEditOffscreen();
         else
             SetWindowPos_Edit(8, rc.Bottom - barH + 6, rc.Right - 90, 30);
         SetWindowPos_Button(rc.Right - 76, rc.Bottom - barH + 6, 68, 30);
@@ -752,6 +787,13 @@ public static class ExternalChatWindow
     {
         _inputRectSet = true; _inputX = x; _inputY = y; _inputW = w; _inputH = h;
         SetWindowPos(_edit, IntPtr.Zero, x, y, w, h, 0x0004 /*SWP_NOZORDER*/);
+    }
+
+    private static void MoveEditOffscreen()
+    {
+        if (_edit == IntPtr.Zero) return;
+        SetWindowPos(_edit, IntPtr.Zero, -4, -4, 1, 1,
+            0x0004 /*SWP_NOZORDER*/ | 0x0010 /*SWP_NOACTIVATE*/);
     }
 
     [DllImport("user32.dll")]
