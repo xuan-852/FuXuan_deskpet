@@ -512,6 +512,12 @@ public class TimeWeatherController : MonoBehaviour
             yield break;
         }
 
+        if (!TokenBudgetManager.TryAcquire("weather", out string budgetReason))
+        {
+            Debug.LogWarning($"[TimeWeather] 🧾 成本闸门拦截天气语录云端回退：{budgetReason}");
+            yield break;
+        }
+
         string url = aiApiUrl.TrimEnd('/') + "/v1/chat/completions";
         string jsonBody = $"{{\"model\":\"{EscapeJson(aiModel)}\",\"messages\":[{{\"role\":\"system\",\"content\":\"{EscapeJson(systemPrompt)}\"}}],\"max_tokens\":300,\"temperature\":0.9}}";
 

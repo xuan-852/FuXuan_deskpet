@@ -210,6 +210,13 @@ public static class MotionTranslator
             yield break;
         }
 
+        if (!TokenBudgetManager.TryAcquire("motion", out string budgetReason))
+        {
+            Debug.LogWarning($"[MotionTranslator] 🧾 成本闸门拦截 DeepSeek 兜底调用：{budgetReason}");
+            onResult(null);
+            yield break;
+        }
+
         string jsonBody = BuildRequestBody(systemPrompt, userPrompt);
 
         using (UnityWebRequest req = new UnityWebRequest(API_URL, "POST"))

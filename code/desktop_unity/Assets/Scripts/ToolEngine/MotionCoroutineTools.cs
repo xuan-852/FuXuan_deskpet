@@ -160,6 +160,12 @@ public class ExploreBodyVisionTool : IPetTool
             yield break;
         }
 
+        if (!TokenBudgetManager.TryAcquire("glm", out string budgetReason))
+        {
+            onResult?.Invoke("🧾 成本闸门已拦截内观：" + budgetReason);
+            yield break;
+        }
+
         var renderer = GameObject.FindObjectOfType<Live2DRenderer>();
         if (renderer == null || renderer.Mapper == null || renderer.CubismModel == null)
         {
@@ -465,6 +471,12 @@ public class SelfReviewTool : IPetTool
         if (ApiClient.ShouldBlockCloudPublic())
         {
             onResult?.Invoke("🛡 测试模式：已拦截动作评价（GLM 视觉）调用");
+            yield break;
+        }
+
+        if (!TokenBudgetManager.TryAcquire("glm", out string budgetReason))
+        {
+            onResult?.Invoke("🧾 成本闸门已拦截动作评价：" + budgetReason);
             yield break;
         }
 

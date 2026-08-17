@@ -57,6 +57,13 @@ public static class ApiClient
             yield break;
         }
 
+        if (!TokenBudgetManager.TryAcquire(source, out string budgetReason))
+        {
+            UnityEngine.Debug.LogWarning($"[ApiClient] 🧾 成本闸门拦截云端调用（{source}）：{budgetReason}");
+            onError?.Invoke(TokenBudgetManager.BUDGET_ERROR_PREFIX + budgetReason);
+            yield break;
+        }
+
         string fullUrl = baseUrl.TrimEnd('/') + "/v1/chat/completions";
 
         using (UnityWebRequest req = new UnityWebRequest(fullUrl, "POST"))
@@ -222,6 +229,13 @@ public static class ApiClient
         {
             UnityEngine.Debug.Log($"[ApiClient] 🛡 测试模式：已拦截云端流式调用（{source}），不消耗 token");
             onError?.Invoke("测试模式已拦截云端调用");
+            yield break;
+        }
+
+        if (!TokenBudgetManager.TryAcquire(source, out string budgetReason))
+        {
+            UnityEngine.Debug.LogWarning($"[ApiClient] 🧾 成本闸门拦截云端流式调用（{source}）：{budgetReason}");
+            onError?.Invoke(TokenBudgetManager.BUDGET_ERROR_PREFIX + budgetReason);
             yield break;
         }
 

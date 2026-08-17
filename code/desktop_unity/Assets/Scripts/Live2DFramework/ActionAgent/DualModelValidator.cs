@@ -183,6 +183,13 @@ public class DualModelValidator : MonoBehaviour
 
         for (int attempt = 0; attempt < 2; attempt++)
         {
+            if (!TokenBudgetManager.TryAcquire("glm", out string budgetReason))
+            {
+                Debug.LogWarning($"[DualModelValidator] 🧾 成本闸门拦截 GLM 视觉调用：{budgetReason}");
+                onResult(0, "");
+                yield break;
+            }
+
             string jsonBody = "{";
             jsonBody += "\"model\":\"" + EscapeJson(model) + "\",";
             jsonBody += "\"messages\":[{";
@@ -302,6 +309,13 @@ public class DualModelValidator : MonoBehaviour
 
         for (int attempt = 0; attempt < 2; attempt++)
         {
+            if (!TokenBudgetManager.TryAcquire("glm", out string budgetReason))
+            {
+                Debug.LogWarning($"[DualModelValidator] 🧾 成本闸门拦截 GLM 视觉描述调用：{budgetReason}");
+                onResult("", 0);
+                yield break;
+            }
+
             string jsonBody = "{";
             jsonBody += "\"model\":\"" + EscapeJson(model) + "\",";
             jsonBody += "\"messages\":[{";

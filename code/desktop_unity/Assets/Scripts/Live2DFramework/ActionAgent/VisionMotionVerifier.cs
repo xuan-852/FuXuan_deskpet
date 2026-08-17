@@ -411,6 +411,13 @@ public static class VisionMotionVerifier
             yield break;
         }
 
+        if (!TokenBudgetManager.TryAcquire("glm", out string budgetReason))
+        {
+            Debug.LogWarning($"[VisionMotionVerifier] 🧾 成本闸门拦截 GLM 动作评测调用：{budgetReason}");
+            onResult("");
+            yield break;
+        }
+
         string prompt = "你是一名动作评审专家。下面给你一张桌面宠物（符玄/玄机）的动作截图。\n\n"
             + "AI 被要求做出这个动作：**「" + tc.Description + "」**\n"
             + "期望的姿势特征：" + tc.ExpectedPoseSummary + "\n\n"

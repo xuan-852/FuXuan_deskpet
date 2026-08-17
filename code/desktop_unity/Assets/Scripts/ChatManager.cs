@@ -107,7 +107,8 @@ public class ChatManager : MonoBehaviour
         // 注入长期记忆
         if (PetMemory.Instance != null)
         {
-            string memories = PetMemory.Instance.GetFormattedMemories();
+            string memories = PromptContextBudget.TrimSection(
+                PetMemory.Instance.GetFormattedMemories(), PromptContextBudget.MemoryChars, "长期记忆");
             if (!string.IsNullOrEmpty(memories))
                 prompt += "\n" + memories;
         }
@@ -115,7 +116,8 @@ public class ChatManager : MonoBehaviour
         // ★ 注入人格特质与关系
         if (PersonalityManager.Instance != null)
         {
-            string personality = PersonalityManager.Instance.FormatForPrompt();
+            string personality = PromptContextBudget.TrimSection(
+                PersonalityManager.Instance.FormatForPrompt(), PromptContextBudget.PersonalityChars, "人格关系");
             if (!string.IsNullOrEmpty(personality))
                 prompt += "\n" + personality;
         }
@@ -123,7 +125,8 @@ public class ChatManager : MonoBehaviour
         // ★ P4.2: 注入主人偏好摘要（心之所向）
         if (PreferencesManager.Instance != null)
         {
-            string preferences = PreferencesManager.Instance.FormatForPrompt();
+            string preferences = PromptContextBudget.TrimSection(
+                PreferencesManager.Instance.FormatForPrompt(), PromptContextBudget.PreferenceChars, "主人偏好");
             if (!string.IsNullOrEmpty(preferences))
                 prompt += "\n" + preferences;
         }
@@ -131,13 +134,15 @@ public class ChatManager : MonoBehaviour
         // ★ 注入知识库上下文（藏书阁检索结果缓存）
         if (KnowledgeBaseManager.Instance != null && !string.IsNullOrEmpty(_cachedKnowledgeContext))
         {
-            prompt += "\n" + _cachedKnowledgeContext;
+            prompt += "\n" + PromptContextBudget.TrimSection(
+                _cachedKnowledgeContext, PromptContextBudget.KnowledgeChars, "知识库");
         }
 
         // 注入法眼观测（今日行为摘要 + 当前窗口 + 多窗口环境）
         if (activityTracker != null)
         {
-            string activity = activityTracker.GetSummary();
+            string activity = PromptContextBudget.TrimSection(
+                activityTracker.GetSummary(), PromptContextBudget.ActivityChars, "活动摘要");
             if (!string.IsNullOrEmpty(activity))
                 prompt += "\n" + activity;
 
@@ -150,14 +155,16 @@ public class ChatManager : MonoBehaviour
             }
 
             // ★ 注入多窗口环境摘要（让 AI 了解整体桌面环境）
-            string multiWindow = activityTracker.GetVisibleWindowsSummary();
+            string multiWindow = PromptContextBudget.TrimSection(
+                activityTracker.GetVisibleWindowsSummary(), PromptContextBudget.VisibleWindowsChars, "多窗口");
             if (!string.IsNullOrEmpty(multiWindow))
             {
                 prompt += "\n" + multiWindow;
             }
 
             // ★ 注入浏览器标签页深度感知（让 AI 了解当前浏览器打开了什么）
-            string browserTabs = activityTracker.GetBrowserTabsSummary();
+            string browserTabs = PromptContextBudget.TrimSection(
+                activityTracker.GetBrowserTabsSummary(), PromptContextBudget.BrowserTabsChars, "浏览器标签");
             if (!string.IsNullOrEmpty(browserTabs))
             {
                 prompt += "\n" + browserTabs;
@@ -165,7 +172,8 @@ public class ChatManager : MonoBehaviour
         }
 
         // ★ 注入身体参数知识（让 AI 了解如何控制自己的 Live2D 身体）
-        prompt += InjectParameterKnowledge();
+        prompt += PromptContextBudget.TrimSection(
+            InjectParameterKnowledge(), PromptContextBudget.ParameterKnowledgeChars, "身体参数知识");
 
         // ★ 注入闭环演武能力（让 AI 知道演武后可自评自省）
         prompt += InjectClosedLoopCapability();
@@ -176,13 +184,15 @@ public class ChatManager : MonoBehaviour
         // ★ 注入演武心经经验（过往最佳动作参数参考）
         if (MotionMemoryManager.Instance != null)
         {
-            string motionMemories = MotionMemoryManager.Instance.GetFormattedMemories();
+            string motionMemories = PromptContextBudget.TrimSection(
+                MotionMemoryManager.Instance.GetFormattedMemories(), PromptContextBudget.MotionMemoryChars, "演武心经");
             if (!string.IsNullOrEmpty(motionMemories))
                 prompt += "\n" + motionMemories;
         }
 
         // ★ P4.1: 注入剪贴板感知（主人最近复制的内容，过期自动失效）
-        string clipboardSummary = ClipboardMonitor.GetRecentClipboardSummary();
+        string clipboardSummary = PromptContextBudget.TrimSection(
+            ClipboardMonitor.GetRecentClipboardSummary(), PromptContextBudget.ClipboardChars, "剪贴板");
         if (!string.IsNullOrEmpty(clipboardSummary))
         {
             prompt += clipboardSummary;
@@ -191,7 +201,8 @@ public class ChatManager : MonoBehaviour
         // ★ P5.2: 注入太卜手札·任务轨迹摘要（过往外包任务成败，同类任务可参考）
         if (TaskTrajectoryManager.Instance != null)
         {
-            string trajectories = TaskTrajectoryManager.Instance.FormatForPrompt();
+            string trajectories = PromptContextBudget.TrimSection(
+                TaskTrajectoryManager.Instance.FormatForPrompt(), PromptContextBudget.TrajectoryChars, "任务轨迹");
             if (!string.IsNullOrEmpty(trajectories))
                 prompt += trajectories;
         }
@@ -199,7 +210,8 @@ public class ChatManager : MonoBehaviour
         // ★ P5.3: 注入太卜阵法图·任务模板清单（openclaw_task 的 template 参数可省 token）
         if (TaskTemplateManager.Instance != null)
         {
-            string templates = TaskTemplateManager.Instance.FormatForPrompt();
+            string templates = PromptContextBudget.TrimSection(
+                TaskTemplateManager.Instance.FormatForPrompt(), PromptContextBudget.TemplateChars, "任务模板");
             if (!string.IsNullOrEmpty(templates))
                 prompt += templates;
         }
@@ -545,6 +557,13 @@ public class ChatManager : MonoBehaviour
         attempt = _apiRetryCount + 1;
         if (string.IsNullOrEmpty(error) || attempt > 3) return false;
 
+        // 成本闸门是本地预算决策，不是网络故障；重试只会再次撞闸，不能绕过预算。
+        if (TokenBudgetManager.IsBudgetRejection(error))
+        {
+            _lastError = error;
+            return false;
+        }
+
         // 400 Bad Request → 请求格式错误，重试无意义；附加友好诊断信息
         if (error.Contains("400"))
         {
@@ -879,7 +898,7 @@ public class ChatManager : MonoBehaviour
                 _history.Add(new Entry
                 {
                     role = "tool",
-                    content = result,
+                    content = ToolResultBudget.Compact(call.name, result),
                     tool_call_id = call.id,
                     name = call.name
                 });
@@ -1650,7 +1669,8 @@ public class ChatManager : MonoBehaviour
         yield return StartCoroutine(
             ApiClient.PostRequest(apiUrl, apiKey, jsonBody, 30,
                 json => reply = json,
-                err => { }));
+                err => { },
+                "reflect"));
 
         if (string.IsNullOrEmpty(reply)) yield break;
 
