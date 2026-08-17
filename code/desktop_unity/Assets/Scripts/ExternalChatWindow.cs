@@ -74,8 +74,8 @@ public static class ExternalChatWindow
     private const int IDC_EDIT = 101;
     private const int IDC_SEND = 102;
 
-    // ★ 无边框窗口：自绘星空标题栏高度（逻辑像素，与 RightPanel.EXT_TITLE_BAR_H 一致）
-    public const int TITLE_BAR_H = 44;
+    // ★ 无边框窗口：使用面板自身标题行作为拖动带，不再额外绘制“独立面板”标题栏。
+    public const int TITLE_BAR_H = 54;
     // ★ 右下角缩放手柄尺寸（逻辑像素）
     private const int RESIZE_GRIP = 20;
     // ★ 右上角按钮区宽度（逻辑像素，最小化/关闭按钮统一命中区）
@@ -531,9 +531,9 @@ public static class ExternalChatWindow
                     // 顶部标题栏（逻辑 44px 区，全宽）
                     if (ly <= TITLE_BAR_H)
                     {
-                        // ★ 右上角按钮区（最小化/关闭，逻辑 BTN_AREA_W 宽）→ HTCLIENT 让命中表处理按钮点击；
-                        //   其余标题栏 → HTCAPTION 拖动
-                        if (lx >= _width - BTN_AREA_W)
+                        // 面板标题行上的返回、字体、最小化、关闭按钮必须交给 Unity 命中表；
+                        // 中间空白区域继续作为原生拖动带。
+                        if (lx < 54 || lx >= _width - 220)
                             return new IntPtr(HTCLIENT);
                         return new IntPtr(HTCAPTION);
                     }

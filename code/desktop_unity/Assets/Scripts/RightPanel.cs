@@ -132,11 +132,8 @@ public partial class RightPanel : MonoBehaviour
     private int _extReadGen;         // ★ 读回代际（RT/NativeArray 重建时递增，作废旧回调，防 destroyTJDevice 崩溃）
     // ★ 外部交互命中表（Phase A3）：渲染外置面板时登记可点区域（矩形+动作），
     //   独立窗口点击坐标回来查表执行（IMGUI Event.current 无法注入，故手动命中）
-    // ★ 2026-08-17 坐标基准（codex 复验后修正）：外置渲染 DrawPanelContent(0, EXT_TITLE_BAR_H, ...)
-    //   传入 py=44，因此 _extHitZones 里所有 rect（含 inputBgRect）已经是【客户区坐标】（含标题栏偏移）；
-    //   _extTitleZones 标题栏按钮同样是客户区坐标（y 在 [0, EXT_TITLE_BAR_H)）。
-    //   WM_LBUTTONDOWN 的 ClientToLogical 输出也是客户区坐标 → 两者直接同基准，
-    //   **内容区命中不再做 y-44 转换**（此前减 44 导致全部内容区点击偏上 44px，codex 复验命中）。
+    // ★ 2026-08-17 坐标基准：外置窗口不再增加独立标题栏，整个客户区直接绘制面板。
+    //   _extHitZones 与 Win32 客户区坐标保持 1:1，避免外置标题栏和面板标题栏叠加。
     private readonly List<ExtHitZone> _extHitZones = new List<ExtHitZone>();
     private readonly List<ExtHitZone> _extTitleZones = new List<ExtHitZone>();
     private PanelView _extHitView = (PanelView)(-1);
@@ -152,7 +149,7 @@ public partial class RightPanel : MonoBehaviour
     ///   标题栏区（y &lt; EXT_TITLE_BAR_H）查 _extTitleZones；内容区直接查 _extHitZones（不再减 44）</summary>
     public void HandleExternalInput(float x, float y, bool isDoubleClick)
     {
-        // 标题栏区（含最小化/关闭按钮）：客户区坐标查标题栏命中表
+        // 兼容旧版本标题栏命中区；当前外置窗口已取消独立标题栏，按钮全部属于面板命中表。
         if (y < EXT_TITLE_BAR_H)
         {
             var tp = new Vector2(x, y);
@@ -228,7 +225,7 @@ public partial class RightPanel : MonoBehaviour
     {
         float pw = _panelRect.width;
         float ph = _panelRect.height;
-        float py = EXT_TITLE_BAR_H;
+        float py = 0f;
         float titleH = 76f;
         float closeSize = 36f;
         Vector2 point = new Vector2(x, y);
@@ -236,14 +233,8 @@ public partial class RightPanel : MonoBehaviour
         Rect closeRect = new Rect(pw - closeSize - 14f, py + (titleH - closeSize) / 2f, closeSize, closeSize);
         if (closeRect.Contains(point))
         {
-            Close();
-            return true;
-        }
-
-        Rect externalRect = new Rect(pw - closeSize - 64f, py + (titleH - 34f) / 2f, 40f, 34f);
-        if (externalRect.Contains(point))
-        {
-            ToggleExternalMode();
+            if (_externalMode) ExternalChatWindow.RequestClose();
+            else Close();
             return true;
         }
 
@@ -659,7 +650,7 @@ public partial class RightPanel : MonoBehaviour
         // 否则 Unity 停止 Repaint，外置窗口会卡在上一视图的纹理和命中表。
         if (_externalMode && ExternalChatWindow.IsCreated)
         {
-            ExternalChatWindow.SetSize(Mathf.RoundToInt(w), Mathf.RoundToInt(h) + EXT_TITLE_BAR_H);
+            ExternalChatWindow.SetSize(Mathf.RoundToInt(w), Mathf.RoundToInt(h));
             UnityEngine.GUI.changed = true;
         }
         Debug.Log($"[RightPanel] 视图切换 → {_currentView}，窗口={w}x{h} @ ({_panelRect.x:F0},{_panelRect.y:F0})");
@@ -953,6 +944,21 @@ public partial class RightPanel : MonoBehaviour
         if (_closing) return;
         _closing = true;
         _inputFocused = false;
+    }
+
+    /// <summary>
+    /// 外置窗口关闭时立即清掉 Unity 内嵌面板状态。
+    /// 外置窗口已经拥有自己的生命周期，不能再等待 Unity 面板淡出，否则会闪回一帧
+    /// 或把最后一帧紫色 RT 留在桌面上。
+    /// </summary>
+    private void HideEmbeddedPanelImmediately()
+    {
+        _isOpen = false;
+        _closing = false;
+        _animAlpha = 0f;
+        _inputFocused = false;
+        _isDragging = false;
+        _isResizing = false;
     }
 
     // ==================================================================
@@ -2056,7 +2062,7 @@ public partial class RightPanel : MonoBehaviour
         ExternalChatWindow.OnPanelMouseMove += OnExternalPanelMouseMove;
         // 整面板外置：窗口尺寸 = 面板视图 + 自绘标题栏（客户区与 RT 1:1）
         int w = Mathf.Max(320, Mathf.RoundToInt(_panelRect.width));
-        int h = Mathf.Max(200, Mathf.RoundToInt(_panelRect.height)) + EXT_TITLE_BAR_H;
+        int h = Mathf.Max(200, Mathf.RoundToInt(_panelRect.height));
         ExternalChatWindow.Show(w, h);
         ExternalChatWindow.ShowInputBar(false); // 面板自带 IMGUI 输入栏视觉，原生输入栏默认隐藏
         Debug.Log("[RightPanel] ⧉ 已切换到独立面板窗口（可被其他窗口遮挡）");
@@ -2102,13 +2108,13 @@ public partial class RightPanel : MonoBehaviour
 
     private void OnExternalClosed()
     {
-        // 独立窗口 ✕ → 完整退出外部模式并关闭面板，不再把旧的内嵌面板留在桌面上。
+        // 独立窗口 X → 先立即清掉 Unity 内嵌面板，再解除外置状态；两者生命周期互不串联。
+        HideEmbeddedPanelImmediately();
         DisableExternalMode();
-        Close();
     }
 
-    /// <summary>外置窗口自绘星空标题栏高度（与 ExternalChatWindow.TITLE_BAR_H 一致，逻辑像素）</summary>
-    private const int EXT_TITLE_BAR_H = 44;
+    /// <summary>外置窗口不再额外绘制标题栏，直接使用面板自身标题行。</summary>
+    private const int EXT_TITLE_BAR_H = 0;
 
     /// <summary>把整个面板渲染到独立窗口（IMGUI → RenderTexture → 异步读回 BGRA → 推送）
     /// ★ 无边框窗口：RT 顶部 44px 自绘星空标题栏
@@ -2122,7 +2128,7 @@ public partial class RightPanel : MonoBehaviour
 
         // 渲染尺寸 = 当前面板视图尺寸 + 顶部自绘标题栏
         int rtW = Mathf.Max(64, Mathf.RoundToInt(_panelRect.width));
-        int rtH = Mathf.Max(64, Mathf.RoundToInt(_panelRect.height)) + EXT_TITLE_BAR_H;
+        int rtH = Mathf.Max(64, Mathf.RoundToInt(_panelRect.height));
         if (_chatRT == null || _chatRT.width != rtW || _chatRT.height != rtH)
         {
             // ★ 2026-08-17 崩溃修复：RT/NativeArray 重建前必须使在途 AsyncGPUReadback 回调失效。
@@ -2149,8 +2155,8 @@ public partial class RightPanel : MonoBehaviour
         _extTitleZones.Clear();  // 渲染帧重建标题栏命中表（客户区坐标）
         try
         {
-            DrawExternalTitleBar(rtW); // ★ 自绘星空标题栏（含最小化/关闭按钮，登记命中）
-            DrawPanelContent(0, EXT_TITLE_BAR_H, rtW, rtH - EXT_TITLE_BAR_H, _externalMousePos);
+            DrawExternalTitleBar(rtW); // 保留调用点兼容旧布局；当前实现不再绘制独立标题栏
+            DrawPanelContent(0, 0, rtW, rtH, _externalMousePos);
         }
         catch (Exception e)
         {
@@ -2201,41 +2207,7 @@ public partial class RightPanel : MonoBehaviour
     /// <summary>外置窗口自绘星空标题栏（紫色渐变 + 星点 + 标题 + 最小化/关闭按钮，像素风）</summary>
     private void DrawExternalTitleBar(int rtW)
     {
-        float h = EXT_TITLE_BAR_H;
-        Rect bar = new Rect(0, 0, rtW, h);
-        // 背景：紫色渐变（与面板 _bgTex 同风格）
-        if (_bgGlowTex != null)
-            GUI.DrawTexture(bar, _bgGlowTex, ScaleMode.StretchToFill);
-        if (_bgNebulaTex != null)
-            GUI.DrawTexture(bar, _bgNebulaTex, ScaleMode.StretchToFill);
-        UiTextureFactory.DrawPixelRect(new Rect(0, h - 1f, rtW, 1f), new Color(0.58f, 0.42f, 0.88f, 0.7f)); // 底部分隔线
-
-        // ★ 标题文字精简为「独立面板」：面板自带标题栏（符玄·太卜司/状态）已显示主标题，
-        //   外置标题栏再写会重复（用户反馈）。此处只保留窗口操作按钮区。
-        if (_extWindowIconTex != null)
-            GUI.DrawTexture(new Rect(10f, 7f, 30f, 30f), _extWindowIconTex); // 独立窗口图标
-        GUI.Label(new Rect(48f, 12f, rtW - 180f, 20f), "独立面板", _termTitleStyle);
-
-        // 右上角按钮：最小化「—」+ 关闭「✕」（像素方块，登记命中）
-        float btnSize = 30f;
-        float btnY = (h - btnSize) / 2f;
-        Rect minBtn = new Rect(rtW - btnSize * 2f - 8f, btnY, btnSize, btnSize);
-        Rect closeBtn = new Rect(rtW - btnSize - 4f, btnY, btnSize, btnSize);
-        // 最小化（暗紫底 + 横线）
-        UiTextureFactory.DrawPixelRect(minBtn, new Color(0.30f, 0.22f, 0.45f, 0.4f));
-        UiTextureFactory.DrawPixelRect(new Rect(minBtn.x + 8f, minBtn.center.y, minBtn.width - 16f, 2f),
-            new Color(0.78f, 0.66f, 0.98f, 0.9f));
-        // 关闭（暗红底 + ✕，程序画十字避免字形缺失）
-        UiTextureFactory.DrawPixelRect(closeBtn, new Color(0.40f, 0.15f, 0.15f, 0.45f));
-        UiTextureFactory.DrawPixelRect(new Rect(closeBtn.x + 8f, closeBtn.y + 8f, closeBtn.width - 16f, 2f), new Color(0.95f, 0.5f, 0.5f, 0.9f));
-        UiTextureFactory.DrawPixelRect(new Rect(closeBtn.x + 8f, closeBtn.y + closeBtn.height - 10f, closeBtn.width - 16f, 2f), new Color(0.95f, 0.5f, 0.5f, 0.9f));
-        // 斜线（✕ 两撇）
-        UiTextureFactory.DrawPixelRect(new Rect(closeBtn.x + 8f, closeBtn.y + 8f, 2f, closeBtn.height - 16f), new Color(0.95f, 0.5f, 0.5f, 0.9f));
-        UiTextureFactory.DrawPixelRect(new Rect(closeBtn.x + closeBtn.width - 10f, closeBtn.y + 8f, 2f, closeBtn.height - 16f), new Color(0.95f, 0.5f, 0.5f, 0.9f));
-
-        // 命中登记（外置点击：最小化 → 系统最小化；关闭 → 退出外置）
-        // ★ 2026-08-17 坐标修复：标题栏按钮走客户区坐标专用命中表（内容区命中表是面板局部坐标）
-        RegisterExtTitleHit(minBtn, ExternalChatWindow.Minimize);
-        RegisterExtTitleHit(closeBtn, ExternalChatWindow.RequestClose);
+        // 独立窗口不再有第二层“独立面板”标题栏；最小化和关闭按钮绘制在
+        // DrawChatArea / DrawSessionListView 自身的标题行，与 Unity 面板共用同一坐标。
     }
 }

@@ -129,7 +129,8 @@ public partial class RightPanel
 
         // 时间（标题栏右，✕ 左侧）
         RefreshTime();
-        GUI.Label(new Rect(px + pw - 110f, py + 14f, 56f, 20f), _timeDisplay, _termTimeStyle);
+        // 给同一标题行的最小化按钮预留位置，避免时间文字与按钮叠加。
+        GUI.Label(new Rect(px + pw - 150f, py + 14f, 56f, 20f), _timeDisplay, _termTimeStyle);
 
         // ——— ✕ 关闭按钮（右上角，像素方块风格） ———
         float closeSize = 32f + _fontScaleLevel * 2f;
@@ -141,7 +142,21 @@ public partial class RightPanel
         {
             Close();
         }
-        RegisterExtHit(closeRect, Close); // 外部命中：✕ 关闭面板
+        else if (_externalRender)
+        {
+            // 外置窗口的 X 是窗口关闭，不再调用 Unity 面板 Close() 淡出。
+            GUI.Label(closeRect, "✕", _closeBtnStyle);
+        }
+        if (_externalRender)
+        {
+            // 最小化与 X 共用聊天标题行，避免再出现第二层“独立面板”标题栏。
+            Rect minRect = new Rect(closeRect.x - closeRect.width - 6f, closeRect.y, closeRect.width, closeRect.height);
+            UiTextureFactory.DrawPixelRect(minRect, new Color(0.30f, 0.22f, 0.45f, 0.42f));
+            UiTextureFactory.DrawPixelRect(new Rect(minRect.x + 8f, minRect.center.y, minRect.width - 16f, 2f),
+                new Color(0.78f, 0.66f, 0.98f, 0.9f));
+            RegisterExtHit(minRect, ExternalChatWindow.Minimize);
+            RegisterExtHit(closeRect, ExternalChatWindow.RequestClose);
+        }
 
         // ——— 标题栏拖动（按住标题栏移动窗口，排除 ✕ / ◀ 返回 / 字体按钮防误触） ———
         if (!_externalRender && Event.current.type == EventType.MouseDown && Event.current.button == 0
@@ -582,13 +597,27 @@ public partial class RightPanel
         GUI.Label(new Rect(headRect.xMax + 12f, py + 42f, pw - 200f, 22f), waiting ? "● 思考中…" : "● 就绪", _termStatusStyle);
 
         // —— 时间 + ✕ 关闭 ——
-        GUI.Label(new Rect(px + pw - 130f, py + 20f, 60f, 22f), _timeDisplay, _termTimeStyle);
+        // 给同一标题行的最小化按钮预留位置，避免时间文字与按钮叠加。
+        GUI.Label(new Rect(px + pw - 180f, py + 20f, 60f, 22f), _timeDisplay, _termTimeStyle);
         float closeSize = 36f;
         Rect closeRect = new Rect(px + pw - closeSize - 14f, py + (titleH - closeSize) / 2f, closeSize, closeSize);
         if (closeRect.Contains(mp))
             UiTextureFactory.DrawPixelRect(closeRect, new Color(0.80f, 0.25f, 0.25f, 0.35f));
-        if (GUI.Button(closeRect, "✕", _closeBtnStyle)) { Close(); }
-        RegisterExtHit(closeRect, Close); // 外部命中：✕ 关闭面板
+        if (!_externalRender && GUI.Button(closeRect, "✕", _closeBtnStyle)) { Close(); }
+        if (_externalRender)
+        {
+            GUI.Label(closeRect, "✕", _closeBtnStyle);
+            Rect minRect = new Rect(closeRect.x - closeRect.width - 6f, closeRect.y, closeRect.width, closeRect.height);
+            UiTextureFactory.DrawPixelRect(minRect, new Color(0.30f, 0.22f, 0.45f, 0.42f));
+            UiTextureFactory.DrawPixelRect(new Rect(minRect.x + 8f, minRect.center.y, minRect.width - 16f, 2f),
+                new Color(0.78f, 0.66f, 0.98f, 0.9f));
+            RegisterExtHit(minRect, ExternalChatWindow.Minimize);
+            RegisterExtHit(closeRect, ExternalChatWindow.RequestClose);
+        }
+        else
+        {
+            RegisterExtHit(closeRect, Close); // 内嵌面板关闭
+        }
 
         // —— ⧉ 独立窗口切换（QQ 式：面板可被其他窗口遮挡；会话列表视图也有入口） ——
         Rect sExtBtnRect = new Rect(px + pw - closeSize - 64f, py + (titleH - 34f) / 2f, 40f, 34f);
