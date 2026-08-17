@@ -82,6 +82,7 @@ public static class ExternalChatWindow
     public const int BTN_AREA_W = 68;
 
     private static IntPtr _hwnd, _edit, _sendBtn, _hInst;
+    private static bool _closeNotificationSent;
     private static WndProcDelegate _wndProcDelegate; // 防止被 GC
     private static EditWndProcDelegate _editWndProcDelegate; // 防止被 GC（EDIT 子类化）
     private static IntPtr _origEditProc;             // 原 EDIT 窗口过程
@@ -325,6 +326,7 @@ public static class ExternalChatWindow
             ApplyClientSize(_width, _height);
             PostMessageW(_hwnd, WM_SIZE, IntPtr.Zero, IntPtr.Zero); // 触发布局
             ShowWindow(_hwnd, 5 /*SW_SHOW*/);
+            _closeNotificationSent = false;
             IsVisible = true;
         }
     }
@@ -371,7 +373,7 @@ public static class ExternalChatWindow
     /// <summary>隐藏窗口</summary>
     public static void Hide()
     {
-        if (IsCreated && IsVisible)
+        if (IsCreated && _hwnd != IntPtr.Zero)
         {
             ShowWindow(_hwnd, 0 /*SW_HIDE*/);
             IsVisible = false;
@@ -389,7 +391,6 @@ public static class ExternalChatWindow
     public static void RequestClose()
     {
         if (!IsCreated) return;
-        MainThreadDispatcher.Run(() => OnClosed?.Invoke());
         PostMessageW(_hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
     }
 
@@ -564,7 +565,7 @@ public static class ExternalChatWindow
                 SavePos();
                 ShowWindow(hWnd, 0);
                 IsVisible = false;
-                MainThreadDispatcher.Run(() => OnClosed?.Invoke());
+                NotifyClosedOnce();
                 return IntPtr.Zero;
             case WM_COMMAND:
                 if (wParam.ToInt32() == IDC_SEND) { DoSend(); return IntPtr.Zero; }
@@ -765,6 +766,13 @@ public static class ExternalChatWindow
         ShowWindow(_sendBtn, 0 /* SW_HIDE */);
         SetWindowPos(_sendBtn, IntPtr.Zero, -2, -2, 1, 1,
             0x0004 /* SWP_NOZORDER */ | 0x0010 /* SWP_NOACTIVATE */);
+    }
+
+    private static void NotifyClosedOnce()
+    {
+        if (_closeNotificationSent) return;
+        _closeNotificationSent = true;
+        MainThreadDispatcher.Run(() => OnClosed?.Invoke());
     }
 
     private static void TrackMouseLeave(IntPtr hWnd)

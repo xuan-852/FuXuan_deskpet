@@ -522,7 +522,7 @@ public partial class RightPanel : MonoBehaviour
         if (togglePressed && Time.frameCount != _hotkeyFrame)
         {
             _hotkeyFrame = Time.frameCount;
-            Toggle();
+            ToggleHotkeyPanel();
         }
 
         // 1b. 全局热键 Shift+~（任意窗口焦点下均可触发）
@@ -919,10 +919,31 @@ public partial class RightPanel : MonoBehaviour
             _hotkeyFrame = Time.frameCount;
             // 全局热键的关闭语义必须是幂等 Close；Toggle 在淡出期间会取消关闭，
             // 导致用户按一次 ~ 后面板仍然停留或重新出现。
-            if (_isOpen) Close();
-            else Toggle();
+            ToggleHotkeyPanel();
         }
         _globalTildeWasDown = tildeDown;
+    }
+
+    /// <summary>
+    /// 热键统一唤出独立聊天窗口。旧的热键只切换内嵌 RightPanel，容易与遗留
+    /// BallPanel/左下角系统面板同时出现；现在首次唤出直接进入独立窗口，
+    /// 再按一次则完整关闭独立窗口和面板。
+    /// </summary>
+    private void ToggleHotkeyPanel()
+    {
+        if (_externalMode)
+        {
+            ExternalChatWindow.RequestClose();
+            return;
+        }
+
+        if (_isOpen)
+        {
+            Close();
+            return;
+        }
+
+        EnableExternalMode();
     }
 
     /// <summary>关闭窗口（带淡出动画：先播放淡出，动画结束才真正隐藏）</summary>
@@ -2081,8 +2102,9 @@ public partial class RightPanel : MonoBehaviour
 
     private void OnExternalClosed()
     {
-        // 独立窗口 ✕ → 退出外部模式（回到内嵌面板）
+        // 独立窗口 ✕ → 完整退出外部模式并关闭面板，不再把旧的内嵌面板留在桌面上。
         DisableExternalMode();
+        Close();
     }
 
     /// <summary>外置窗口自绘星空标题栏高度（与 ExternalChatWindow.TITLE_BAR_H 一致，逻辑像素）</summary>

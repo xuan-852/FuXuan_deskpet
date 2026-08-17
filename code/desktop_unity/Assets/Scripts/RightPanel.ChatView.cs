@@ -100,6 +100,8 @@ public partial class RightPanel
 
         // ——— ⧉ 独立窗口切换（QQ 式：聊天面板可被其他窗口遮挡；2026-08-15） ———
         Rect extBtnRect = new Rect(px + pw - 210f, py + 10f, 40f, 34f);
+        if (!_externalRender)
+        {
         // ★ 常态背景方块（细线符号在深底上不可见，加底衬突出按钮区域）
         UiTextureFactory.DrawPixelRect(extBtnRect, _externalMode
             ? new Color(0.55f, 0.40f, 0.85f, 0.45f)   // 外置激活中 → 亮紫
@@ -123,6 +125,7 @@ public partial class RightPanel
                 ToggleExternalMode();
         }
         RegisterExtHit(extBtnRect, ToggleExternalMode); // 外部命中：⧉ 退回内嵌/再外置
+        }
 
         // 时间（标题栏右，✕ 左侧）
         RefreshTime();
@@ -589,6 +592,8 @@ public partial class RightPanel
 
         // —— ⧉ 独立窗口切换（QQ 式：面板可被其他窗口遮挡；会话列表视图也有入口） ——
         Rect sExtBtnRect = new Rect(px + pw - closeSize - 64f, py + (titleH - 34f) / 2f, 40f, 34f);
+        if (!_externalRender)
+        {
         // ★ 常态背景方块（细线符号在深底上不可见，加底衬突出按钮区域）
         UiTextureFactory.DrawPixelRect(sExtBtnRect, _externalMode
             ? new Color(0.55f, 0.40f, 0.85f, 0.45f)   // 外置激活中 → 亮紫
@@ -612,6 +617,7 @@ public partial class RightPanel
                 ToggleExternalMode();
         }
         RegisterExtHit(sExtBtnRect, ToggleExternalMode); // 外部命中：⧉ 退出/进入独立窗口
+        }
 
         // —— 标题栏拖拽（排除 ✕ / ⧉） ——
         if (Event.current.type == EventType.MouseDown && Event.current.button == 0

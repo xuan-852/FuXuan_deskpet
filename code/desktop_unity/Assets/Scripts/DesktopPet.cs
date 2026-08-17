@@ -584,11 +584,14 @@ public class DesktopPet : MonoBehaviour
             Debug.Log("[DesktopPet] 自动添加了 ServerPollService 组件");
         }
 
-        // 自动确保 BallPanel 存在（右侧面板的工具子面板）
-        if (GetComponent<BallPanel>() == null)
+        // 旧 BallPanel 已由 RightPanel 的内嵌子视图取代，不再自动创建，
+        // 避免遗留的左下角“符玄·太卜司”系统面板偶发出现。
+        var legacyBallPanel = GetComponent<BallPanel>();
+        if (legacyBallPanel != null)
         {
-            gameObject.AddComponent<BallPanel>();
-            Debug.Log("[DesktopPet] 自动添加了 BallPanel 组件");
+            legacyBallPanel.Close();
+            legacyBallPanel.enabled = false;
+            Debug.Log("[DesktopPet] 已禁用遗留 BallPanel，统一使用独立聊天窗口");
         }
 
         // 自动确保 ChatManager 存在（AI 对话核心）
