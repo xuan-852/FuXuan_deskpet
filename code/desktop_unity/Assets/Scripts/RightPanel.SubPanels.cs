@@ -74,8 +74,8 @@ public partial class RightPanel
         Rect closeRect = new Rect(px + pw - closeSize - 14f, py + (titleH - closeSize) / 2f, closeSize, closeSize);
         if (closeRect.Contains(mp))
             UiTextureFactory.DrawPixelRect(closeRect, new Color(0.80f, 0.25f, 0.25f, 0.35f));
-        if (GUI.Button(closeRect, "✕", _closeBtnStyle)) { Close(); }
-        RegisterExtHit(closeRect, Close); // 外部命中：✕ 关闭面板
+        if (GUI.Button(closeRect, "✕", _closeBtnStyle)) { RequestClosePanel(); }
+        RegisterExtHit(closeRect, RequestClosePanel); // 外部命中：✕ 关闭面板/窗口
 
         // —— 标题栏拖拽（排除 ◀ 返回 / ✕） ——
         if (Event.current.type == EventType.MouseDown && Event.current.button == 0

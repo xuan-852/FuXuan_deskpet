@@ -53,6 +53,7 @@ public static class ExternalChatWindow
     private const int WM_PAINT = 0x000F;
     private const int WM_SIZE = 0x0005;
     private const int WM_KEYDOWN = 0x0100;
+    private const int WM_KILLFOCUS = 0x0008;
     private const int WM_COMMAND = 0x0111;
     private const int WM_CLOSE = 0x0010;
     private const int WM_EXITSIZEMOVE = 0x0232;
@@ -63,6 +64,7 @@ public static class ExternalChatWindow
     private const int WM_NCLBUTTONDOWN = 0x00A1;
     private const int WM_NCHITTEST = 0x0084;
     private const int WM_CTLCOLOREDIT = 0x0133;
+    private const int WM_SETCURSOR = 0x0020;
     private const int WM_APP_FOCUS_INPUT = 0x8000 + 1; // 自定义：请求窗口线程聚焦输入框
     private const int WM_APP_SHUTDOWN = 0x8000 + 2;    // 自定义：由窗口线程自己销毁窗口并退出消息循环
     private const int HTCAPTION = 2;
@@ -73,6 +75,8 @@ public static class ExternalChatWindow
     private const int BN_CLICKED = 0;
     private const int IDC_EDIT = 101;
     private const int IDC_SEND = 102;
+    private const int IDC_ARROW = 32512;
+    private const int IDC_IBEAM = 32513;
 
     // ★ 无边框窗口：使用面板自身标题行作为拖动带，不再额外绘制“独立面板”标题栏。
     public const int TITLE_BAR_H = 54;
@@ -82,6 +86,8 @@ public static class ExternalChatWindow
     public const int BTN_AREA_W = 68;
 
     private static IntPtr _hwnd, _edit, _sendBtn, _hInst;
+    private static IntPtr _arrowCursor, _ibeamCursor;
+    private static volatile bool _inputFocusActive;
     private static bool _closeNotificationSent;
     private static WndProcDelegate _wndProcDelegate; // 防止被 GC
     private static EditWndProcDelegate _editWndProcDelegate; // 防止被 GC（EDIT 子类化）
@@ -149,6 +155,10 @@ public static class ExternalChatWindow
     private static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT point);
+    [DllImport("user32.dll")]
+    private static extern IntPtr LoadCursorW(IntPtr hInstance, IntPtr cursorName);
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetCursor(IntPtr cursor);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool GetWindowTextW(IntPtr hWnd, System.Text.StringBuilder text, int count);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -379,6 +389,7 @@ public static class ExternalChatWindow
         {
             ShowWindow(_hwnd, 0 /*SW_HIDE*/);
             IsVisible = false;
+            _inputFocusActive = false;
         }
     }
 
@@ -448,8 +459,10 @@ public static class ExternalChatWindow
                 style = CS_DBLCLKS,
                 lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProcDelegate = WndProc),
                 hInstance = _hInst,
+                hCursor = _arrowCursor = LoadCursorW(IntPtr.Zero, new IntPtr(IDC_ARROW)),
                 lpszClassName = "FuXuanChatWindowClass"
             };
+            _ibeamCursor = LoadCursorW(IntPtr.Zero, new IntPtr(IDC_IBEAM));
             if (RegisterClassW(ref wc) == 0)
             {
                 Debug.LogError("[ExternalChat] RegisterClassW 失败");
@@ -554,6 +567,7 @@ public static class ExternalChatWindow
                 LayoutChildren();
                 MoveEditOffscreen();
                 SetFocus(_edit);
+                _inputFocusActive = true;
                 LogInputState("focused");
                 return IntPtr.Zero;
             }
@@ -568,8 +582,24 @@ public static class ExternalChatWindow
                 SavePos();
                 ShowWindow(hWnd, 0);
                 IsVisible = false;
+                _inputFocusActive = false;
                 NotifyClosedOnce();
                 return IntPtr.Zero;
+            case WM_SETCURSOR:
+            {
+                // 透明且移出屏幕的 EDIT 聚焦后不能提供系统光标，明确设置箭头/I-beam，避免鼠标消失。
+                IntPtr cursor = _arrowCursor;
+                if (_inputFocusActive && _inputRectSet && GetCursorPos(out POINT screen) && GetWindowRect(hWnd, out RECT window))
+                {
+                    int px = screen.X - window.Left;
+                    int py = screen.Y - window.Top;
+                    if (px >= _inputX && px < _inputX + _inputW
+                        && py >= _inputY && py < _inputY + _inputH)
+                        cursor = _ibeamCursor;
+                }
+                SetCursor(cursor != IntPtr.Zero ? cursor : LoadCursorW(IntPtr.Zero, new IntPtr(IDC_ARROW)));
+                return new IntPtr(1);
+            }
             case WM_COMMAND:
                 if (wParam.ToInt32() == IDC_SEND) { DoSend(); return IntPtr.Zero; }
                 break;
@@ -674,6 +704,8 @@ public static class ExternalChatWindow
     /// 真实用户输入时焦点在 edit，回车必须先在这里拦截，否则被 edit 默认过程消费。</summary>
     private static IntPtr EditProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        if (msg == WM_KILLFOCUS)
+            _inputFocusActive = false;
         if (msg == WM_KEYDOWN)
             Debug.Log($"[ExternalChat] EditProc WM_KEYDOWN vk=0x{wParam.ToInt32():X} (VK_RETURN=0x{VK_RETURN:X})");
         if (msg == WM_KEYDOWN && wParam.ToInt32() == VK_RETURN)
@@ -702,6 +734,7 @@ public static class ExternalChatWindow
     public static void ShowInputBar(bool show)
     {
         if (!IsCreated) return;
+        if (!show) _inputFocusActive = false;
         ShowWindow(_edit, show ? 5 : 0);
         // 原生发送按钮不参与外置模式交互，始终隐藏，避免黑色控件覆盖 Unity 发送图标。
         HideNativeSendButton();
@@ -733,6 +766,9 @@ public static class ExternalChatWindow
         GetWindowTextW(_edit, sb, sb.Capacity);
         return sb.ToString();
     }
+
+    /// <summary>外置窗口输入通道是否聚焦，用于 RT 中绘制可见插入光标。</summary>
+    public static bool IsInputFocused => _inputFocusActive;
 
     /// <summary>轮询外置窗口的真实鼠标位置，统一转换为面板逻辑坐标。</summary>
     public static bool TryGetMousePosition(out float lx, out float ly)

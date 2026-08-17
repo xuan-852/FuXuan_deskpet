@@ -586,13 +586,16 @@ public class DesktopPet : MonoBehaviour
 
         // 旧 BallPanel 已由 RightPanel 的内嵌子视图取代，不再自动创建，
         // 避免遗留的左下角“符玄·太卜司”系统面板偶发出现。
-        var legacyBallPanel = GetComponent<BallPanel>();
-        if (legacyBallPanel != null)
+        // 场景升级/旧 prefab 可能把 BallPanel 挂在独立对象上，不能只处理 DesktopPet 自身的组件；
+        // 统一关闭并禁用所有遗留实例，避免热键偶发在左下角重新绘制旧系统面板。
+        var legacyBallPanels = FindObjectsOfType<BallPanel>();
+        for (int i = 0; i < legacyBallPanels.Length; i++)
         {
-            legacyBallPanel.Close();
-            legacyBallPanel.enabled = false;
-            Debug.Log("[DesktopPet] 已禁用遗留 BallPanel，统一使用独立聊天窗口");
+            legacyBallPanels[i].Close();
+            legacyBallPanels[i].enabled = false;
         }
+        if (legacyBallPanels.Length > 0)
+            Debug.Log($"[DesktopPet] 已禁用遗留 BallPanel 实例: {legacyBallPanels.Length}");
 
         // 自动确保 ChatManager 存在（AI 对话核心）
         if (GetComponent<ChatManager>() == null)

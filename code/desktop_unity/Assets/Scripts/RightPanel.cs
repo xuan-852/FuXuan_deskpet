@@ -445,6 +445,7 @@ public partial class RightPanel : MonoBehaviour
     void Start()
     {
         RefreshRefs();
+        DisableLegacyBallPanels();
         // 恢复字体档位（默认 1=A2 1.2×）
         _fontScaleLevel = Mathf.Clamp(PlayerPrefs.GetInt("RightPanelFontScale", 1), 0, FONT_SCALES.Length - 1);
         // QQ 式两级界面：初始为第一级「会话列表」窄条（324×846，贴 QQ 实测），热键打开后双击进聊天
@@ -491,6 +492,20 @@ public partial class RightPanel : MonoBehaviour
             _reminders = ReminderManager.Instance;
             if (_reminders == null) _reminders = GetComponent<ReminderManager>();
         }
+    }
+
+    /// <summary>旧 BallPanel 已被页内视图取代；无论它挂在哪个场景对象上都禁止绘制。</summary>
+    private void DisableLegacyBallPanels()
+    {
+        var legacyPanels = FindObjectsOfType<BallPanel>();
+        for (int i = 0; i < legacyPanels.Length; i++)
+        {
+            BallPanel panel = legacyPanels[i];
+            panel.Close();
+            panel.enabled = false;
+        }
+        if (legacyPanels.Length > 0)
+            Debug.Log($"[RightPanel] 已禁用遗留 BallPanel 实例: {legacyPanels.Length}");
     }
 
     void Update()
@@ -735,6 +750,13 @@ public partial class RightPanel : MonoBehaviour
         Debug.Log($"[RightPanel] 子面板返回 → {_currentView}");
     }
 
+    /// <summary>统一关闭当前视图：外置模式关闭原生窗口，内嵌模式才播放 Unity 淡出。</summary>
+    private void RequestClosePanel()
+    {
+        if (_externalMode) ExternalChatWindow.RequestClose();
+        else Close();
+    }
+
     /// <summary>刷新标题栏时间（1s 节流）</summary>
     private void RefreshTime()
     {
@@ -952,6 +974,7 @@ public partial class RightPanel : MonoBehaviour
     /// </summary>
     private void ToggleHotkeyPanel()
     {
+        DisableLegacyBallPanels();
         if (_externalMode)
         {
             ExternalChatWindow.RequestClose();

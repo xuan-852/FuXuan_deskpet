@@ -542,3 +542,26 @@ node --check code/desktop_unity/openclaw_bridge.js
 - 现有测试链路未发现 NRE、Fatal 或 Unhandled；手动日志中仍可见既有的 `star_spin` 配置解析警告和 UIAutomation fallback 警告，但不影响本轮 UI 验收与自动化结果。
 
 结论：本轮构建、自动化回归和重点外置窗口视觉项均通过，最新可验收文件为 `Build/DesktopPet.exe`。后续人工验收可重点确认真实机器上的 DPI 缩放差异和自启动后本地 Ollama 首次对话。
+
+## 十八、输入焦点、鼠标与热键回归修复（2026-08-17）
+
+针对本轮新增的四个小 bug 完成修复：
+
+1. 点击外置输入框后，隐藏原生 `EDIT` 不再作为唯一光标来源；Unity RT 中绘制可见紫白插入光标，空输入也有明确焦点反馈。
+2. 外置窗口注册默认箭头和 I-beam 光标，并处理 `WM_SETCURSOR`，输入时鼠标保持可见。
+3. 启动及热键路径遍历禁用所有遗留 `BallPanel`，不再因旧组件位于独立对象而偶发显示左下角系统面板。
+4. 设置、便签、报告、消耗子面板的 X 根据窗口模式选择关闭原生外置窗口或关闭内嵌面板，不再停在紫色面板残帧。
+
+本轮验证：
+
+| 验证项 | 结果 |
+|---|---|
+| `build.ps1 -Quick` | 通过 |
+| 完整构建 | 通过，生成最新 `Build/DesktopPet.exe` |
+| EditMode | 78/78 通过 |
+| 隔离 `runtime_smoke.cjs --verbose` | 通过，零 NRE、三档尺寸、生产记忆零污染 |
+| 真实输入聚焦 | `input hit → hit+rect → input focused` 完整到达 |
+| 外置子面板 X | 实测“设置”页 X 直接退出独立窗口，无淡出残留 |
+| 遗留 BallPanel | 手动隔离日志无绘制/打开记录 |
+
+最新验收实例已使用 `FU_XUAN_DATA=C:\Users\25295\AppData\Local\Temp\fuxuan_ui_bugfix_final_v17` 隔离启动，并保持仅一个 DesktopPet 进程供人工复验。

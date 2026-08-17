@@ -277,3 +277,12 @@
 - 测试模式新增 `@@view:exthover:x,y`，仅用于稳定注入 hover 坐标，不改变生产鼠标链路。
 
 最终回归通过：`build.ps1 -Quick`、完整构建、`build.ps1 -RunTests`（78/78）和隔离 `runtime_smoke.cjs --verbose`；测试数据使用临时目录，生产记忆零污染。
+
+## 十、输入焦点、热键与子面板关闭回归（2026-08-17）
+
+- 外置原生 `EDIT` 继续保持屏外透明输入通道，但输入聚焦后由 IMGUI/RenderTexture 绘制明确的紫白插入光标；内嵌模式也绘制同一焦点提示。
+- 外置窗口类显式设置箭头/I-beam 系统光标，并处理 `WM_SETCURSOR`；输入状态下鼠标不再因透明控件而消失。
+- 启动和热键触发时遍历禁用所有遗留 `BallPanel` 实例，兼容旧 prefab 将该组件挂在独立对象上的情况，避免左下角旧系统面板偶发出现。
+- 子面板（设置/便签/报告/消耗）的 X 统一走 `RequestClosePanel()`：内嵌模式播放淡出，外置模式直接请求原生窗口关闭，避免停留在紫色 RenderTexture。
+
+验证：最终 Quick、完整构建、EditMode 78/78、隔离 `runtime_smoke.cjs --verbose` 均通过；真实外置输入日志达到 `input hit → hit+rect → input focused`，子面板 X 日志确认已退出独立窗口。

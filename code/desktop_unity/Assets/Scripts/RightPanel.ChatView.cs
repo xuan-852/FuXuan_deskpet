@@ -461,6 +461,23 @@ public partial class RightPanel
             GUI.Label(inputBgRect, _inputText, _termInputStyle);
         }
 
+        // 原生 EDIT 为避免黑框已移到屏外，不能依赖系统插入光标；在 IMGUI/RT 中绘制稳定的紫白光标，
+        // 点击输入栏后即使文本为空也能明确看到“已聚焦”。内嵌模式也统一绘制，避免主题样式吞掉系统光标。
+        bool inputCaretFocused = _externalRender
+            ? ExternalChatWindow.IsInputFocused
+            : GUI.GetNameOfFocusedControl() == "rightPanelInput";
+        if (inputCaretFocused)
+        {
+            float textW = _termInputStyle.CalcSize(new GUIContent(_inputText ?? "")).x;
+            float caretX = Mathf.Clamp(inputBgRect.x + _termInputStyle.padding.left + textW + 1f,
+                inputBgRect.x + _termInputStyle.padding.left,
+                inputBgRect.xMax - _termInputStyle.padding.right - 3f);
+            float caretH = Mathf.Min(26f, inputBgRect.height - 12f);
+            UiTextureFactory.DrawPixelRect(
+                new Rect(caretX, inputBgRect.y + (inputBgRect.height - caretH) * 0.5f, 2f, caretH),
+                new Color(0.86f, 0.76f, 1f, 0.96f));
+        }
+
         // ——— 发送按钮（太极图，符玄道法风，hover 紫色光晕） ———
         sendBtnRect = new Rect(tfX + tfW + 6f, inputY + (inputBarHeight - sendBtnSize) / 2f, sendBtnSize, sendBtnSize);
         bool sendHover = sendBtnRect.Contains(mp);
