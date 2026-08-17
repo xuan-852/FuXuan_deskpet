@@ -128,6 +128,7 @@ public partial class RightPanel : MonoBehaviour
     // ★ 异步读回（AsyncGPUReadback）：渲染保持 60fps 动画流畅，读回不阻塞主线程
     private Unity.Collections.NativeArray<byte> _extReadBack;
     private bool _extReadPending;    // 上一帧读回未完成（防止堆积）
+    private int _extReadGen;         // ★ 读回代际（RT/NativeArray 重建时递增，作废旧回调，防 destroyTJDevice 崩溃）
     // ★ 外部交互命中表（Phase A3）：渲染外置面板时登记可点区域（矩形+动作），
     //   独立窗口点击坐标回来查表执行（IMGUI Event.current 无法注入，故手动命中）
     // ★ 2026-08-17 坐标基准（codex 复验后修正）：外置渲染 DrawPanelContent(0, EXT_TITLE_BAR_H, ...)
@@ -2089,6 +2090,11 @@ public partial class RightPanel : MonoBehaviour
         int rtH = Mathf.Max(64, Mathf.RoundToInt(_panelRect.height)) + EXT_TITLE_BAR_H;
         if (_chatRT == null || _chatRT.width != rtW || _chatRT.height != rtH)
         {
+            // ★ 2026-08-17 崩溃修复：RT/NativeArray 重建前必须使在途 AsyncGPUReadback 回调失效。
+            //   旧回调稍后触发时会访问已 Dispose 的 _extReadBack → destroyTJDevice 崩溃
+            //   （崩溃栈：SetBuffer ← DrawExternalPanelToTexture b__0 AsyncGPUReadbackRequest）。
+            //   用代际计数：重建即递增，回调闭包捕获当时 gen，不匹配则丢弃（资源已换新）。
+            _extReadGen++;
             if (_chatRT != null) _chatRT.Release();
             // ★ BGRA32：AsyncGPUReadback 读出 BGRA 字节序，与 SetDIBitsToDevice 匹配（ARGB32 会 R/B 互换变橙色）
             _chatRT = new RenderTexture(rtW, rtH, 0, RenderTextureFormat.BGRA32);
@@ -2133,14 +2139,27 @@ public partial class RightPanel : MonoBehaviour
             _lastExtCapture = Time.time;
             _lastExtReadStart = Time.time;
             _extReadPending = true;
-            UnityEngine.Rendering.AsyncGPUReadback.RequestIntoNativeArray(
-                ref _extReadBack, _chatRT, 0, (req) =>
+            int gen = _extReadGen; // ★ 捕获当前代际：RT/NativeArray 重建后此回调作废
+            // ★ 2026-08-17 崩溃修复（v2）：改用 AsyncGPUReadback.Request——每次请求分配独立
+            //   NativeArray，由 Unity 管理其生命周期；回调里 CopyTo 预分配接收数组。
+            //   之前用 RequestIntoNativeArray(ref _extReadBack, ...) 要求传入的 buffer 在回调
+            //   期间持续有效，而视图切换会 Dispose+重建它 → 违反约束 → MallocTracked 崩溃
+            //   （崩溃栈：NativeArray ctor ← DrawExternalPanelToTexture ← OnGUI）。
+            UnityEngine.Rendering.AsyncGPUReadback.Request(_chatRT, 0, (req) =>
+            {
+                if (req.hasError) { _extReadPending = false; return; }
+                // ★ 代际校验：若读回期间 RT/NativeArray 已被重建（视图切换），丢弃旧数据
+                if (gen != _extReadGen) { _extReadPending = false; return; }
+                try
                 {
-                    if (req.hasError) { _extReadPending = false; return; }
-                    try { ExternalChatWindow.SetBuffer(_extReadBack, rtW, rtH); }
-                    catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部窗口像素推送失败: {e.Message}"); }
-                    _extReadPending = false;
-                });
+                    var data = req.GetData<byte>();
+                    if (data.IsCreated && data.Length >= _extReadBack.Length)
+                        data.CopyTo(_extReadBack); // 预分配接收数组，零新分配
+                    ExternalChatWindow.SetBuffer(_extReadBack, rtW, rtH);
+                }
+                catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部窗口像素推送失败: {e.Message}"); }
+                _extReadPending = false;
+            });
         }
     }
 
