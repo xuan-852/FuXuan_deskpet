@@ -29,7 +29,8 @@ public static class ApiClient
     public static bool BlockCloudInTestMode { get; set; } = true;
 
     /// <summary>当前是否应短路云端调用（测试模式 + 开关打开）；供非 ApiClient 的直接 UnityWebRequest 调用方检查</summary>
-    public static bool ShouldBlockCloudPublic() => ChatManager.IsTestMode && BlockCloudInTestMode;
+    public static bool ShouldBlockCloudPublic() => ChatConfig.UseOllamaMode
+        || (ChatManager.IsTestMode && BlockCloudInTestMode);
 
     /// <summary>内部短路判断</summary>
     private static bool ShouldBlockCloud() => ShouldBlockCloudPublic();

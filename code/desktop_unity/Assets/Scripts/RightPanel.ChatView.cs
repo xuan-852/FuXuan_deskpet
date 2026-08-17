@@ -333,12 +333,18 @@ public partial class RightPanel
                 jump = 26f * Mathf.Sin(Mathf.PI * (jumpAge / 0.45f)); // 跳跃 26px
             Rect mascotRect = new Rect(logView.xMax - mw - 14f, logView.yMax - mh - 10f + breath + jump, mw, mh);
             // 点击互动：戳戳额头 → 触发聊天 + 跳一下
-            if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && mascotRect.Contains(mp))
+            System.Action mascotAction = () =>
             {
                 _mascotJumpStart = Time.time;
                 if (_chat != null) _chat.SendMessage("*你伸出手指，轻轻戳了戳符玄的额头*", null);
+            };
+            if (!_externalRender && Event.current.type == EventType.MouseDown && Event.current.button == 0 && mascotRect.Contains(mp))
+            {
+                mascotAction();
                 Event.current.Use();
             }
+            // 外置窗口没有 Unity IMGUI 鼠标事件，必须把小人也注册进外置命中表。
+            RegisterExtHit(mascotRect, mascotAction);
             // 地面小阴影（跳跃时缩小）
             float shadowScale = (jumpAge >= 0f && jumpAge < 0.45f) ? 0.5f : 1f;
             GUI.color = new Color(0f, 0f, 0f, 0.35f * shadowScale);
@@ -441,7 +447,7 @@ public partial class RightPanel
 
         // ——— 发送按钮（太极图，符玄道法风，hover 紫色光晕） ———
         sendBtnRect = new Rect(tfX + tfW + 6f, inputY + (inputBarHeight - sendBtnSize) / 2f, sendBtnSize, sendBtnSize);
-        bool sendHover = sendBtnRect.Contains(Event.current.mousePosition);
+        bool sendHover = sendBtnRect.Contains(mp);
         if (_taijiTex != null)
         {
             GUI.DrawTexture(sendBtnRect, _taijiTex);

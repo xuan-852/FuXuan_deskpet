@@ -391,7 +391,9 @@ public class SystemTrayManager : MonoBehaviour
             if (enabled)
             {
                 string exePath = Process.GetCurrentProcess().MainModule.FileName;
-                string value = $"\"{exePath}\"";
+                // 修复阶段的自启动固定进入本地 Ollama 模式，避免启动桌宠就触发云端请求。
+                // 手动启动不带参数时仍是常规云端模式；后续切回云端只需移除该参数。
+                string value = $"\"{exePath}\" --ollama";
                 WriteRegistryString(HKEY_CURRENT_USER, regPath, autoStartRegName, value);
                 Log($"✅ 已设置开机自启: {value}");
             }

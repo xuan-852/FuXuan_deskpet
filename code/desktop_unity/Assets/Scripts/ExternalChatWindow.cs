@@ -22,6 +22,8 @@ public static class ExternalChatWindow
     public static event Action OnClosed;
     /// <summary>用户在面板区点击（主线程回调，坐标=客户区/面板内坐标，双击标志）</summary>
     public static event Action<float, float, bool> OnPanelClick;
+    /// <summary>外置窗口鼠标移动（坐标=客户区/面板内坐标；离开窗口时为负值）</summary>
+    public static event Action<float, float> OnPanelMouseMove;
 
     // ─── 状态 ───
     public static bool IsCreated { get; private set; }
@@ -56,6 +58,8 @@ public static class ExternalChatWindow
     private const int WM_EXITSIZEMOVE = 0x0232;
     private const int WM_LBUTTONDOWN = 0x0201;
     private const int WM_LBUTTONDBLCLK = 0x0203;
+    private const int WM_MOUSEMOVE = 0x0200;
+    private const int WM_MOUSELEAVE = 0x02A3;
     private const int WM_NCLBUTTONDOWN = 0x00A1;
     private const int WM_NCHITTEST = 0x0084;
     private const int WM_CTLCOLOREDIT = 0x0133;
@@ -108,6 +112,14 @@ public static class ExternalChatWindow
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam, lParam; public uint time; public POINT pt; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TRACKMOUSEEVENT
+    {
+        public uint cbSize;
+        public uint dwFlags;
+        public IntPtr hwndTrack;
+        public uint dwHoverTime;
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern ushort RegisterClassW(ref WNDCLASS wc);
@@ -155,6 +167,8 @@ public static class ExternalChatWindow
     private static extern IntPtr GetFocus();
     [DllImport("user32.dll")]
     private static extern IntPtr SetFocus(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    private static extern bool TrackMouseEvent(ref TRACKMOUSEEVENT tme);
     [DllImport("user32.dll")]
     private static extern IntPtr CallWindowProcW(IntPtr prevWndProc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     // ★ 2026-08-17 修复：32 位进程没有 SetWindowLongPtrW/GetWindowLongPtrW（EntryPointNotFoundException 杀窗口线程）。
@@ -528,7 +542,9 @@ public static class ExternalChatWindow
                 //   hit(Unity 命中) → shown(控件显示) → focused(SetFocus) → send(回车/按钮)
                 //   每步留痕，144 DPI 验收可直接看日志定位断点。
                 ShowWindow(_edit, 5);
-                ShowWindow(_sendBtn, 5);
+                // 发送按钮由 Unity 位图和外置命中表绘制/处理；不要显示原生 BUTTON，
+                // 否则它会以黑色控件覆盖输入栏右侧。
+                ShowWindow(_sendBtn, 0);
                 LayoutChildren();
                 SetFocus(_edit);
                 LogInputState("focused");
@@ -583,6 +599,22 @@ public static class ExternalChatWindow
                 MainThreadDispatcher.Run(() => OnPanelClick?.Invoke(lx, ly, dbl));
                 return IntPtr.Zero;
             }
+            case WM_MOUSEMOVE:
+            {
+                int x = (short)(lParam.ToInt32() & 0xFFFF);
+                int y = (short)((lParam.ToInt32() >> 16) & 0xFFFF);
+                if (x >= 0 && y >= 0)
+                {
+                    float lx, ly;
+                    ClientToLogical(x, y, out lx, out ly);
+                    TrackMouseLeave(hWnd);
+                    MainThreadDispatcher.Run(() => OnPanelMouseMove?.Invoke(lx, ly));
+                }
+                return IntPtr.Zero;
+            }
+            case WM_MOUSELEAVE:
+                MainThreadDispatcher.Run(() => OnPanelMouseMove?.Invoke(-1f, -1f));
+                return IntPtr.Zero;
             case WM_SIZE:
                 LayoutChildren();
                 return IntPtr.Zero;
@@ -664,7 +696,8 @@ public static class ExternalChatWindow
     {
         if (!IsCreated) return;
         ShowWindow(_edit, show ? 5 : 0);
-        ShowWindow(_sendBtn, show ? 5 : 0);
+        // 原生发送按钮不参与外置模式交互，始终隐藏，避免黑色控件覆盖 Unity 发送图标。
+        ShowWindow(_sendBtn, 0);
         if (show) LayoutChildren();
     }
 
@@ -720,4 +753,16 @@ public static class ExternalChatWindow
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
     private static void SetWindowPos_Button(int x, int y, int w, int h) => SetWindowPos(_sendBtn, IntPtr.Zero, x, y, w, h, 0x0004);
+
+    private static void TrackMouseLeave(IntPtr hWnd)
+    {
+        var tme = new TRACKMOUSEEVENT
+        {
+            cbSize = (uint)Marshal.SizeOf(typeof(TRACKMOUSEEVENT)),
+            dwFlags = 0x00000002, // TME_LEAVE
+            hwndTrack = hWnd,
+            dwHoverTime = 0
+        };
+        TrackMouseEvent(ref tme);
+    }
 }

@@ -478,7 +478,8 @@ public class ChatManager : MonoBehaviour
         _activeRequestCoroutine = StartCoroutine(SendRequestCoroutine(_requestGeneration));
 
         // 🧠 功能1：意图/情绪分类（异步，SendRequestCoroutine 首轮会等待其结果）
-        if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
+        if (!ChatConfig.UseOllamaMode
+            && LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
         {
             LocalLLMAgentService.Instance.ClassifyIntent(text.Trim(), intent =>
             {
@@ -577,7 +578,10 @@ public class ChatManager : MonoBehaviour
 
     private IEnumerator SendRequestCoroutine(int generation)
     {
-        yield return StartCoroutine(DoToolLoop());
+        if (ChatConfig.UseOllamaMode)
+            yield return StartCoroutine(DoOllamaOnlyReply());
+        else
+            yield return StartCoroutine(DoToolLoop());
 
         // ★ 代际守卫：请求已被看门狗中止，或新请求已接管 → 旧协程立即退场，
         //   不再执行 _isWaiting/队列/记忆等收尾，避免与新模式并发污染状态
@@ -615,6 +619,27 @@ public class ChatManager : MonoBehaviour
         StartCoroutine(BackgroundKnowledgeSearch());
 
         _activeRequestCoroutine = null; // 正常完成，清除在途引用
+    }
+
+    /// <summary>
+    /// 修复阶段的本地模式：只走 Ollama，不进入云端工具循环，也不在本地失败时回退云端。
+    /// </summary>
+    private IEnumerator DoOllamaOnlyReply()
+    {
+        float deadline = Time.time + 20f;
+        while ((LocalLLMAgentService.Instance == null || !LocalLLMAgentService.Instance.CanProcess)
+            && Time.time < deadline)
+        {
+            yield return null;
+        }
+
+        bool handled = false;
+        yield return StartCoroutine(OfflineFallbackCoroutine(ok => handled = ok));
+        if (!handled)
+        {
+            _lastError = "Ollama 未就绪或本地模型生成失败";
+            OnRequestError?.Invoke("⚠ 本地 Ollama 未就绪，请确认 Ollama 已启动且已安装 qwen2.5:3b");
+        }
     }
 
     private IEnumerator DoToolLoop()

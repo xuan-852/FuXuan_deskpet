@@ -699,6 +699,9 @@ public class DesktopPet : MonoBehaviour
                 if (_trayManager != null)
                 {
                     _trayManager.Initialize(_windowOverlay.WindowHandle);
+                    // 修复阶段始终刷新自启动命令，确保已有旧注册表项也迁移到 --ollama。
+                    if (_trayManager.AutoStartEnabled)
+                        _trayManager.SetAutoStart(true);
 
                     // ★ 首次运行自动设置开机自启（写入 HKCU\\Run）
                     // 这样下次重启后程序会自动启动

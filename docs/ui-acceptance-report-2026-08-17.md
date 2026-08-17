@@ -467,3 +467,23 @@ node --check code/desktop_unity/openclaw_bridge.js
 - 打开任意第三方窗口完全覆盖外置面板的人工动作；代码层已验证外置窗口保持非置顶，Unity 置顶层以动态缺口避让。
 
 结论：本轮发现的会话列表双击、后台 Repaint、Unity 置顶层遮挡和拖动/缩放链路问题已完成代码修复并通过编译、EditMode、隔离冒烟及真实窗口交互复测。剩余两项属于人工场景补测，不再是已复现的代码故障。
+## 十三、修复阶段回归验收（2026-08-17）
+
+本轮针对外置 PC 对话窗口与修复阶段启动链路完成以下修改：
+
+- 自启动注册命令增加 `--ollama`；手动不带参数启动仍保留常规云端模式，后续可通过移除参数切回。
+- `--ollama`、`--local` 或 `FU_XUAN_OLLAMA=1` 启用本地模式；聊天请求只走 Ollama，Ollama 失败时不回退云端。
+- 外置窗口隐藏原生黑色发送按钮，避免覆盖 Unity 输入栏；鼠标移动坐标同步到外置渲染，恢复发送按钮与工具按钮 hover 提示。
+- 符玄小人加入外置窗口命中表，点击后可触发表情/互动消息。
+
+验证结果：
+
+| 验证项 | 结果 |
+|---|---|
+| `build.ps1 -Quick` | 通过 |
+| `build.ps1 -RunTests` | 78/78 通过 |
+| 完整构建 | 通过，已生成最新 `Build/DesktopPet.exe` |
+| `runtime_smoke.cjs --verbose` | 通过，包含 external/extclick/approval/embed/emote 与生产记忆零污染校验 |
+| `FU_XUAN_OLLAMA=1` 隔离冒烟 | 通过 |
+
+当前结论：本轮代码级 bug 已修复并通过编译、EditMode、隔离运行回归；真实用户环境下仍建议重点复核输入栏、发送图标 hover、符玄点击互动，以及自启动后首次聊天是否命中本地 Ollama。

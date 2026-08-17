@@ -240,3 +240,10 @@
 5. **头像三处引用**：`LoadPixelFx()`（RightPanel L1159）是三处头像唯一入口，改头像资源只动这里；`GenPixelFx`/`DrawPixelRect` 是已有基建，勿重复造
 6. **测试模式**：UI 自动化测试须开 `.test_mode`，且注意 `LogAssert.Expect` 声明预期日志（Unity 把 Error/Warning 计为失败）
 7. **消息优先级**：新增 UI 弹出类型时遵循 High(AI 回复) > Normal(提醒/交互) > Low(闲话/问候)，防止闲话打断重要回复
+## 五、2026-08-17 修复阶段回归
+
+- 外置窗口使用真实鼠标坐标驱动 IMGUI hover，发送按钮与工具按钮提示可在外置窗口显示。
+- 原生输入控件保留用于键盘输入，但原生黑色发送按钮始终隐藏，避免覆盖 Unity 绘制的输入栏。
+- 符玄小人注册到外置窗口命中表，点击互动在内嵌和外置两种模式保持一致。
+- 修复阶段通过 `--ollama`、`--local` 或 `FU_XUAN_OLLAMA=1` 进入本地聊天模式；本地失败不回退云端。自启动注册项暂时写入 `--ollama`。
+- 回归：`build.ps1 -Quick`、`build.ps1 -RunTests`（78/78）、完整构建和隔离 `runtime_smoke.cjs` 均通过。

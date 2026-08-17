@@ -122,6 +122,7 @@ public partial class RightPanel : MonoBehaviour
     private bool _externalMode;      // 独立窗口模式激活
     private bool _externalRender;    // 正在向独立窗口渲染（抑制屏幕事件处理）
     private bool _runInBackgroundBeforeExternal;
+    private Vector2 _externalMousePos = new Vector2(-1f, -1f);
     private RenderTexture _chatRT;   // 面板渲染目标（独立窗口显示用，尺寸跟随当前视图）
     private float _lastExtCapture;   // 渲染/推送节流计时
     private float _lastExtReadStart; // 异步读回开始时间（超时兜底防冻结）
@@ -2028,6 +2029,7 @@ public partial class RightPanel : MonoBehaviour
         ExternalChatWindow.OnSendText += OnExternalSend;
         ExternalChatWindow.OnClosed += OnExternalClosed;
         ExternalChatWindow.OnPanelClick += OnExternalPanelClick;
+        ExternalChatWindow.OnPanelMouseMove += OnExternalPanelMouseMove;
         // 整面板外置：窗口尺寸 = 面板视图 + 自绘标题栏（客户区与 RT 1:1）
         int w = Mathf.Max(320, Mathf.RoundToInt(_panelRect.width));
         int h = Mathf.Max(200, Mathf.RoundToInt(_panelRect.height)) + EXT_TITLE_BAR_H;
@@ -2043,6 +2045,7 @@ public partial class RightPanel : MonoBehaviour
         ExternalChatWindow.OnSendText -= OnExternalSend;
         ExternalChatWindow.OnClosed -= OnExternalClosed;
         ExternalChatWindow.OnPanelClick -= OnExternalPanelClick;
+        ExternalChatWindow.OnPanelMouseMove -= OnExternalPanelMouseMove;
         ExternalChatWindow.Hide();
         if (_windowOverlay != null)
             _windowOverlay.RefreshExternalWindowHole(false);
@@ -2055,6 +2058,13 @@ public partial class RightPanel : MonoBehaviour
     {
         // 双击先走单击命中（会话列表双击进聊天由 EnterChat 处理；此处简化：双击查表执行）
         HandleExternalInput(x, y, isDoubleClick);
+    }
+
+    private void OnExternalPanelMouseMove(float x, float y)
+    {
+        _externalMousePos = new Vector2(x, y);
+        // 鼠标移动只改变外置 RT 中的 hover 提示，不改变命中表或业务状态。
+        GUI.changed = true;
     }
 
     private void OnExternalSend(string text)
@@ -2115,7 +2125,7 @@ public partial class RightPanel : MonoBehaviour
         try
         {
             DrawExternalTitleBar(rtW); // ★ 自绘星空标题栏（含最小化/关闭按钮，登记命中）
-            DrawPanelContent(0, EXT_TITLE_BAR_H, rtW, rtH - EXT_TITLE_BAR_H, Vector2.zero);
+            DrawPanelContent(0, EXT_TITLE_BAR_H, rtW, rtH - EXT_TITLE_BAR_H, _externalMousePos);
         }
         catch (Exception e)
         {
