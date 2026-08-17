@@ -577,3 +577,11 @@ node --check code/desktop_unity/openclaw_bridge.js
 层级实测日志：`[ExternalChat] 热键唤出：普通窗口置前 raised=True foreground=True topmost=false`。
 
 回归结果：Quick、完整构建、EditMode 78/78、隔离 `runtime_smoke.cjs --verbose` 均通过。
+
+## 二十、左下角原生窗口残留修复（2026-08-17）
+
+用户截图中的“符玄·太卜司”小条对应 `ExternalChatWindow` 创建的 Win32 外置聊天窗口，不是 Live2D 或 Unity 内嵌面板。本轮收紧其显示和关闭生命周期：
+
+- `CreateWindowExW` 去掉 `WS_VISIBLE`，外置窗口初始化完成后才由 `Show()` 显示，避免启动/切换时在旧位置闪现。
+- `Hide()`、`WM_CLOSE`、`WM_APP_SHUTDOWN` 清空像素缓冲和宽高状态，避免关闭后留下最后一帧或紫色残影。
+- 最新构建通过 Quick、完整构建、EditMode 78/78、隔离 runtime smoke；隔离人工测试完成外置窗口打开→关闭→再次打开，进程保持单实例且日志无 NRE/Fatal。

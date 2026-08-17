@@ -292,3 +292,9 @@
 - 外置窗口首次由热键或统一唤出链路显示时，窗口线程执行 `ShowWindow(SW_RESTORE)`、`BringWindowToTop` 和 `SetForegroundWindow`，确保瞬间显示在当前普通窗口之上。
 - 不使用 `HWND_TOPMOST`；唤出后的聊天窗口仍是普通 Windows 窗口，后续可被用户新激活的其他窗口遮挡。Live2D 所在 Unity 透明窗口继续由 `WindowOverlay` 保持 TOPMOST。
 - 实测日志：`raised=True foreground=True topmost=false`。
+
+## 十二、外置窗口残留生命周期修复（2026-08-17）
+
+- 外置 Win32 窗口创建时不再带 `WS_VISIBLE`，完成 Unity 事件订阅、客户区尺寸和输入控件初始化后才由 `Show()` 显示，避免启动阶段在旧位置闪现原生窗口外壳。
+- `Hide()`、`WM_CLOSE` 和 `WM_APP_SHUTDOWN` 均清空 BGRA 缓冲及尺寸状态，避免关闭后继续显示上一帧紫色/残留画面。
+- 最新构建通过 Quick、完整构建、EditMode 78/78 和隔离 `runtime_smoke.cjs --verbose` 验证；手动打开→关闭→重新打开外置窗口，日志未出现 NRE/Fatal 或外置窗口残留错误。

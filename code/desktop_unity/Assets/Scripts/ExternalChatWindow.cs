@@ -407,6 +407,7 @@ public static class ExternalChatWindow
             ShowWindow(_hwnd, 0 /*SW_HIDE*/);
             IsVisible = false;
             _inputFocusActive = false;
+            ClearBuffer();
         }
     }
 
@@ -454,6 +455,18 @@ public static class ExternalChatWindow
         InvalidateRect(_hwnd, IntPtr.Zero, false);
     }
 
+    /// <summary>隐藏或关闭外置窗口时清掉上一帧，避免窗口残留时继续显示旧画面。</summary>
+    private static void ClearBuffer()
+    {
+        lock (_bufLock)
+        {
+            if (_buffer != null)
+                Array.Clear(_buffer, 0, _buffer.Length);
+            _bufW = 0;
+            _bufH = 0;
+        }
+    }
+
     /// <summary>向输入框追加文本（主线程调用，用于测试注入）</summary>
     public static void SetInputText(string text)
     {
@@ -487,7 +500,7 @@ public static class ExternalChatWindow
             }
 
             _hwnd = CreateWindowExW(WS_EX_TOOLWINDOW, "FuXuanChatWindowClass", "符玄 · 太卜司",
-                WS_POPUP | WS_VISIBLE, _startX, _startY, _width, _height, IntPtr.Zero, IntPtr.Zero, _hInst, IntPtr.Zero);
+                WS_POPUP, _startX, _startY, _width, _height, IntPtr.Zero, IntPtr.Zero, _hInst, IntPtr.Zero);
             if (_hwnd == IntPtr.Zero)
             {
                 Debug.LogError("[ExternalChat] CreateWindowExW 失败");
@@ -601,6 +614,7 @@ public static class ExternalChatWindow
                 // 该消息只由 Shutdown 投递，当前 WndProc 就运行在窗口创建线程上。
                 ShowWindow(hWnd, 0 /*SW_HIDE*/);
                 IsVisible = false;
+                ClearBuffer();
                 DestroyWindow(hWnd);
                 return IntPtr.Zero;
             case WM_CLOSE:
@@ -609,6 +623,7 @@ public static class ExternalChatWindow
                 ShowWindow(hWnd, 0);
                 IsVisible = false;
                 _inputFocusActive = false;
+                ClearBuffer();
                 NotifyClosedOnce();
                 return IntPtr.Zero;
             case WM_SETCURSOR:
