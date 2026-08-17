@@ -46,6 +46,7 @@ public static class ExternalChatWindow
     private const uint ES_AUTOHSCROLL = 0x0080;
     private const uint WS_EX_CLIENTEDGE = 0x00000200;
     private const uint WS_EX_TOOLWINDOW = 0x00000080; // 无任务栏按钮（面板非主窗口）
+    private const uint CS_DBLCLKS = 0x0008; // 窗口类接收 WM_*BUTTONDBLCLK
     private const int WM_DESTROY = 0x0002;
     private const int WM_PAINT = 0x000F;
     private const int WM_SIZE = 0x0005;
@@ -425,7 +426,9 @@ public static class ExternalChatWindow
             _hInst = GetModuleHandleW(null);
             var wc = new WNDCLASS
             {
-                style = 0,
+                // 必须注册双击类样式，否则 Windows 只派发两次单击，永远不会产生
+                // WM_LBUTTONDBLCLK，会话列表无法实现“单击保留、双击进入聊天”。
+                style = CS_DBLCLKS,
                 lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProcDelegate = WndProc),
                 hInstance = _hInst,
                 lpszClassName = "FuXuanChatWindowClass"

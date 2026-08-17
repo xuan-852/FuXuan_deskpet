@@ -672,7 +672,8 @@ public partial class RightPanel
             // 外部命中：会话项双击进聊天（矩形已含滚动偏移，命中表用同一坐标系）
             int idx = i;
             Rect extItemRect = new Rect(itemRect.x + listView.x - _sessionScroll.x, itemRect.y + listView.y - _sessionScroll.y, itemRect.width, itemRect.height);
-            RegisterExtHit(extItemRect, () => EnterChat(idx));        }
+            RegisterExtHit(extItemRect, () => EnterChat(idx), true);
+        }
         GUI.EndScrollView();
 
         // —— 底部工具入口（设置/便签/报告/消耗 → 对话框内部子面板视图，QQ 底部工具栏位置） ——

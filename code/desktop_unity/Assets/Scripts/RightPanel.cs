@@ -68,6 +68,7 @@ public partial class RightPanel : MonoBehaviour
     private ChatManager _chat;
     private BallPanel _ballPanel;
     private DesktopPet _pet;             // 权重设置引用
+    private WindowOverlay _windowOverlay;
     private ReminderManager _reminders;  // 便签引用
     private string _inputText = "";
     private const int MAX_INPUT_LENGTH = 300;   // 输入最大长度，防超长文字溢出输入框
@@ -120,6 +121,7 @@ public partial class RightPanel : MonoBehaviour
     // ==================== 外部面板窗口（独立普通窗口，QQ 式可被遮挡；2026-08-15 大工程） ====================
     private bool _externalMode;      // 独立窗口模式激活
     private bool _externalRender;    // 正在向独立窗口渲染（抑制屏幕事件处理）
+    private bool _runInBackgroundBeforeExternal;
     private RenderTexture _chatRT;   // 面板渲染目标（独立窗口显示用，尺寸跟随当前视图）
     private float _lastExtCapture;   // 渲染/推送节流计时
     private float _lastExtReadStart; // 异步读回开始时间（超时兜底防冻结）
@@ -135,7 +137,13 @@ public partial class RightPanel : MonoBehaviour
     //   **内容区命中不再做 y-44 转换**（此前减 44 导致全部内容区点击偏上 44px，codex 复验命中）。
     private readonly List<ExtHitZone> _extHitZones = new List<ExtHitZone>();
     private readonly List<ExtHitZone> _extTitleZones = new List<ExtHitZone>();
-    private struct ExtHitZone { public Rect rect; public System.Action action; }
+    private PanelView _extHitView = (PanelView)(-1);
+    private struct ExtHitZone
+    {
+        public Rect rect;
+        public System.Action action;
+        public bool doubleClickOnly;
+    }
 
     /// <summary>外部窗口输入入口（独立窗口线程 → 主线程，经 MainThreadDispatcher 调用）
     /// ★ 坐标 = 客户区坐标（含标题栏），与命中表 rect 同基准：
@@ -158,12 +166,29 @@ public partial class RightPanel : MonoBehaviour
             Debug.Log($"[RightPanel] 外部标题栏点击未命中: ({x:F0},{y:F0})，可点区域 {_extTitleZones.Count} 个");
             return;
         }
+
+        // 会话列表的视觉状态和命中表都可能跨越一次 Repaint 才更新。
+        // 这里按当前视图直接解释坐标，避免旧聊天视图命中表吞掉会话项点击。
+        if (_currentView == PanelView.SessionList && TryHandleSessionListInput(x, y, isDoubleClick))
+            return;
+
+        // 视图已切换但尚未完成下一帧外置渲染时，禁止使用旧视图的动作闭包。
+        // 等待下一次 Repaint 重建命中表，避免“点 A 执行了旧页面的 B 动作”。
+        if (_extHitView != _currentView)
+        {
+            Debug.Log($"[RightPanel] 外部点击等待当前视图命中表: {_currentView}（旧表 {_extHitView}）");
+            return;
+        }
+
         // 内容区：客户区坐标直接查命中表（rect 已是客户区基准）
         var p = new Vector2(x, y);
         foreach (var zone in _extHitZones)
         {
             if (zone.rect.Contains(p))
             {
+                // 会话项遵循 QQ 式双击进入：第一次按下只保留在列表，不提前切页。
+                if (zone.doubleClickOnly && !isDoubleClick)
+                    return;
                 try { zone.action(); }
                 catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部点击动作异常: {e.Message}"); }
                 return; // 只命中第一个（渲染顺序=绘制顺序，最上层优先）
@@ -173,15 +198,115 @@ public partial class RightPanel : MonoBehaviour
     }
 
     /// <summary>登记一个外部可点区域（仅外部渲染时收集，面板局部坐标）</summary>
-    private void RegisterExtHit(Rect rect, System.Action action)
+    private void RegisterExtHit(Rect rect, System.Action action, bool doubleClickOnly = false)
     {
-        if (_externalRender) _extHitZones.Add(new ExtHitZone { rect = rect, action = action });
+        if (_externalRender)
+        {
+            _extHitZones.Add(new ExtHitZone
+            {
+                rect = rect,
+                action = action,
+                doubleClickOnly = doubleClickOnly
+            });
+        }
     }
 
     /// <summary>登记一个外部标题栏按钮可点区域（客户区坐标，仅外部渲染时收集）</summary>
     private void RegisterExtTitleHit(Rect rect, System.Action action)
     {
         if (_externalRender) _extTitleZones.Add(new ExtHitZone { rect = rect, action = action });
+    }
+
+    /// <summary>
+    /// 当前外置会话列表的无渲染帧命中兜底。
+    /// 外置窗口的像素渲染与 Unity 主线程事件不是同一时序，不能把“上一帧命中表”
+    /// 当成当前页面真相；列表项和底部入口使用与 DrawSessionListView 相同的几何公式。
+    /// </summary>
+    private bool TryHandleSessionListInput(float x, float y, bool isDoubleClick)
+    {
+        float pw = _panelRect.width;
+        float ph = _panelRect.height;
+        float py = EXT_TITLE_BAR_H;
+        float titleH = 76f;
+        float closeSize = 36f;
+        Vector2 point = new Vector2(x, y);
+
+        Rect closeRect = new Rect(pw - closeSize - 14f, py + (titleH - closeSize) / 2f, closeSize, closeSize);
+        if (closeRect.Contains(point))
+        {
+            Close();
+            return true;
+        }
+
+        Rect externalRect = new Rect(pw - closeSize - 64f, py + (titleH - 34f) / 2f, 40f, 34f);
+        if (externalRect.Contains(point))
+        {
+            ToggleExternalMode();
+            return true;
+        }
+
+        float searchY = py + titleH + 12f;
+        Rect newRect = new Rect(pw - 60f, searchY, 48f, 48f);
+        if (newRect.Contains(point))
+        {
+            Debug.Log("[RightPanel] 外部命中：新建会话（多角色扩展预留）");
+            return true;
+        }
+
+        RefreshSessionList();
+        float listY = searchY + 48f + 12f;
+        float listH = ph - (listY - py) - 80f;
+        if (listH < 40f) listH = 40f;
+        Rect listView = new Rect(6f, listY, pw - 12f, listH);
+        const float itemH = 96f;
+        for (int i = 0; i < _sessions.Count; i++)
+        {
+            Rect itemRect = new Rect(2f + listView.x - _sessionScroll.x,
+                8f + i * itemH + listView.y - _sessionScroll.y,
+                listView.width - 8f,
+                itemH - 8f);
+            if (!itemRect.Contains(point)) continue;
+
+            if (isDoubleClick)
+            {
+                EnterChat(i);
+                Debug.Log($"[RightPanel] 外部会话项双击进入聊天: {i}");
+            }
+            else
+            {
+                Debug.Log($"[RightPanel] 外部会话项单击保留列表: {i}");
+            }
+            return true;
+        }
+
+        float toolY = py + ph - 76f;
+        float toolW = (pw - 48f) / 4f;
+        var toolDefs = new (string label, BallPanel.PanelType type)[]
+        {
+            ("设置", BallPanel.PanelType.Settings),
+            ("便签", BallPanel.PanelType.Reminders),
+            ("报告", BallPanel.PanelType.Report),
+            ("消耗", BallPanel.PanelType.Usage)
+        };
+        for (int i = 0; i < toolDefs.Length; i++)
+        {
+            Rect btnRect = new Rect(12f + i * toolW, toolY + 12f, toolW - 8f, 50f);
+            if (!btnRect.Contains(point)) continue;
+            var type = toolDefs[i].type;
+            OpenSubPanel(type);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>视图尺寸变化后作废旧外置命中表，防止旧闭包操作新页面。</summary>
+    private void InvalidateExternalHitZones()
+    {
+        if (!_externalMode) return;
+        _extHitZones.Clear();
+        _extTitleZones.Clear();
+        _extHitView = (PanelView)(-1);
     }
 
     // ==================== 字体档位缩放 ====================
@@ -361,6 +486,11 @@ public partial class RightPanel : MonoBehaviour
             _pet = GetComponent<DesktopPet>();
             if (_pet == null) _pet = FindObjectOfType<DesktopPet>();
         }
+        if (_windowOverlay == null)
+        {
+            _windowOverlay = GetComponent<WindowOverlay>();
+            if (_windowOverlay == null) _windowOverlay = FindObjectOfType<WindowOverlay>();
+        }
         if (_reminders == null)
         {
             _reminders = ReminderManager.Instance;
@@ -371,6 +501,11 @@ public partial class RightPanel : MonoBehaviour
     void Update()
     {
         RefreshRefs();
+
+        // 外置窗口是独立线程，拖动/缩放不会触发 Unity 的 IMGUI 事件；
+        // 每帧同步透明层缺口，保证普通外置窗口移动后仍可点击。
+        if (_externalMode && _windowOverlay != null)
+            _windowOverlay.RefreshExternalWindowHole();
 
         // 0. 测试收件箱注入（仅测试模式）：外部脚本向 DataPathConfig.InboxFile 写入一行
         //    → 本帧检测到即作为用户消息发送（绕过 UI 点击，窗口位置无关，适合自动化测试）
@@ -503,6 +638,7 @@ public partial class RightPanel : MonoBehaviour
     /// <summary>按当前视图应用窗口尺寸（窄条 ⇄ 展开，左上角保持，允许停在屏外但保留最小可见条）</summary>
     private void ApplyViewSize()
     {
+        InvalidateExternalHitZones();
         float w = _currentView == PanelView.SessionList ? SESSION_LIST_W
             : IsSubPanelView(_currentView) ? SUB_PANEL_W
             : CHAT_PANEL_W;
@@ -517,6 +653,13 @@ public partial class RightPanel : MonoBehaviour
         _panelRect = new Rect(nx, ny, w, h);
         panelWidth = w;
         panelHeight = h;
+        // 外置窗口可获得前台焦点，Unity 主窗口随后进入后台。必须先允许后台运行，
+        // 否则 Unity 停止 Repaint，外置窗口会卡在上一视图的纹理和命中表。
+        if (_externalMode && ExternalChatWindow.IsCreated)
+        {
+            ExternalChatWindow.SetSize(Mathf.RoundToInt(w), Mathf.RoundToInt(h) + EXT_TITLE_BAR_H);
+            UnityEngine.GUI.changed = true;
+        }
         Debug.Log($"[RightPanel] 视图切换 → {_currentView}，窗口={w}x{h} @ ({_panelRect.x:F0},{_panelRect.y:F0})");
     }
 
@@ -1871,7 +2014,16 @@ public partial class RightPanel : MonoBehaviour
             _animAlpha = 1f;
             ApplyViewSize(); // 确保 _panelRect 有合法尺寸
         }
+        _runInBackgroundBeforeExternal = Application.runInBackground;
+        Application.runInBackground = true;
         _externalMode = true;
+        // 外置窗口必须保持普通（非置顶）窗口；进入外置模式时主动刷新 Unity
+        // 全屏透明层的穿透样式，避免沿用上一帧“宠物/内嵌面板可交互”状态而挡住外置窗口。
+        if (_windowOverlay != null)
+        {
+            _windowOverlay.SetClickThrough(true);
+            _windowOverlay.RefreshExternalWindowHole();
+        }
         ExternalChatWindow.OnSendText += OnExternalSend;
         ExternalChatWindow.OnClosed += OnExternalClosed;
         ExternalChatWindow.OnPanelClick += OnExternalPanelClick;
@@ -1891,6 +2043,9 @@ public partial class RightPanel : MonoBehaviour
         ExternalChatWindow.OnClosed -= OnExternalClosed;
         ExternalChatWindow.OnPanelClick -= OnExternalPanelClick;
         ExternalChatWindow.Hide();
+        if (_windowOverlay != null)
+            _windowOverlay.RefreshExternalWindowHole(false);
+        Application.runInBackground = _runInBackgroundBeforeExternal;
         Debug.Log("[RightPanel] 已退出独立面板窗口");
     }
 
@@ -1961,6 +2116,7 @@ public partial class RightPanel : MonoBehaviour
             Debug.LogError($"[RightPanel] 外部面板渲染异常: {e}");
         }
         _externalRender = false;
+        _extHitView = _currentView;
         GUI.matrix = prevMatrix;
         RenderTexture.active = prev;
 

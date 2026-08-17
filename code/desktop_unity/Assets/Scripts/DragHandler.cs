@@ -119,7 +119,10 @@ public class DragHandler : MonoBehaviour
         if (_rightPanel != null)
         {
             Vector2 mousePos = GetMousePos();
-            bool overRightPanel = _rightPanel.IsPointInInteractiveArea(mousePos);
+            // 外置模式下聊天面板已移到独立窗口。Unity 主窗口保持置顶，
+            // 但不能再让整块旧面板区域关闭穿透，否则会遮住非置顶外置窗口。
+            bool overRightPanel = !_rightPanel.IsExternalMode
+                && _rightPanel.IsPointInInteractiveArea(mousePos);
             if (overRightPanel)
             {
                 panelOpenNow = true;
@@ -335,6 +338,7 @@ public class DragHandler : MonoBehaviour
 
         // ★ RightPanel 区域也接收点击
         bool overRightPanel = _rightPanel != null
+            && !_rightPanel.IsExternalMode
             && _rightPanel.IsPointInInteractiveArea(mousePos);
 
         // ★ 审批弹窗打开时全屏接收点击（模态遮罩居中绘制，鼠标常不在宠物/面板上）

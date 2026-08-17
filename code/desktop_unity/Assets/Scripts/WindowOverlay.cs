@@ -40,6 +40,9 @@ public class WindowOverlay : MonoBehaviour
 
     private const int GWL_STYLE = -16;
     private const int GWL_EXSTYLE = -20;
+    private const int GWLP_WNDPROC = -4;
+    private const uint WM_NCHITTEST = 0x0084;
+    private const int HTTRANSPARENT = -1;
 
     // 要移除的样式：标题栏、边框、系统菜单、最小/最大按钮
     private const uint STYLE_TO_REMOVE = WS_CAPTION | WS_THICKFRAME | WS_SYSMENU |
@@ -53,6 +56,7 @@ public class WindowOverlay : MonoBehaviour
     private const uint SWP_SHOWWINDOW = 0x0040;
     private const uint SWP_FRAMECHANGED = 0x0020;
     private const uint SWP_NOZORDER = 0x0004;
+    private const int RGN_DIFF = 4;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MARGINS
@@ -69,6 +73,14 @@ public class WindowOverlay : MonoBehaviour
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int SetWindowLong(IntPtr hWnd, int nIndex, uint dwNewLong);
 
+    // x86 构建使用 SetWindowLongW；返回/参数用 IntPtr 以便安全保存 Unity 原窗口过程。
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtrCompat(IntPtr hWnd, int nIndex, IntPtr newLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr CallWindowProcW(IntPtr prevWndProc, IntPtr hWnd,
+        uint msg, IntPtr wParam, IntPtr lParam);
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetWindowLong(IntPtr hWnd, int nIndex);
 
@@ -78,6 +90,18 @@ public class WindowOverlay : MonoBehaviour
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool redraw);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern int CombineRgn(IntPtr destination, IntPtr source1, IntPtr source2, int mode);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern bool DeleteObject(IntPtr obj);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetWindowTextLengthW(IntPtr hWnd);
@@ -129,6 +153,7 @@ public class WindowOverlay : MonoBehaviour
     private const uint SPI_GETWORKAREA = 0x0030;
 
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    private delegate IntPtr WindowProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
@@ -166,6 +191,11 @@ public class WindowOverlay : MonoBehaviour
     private bool _rebuildPending = false; // 延迟重建已调度，防重复
     private int _origW;
     private int _origH;
+    private WindowProcDelegate _windowProcDelegate;
+    private IntPtr _originalWndProc = IntPtr.Zero;
+    private IntPtr _hookedHwnd = IntPtr.Zero;
+    private bool _externalHoleApplied;
+    private RECT _externalHoleRect;
 
     private void Start()
     {
@@ -335,6 +365,8 @@ public class WindowOverlay : MonoBehaviour
         // ★ 整个操作包裹 try-catch：任何 Win32/DWM 操作失败不崩系统
         try
         {
+
+        InstallHitTestHook();
 
         int screenW, screenH, screenX, screenY;
         GetFullScreenSize(out screenW, out screenH, out screenX, out screenY);
@@ -570,6 +602,86 @@ public class WindowOverlay : MonoBehaviour
         return len > 0 && className.ToString().Equals(EXTERNAL_CHAT_WINDOW_CLASS, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// 在 Unity 全屏置顶层中为外置窗口挖出动态矩形区域。
+    /// 外置窗口仍是普通非置顶窗口，Unity 的宠物区域和置顶属性不变。
+    /// </summary>
+    public void RefreshExternalWindowHole(bool enabled = true)
+    {
+        if (_hwnd == IntPtr.Zero || !_applied || _suspended || !IsWindow(_hwnd)) return;
+
+        IntPtr external = IntPtr.Zero;
+        if (enabled)
+        {
+            EnumWindows((hWnd, lParam) =>
+            {
+                if (IsWindowVisible(hWnd) && IsExternalChatWindow(hWnd))
+                {
+                    external = hWnd;
+                    return false;
+                }
+                return true;
+            }, IntPtr.Zero);
+        }
+
+        if (external == IntPtr.Zero || !GetWindowRect(_hwnd, out RECT mainRect)
+            || !GetWindowRect(external, out RECT extRect))
+        {
+            if (_externalHoleApplied)
+            {
+                SetWindowRgn(_hwnd, IntPtr.Zero, true);
+                _externalHoleApplied = false;
+            }
+            return;
+        }
+
+        int mainW = mainRect.Right - mainRect.Left;
+        int mainH = mainRect.Bottom - mainRect.Top;
+        int left = Math.Max(extRect.Left, mainRect.Left) - mainRect.Left;
+        int top = Math.Max(extRect.Top, mainRect.Top) - mainRect.Top;
+        int right = Math.Min(extRect.Right, mainRect.Right) - mainRect.Left;
+        int bottom = Math.Min(extRect.Bottom, mainRect.Bottom) - mainRect.Top;
+        if (right <= left || bottom <= top)
+        {
+            if (_externalHoleApplied)
+            {
+                SetWindowRgn(_hwnd, IntPtr.Zero, true);
+                _externalHoleApplied = false;
+            }
+            return;
+        }
+
+        if (_externalHoleApplied
+            && _externalHoleRect.Left == extRect.Left && _externalHoleRect.Top == extRect.Top
+            && _externalHoleRect.Right == extRect.Right && _externalHoleRect.Bottom == extRect.Bottom)
+            return;
+
+        IntPtr full = CreateRectRgn(0, 0, mainW, mainH);
+        IntPtr hole = CreateRectRgn(left, top, right, bottom);
+        IntPtr result = CreateRectRgn(0, 0, 0, 0);
+        if (full == IntPtr.Zero || hole == IntPtr.Zero || result == IntPtr.Zero)
+        {
+            if (full != IntPtr.Zero) DeleteObject(full);
+            if (hole != IntPtr.Zero) DeleteObject(hole);
+            if (result != IntPtr.Zero) DeleteObject(result);
+            return;
+        }
+
+        CombineRgn(result, full, hole, RGN_DIFF);
+        // SetWindowRgn 接管 result 的所有权，成功后不能再 DeleteObject(result)。
+        if (SetWindowRgn(_hwnd, result, true) != 0)
+        {
+            _externalHoleApplied = true;
+            _externalHoleRect = extRect;
+        }
+        else
+        {
+            DeleteObject(result);
+        }
+        DeleteObject(full);
+        DeleteObject(hole);
+    }
+
     public void SetClickThrough(bool enabled)
     {
         if (_hwnd == IntPtr.Zero || !_applied || _suspended) return;
@@ -594,6 +706,36 @@ public class WindowOverlay : MonoBehaviour
         //     第一次刷帧，第二次确保生效（有用户反馈单次 SWP_FRAMECHANGED 在某些 Win11 版本不够）。
         SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+
+    /// <summary>
+    /// 给 Unity 全屏透明层安装最小命中测试代理。
+    /// WS_EX_TRANSPARENT 主要影响绘制顺序，不保证跨线程窗口的鼠标命中；
+    /// 外置窗口是独立线程，返回 HTTRANSPARENT 才能稳定把非宠物区域交给下层窗口。
+    /// </summary>
+    private void InstallHitTestHook()
+    {
+        if (_hwnd == IntPtr.Zero || _hookedHwnd == _hwnd || !IsWindow(_hwnd)) return;
+        _windowProcDelegate = WindowProc;
+        IntPtr previous = SetWindowLongPtrCompat(_hwnd, GWLP_WNDPROC,
+            Marshal.GetFunctionPointerForDelegate(_windowProcDelegate));
+        if (previous == IntPtr.Zero)
+        {
+            LogError($"安装透明层命中代理失败, error={Marshal.GetLastWin32Error()}");
+            return;
+        }
+        _originalWndProc = previous;
+        _hookedHwnd = _hwnd;
+        Log("已安装透明层 WM_NCHITTEST 代理");
+    }
+
+    private IntPtr WindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
+        if (msg == WM_NCHITTEST && clickThrough)
+            return new IntPtr(HTTRANSPARENT);
+        if (_originalWndProc != IntPtr.Zero)
+            return CallWindowProcW(_originalWndProc, hWnd, msg, wParam, lParam);
+        return IntPtr.Zero;
     }
 
     /// <summary>
