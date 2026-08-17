@@ -16,6 +16,7 @@
 | [`README.md`](../README.md) | GitHub 项目介绍（特性亮点/架构图/快速上手/展示，**GitHub 默认渲染页**） | 访客首次了解项目 |
 | [`AGENTS.md`](../AGENTS.md) | AI 协作快速入口（7 条铁律） | **每次开工前** |
 | [`development-standards.md`](development-standards.md) | 唯一权威开发规范（9 章） | 写任何代码前 |
+| [`build-workflow.md`](build-workflow.md) | **编译工作流（AI 必读）**（构建入口/卡死处理/验证闭环/坑清单） | **改 C# 后构建、或构建卡死时** |
 | [`token-cost-testing.md`](token-cost-testing.md) | **Token 消耗与测试指南**（生产 vs 测试区别、消耗铁律、未解决痛点） | **涉及云端调用/测试/排查烧钱前** |
 | [`project-bugs-and-acceptance.md`](project-bugs-and-acceptance.md) | **项目已知 Bug 与验收点**（活跃问题/已修防回归清单/验收标准） | **改外置窗口/渲染/退出/测试代码前** |
 | [`ui-acceptance-checklist.md`](ui-acceptance-checklist.md) | **UI 验收清单（考评师版）**（排版/功能/进阶/回归红线，含多模态验证项） | **UI 回归验收 / 交付签发前** |
