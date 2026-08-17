@@ -39,7 +39,9 @@ $TestData = Join-Path $env:TEMP "fuxuan_cost_probe"
 $Inbox = Join-Path $TestData "inbox.txt"
 $UsageLog = Join-Path $TestData "usage_log.jsonl"
 $MirrorLog = Join-Path $TestData "logs\player_log.txt"
-$Report = Join-Path $RootDir "logs\build\cost_probe_report.txt"
+$ReportDir = Join-Path $RootDir "logs\build"
+New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
+$Report = Join-Path $ReportDir "cost_probe_report.txt"
 
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  Token 成本探针（云端模式 $($DurationMin) 分钟）"
