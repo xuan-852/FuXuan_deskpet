@@ -26,9 +26,13 @@ const isCloud = args.includes('--cloud');
 const isLocal = args.includes('--local');
 if (!isCloud && !isLocal) { console.error('必须指定 --local 或 --cloud'); process.exit(1); }
 const waitMs = parseInt(args[args.indexOf('--wait-ms') + 1] || '6000', 10);
-const typeFilter = (args[args.indexOf('--cases') + 1] || '').split(',').filter(Boolean);
-const fromId = args[args.indexOf('--from') + 1] || null;
-const toId = args[args.indexOf('--to') + 1] || null;
+// ★ 只有显式传 --cases 才取类型过滤（否则 args[0] 可能是 --local/--cloud）
+const casesIdx = args.indexOf('--cases');
+const typeFilter = (casesIdx >= 0 ? (args[casesIdx + 1] || '') : '').split(',').filter(Boolean);
+const fromIdx = args.indexOf('--from');
+const fromId = fromIdx >= 0 ? (args[fromIdx + 1] || null) : null;
+const toIdx = args.indexOf('--to');
+const toId = toIdx >= 0 ? (args[toIdx + 1] || null) : null;
 
 function writeInbox(text) {
   fs.writeFileSync(INBOX, text, 'utf8');
@@ -54,9 +58,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   }
 
   if (!fs.existsSync(INBOX)) {
-    console.error(`[FAIL] inbox 不存在: ${INBOX}`);
-    console.error('请先按指南启动桌宠（--ollama 或 --cloud-baseline）并确认 FU_XUAN_DATA 一致。');
-    process.exit(1);
+    // ★ 桌宠不主动创建 inbox，只在文件存在时轮询——运行器负责创建
+    try {
+      fs.writeFileSync(INBOX, '', 'utf8');
+      console.log(`[init] 已创建 inbox: ${INBOX}`);
+    } catch (e) {
+      console.error(`[FAIL] 无法创建 inbox: ${INBOX} (${e.message})`);
+      process.exit(1);
+    }
   }
 
   let done = 0, fail = 0;
