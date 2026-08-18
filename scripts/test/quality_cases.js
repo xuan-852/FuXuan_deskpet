@@ -1,0 +1,73 @@
+// 质量对照测试固定案例集（本地/云端配对使用同一批）
+// 字段: id(案例编号), type(chat|motion), input(发送给桌宠的输入)
+// 注意: quality_log 只记 case_id，不记 input；input 仅用于驱动测试，不会入库。
+// 扩展规则: 每类建议 20~30 条，id 用 chat_### / motion_### 递增。
+module.exports = [
+  // ═══════════ 普通聊天（chat_001~020） ═══════════
+  { id: 'chat_001', type: 'chat', input: '你好，今天过得怎么样？' },
+  { id: 'chat_002', type: 'chat', input: '你觉得我今天看起来有点累吗？' },
+  { id: 'chat_003', type: 'chat', input: '用简单的话解释什么是缓存。' },
+  { id: 'chat_004', type: 'chat', input: '帮我安排一个今晚两小时的学习计划。' },
+  { id: 'chat_005', type: 'chat', input: '我刚才说的学习计划，第一步具体怎么做？' },
+  { id: 'chat_006', type: 'chat', input: '用三句话告诉我如何提高专注力。' },
+  { id: 'chat_007', type: 'chat', input: '今天天气怎么样？适合出门吗？' },
+  { id: 'chat_008', type: 'chat', input: '推荐一首适合写代码时听的歌。' },
+  { id: 'chat_009', type: 'chat', input: '我有点焦虑，怎么缓解比较好？' },
+  { id: 'chat_010', type: 'chat', input: '解释一下什么是人工智能。' },
+  { id: 'chat_011', type: 'chat', input: '周末想出去走走，有什么好建议？' },
+  { id: 'chat_012', type: 'chat', input: '你觉得我适合养猫还是养狗？' },
+  { id: 'chat_013', type: 'chat', input: '晚上吃什么比较健康？' },
+  { id: 'chat_014', type: 'chat', input: '怎么才能坚持每天早起？' },
+  { id: 'chat_015', type: 'chat', input: '给一句鼓励我的话吧。' },
+  { id: 'chat_016', type: 'chat', input: '现在几点了？帮我看看时间。' },
+  { id: 'chat_017', type: 'chat', input: '今天是我的幸运日吗？' },
+  { id: 'chat_018', type: 'chat', input: '简单说说你最喜欢做什么。' },
+  { id: 'chat_019', type: 'chat', input: '我要出去一下，晚点回来。' },
+  { id: 'chat_020', type: 'chat', input: '谢谢你一直陪着我。' },
+
+  // ═══════════ 需要长回复的聊天（chat_021~030） ═══════════
+  { id: 'chat_021', type: 'chat', input: '详细讲讲量子计算的基本原理。' },
+  { id: 'chat_022', type: 'chat', input: '总结一下健康饮食的几个关键原则。' },
+  { id: 'chat_023', type: 'chat', input: '给我一个完整的一周健身计划。' },
+  { id: 'chat_024', type: 'chat', input: '如何系统地学习一门新语言？分步骤说明。' },
+  { id: 'chat_025', type: 'chat', input: '谈谈时间管理的几种方法。' },
+  { id: 'chat_026', type: 'chat', input: '解释机器学习里过拟合是什么，怎么避免。' },
+  { id: 'chat_027', type: 'chat', input: '给一个从零开始写小说的大纲。' },
+  { id: 'chat_028', type: 'chat', input: '分析一下拖延的心理原因和解决办法。' },
+  { id: 'chat_029', type: 'chat', input: '详细描述一次完美的旅行应该怎么规划。' },
+  { id: 'chat_030', type: 'chat', input: '讲一个关于坚持的小故事，要有起承转合。' },
+
+  // ═══════════ 简单动作（motion_001~010） ═══════════
+  { id: 'motion_001', type: 'motion', input: '请点头表示同意。' },
+  { id: 'motion_002', type: 'motion', input: '请眨眼并露出开心的表情。' },
+  { id: 'motion_003', type: 'motion', input: '请微微歪头，表示疑惑。' },
+  { id: 'motion_004', type: 'motion', input: '请做个深呼吸的动作。' },
+  { id: 'motion_005', type: 'motion', input: '请轻轻摇头表示否定。' },
+  { id: 'motion_006', type: 'motion', input: '请露出困倦的表情。' },
+  { id: 'motion_007', type: 'motion', input: '请做一个思考的动作。' },
+  { id: 'motion_008', type: 'motion', input: '请开心地微笑一下。' },
+  { id: 'motion_009', type: 'motion', input: '请做个惊讶的表情。' },
+  { id: 'motion_010', type: 'motion', input: '请害羞地低下头。' },
+
+  // ═══════════ 复合/肢体动作（motion_011~030） ═══════════
+  { id: 'motion_011', type: 'motion', input: '请挥右手向我打招呼。' },
+  { id: 'motion_012', type: 'motion', input: '请双手捂脸，表现害羞。' },
+  { id: 'motion_013', type: 'motion', input: '请先惊讶，再后退一步表示害怕。' },
+  { id: 'motion_014', type: 'motion', input: '请抬手指向前方，然后歪头思考。' },
+  { id: 'motion_015', type: 'motion', input: '请转身背对我，表示生气。' },
+  { id: 'motion_016', type: 'motion', input: '请举手做出欢呼庆祝的动作。' },
+  { id: 'motion_017', type: 'motion', input: '请做拒绝的动作，摆摆手。' },
+  { id: 'motion_018', type: 'motion', input: '请双手叉腰，表现自信。' },
+  { id: 'motion_019', type: 'motion', input: '请做招手让我靠近的动作。' },
+  { id: 'motion_020', type: 'motion', input: '请做出请坐的手势。' },
+  { id: 'motion_021', type: 'motion', input: '请比个心形手势。' },
+  { id: 'motion_022', type: 'motion', input: '请做个投降的动作，双手举起。' },
+  { id: 'motion_023', type: 'motion', input: '请轻拍手表示鼓励。' },
+  { id: 'motion_024', type: 'motion', input: '请做擦汗的动作。' },
+  { id: 'motion_025', type: 'motion', input: '请双手合十表示感谢。' },
+  { id: 'motion_026', type: 'motion', input: '请做伸懒腰的动作。' },
+  { id: 'motion_027', type: 'motion', input: '请耸肩表示无所谓。' },
+  { id: 'motion_028', type: 'motion', input: '请做托腮思考的动作。' },
+  { id: 'motion_029', type: 'motion', input: '请先点头再摇头，表示犹豫。' },
+  { id: 'motion_030', type: 'motion', input: '请做欢迎光临的迎接手势。' },
+];
