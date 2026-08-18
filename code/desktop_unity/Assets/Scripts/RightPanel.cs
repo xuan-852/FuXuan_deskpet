@@ -529,7 +529,7 @@ public partial class RightPanel : MonoBehaviour
         if (_externalMode && _windowOverlay != null)
             _windowOverlay.RefreshExternalWindowHole();
 
-        // 0. 测试收件箱注入（仅测试模式）：外部脚本向 DataPathConfig.InboxFile 写入一行
+        // 0. 测试收件箱注入：测试模式或纯云端质量基线模式下，外部脚本向 InboxFile 写入一行
         //    → 本帧检测到即作为用户消息发送（绕过 UI 点击，窗口位置无关，适合自动化测试）
         CheckTestInbox();
 
@@ -773,7 +773,7 @@ public partial class RightPanel : MonoBehaviour
     private float _nextInboxCheck = 0f;
 
     /// <summary>
-    /// 测试收件箱：仅测试模式（DataPathConfig.TestModeFile 存在）启用。
+    /// 测试收件箱：测试模式或纯云端质量基线模式启用。
     /// 外部测试脚本向 DataPathConfig.InboxFile 写入一行文字，
     /// 这里以 0.25s 间隔轮询，读到非空内容即处理，然后清空文件（保留文件避免反复触发）。
     /// 支持两种格式：
@@ -783,7 +783,7 @@ public partial class RightPanel : MonoBehaviour
     /// </summary>
     private void CheckTestInbox()
     {
-        if (!ChatManager.IsTestMode) return;
+        if (!ChatManager.IsTestMode && !ChatConfig.UseCloudBaseline && !ChatConfig.UseOllamaMode) return;
         if (Time.time < _nextInboxCheck) return;
         _nextInboxCheck = Time.time + 0.25f;
 
@@ -797,6 +797,15 @@ public partial class RightPanel : MonoBehaviour
 
         try { System.IO.File.WriteAllText(inboxPath, ""); }
         catch { return; }
+
+        // ★ 配对质量测试：@@case:chat_001 设置后续遥测的案例编号；@@case: 清除。
+        if (content.StartsWith("@@case:"))
+        {
+            string caseId = content.Substring("@@case:".Length).Trim();
+            QualityTelemetry.SetCaseId(caseId);
+            Debug.Log($"[QualityTest] 当前案例: {(string.IsNullOrEmpty(QualityTelemetry.CurrentCaseId) ? "(none)" : QualityTelemetry.CurrentCaseId)}");
+            return;
+        }
 
         // ★ 测试视图切换：@@view:settings|reminders|report|chat|list|back|close|open
         //   终端测试链路——无需模拟鼠标点击，写一行文件即可可靠切页（仅测试模式）。

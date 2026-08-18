@@ -52,14 +52,8 @@ public static class MotionTranslator
     {
         if (onResult == null) yield break;
 
-        // ——— API Key 检查 ———
+        // API Key 仅用于后续云端兜底；本地 Ollama 模式不应依赖云端密钥。
         string apiKey = ChatConfig.ApiKey;
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            Debug.LogWarning("[MotionTranslator] DeepSeek API Key 未配置，跳过翻译");
-            onResult(null);
-            yield break;
-        }
 
         if (mapper == null || !mapper.IsLoaded)
         {
@@ -174,9 +168,10 @@ public static class MotionTranslator
         // ★ 2026-08-15 成本优化：动作翻译占 API 调用 78%（677/869 次），本地优先可省大头。
         //   曾因「走路歪身子」回滚，后查明那是动作结束参数残留 bug（MotionGenerator 已修），
         //   非本地翻译质量问题——恢复本地优先 + DeepSeek 兜底。
-        if (LocalLLMClient.IsReady)
+        if (!ChatConfig.UseCloudBaseline && LocalLLMClient.IsReady)
         {
             Debug.Log($"[MotionTranslator] 🏠 尝试本地模型翻译（免费）: \"{description}\"");
+            float localStartedAt = Time.realtimeSinceStartup;
             bool localOk = false;
             string localText = "";
             yield return LocalLLMClient.PromptAsync(systemPrompt, userPrompt,
@@ -188,16 +183,34 @@ public static class MotionTranslator
                 {
                     // ——— 6. 参数分布检查：如果全是头/面参数，注入肢体参数 ———
                     EnrichWithLimbParams(localPlan);
+                    QualityTelemetry.RecordMotionTranslation(
+                        "local", LocalLLMClient.ModelName, true, true, true,
+                        Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
+                        localPlan.KeyFrames.Count, "local_parse_ok");
                     Debug.Log($"[MotionTranslator] ✅ 本地模型翻译成功（免 API）：「{description}」→ {localPlan.KeyFrames.Count} 帧, {localPlan.TotalDuration:F1}s");
                     onResult(localPlan);
                     yield break;
                 }
+                QualityTelemetry.RecordMotionTranslation(
+                    "local", LocalLLMClient.ModelName, false, false, false,
+                    Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
+                    0, "local_parse_failed");
                 Debug.LogWarning($"[MotionTranslator] 本地模型结果无效，回退 DeepSeek: {StringTruncateExtension.Truncate(localText, 150)}");
             }
             else
             {
+                QualityTelemetry.RecordMotionTranslation(
+                    "local", LocalLLMClient.ModelName, false, false, false,
+                    Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
+                    0, "local_request_failed");
                 Debug.LogWarning("[MotionTranslator] 本地模型不可用/失败，回退 DeepSeek");
             }
+        }
+        else if (!ChatConfig.UseCloudBaseline)
+        {
+            QualityTelemetry.RecordMotionTranslation(
+                "local", LocalLLMClient.ModelName, false, false, false,
+                0, 0, "local_not_ready");
         }
 
         // ——— 4b. DeepSeek 兜底（原逻辑）———
@@ -205,19 +218,36 @@ public static class MotionTranslator
         // ★ 测试模式禁云端（2026-08-16）：本地失败也不回退 DeepSeek，防测试烧 token
         if (ApiClient.ShouldBlockCloudPublic())
         {
+            QualityTelemetry.RecordMotionTranslation(
+                "cloud", MODEL, false, false, false,
+                0, 0, "test_blocked");
             Debug.Log("[MotionTranslator] 🛡 测试模式：已拦截 DeepSeek 兜底调用");
+            onResult(null);
+            yield break;
+        }
+
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            QualityTelemetry.RecordMotionTranslation(
+                "cloud", MODEL, false, false, false,
+                0, 0, "no_api_key");
+            Debug.LogWarning("[MotionTranslator] DeepSeek API Key 未配置，跳过翻译");
             onResult(null);
             yield break;
         }
 
         if (!TokenBudgetManager.TryAcquire("motion", out string budgetReason))
         {
+            QualityTelemetry.RecordMotionTranslation(
+                "cloud", MODEL, false, false, false,
+                0, 0, "budget_blocked");
             Debug.LogWarning($"[MotionTranslator] 🧾 成本闸门拦截 DeepSeek 兜底调用：{budgetReason}");
             onResult(null);
             yield break;
         }
 
         string jsonBody = BuildRequestBody(systemPrompt, userPrompt);
+        float cloudStartedAt = Time.realtimeSinceStartup;
 
         using (UnityWebRequest req = new UnityWebRequest(API_URL, "POST"))
         {
@@ -239,11 +269,19 @@ public static class MotionTranslator
                 {
                     // ——— 6. 参数分布检查：如果全是头/面参数，注入肢体参数 ———
                     EnrichWithLimbParams(plan);
+                    QualityTelemetry.RecordMotionTranslation(
+                        "cloud", MODEL, true, true, true,
+                        Mathf.RoundToInt((Time.realtimeSinceStartup - cloudStartedAt) * 1000f),
+                        plan.KeyFrames.Count, "cloud_parse_ok");
                     Debug.Log($"[MotionTranslator] ✅ 翻译成功：「{description}」→ {plan.KeyFrames.Count} 帧, {plan.TotalDuration:F1}s");
                     onResult(plan);
                 }
                 else
                 {
+                    QualityTelemetry.RecordMotionTranslation(
+                        "cloud", MODEL, false, false, false,
+                        Mathf.RoundToInt((Time.realtimeSinceStartup - cloudStartedAt) * 1000f),
+                        0, "cloud_parse_failed");
                     Debug.LogWarning($"[MotionTranslator] 解析结果无效: {StringTruncateExtension.Truncate(responseText, 200)}");
                     onResult(null);
                 }
@@ -252,6 +290,10 @@ public static class MotionTranslator
             {
                 string errBody = req.downloadHandler?.text ?? "";
                 string errMsg = ExtractErrorMessage(errBody) ?? req.error;
+                QualityTelemetry.RecordMotionTranslation(
+                    "cloud", MODEL, false, false, false,
+                    Mathf.RoundToInt((Time.realtimeSinceStartup - cloudStartedAt) * 1000f),
+                    0, "cloud_request_failed");
                 Debug.LogWarning($"[MotionTranslator] API 请求失败: {errMsg}");
                 onResult(null);
             }

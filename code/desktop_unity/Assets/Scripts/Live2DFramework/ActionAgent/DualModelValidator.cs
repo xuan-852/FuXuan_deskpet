@@ -113,6 +113,7 @@ public class DualModelValidator : MonoBehaviour
         string review = "";
         int score = 0;
         bool done = false;
+        float validationStartedAt = Time.realtimeSinceStartup;
 
         Coroutine coro = StartCoroutine(CallGlmVision(description, imageDataUrl,
             (s, r) => { score = s; review = r; done = true; }));
@@ -123,6 +124,11 @@ public class DualModelValidator : MonoBehaviour
         {
             if (elapsed >= timeout)
             {
+                QualityTelemetry.RecordMotionValidation(
+                    "cloud", _useFreeGlm ? ChatConfig.GlmVisionModelFree : ChatConfig.GlmVisionModel,
+                    false, false,
+                    Mathf.RoundToInt((Time.realtimeSinceStartup - validationStartedAt) * 1000f),
+                    0, "glm_timeout");
                 Debug.LogWarning("[DualModelValidator] GLM-4V 超时");
                 StopCoroutine(coro);
                 onResult(false, 0, 0, "");
@@ -135,6 +141,12 @@ public class DualModelValidator : MonoBehaviour
         // ── 裁决 ──
         bool isConsensus = score >= passThreshold;
         int avgScore = isConsensus ? score : 0;
+
+        QualityTelemetry.RecordMotionValidation(
+            "cloud", _useFreeGlm ? ChatConfig.GlmVisionModelFree : ChatConfig.GlmVisionModel,
+            score > 0, isConsensus,
+            Mathf.RoundToInt((Time.realtimeSinceStartup - validationStartedAt) * 1000f),
+            score, score > 0 ? (isConsensus ? "glm_pass" : "glm_fail") : "glm_no_score");
 
         // ── 写日志 ──
         int kfCount = plan?.KeyFrames?.Count ?? 0;

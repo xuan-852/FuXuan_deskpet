@@ -461,6 +461,9 @@ public class MotionAgent : MonoBehaviour
             {
                 // —— 概率回退模式 ——
                 decision = FallbackDecide(context);
+                QualityTelemetry.RecordMotionDecision(
+                    "fallback", "rules", decision != null, decision != null,
+                    decision != null, 0, "probability_fallback");
             }
 
             // ◈ 执行
@@ -634,15 +637,22 @@ public class MotionAgent : MonoBehaviour
             "{\"action\":\"motion\", \"target\":\"害羞地扭捏捂脸\", \"intensity\":0.6, \"duration\":3.5, \"reason\":\"被主人盯着看了好一会\"}";
 
         string userPrompt = "当前上下文:\n" + context + "\n\n请选择动作并输出 JSON:";
+        float startedAt = Time.realtimeSinceStartup;
 
         yield return LocalLLMClient.PromptAsync(systemPrompt, userPrompt, (success, content) =>
         {
+            MotionDecision parsed = success ? ParseDecision(content) : null;
+            QualityTelemetry.RecordMotionDecision(
+                "local", LocalLLMClient.ModelName, success && parsed != null, parsed != null,
+                parsed != null,
+                Mathf.RoundToInt((Time.realtimeSinceStartup - startedAt) * 1000f),
+                !success ? "local_request_failed" : (parsed == null ? "local_parse_failed" : "local_parse_ok"));
             if (!success)
             {
                 onResult(null);
                 return;
             }
-            onResult(ParseDecision(content));
+            onResult(parsed);
         }, temperature: 0.8f, maxTokens: 128);
     }
 
@@ -932,6 +942,9 @@ public class MotionAgent : MonoBehaviour
             if (exprTargets != null)
             {
                 plan = MotionPlanner.PlanFromTargets(exprTargets, duration);
+                QualityTelemetry.RecordMotionTranslation(
+                    "template", "rules", plan != null, plan != null, plan != null,
+                    0, plan?.KeyFrames?.Count ?? 0, "expression_template_hit");
                 Debug.Log($"[MotionAgent] 🏠 表情本地模板命中:「{desc}」→ {plan.KeyFrames.Count} 帧（免 API）");
             }
             else
@@ -1018,6 +1031,9 @@ public class MotionAgent : MonoBehaviour
             }
             else
             {
+                QualityTelemetry.RecordMotionTranslation(
+                    "template", "rules", true, true, true,
+                    0, plan?.KeyFrames?.Count ?? 0, "motion_template_hit");
                 Debug.Log($"[MotionAgent] 🏠 本地模板命中:「{fullDesc}」→ {plan.KeyFrames.Count} 帧（免 API）");
             }
 
@@ -1087,6 +1103,9 @@ public class MotionAgent : MonoBehaviour
             }
             else
             {
+                QualityTelemetry.RecordMotionTranslation(
+                    "template", "rules", true, true, true,
+                    0, plan?.KeyFrames?.Count ?? 0, "combo_template_hit");
                 Debug.Log($"[MotionAgent] 🏠 复合动作本地模板命中:「{description}」→ {plan.KeyFrames.Count} 帧（免 API）");
             }
 

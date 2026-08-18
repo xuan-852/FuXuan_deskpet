@@ -490,7 +490,7 @@ public class ChatManager : MonoBehaviour
         _activeRequestCoroutine = StartCoroutine(SendRequestCoroutine(_requestGeneration));
 
         // 🧠 功能1：意图/情绪分类（异步，SendRequestCoroutine 首轮会等待其结果）
-        if (!ChatConfig.UseOllamaMode
+        if (!ChatConfig.UseOllamaMode && !ChatConfig.UseCloudBaseline
             && LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
         {
             LocalLLMAgentService.Instance.ClassifyIntent(text.Trim(), intent =>
@@ -653,7 +653,7 @@ public class ChatManager : MonoBehaviour
         }
 
         bool handled = false;
-        yield return StartCoroutine(OfflineFallbackCoroutine(ok => handled = ok));
+        yield return StartCoroutine(OfflineFallbackCoroutine(ok => handled = ok, "ollama_mode"));
         if (!handled)
         {
             _lastError = "Ollama 未就绪或本地模型生成失败";
@@ -701,6 +701,7 @@ public class ChatManager : MonoBehaviour
             _fullReplyText = "";
 
             bool finished = false;
+            float cloudStartedAt = Time.realtimeSinceStartup;
 
             // ——— 流式发送 ———
             yield return StartCoroutine(
@@ -737,6 +738,10 @@ public class ChatManager : MonoBehaviour
 
             if (hadError)
             {
+                QualityTelemetry.RecordChat(
+                    "cloud", model, false, false,
+                    Mathf.RoundToInt((Time.realtimeSinceStartup - cloudStartedAt) * 1000f),
+                    "request_error", 0, false);
                 Debug.LogError($"[ChatManager] ❌ API 请求失败 (round={round}): {_lastError}");
 
                 // ★ 自动重试：网络/限流错误（非 4xx 业务错误）重试最多 3 次
@@ -749,10 +754,11 @@ public class ChatManager : MonoBehaviour
                 }
 
                 // 🔄 功能2：离线回退 — DeepSeek 不可用时尝试本地模型
-                if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
+                if (!ChatConfig.UseCloudBaseline
+                    && LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
                 {
                     bool fallbackHandled = false;
-                    yield return StartCoroutine(OfflineFallbackCoroutine((handled) => fallbackHandled = handled));
+                    yield return StartCoroutine(OfflineFallbackCoroutine((handled) => fallbackHandled = handled, "cloud_error_fallback"));
                     if (fallbackHandled)
                     {
                         yield break; // 回退已处理完毕，退出
@@ -765,6 +771,11 @@ public class ChatManager : MonoBehaviour
 
             // ——— 提取 tool_calls ——
             bool hasToolCalls = !string.IsNullOrEmpty(toolCallsJson) && toolCallsJson != "[]";
+            QualityTelemetry.RecordChat(
+                "cloud", model, true, true,
+                Mathf.RoundToInt((Time.realtimeSinceStartup - cloudStartedAt) * 1000f),
+                hasToolCalls ? "tool_call" : "final_reply",
+                (fullContent ?? "").Length, hasToolCalls);
 
             // ——— 如果没有 tool_call，结束 ———
             if (!hasToolCalls)
@@ -1413,10 +1424,15 @@ public class ChatManager : MonoBehaviour
     /// <summary>
     /// 当 DeepSeek API 不可用时，用本地模型生成回复
     /// </summary>
-    private IEnumerator OfflineFallbackCoroutine(Action<bool> onHandled)
+    private IEnumerator OfflineFallbackCoroutine(Action<bool> onHandled, string telemetryReason)
     {
+        float localStartedAt = Time.realtimeSinceStartup;
         if (LocalLLMAgentService.Instance == null || !LocalLLMAgentService.Instance.CanProcess)
         {
+            QualityTelemetry.RecordChat(
+                "local", LocalLLMClient.ModelName, false, false,
+                Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
+                "not_ready", 0, false);
             onHandled?.Invoke(false);
             yield break;
         }
@@ -1482,6 +1498,10 @@ public class ChatManager : MonoBehaviour
 
         if (!fallbackSuccess || string.IsNullOrEmpty(fallbackReply))
         {
+            QualityTelemetry.RecordChat(
+                "local", LocalLLMClient.ModelName, false, false,
+                Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
+                "local_generation_failed", 0, false);
             Debug.LogWarning("[ChatManager] 离线回退未能生成有效回复");
             onHandled?.Invoke(false);
             yield break;
@@ -1499,6 +1519,11 @@ public class ChatManager : MonoBehaviour
 
         // 记录记忆
         RecordConversationMemory(fallbackReply);
+
+        QualityTelemetry.RecordChat(
+            "local", LocalLLMClient.ModelName, true, true,
+            Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
+            telemetryReason ?? "local_reply", fallbackReply.Length, false);
 
         Debug.Log($"[ChatManager] 🔄 离线回退成功（{fallbackReply.Length} 字）");
         onHandled?.Invoke(true);
