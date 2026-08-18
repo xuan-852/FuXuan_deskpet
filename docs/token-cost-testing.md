@@ -3,7 +3,7 @@
 > **测试脚本注意**：`scripts/test/runtime_smoke.cjs` 未显式设置 `PLAYER_LOG` 时，读取测试隔离目录 `<FU_XUAN_TEST_DATA>/logs/player_log.txt`（应用日志镜像），避免误读旧的默认 Unity `Player.log` 导致冒烟测试假失败。
 
 > **文档作用**: 让 AI **第一时间**了解三件事——① 常规运行（生产）与测试模式在 Token 消耗上的**本质区别**；② 测试时关于消耗的**铁律与常见误判**；③ 当前**未解决的痛点**。任何涉及"改测试逻辑 / 改云端调用 / 排查烧钱 / 写测试"的工作，先读本文再动手。
-> **基本架构**: 观测链路 = `ApiClient`（云端调用点）→ `TokenBudgetManager`（后台来源频率闸门）→ `UsageStats`（内存，面板实时）→ `UsageLogger`（JSONL 落盘，跨重启）；测试拦截开关 = `ApiClient.BlockCloudInTestMode`（默认跟随测试模式）。完整设计见 [`token-saving-architecture.md`](token-saving-architecture.md)。
+> **基本架构**: 成本观测链路 = `ApiClient`（云端调用点）→ `TokenBudgetManager`（后台来源频率闸门）→ `UsageStats`（内存，面板实时）→ `UsageLogger`（JSONL 落盘，跨重启）；质量观测链路 = `QualityTelemetry`（本地/模板/云端来源、案例编号、解析、回退、耗时、GLM 评分）；测试拦截开关 = `ApiClient.BlockCloudInTestMode`（默认跟随测试模式）。纯云端配对基线使用 `--cloud-baseline`，完整流程见 [`quality-comparison-test-guide.md`](quality-comparison-test-guide.md)；完整设计见 [`token-saving-architecture.md`](token-saving-architecture.md)。
 > **开发历史迭代**: 2026-08-15 本地模型优先（N43）；2026-08-16 测试模式禁云端（N44，`51cbecb`）+ UsageLogger 持久化（`08494dd`）。
 > **编写注意事项**: 本文记录的是**已验证的代码真相** + 痛点现状；痛点状态变化时（如 ¥5/天来源已定位）必须同步更新第五节。
 
@@ -83,6 +83,16 @@ Get-Content D:\DesktopPetData\usage_log.jsonl | ForEach-Object { $_ | ConvertFro
   Group-Object src | ForEach-Object { [pscustomobject]@{ src=$_.Name; calls=$_.Count;
     cost=($_.Group | Measure-Object cost -Sum).Sum } } | Format-Table
 ```
+
+### 4.5 质量观测（怎么查"本地质量如何"）
+
+质量日志位置：`<DataRoot>/quality_log.jsonl`。它与 `usage_log.jsonl` 分离：前者回答“质量如何”，后者回答“云端花了多少 Token”。统计命令：
+
+```powershell
+node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData
+```
+
+第一阶段重点观察 `motion_translation` 的 local `ok/accepted/parse`、`motion_validation` 的 GLM `avg_score/pass`、以及 `chat` 的 local/cloud 回退比例。建议累计至少 30 次聊天和 30 次动作验证后再调整路由阈值。
 
 ## 五、未解决痛点（2026-08-16 记录，状态会变）
 

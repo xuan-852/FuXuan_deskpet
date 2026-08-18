@@ -15,7 +15,7 @@
   - 每帧参数写入顺序是什么？为什么 LateUpdate 801 > 800？
   - 哪些硬编码参数可以迁到 JSON？哪些永远不能动？
   - 天气/表情/空闲动作怎么联动？
-- **关联文档**: `code-truth-architecture.md`（物理与渲染层）｜`modules/action-agent.md`（动作执行端）｜`modules/chat-ui.md`（像素模式并行渲染）｜`docs/liverenderer-migration-inventory.md`（详细迁移清单，已并入本模块四章）
+- **关联文档**: `code-truth-architecture.md`（物理与渲染层）｜`modules/action-agent.md`（动作执行端）｜`modules/chat-ui.md`（像素模式并行渲染）。旧版硬编码迁移清单已并入本模块，不再单独维护。
 
 ## 二、基本架构
 

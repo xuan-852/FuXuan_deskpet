@@ -2,7 +2,7 @@
 
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
 > **基本架构**: 用户输入 → `ChatManager`（10 轮回环 / 意图过滤 / 600s 看门狗）→ `ApiClient`（DeepSeek SSE 流式，Function Calling）→ `ToolEngine/` 插件调度；`LocalLLMAgentService`（Ollama qwen2.5:3b）提供 4 项离线能力兜底；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`（1,595 行）、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
-> **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀；2026-08-12 P5 注入链新增任务轨迹（TaskTrajectoryManager，太卜手札）与任务模板（TaskTemplateManager，太卜阵法图），同样置于【当前时刻】之前；2026-08-18 成本闸门接入全部主要云端直连点，新增 `PromptContextBudget` / `ToolResultBudget`，EditMode 96/96 通过。
+> **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀；2026-08-12 P5 注入链新增任务轨迹（TaskTrajectoryManager，太卜手札）与任务模板（TaskTemplateManager，太卜阵法图），同样置于【当前时刻】之前；2026-08-18 成本闸门接入全部主要云端直连点，新增 `PromptContextBudget` / `ToolResultBudget` / `QualityTelemetry`，EditMode 99/99 通过。
 > **编写注意事项**: ①测试必须开测试模式（`D:\DesktopPetData\.test_mode`）否则污染 pet_memory/pet_personality；②`{current_time}` 等动态内容**必须放 system prompt 尾部**（放开头会摧毁 DeepSeek 缓存命中，全价 ¥1/M）；③deepseek-v4-flash 是推理模型，必须显式 `"thinking":{"type":"disabled"}` + `max_tokens:1200` 否则 `content=""`；④历史裁剪须按字符预算且向前对齐最近 user 消息，防止切断 tool_calls↔tool 配对导致 API 400。
 
 ---
@@ -132,3 +132,5 @@
 6. **日志验证**：改 Token 相关代码后查 Player.log——`prompt_cache_hit_tokens` 占比高 = T1 生效；`[MotionTranslator] API 请求失败` 不出现 = T2/T3 生效
 7. **构建验证**：`.\build.ps1 -Quick`（C# 编译）；重启带 `DESKTOP_TOKEN` / `BRIDGE_TOKEN` 环境变量
 8. **本地 LLM 客户端**：`LocalLLMClient.cs` 是手写 JSON 构造，改字段时同步检查所有调用点，无强类型保障
+9. **质量遥测**：`QualityTelemetry` 将聊天按 `local/cloud` 记录成功、采用、耗时和回退原因，写入 `DataRoot/quality_log.jsonl`，不包含用户原文。全 Ollama 模式仍是无工具的离线短回复，正式运行建议使用混合模式。统计命令：`node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData`。
+10. **质量对照**：`--cloud-baseline` 强制纯云端聊天并禁用云端失败后的本地回退；`@@case:<id>` 可在隔离目录给后续遥测标记案例编号。两组日志按 `task + case_id` 配对，使用 `docs/quality-comparison-test-guide.md` 和 `scripts/log-analysis/compare_quality.cjs`，不要用默认混合模式冒充纯云端基线。

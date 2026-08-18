@@ -1,7 +1,7 @@
 # 省 Token 基础架构 — 请求分级、上下文预算与成本闸门
 
 > **文档作用**：定义符玄桌宠后续 Token 成本优化的基础架构。本文是设计基线，不把尚未验证的节省比例写成事实；改动 `ApiClient`、`ChatManager`、本地模型路由、后台主动行为或用量统计前应先阅读。
-> **当前状态**：v0.3（2026-08-18）。请求预算、动态上下文分层预算、工具结果回填压缩均已实现并通过 96/96 EditMode 测试；后续再推进按意图懒加载和结果引用 ID。
+> **当前状态**：v0.4（2026-08-18）。请求预算、动态上下文分层预算、工具结果回填压缩和本地/模板/云端质量遥测均已实现并通过 99/99 EditMode 测试；后续根据运行数据推进质量闸门。
 > **关联文档**：[`docs/token-cost-testing.md`](token-cost-testing.md)、[`docs/modules/ai-chat-system.md`](modules/ai-chat-system.md)、[`docs/development-standards.md`](development-standards.md)。
 
 ---
@@ -141,6 +141,29 @@
 - 文件读取、搜索、OpenClaw 任务、视觉结果使用较高预算；普通工具使用默认预算。
 - 当前策略是头尾保留，后续再增加本地摘要或引用 ID，不在本阶段增加额外 LLM 调用。
 
+### 3.6 `QualityTelemetry`
+
+位置：`Assets/Scripts/QualityTelemetry.cs`，文件为 `DataRoot/quality_log.jsonl`。
+
+每次记录只包含聚合指标，不写用户原文、完整回复、动作描述、密钥或参数快照：
+
+| 字段 | 含义 |
+|---|---|
+| `task` | `chat` / `motion_decision` / `motion_translation` / `motion_validation` |
+| `src` | `local` / `template` / `cloud` / `fallback` |
+| `model` | 实际模型或 `rules` |
+| `ok` / `accepted` | 请求/解析是否成功，以及结果是否被采用 |
+| `parse` / `safe` | 结构解析和安全校验结果 |
+| `score` | GLM 动作评分；非评分事件为 `-1` |
+| `latency_ms` | 端到端耗时 |
+| `reason` | 固定短标签，如 `local_parse_ok`、`cloud_error_fallback` |
+
+统计命令：
+
+```powershell
+node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData
+```
+
 ---
 
 ## 四、后续阶段
@@ -160,13 +183,20 @@
 - 当前工具结果是头尾裁剪，不是真正的结构化摘要；复杂结果的引用 ID 机制尚未实现。
 - 上下文按意图懒加载尚未实现，避免改变已有角色与工具行为。
 
-### v0.4：任务会话隔离与复用
+### v0.4：质量遥测（已完成，2026-08-18）
+
+- 已记录本地、模板、云端和回退来源。
+- 已记录聊天回退、动作 JSON 解析、关键帧数量、耗时和 GLM 评分。
+- 遥测与 `usage_log.jsonl` 分离：前者回答“质量如何”，后者回答“云端花了多少 Token”。
+- 后续只有在真实运行样本足够后，才根据通过率和回退率调整质量闸门。
+
+### v0.5：任务会话隔离与复用
 
 - 复杂任务交给 OpenClaw 独立会话。
 - 高频任务优先使用 `TaskTemplateManager`。
 - 成功轨迹只注入相似任务，不注入全部历史。
 
-### v0.5：成本观测闭环
+### v0.6：成本观测闭环
 
 - 按 source、模型、命中率、重试次数统计成本。
 - 生产环境连续运行后再调整预算值。
@@ -176,7 +206,7 @@
 
 ## 五、已验证结果与验证标准
 
-- 2026-08-18：`build.ps1 -Quick` 通过；EditMode **96/96** 通过，其中 `TokenBudgetManagerTests` 8/8、`PromptContextBudgetTests` 5/5、`ToolResultBudgetTests` 5/5。
+- 2026-08-18：脚本编译无新增错误；EditMode **99/99** 通过，其中 `QualityTelemetryTests` 3/3、`TokenBudgetManagerTests` 8/8、`PromptContextBudgetTests` 5/5、`ToolResultBudgetTests` 5/5；新增 `--cloud-baseline` 纯云端质量基线与 `case_id` 配对遥测。
 - `TokenBudgetManager` EditMode 测试覆盖：窗口淘汰、最短冷却、最大次数、来源默认策略、拒绝不消耗配额和不可重试标记。
 - `PromptContextBudget` / `ToolResultBudget` 测试覆盖：不超限原样、头尾保留、极小预算、工具类型预算和空输入安全性。
 - 测试运行使用 `FU_XUAN_DATA` 隔离目录并启用 `.test_mode`。

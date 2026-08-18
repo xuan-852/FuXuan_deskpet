@@ -316,6 +316,8 @@ Desktop_per_pro/
 |------|------|
 | [`docs/code-truth-architecture.md`](docs/code-truth-architecture.md) | 代码真相架构审计（六层架构 + 工具清单） |
 | [`docs/development-standards.md`](docs/development-standards.md) | 开发规范（9 章，AI + 人类通用） |
+| [`docs/quality-measurement-test-guide.md`](docs/quality-measurement-test-guide.md) | 编译产物核验与 Ollama 本地质量采样说明 |
+| [`docs/quality-comparison-test-guide.md`](docs/quality-comparison-test-guide.md) | 本地 / 云端配对质量对照说明 |
 | [`docs/desktop-assistant-roadmap.md`](docs/desktop-assistant-roadmap.md) | 演进路线图（v0.2，含开源调研） |
 | [`docs/README.md`](docs/README.md) | 文档总索引（9 模块四要素文档） |
 | [`AGENTS.md`](AGENTS.md) | AI 协作快速入口 |

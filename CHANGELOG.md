@@ -49,7 +49,7 @@
 
 ### ⚡ Token 优化 T1–T8 全部完成（08-07~08，`a78e62c` + `52f9cec` + `bad7487` + `5f0a048` + `77645d4` + `807290e` + `0b7480c`）
 
-> 依据 `docs/token-optimization-plan.md`，2026-08-07 token 审计后按 ROI 分批执行。
+> 依据 `docs/token-saving-architecture.md`，2026-08-07 token 审计后按 ROI 分批执行；旧版执行计划已归档清理。
 
 | # | 优化 | 实测效果 |
 |---|---|---|
