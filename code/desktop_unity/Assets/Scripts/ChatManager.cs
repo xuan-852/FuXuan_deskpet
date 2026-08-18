@@ -43,6 +43,8 @@ public class ChatManager : MonoBehaviour
 
     void Awake()
     {
+        // 官方平台账单无法由桌宠实时读取；记录本进程实际使用的 Key 身份，便于事后核对归属。
+        UsageLogger.RecordRuntimeIdentity();
         // ——— 加载 SystemPrompt ———
         var asset = Resources.Load<TextAsset>("SystemPrompt");
         if (asset != null)

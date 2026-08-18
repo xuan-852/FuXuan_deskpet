@@ -100,7 +100,8 @@ public class DualModelValidator : MonoBehaviour
         string description,
         string imageDataUrl,
         MotionPlanner.MotionPlan plan,
-        Action<bool, int, int, string> onResult)
+        Action<bool, int, int, string> onResult,
+        string caseId = null)
     {
         if (string.IsNullOrEmpty(imageDataUrl))
         {
@@ -128,7 +129,7 @@ public class DualModelValidator : MonoBehaviour
                     "cloud", _useFreeGlm ? ChatConfig.GlmVisionModelFree : ChatConfig.GlmVisionModel,
                     false, false,
                     Mathf.RoundToInt((Time.realtimeSinceStartup - validationStartedAt) * 1000f),
-                    0, "glm_timeout");
+                    0, "glm_timeout", caseId);
                 Debug.LogWarning("[DualModelValidator] GLM-4V 超时");
                 StopCoroutine(coro);
                 onResult(false, 0, 0, "");
@@ -146,7 +147,7 @@ public class DualModelValidator : MonoBehaviour
             "cloud", _useFreeGlm ? ChatConfig.GlmVisionModelFree : ChatConfig.GlmVisionModel,
             score > 0, isConsensus,
             Mathf.RoundToInt((Time.realtimeSinceStartup - validationStartedAt) * 1000f),
-            score, score > 0 ? (isConsensus ? "glm_pass" : "glm_fail") : "glm_no_score");
+            score, score > 0 ? (isConsensus ? "glm_pass" : "glm_fail") : "glm_no_score", caseId);
 
         // ── 写日志 ──
         int kfCount = plan?.KeyFrames?.Count ?? 0;

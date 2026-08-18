@@ -5,7 +5,7 @@
 > **开发历史迭代**: N31 引入 DualModelValidator（名义双模型）；N34（2026-07-07）SPECIAL PATTERNS 优化（捂脸/捂嘴/叉腰/缩团/行礼）；N37 通过率 60%→70%；N38（2026-08-02）代码真相审计修正规则数 11→10、SPECIAL PATTERNS 12→10；N39 修复 BUG-1（睡眠时段判断）/BUG-5（Dual 回调简化）/BUG-7（示例角度制），删除 AutoMotionCollector 死代码；N40 T2 部位裁剪 schema。
 > **编写注意事项**: ①验证协议是「历史数据存档」，评分须同步更新 `verification_report_2026-07-07.md` 或本模块文档；②GLM-4V 是唯一评分模型（Qwen-VL 已删除，`DualModelValidator` 名存实亡但文件未改名）；③MotionMemory 容量 30 条、负反馈 ≤2 分入反例（最多 10 条）；④验证截图存 `glm_collages/` 上限 50 张；⑤行走研究仅理论参考（Live2D 无腿部参数，未落地）。
 >
-> **质量遥测（2026-08-18）**：`QualityTelemetry` 记录 `motion_decision`、`motion_translation` 和 `motion_validation` 的来源（local/template/cloud/fallback）、解析结果、耗时、关键帧数量和 GLM 分数；不记录动作原文或参数快照。与 `validation_log.json` 的历史动作描述日志分离，统计命令为 `node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData`。`--cloud-baseline` 会跳过 MotionTranslator 的本地优先路径，`@@case:<id>` 可让本地/云端动作结果按案例配对，详细流程见 `docs/quality-comparison-test-guide.md`。
+> **质量遥测（2026-08-18）**：`QualityTelemetry` 记录 `motion_decision`、`motion_translation` 和 `motion_validation` 的来源（local/template/cloud/fallback）、解析结果、耗时、关键帧数量和 GLM 分数；不记录动作原文或参数快照。与 `validation_log.json` 的历史动作描述日志分离，统计命令为 `node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData`。`--cloud-baseline` 会跳过 MotionTranslator 的本地优先路径并暂停自主决策，`@@case:<id>` + `@@motion:<描述>` 可让指定动作结果按案例配对，详细流程见 `docs/quality-comparison-test-guide.md`。
 
 ---
 

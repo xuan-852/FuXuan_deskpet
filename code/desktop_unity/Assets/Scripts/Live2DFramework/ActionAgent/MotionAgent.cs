@@ -420,6 +420,13 @@ public class MotionAgent : MonoBehaviour
     {
         while (true)
         {
+            // 质量对照模式只允许 @@motion 直达案例，禁止自主动作和随机决策污染样本。
+            if (ChatConfig.UseOllamaMode || ChatConfig.UseCloudBaseline)
+            {
+                yield return new WaitForSeconds(0.5f);
+                continue;
+            }
+
             // 等待决策间隔
             float interval = GetCurrentInterval();
             yield return new WaitForSeconds(interval);
@@ -963,7 +970,7 @@ public class MotionAgent : MonoBehaviour
 
     // ★ 后台 GLM 验证（不阻塞决策循环）
     private IEnumerator RunGlmValidationAsync(string fullDesc, string collageDataUrl,
-        string cnDescription, string snapshot, MotionPlanner.MotionPlan plan)
+        string cnDescription, string snapshot, MotionPlanner.MotionPlan plan, string caseId)
     {
         var mm = MotionMemoryManager.Instance;
         if (_dualValidator == null || string.IsNullOrEmpty(collageDataUrl) || mm == null)
@@ -973,7 +980,7 @@ public class MotionAgent : MonoBehaviour
         int avgScore = 0, sGlm = 0;
         string rGlm = "";
         yield return _dualValidator.ValidateAsync(fullDesc, collageDataUrl, plan,
-            (c, avg, g, rg) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; });
+            (c, avg, g, rg) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; }, caseId);
 
         if (consensus)
         {
@@ -1006,6 +1013,16 @@ public class MotionAgent : MonoBehaviour
             }
         }
         _totalActionsSinceReport++;
+    }
+
+    /// <summary>
+    /// 质量对照测试专用：直接执行指定动作描述，绕过自主决策随机性。
+    /// 调用方负责通过 QualityTelemetry.SetCaseId 设置案例编号。
+    /// </summary>
+    public void RunQualityMotionCase(string description, float intensity = 0.7f, float duration = 3f)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return;
+        StartCoroutine(ExecuteMotion(description.Trim(), intensity, duration));
     }
 
     private IEnumerator ExecuteMotion(string target, float intensity, float duration)
@@ -1072,8 +1089,9 @@ public class MotionAgent : MonoBehaviour
                 string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
                 if (!string.IsNullOrEmpty(collageDataUrl) && _dualValidator != null)
                 {
+                    string caseId = QualityTelemetry.CurrentCaseId;
                     StartCoroutine(RunGlmValidationAsync(
-                        fullDesc, collageDataUrl, cnDescription, snapshot, plan));
+                        fullDesc, collageDataUrl, cnDescription, snapshot, plan, caseId));
                 }
             }
             else
@@ -1144,8 +1162,9 @@ public class MotionAgent : MonoBehaviour
                 string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
                 if (!string.IsNullOrEmpty(collageDataUrl) && _dualValidator != null)
                 {
+                    string caseId = QualityTelemetry.CurrentCaseId;
                     StartCoroutine(RunGlmValidationAsync(
-                        description, collageDataUrl, description, snapshot, plan));
+                        description, collageDataUrl, description, snapshot, plan, caseId));
                 }
             }
             else

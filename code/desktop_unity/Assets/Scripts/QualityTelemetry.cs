@@ -123,7 +123,7 @@ public static class QualityTelemetry
 
     public static void RecordMotionValidation(
         string source, string model, bool success, bool accepted,
-        long latencyMs, int score, string reason)
+        long latencyMs, int score, string reason, string caseId = null)
     {
         Record(new QualityEvent
         {
@@ -140,7 +140,7 @@ public static class QualityTelemetry
             Keyframes = -1,
             ToolCall = false,
             Reason = reason,
-            CaseId = CurrentCaseId
+            CaseId = string.IsNullOrEmpty(caseId) ? CurrentCaseId : caseId
         });
     }
 

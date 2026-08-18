@@ -807,6 +807,23 @@ public partial class RightPanel : MonoBehaviour
             return;
         }
 
+        // ★ 质量动作案例：@@motion:动作描述 → 绕过自主决策随机性，直接执行指定动作。
+        //    仅在本地/纯云端质量模式或 .test_mode 下启用；动作描述不写入质量日志。
+        if (content.StartsWith("@@motion:"))
+        {
+            string description = content.Substring("@@motion:".Length).Trim();
+            if (MotionAgent.Instance != null && !string.IsNullOrEmpty(description))
+            {
+                MotionAgent.Instance.RunQualityMotionCase(description);
+                Debug.Log($"[QualityTest] 已注入动作案例: {QualityTelemetry.CurrentCaseId}");
+            }
+            else
+            {
+                Debug.LogWarning("[QualityTest] 动作案例失败：MotionAgent 未就绪或描述为空");
+            }
+            return;
+        }
+
         // ★ 测试视图切换：@@view:settings|reminders|report|chat|list|back|close|open
         //   终端测试链路——无需模拟鼠标点击，写一行文件即可可靠切页（仅测试模式）。
         //   设置/便签/报告 = 页内子面板；chat = 聊天视图；list = 会话列表；back = 子面板返回。
