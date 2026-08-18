@@ -164,3 +164,6 @@ code/desktop unity/*.VC.opendb
 # DSH harness �о�Ŀ¼������⣩
 .dsh-plugin-research/
 
+
+# Tuanjie 构建备份的旧 Library（codex build.ps1 增强产生）
+code/desktop_unity/Library_stale_*/

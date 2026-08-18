@@ -31,6 +31,7 @@ public static class UsageLogger
 
     private static readonly object _lock = new object();
     private static string _filePath;
+    private static bool _runtimeIdentityRecorded;
 
     /// <summary>确保日志文件路径初始化（DataPathConfig 可用后调用）</summary>
     public static void EnsureInit()
@@ -42,6 +43,55 @@ public static class UsageLogger
 
     /// <summary>日志文件路径（未初始化时为 null）</summary>
     public static string FilePath => _filePath;
+
+    /// <summary>
+    /// 记录本次进程实际读取到的密钥身份。只写短标识和 SHA-256，不写完整 Key。
+    /// 官方平台账单无法由桌宠实时读取，因此账单归属必须以该身份和平台后台人工核对。
+    /// </summary>
+    public static void RecordRuntimeIdentity()
+    {
+        EnsureInit();
+        lock (_lock)
+        {
+            if (_runtimeIdentityRecorded || string.IsNullOrEmpty(_filePath)) return;
+
+            string deepSeekKey = ChatConfig.ApiKey;
+            string glmKey = ChatConfig.GlmApiKey;
+            string mode = ChatConfig.UseOllamaMode ? "ollama" : "cloud";
+            string line = new StringBuilder(512)
+                .Append("{\"t\":\"")
+                .Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))
+                .Append("\",\"kind\":\"runtime_identity\",\"mode\":\"")
+                .Append(JsonEscape(mode))
+                .Append("\",\"deepseek_key_id\":\"")
+                .Append(JsonEscape(ApiKeyIdentity.GetKeyId(deepSeekKey)))
+                .Append("\",\"deepseek_key_hash\":\"")
+                .Append(JsonEscape(ApiKeyIdentity.GetKeyHash(deepSeekKey)))
+                .Append("\",\"glm_key_id\":\"")
+                .Append(JsonEscape(ApiKeyIdentity.GetKeyId(glmKey)))
+                .Append("\",\"glm_key_hash\":\"")
+                .Append(JsonEscape(ApiKeyIdentity.GetKeyHash(glmKey)))
+                .Append("\",\"billing_attribution\":\"")
+                .Append(ApiKeyIdentity.ManualBillingCheck)
+                .Append("\"}\n")
+                .ToString();
+
+            try
+            {
+                File.AppendAllText(_filePath, line, new UTF8Encoding(false));
+                _runtimeIdentityRecorded = true;
+                UnityEngine.Debug.Log(
+                    $"[UsageLogger] 运行身份已记录: mode={mode}, " +
+                    $"deepseek={ApiKeyIdentity.GetKeyId(deepSeekKey)}, " +
+                    $"glm={ApiKeyIdentity.GetKeyId(glmKey)}; " +
+                    "账单归属仍需官方平台人工核对");
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogWarning($"[UsageLogger] 运行身份写入失败: {e.Message}");
+            }
+        }
+    }
 
     /// <summary>
     /// 记录一次 API 调用消耗并落盘。
@@ -66,6 +116,13 @@ public static class UsageLogger
             .Append(",\"hit\":").Append(cacheHit)
             .Append(",\"comp\":").Append(completion)
             .Append(",\"cost\":").Append(cost.ToString("F4", CultureInfo.InvariantCulture))
+            .Append(",\"key_id\":\"").Append(JsonEscape(ApiKeyIdentity.GetKeyIdForSource(source)))
+            .Append("\",\"key_hash\":\"").Append(JsonEscape(ApiKeyIdentity.GetKeyHashForSource(source)))
+            .Append("\",\"billing_attribution\":\"")
+            .Append(string.Equals(source, "local", StringComparison.OrdinalIgnoreCase)
+                ? ApiKeyIdentity.NotApplicable
+                : ApiKeyIdentity.ManualBillingCheck)
+            .Append("\"")
             .Append("}\n");
 
         lock (_lock)
