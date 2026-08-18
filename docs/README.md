@@ -21,6 +21,7 @@
 | [`token-saving-architecture.md`](token-saving-architecture.md) | **省 Token 基础架构**（请求分级、上下文预算、成本闸门与阶段路线） | **设计/修改 Token 成本控制前** |
 | [`quality-measurement-test-guide.md`](quality-measurement-test-guide.md) | **编译与本地质量采样说明**（新构建核验、Ollama 采样、质量/成本汇总） | **编译后测量本地模型质量前** |
 | [`quality-comparison-test-guide.md`](quality-comparison-test-guide.md) | **本地 / 云端配对对照说明**（纯云端基线、案例编号、质量差值） | **测量本地与云端质量差异前** |
+| [`quality-comparison-report-2026-08-18.md`](quality-comparison-report-2026-08-18.md) | **本地/云端质量对照测试报告**（60 案例实测：成功率/延迟/成本对比 + 局限） | **查看质量对照结论时** |
 | [`project-bugs-and-acceptance.md`](project-bugs-and-acceptance.md) | **项目已知 Bug 与验收点**（活跃问题/已修防回归清单/验收标准） | **改外置窗口/渲染/退出/测试代码前** |
 | [`ui-acceptance-checklist.md`](ui-acceptance-checklist.md) | **UI 验收清单（考评师版）**（排版/功能/进阶/回归红线，含多模态验证项） | **UI 回归验收 / 交付签发前** |
 | [`ui-external-window-test-plan-2026-08-17.md`](ui-external-window-test-plan-2026-08-17.md) | **外置独立面板专项测评方案**（真实鼠标/键盘优先，点击/拖动 P0 项） | **外置窗口交互回归（codex 第三轮）** |
