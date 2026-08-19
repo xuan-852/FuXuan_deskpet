@@ -22,7 +22,7 @@
 
 [![下载最新版](https://img.shields.io/github/v/release/xuan-852/FuXuan_deskpet?label=%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88&style=for-the-badge)](https://github.com/xuan-852/FuXuan_deskpet/releases/latest)
 
-[下载 Windows 安装包 FuXuanSetup-1.0.1.exe](https://github.com/xuan-852/FuXuan_deskpet/releases/latest/download/FuXuanSetup-1.0.1.exe)
+[下载 Windows 安装包 FuXuanSetup-1.0.2.exe](https://github.com/xuan-852/FuXuan_deskpet/releases/latest/download/FuXuanSetup-1.0.2.exe)
 
 也可以打开 [全部版本](https://github.com/xuan-852/FuXuan_deskpet/releases)，在对应版本的 **Assets** 区域下载。
 

@@ -2282,11 +2282,8 @@ public partial class RightPanel : MonoBehaviour
         _externalRender = true;
         // 原生窗口消息在拖动、DPI 缩放或子控件焦点切换时可能暂时不派发；
         // 每帧从窗口坐标轮询，确保外置 RT 的 hover 与真实鼠标保持同步。
-        float polledMouseX, polledMouseY;
-        if (!_testExternalMouseOverride && ExternalChatWindow.TryGetMousePosition(out polledMouseX, out polledMouseY))
-            _externalMousePos = new Vector2(polledMouseX, polledMouseY);
-        else if (!_testExternalMouseOverride && (_externalMousePos.x >= 0f || _externalMousePos.y >= 0f))
-            _externalMousePos = new Vector2(-1f, -1f);
+        // 鼠标位置由 ExternalChatWindow 的合并后 WM_MOUSEMOVE 事件驱动。
+        // 不要在每帧调用 TryGetMousePosition：它会从 Unity 主线程同步访问另一个线程的窗口。
         _extHitZones.Clear();    // 渲染帧重建命中表（面板局部坐标）
         _extTitleZones.Clear();  // 渲染帧重建标题栏命中表（客户区坐标）
         try

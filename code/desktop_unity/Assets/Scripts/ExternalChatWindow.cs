@@ -25,10 +25,20 @@ public static class ExternalChatWindow
     /// <summary>外置窗口鼠标移动（坐标=客户区/面板内坐标；离开窗口时为负值）</summary>
     public static event Action<float, float> OnPanelMouseMove;
 
+    // 鼠标消息来自独立窗口线程，不能每条 WM_MOUSEMOVE 都塞入 Unity 主线程队列。
+    // 只保留最新坐标，并限制为约 30Hz；否则 MainThreadDispatcher 会被无界队列拖满。
+    private const int MOUSE_MOVE_INTERVAL_MS = 33;
+    private static int _mouseMoveDispatchPending;
+    private static int _lastMouseMovePostTick = int.MinValue;
+    private static volatile float _pendingMouseX;
+    private static volatile float _pendingMouseY;
+
     // ─── 状态 ───
     public static bool IsCreated { get; private set; }
     public static bool IsVisible { get; private set; }
     private static int _width = 640, _height = 480;
+    // 由窗口线程在 WM_SIZE 中更新；Unity 主线程只读取缓存，不跨线程 GetClientRect。
+    private static volatile int _clientWidth = 640, _clientHeight = 480;
     private static int _startX = 200, _startY = 200;
     private static bool _posRestored;
     private static string PosPrefKey => "ExtPanel_Pos_" + UnityEngine.Screen.width + "x" + UnityEngine.Screen.height;
@@ -70,6 +80,11 @@ public static class ExternalChatWindow
     private const int WM_IME_COMPOSITION = 0x010F;
     private const int WM_IME_ENDCOMPOSITION = 0x010E;
     private const int WM_IME_NOTIFY = 0x0282;
+    private const int WM_CHAR = 0x0102;
+    private const int WM_PASTE = 0x0302;
+    private const int WM_CUT = 0x0300;
+    private const int WM_CLEAR = 0x0303;
+    private const int WM_SETTEXT = 0x000C;
     private const int WM_APP_FOCUS_INPUT = 0x8000 + 1; // 自定义：请求窗口线程聚焦输入框
     private const int WM_APP_SHUTDOWN = 0x8000 + 2;    // 自定义：由窗口线程自己销毁窗口并退出消息循环
     private const int WM_APP_ACTIVATE = 0x8000 + 3;    // 自定义：热键唤出时恢复并带到前台
@@ -103,6 +118,10 @@ public static class ExternalChatWindow
     private static IntPtr _arrowCursor, _ibeamCursor;
     private static volatile bool _inputFocusActive;
     private static volatile string _imeCompositionText = string.Empty;
+    private static int _imePositionPending;
+    // Unity 主线程不能每帧对另一个线程创建的 EDIT 调用 GetWindowTextW。
+    // 文本在 EDIT 所属线程中更新，主线程只读取这个快照，避免点击/输入时被 Win32 同步调用卡住。
+    private static volatile string _inputTextCache = string.Empty;
     private static bool _closeNotificationSent;
     private static WndProcDelegate _wndProcDelegate; // 防止被 GC
     private static EditWndProcDelegate _editWndProcDelegate; // 防止被 GC（EDIT 子类化）
@@ -185,6 +204,10 @@ public static class ExternalChatWindow
     private static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT point);
+    [DllImport("user32.dll")]
+    private static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
+    [DllImport("user32.dll")]
+    private static extern bool ScreenToClient(IntPtr hWnd, ref POINT point);
     [DllImport("user32.dll")]
     private static extern IntPtr LoadCursorW(IntPtr hInstance, IntPtr cursorName);
     [DllImport("user32.dll")]
@@ -281,10 +304,8 @@ public static class ExternalChatWindow
     /// <summary>物理客户区坐标 → 面板逻辑坐标（鼠标消息统一入口）</summary>
     private static void ClientToLogical(int physX, int physY, out float lx, out float ly)
     {
-        RECT cr;
-        GetClientRect(_hwnd, out cr);
-        int cw = Math.Max(1, cr.Right - cr.Left);
-        int ch = Math.Max(1, cr.Bottom - cr.Top);
+        int cw = Math.Max(1, _clientWidth);
+        int ch = Math.Max(1, _clientHeight);
         lx = physX * (float)_width / cw;
         ly = physY * (float)_height / ch;
     }
@@ -292,10 +313,8 @@ public static class ExternalChatWindow
     /// <summary>面板逻辑坐标 → 物理客户区坐标（原生控件布局统一入口）</summary>
     private static void LogicalToClient(float lx, float ly, out int physX, out int physY)
     {
-        RECT cr;
-        GetClientRect(_hwnd, out cr);
-        int cw = Math.Max(1, cr.Right - cr.Left);
-        int ch = Math.Max(1, cr.Bottom - cr.Top);
+        int cw = Math.Max(1, _clientWidth);
+        int ch = Math.Max(1, _clientHeight);
         physX = (int)(lx * cw / (float)_width);
         physY = (int)(ly * ch / (float)_height);
     }
@@ -303,10 +322,8 @@ public static class ExternalChatWindow
     /// <summary>面板逻辑尺寸 → 物理客户区尺寸（原生控件宽高统一入口）</summary>
     private static void LogicalToClientSize(float lw, float lh, out int physW, out int physH)
     {
-        RECT cr;
-        GetClientRect(_hwnd, out cr);
-        int cw = Math.Max(1, cr.Right - cr.Left);
-        int ch = Math.Max(1, cr.Bottom - cr.Top);
+        int cw = Math.Max(1, _clientWidth);
+        int ch = Math.Max(1, _clientHeight);
         physW = Math.Max(1, (int)(lw * cw / (float)_width));
         physH = Math.Max(1, (int)(lh * ch / (float)_height));
     }
@@ -636,14 +653,20 @@ public static class ExternalChatWindow
                 LayoutChildren();
                 MoveEditOffscreen();
                 SetFocus(_edit);
-                PositionImeWindow();
-                UpdateImeCompositionText();
+                _imeCompositionText = string.Empty;
                 _inputFocusActive = true;
                 LogInputState("focused");
                 return IntPtr.Zero;
             }
             case WM_APP_POSITION_IME:
-                PositionImeWindow();
+                // 点击输入框期间不触碰 IMM；仅在真正组词时异步定位，
+                // 避免部分中文输入法在焦点切换期间同步阻塞窗口线程。
+                Volatile.Write(ref _imePositionPending, 0);
+                if (_inputFocusActive && GetFocus() == _edit)
+                {
+                    UpdateImeCompositionText();
+                    PositionImeWindow();
+                }
                 return IntPtr.Zero;
             case WM_APP_ACTIVATE:
             {
@@ -737,14 +760,21 @@ public static class ExternalChatWindow
                     float lx, ly;
                     ClientToLogical(x, y, out lx, out ly);
                     TrackMouseLeave(hWnd);
-                    MainThreadDispatcher.Run(() => OnPanelMouseMove?.Invoke(lx, ly));
+                    QueueMouseMove(lx, ly, false);
                 }
                 return IntPtr.Zero;
             }
             case WM_MOUSELEAVE:
-                MainThreadDispatcher.Run(() => OnPanelMouseMove?.Invoke(-1f, -1f));
+                QueueMouseMove(-1f, -1f, true);
                 return IntPtr.Zero;
             case WM_SIZE:
+                // Unity 每帧会提交同一个逻辑输入框矩形。窗口尺寸变化后允许重新换算一次 DPI/客户区坐标。
+                _logicalInputRectSet = false;
+                if (GetClientRect(hWnd, out RECT client))
+                {
+                    _clientWidth = Math.Max(1, client.Right - client.Left);
+                    _clientHeight = Math.Max(1, client.Bottom - client.Top);
+                }
                 LayoutChildren();
                 return IntPtr.Zero;
             case WM_CTLCOLOREDIT:
@@ -807,9 +837,11 @@ public static class ExternalChatWindow
         }
         if (msg == WM_IME_STARTCOMPOSITION || msg == WM_IME_COMPOSITION || msg == WM_IME_NOTIFY)
         {
-            // 不要在输入法回调中再次调用 ImmSetCompositionWindow：该 API 可能回发
-            // WM_IME_*，形成 EditProc → IMM → EditProc 的递归并导致原生崩溃。
-            UpdateImeCompositionText();
+            // 输入法回调期间不调用任何 IMM 查询/定位 API。
+            // 某些中文输入法在焦点切换阶段会同步等待 IME 窗口，
+            // 在这里调用 ImmGetContext 也会把外置窗口线程卡住。
+            // 等当前回调返回后再合并处理读取和定位。
+            RequestImePosition();
         }
         if (msg == WM_IME_ENDCOMPOSITION)
             _imeCompositionText = string.Empty;
@@ -821,7 +853,63 @@ public static class ExternalChatWindow
             DoSend();
             return IntPtr.Zero;
         }
-        return CallWindowProcW(_origEditProc, hWnd, msg, wParam, lParam);
+        IntPtr result = CallWindowProcW(_origEditProc, hWnd, msg, wParam, lParam);
+        if (msg == WM_CHAR || msg == WM_PASTE || msg == WM_CUT || msg == WM_CLEAR || msg == WM_SETTEXT)
+            UpdateInputTextCache();
+        return result;
+    }
+
+    // 只在 EDIT 所属窗口线程中调用。不要从 Unity 主线程调用 GetWindowTextW。
+    private static void UpdateInputTextCache()
+    {
+        if (_edit == IntPtr.Zero) return;
+        var sb = new System.Text.StringBuilder(1024);
+        GetWindowTextW(_edit, sb, sb.Capacity);
+        _inputTextCache = sb.ToString();
+    }
+
+    /// <summary>
+    /// 将鼠标位置合并后再投递给 Unity。原生窗口线程可能在一帧内收到数百条 WM_MOUSEMOVE，
+    /// 不能让每条消息都进入 MainThreadDispatcher 的无界队列。
+    /// </summary>
+    private static void QueueMouseMove(float x, float y, bool force)
+    {
+        _pendingMouseX = x;
+        _pendingMouseY = y;
+
+        int now = Environment.TickCount;
+        int elapsed = unchecked(now - _lastMouseMovePostTick);
+        if (!force && elapsed >= 0 && elapsed < MOUSE_MOVE_INTERVAL_MS)
+            return;
+        if (Interlocked.CompareExchange(ref _mouseMoveDispatchPending, 1, 0) != 0)
+            return;
+
+        _lastMouseMovePostTick = now;
+        MainThreadDispatcher.Run(() =>
+        {
+            try
+            {
+                OnPanelMouseMove?.Invoke(_pendingMouseX, _pendingMouseY);
+            }
+            finally
+            {
+                Volatile.Write(ref _mouseMoveDispatchPending, 0);
+            }
+        });
+    }
+
+    /// <summary>
+    /// 请求在当前 IMM 回调返回后重新定位候选框。
+    /// 不能在 EditProc 的 WM_IME_* 分支里直接调用 ImmSet*Window，
+    /// 否则部分输入法会回发 WM_IME_* 造成递归。
+    /// </summary>
+    private static void RequestImePosition()
+    {
+        if (_hwnd == IntPtr.Zero || !_inputRectSet) return;
+        if (Interlocked.CompareExchange(ref _imePositionPending, 1, 0) != 0)
+            return;
+        if (!PostMessageW(_hwnd, WM_APP_POSITION_IME, IntPtr.Zero, IntPtr.Zero))
+            Volatile.Write(ref _imePositionPending, 0);
     }
 
     private static void PositionImeWindow()
@@ -831,17 +919,38 @@ public static class ExternalChatWindow
         if (imc == IntPtr.Zero) return;
         try
         {
-            // 将中文输入法的组词/候选锚点放在实际输入栏底部，避免因 EDIT 位于屏外而跑到窗口左上角。
+            // IMM 的坐标是「关联窗口 _edit 的客户区坐标」，不是父窗口坐标。
+            // _edit 为避免覆盖 Unity 输入栏而位于 (-4,-4)，必须经过：
+            // 父窗口客户区 → 屏幕 → 隐藏 EDIT 客户区，才能得到正确的屏幕锚点。
+            POINT areaTopLeft = new POINT { X = _inputX, Y = _inputY };
+            POINT areaBottomRight = new POINT
+            {
+                X = _inputX + Math.Max(1, _inputW),
+                Y = _inputY + Math.Max(1, _inputH)
+            };
+            if (!ClientToScreen(_hwnd, ref areaTopLeft)
+                || !ClientToScreen(_hwnd, ref areaBottomRight)
+                || !ScreenToClient(_edit, ref areaTopLeft)
+                || !ScreenToClient(_edit, ref areaBottomRight))
+                return;
+
             POINT anchor = new POINT
             {
-                X = Math.Max(0, _inputX + 8),
-                Y = Math.Max(0, _inputY + _inputH - 4)
+                X = areaTopLeft.X + 8,
+                Y = areaBottomRight.Y - 4
+            };
+            RECT area = new RECT
+            {
+                Left = areaTopLeft.X,
+                Top = areaTopLeft.Y,
+                Right = areaBottomRight.X,
+                Bottom = areaBottomRight.Y
             };
             COMPOSITIONFORM composition = new COMPOSITIONFORM
             {
                 dwStyle = CFS_POINT,
                 ptCurrentPos = anchor,
-                rcArea = new RECT { Left = _inputX, Top = _inputY, Right = _inputX + _inputW, Bottom = _inputY + _inputH }
+                rcArea = area
             };
             ImmSetCompositionWindow(imc, ref composition);
             CANDIDATEFORM candidate = new CANDIDATEFORM
@@ -849,7 +958,7 @@ public static class ExternalChatWindow
                 dwIndex = 0,
                 dwStyle = CFS_CANDIDATEPOS,
                 ptCurrentPos = anchor,
-                rcArea = composition.rcArea
+                rcArea = area
             };
             ImmSetCandidateWindow(imc, ref candidate);
         }
@@ -894,6 +1003,7 @@ public static class ExternalChatWindow
         string text = sb.ToString().Trim();
         if (text.Length == 0) return;
         SetWindowTextW(_edit, "");
+        _inputTextCache = string.Empty;
         // 发送留痕（不记录真实内容，防敏感信息入日志——codex 建议 5.2）
         LogInputState($"send length={text.Length}");
         MainThreadDispatcher.Run(() => OnSendText?.Invoke(text));
@@ -920,23 +1030,36 @@ public static class ExternalChatWindow
     public static void SetInputRect(int x, int y, int w, int h)
     {
         if (!IsCreated) return;
+        // IMGUI 每帧都会进入这里。相同矩形直接返回，避免每帧跨线程调用
+        // GetClientRect/SetWindowPos 相关的窗口 API；点击输入框后尤其不能持续阻塞主线程。
+        if (_logicalInputRectSet
+            && _logicalInputX == x && _logicalInputY == y
+            && _logicalInputW == w && _logicalInputH == h)
+            return;
+
         int px, py, pw, ph;
         LogicalToClient(x, y, out px, out py);
         LogicalToClientSize(w, h, out pw, out ph);
+
+        _logicalInputRectSet = true;
+        _logicalInputX = x; _logicalInputY = y; _logicalInputW = w; _logicalInputH = h;
+
+        bool changed = !_inputRectSet
+            || _inputX != px || _inputY != py || _inputW != pw || _inputH != ph;
         _inputRectSet = true;
         _inputX = px; _inputY = py; _inputW = pw; _inputH = ph;
-        MoveEditOffscreen();
-        PostMessageW(_hwnd, WM_APP_POSITION_IME, IntPtr.Zero, IntPtr.Zero);
-        LogInputState("hit+rect");
+
+        // SetInputRect 由 Unity 的 IMGUI 每帧调用。原先这里每帧跨线程
+        // SetWindowPos + Debug.Log，会让窗口线程和日志镜像持续争用，点击后逐渐卡死。
+        // EDIT 已在创建/显示/聚焦阶段移到屏外，这里只缓存坐标；变化时留一条诊断记录即可。
+        if (changed)
+            Debug.Log($"[ExternalChat] input rect changed ({px},{py},{pw},{ph})");
     }
 
     /// <summary>读取隐形原生输入通道的当前文字，由 Unity 主线程同步到 IMGUI。</summary>
     public static string GetInputText()
     {
-        if (!IsCreated || _edit == IntPtr.Zero) return string.Empty;
-        var sb = new System.Text.StringBuilder(1024);
-        GetWindowTextW(_edit, sb, sb.Capacity);
-        return sb.ToString();
+        return _inputTextCache ?? string.Empty;
     }
 
     /// <summary>外置窗口输入通道是否聚焦，用于 RT 中绘制可见插入光标。</summary>
@@ -989,6 +1112,8 @@ public static class ExternalChatWindow
 
     private static bool _inputRectSet;
     private static int _inputX, _inputY, _inputW, _inputH;
+    private static bool _logicalInputRectSet;
+    private static int _logicalInputX, _logicalInputY, _logicalInputW, _logicalInputH;
     private static void SetWindowPos_Edit(int x, int y, int w, int h)
     {
         _inputRectSet = true; _inputX = x; _inputY = y; _inputW = w; _inputH = h;
