@@ -1057,7 +1057,11 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         bool hasActiveAction = (_currentIdleAction > 0 && _idleActionTime > 0f);
         bool debugOffsetActive = (debugOffsetEnabled && !_actionLocked && !hasActiveAction && debugOffsets != null && debugOffsets.Count > 0);
         // ★ 重要：空闲动作（如星辉/伸懒腰）也要 ForceUpdate，否则物理系统覆盖了我们的值
-        _cubismModel.ForceUpdateNow();
+        // ★ 2026-08-20 卡顿修复：法阵(#7)/星辰(#4)分支内部已有自己的 ForceUpdateNow
+        //   （法阵 L1169/L1199 两次、星辰分支内一次），此处跳过可省 1 次全量模型更新，
+        //   缓解"法阵期每帧 4+ 次 ForceUpdateNow → 帧率暴跌 → deltaTime 膨胀 → 动作拉长"恶性循环。
+        if (_currentIdleAction != 7 && _currentIdleAction != 4)
+            _cubismModel.ForceUpdateNow();
 
         // ============================================================
         // ★ 左臂(Param34/36/37) 物理拦截：双重 ForceUpdate + 权重归零
@@ -1604,7 +1608,10 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (_currentIdleAction > 0)
         {
             _idleActionTime += Time.deltaTime;
-            _complexActionPhase += Time.deltaTime;
+            // ★ 2026-08-20 卡顿修复：限制 phase 单帧增量上限，防止帧率暴跌时
+            //   deltaTime 膨胀导致法阵/星辰被拉长（8s 游戏时间 → 26s 真实时间恶性循环）
+            float phaseDt = Mathf.Min(Time.deltaTime, 0.1f);
+            _complexActionPhase += phaseDt;
 
             switch (_currentIdleAction)
             {
