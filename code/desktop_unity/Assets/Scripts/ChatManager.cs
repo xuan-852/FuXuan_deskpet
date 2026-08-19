@@ -401,8 +401,12 @@ public class ChatManager : MonoBehaviour
     };
 
     // ---- 消息队列：等待时输入不会丢 ----
-    private Queue<(string text, System.Action onUpdate)> _messageQueue
-        = new Queue<(string, System.Action)>();
+    private Queue<(string text, System.Action onUpdate, string caseId)> _messageQueue
+        = new Queue<(string, System.Action, string)>();
+
+    // Capture the case at request start. The inbox may advance to the next case
+    // while a cloud/tool request is still completing.
+    private string _activeRequestCaseId = "";
 
     // ---- 句子队列：长回复逐句显示 ----
     private List<string> _sentenceList = new List<string>();
@@ -455,6 +459,11 @@ public class ChatManager : MonoBehaviour
     /// <summary>直接发送一条消息（外部调用，如 AutoChat）</summary>
     public void SendMessage(string text, System.Action onUpdate)
     {
+        SendMessageInternal(text, onUpdate, QualityTelemetry.CurrentCaseId);
+    }
+
+    private void SendMessageInternal(string text, System.Action onUpdate, string caseId)
+    {
         if (string.IsNullOrWhiteSpace(text)) return;
 
         if (_isWaiting)
@@ -465,9 +474,11 @@ public class ChatManager : MonoBehaviour
                 _messageQueue.Dequeue();
                 Debug.LogWarning($"[ChatManager] 消息队列已满（>{MAX_QUEUED_MESSAGES}），丢弃最旧消息");
             }
-            _messageQueue.Enqueue((text.Trim(), onUpdate));
+            _messageQueue.Enqueue((text.Trim(), onUpdate, caseId ?? ""));
             return;
         }
+
+        _activeRequestCaseId = caseId ?? "";
 
         _history.Add(new Entry { role = "user", content = text.Trim() });
         TrimHistory(); // 裁剪旧历史，防止 token 无限增长
@@ -489,7 +500,7 @@ public class ChatManager : MonoBehaviour
 
         // ★ 代际递增：新请求接管；若旧协程因看门狗中止仍残留，恢复时会检测代际不符自动退场
         _requestGeneration++;
-        _activeRequestCoroutine = StartCoroutine(SendRequestCoroutine(_requestGeneration));
+        _activeRequestCoroutine = StartCoroutine(SendRequestCoroutine(_requestGeneration, _activeRequestCaseId));
 
         // 🧠 功能1：意图/情绪分类（异步，SendRequestCoroutine 首轮会等待其结果）
         if (!ChatConfig.UseOllamaMode && !ChatConfig.UseCloudBaseline
@@ -597,7 +608,7 @@ public class ChatManager : MonoBehaviour
         return $"{rawError} | 诊断: 历史 {histCount} 条 / 请求体约 {bodyLen / 1024}KB，{extra}";
     }
 
-    private IEnumerator SendRequestCoroutine(int generation)
+    private IEnumerator SendRequestCoroutine(int generation, string requestCaseId)
     {
         if (ChatConfig.UseOllamaMode)
             yield return StartCoroutine(DoOllamaOnlyReply());
@@ -616,11 +627,29 @@ public class ChatManager : MonoBehaviour
         _requestStartTime = 0f; // 请求完成，停止看门狗
         _onUpdate?.Invoke();
 
+        // 只在带 case_id 的质量测试中启动裁判；日常运行零额外评分开销。
+        if (!string.IsNullOrEmpty(requestCaseId) && !string.IsNullOrEmpty(_lastReply))
+        {
+            string judgeInput = GetLastUserMessage();
+            string judgeReply = _lastReply;
+            string judgeCaseId = requestCaseId;
+            string replySource = ChatConfig.UseOllamaMode ? "local" : "cloud";
+            string replyModel = ChatConfig.UseOllamaMode
+                ? LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ModelName)
+                : model;
+            QualityReviewStore.Record(judgeCaseId, replySource, replyModel, judgeInput, judgeReply);
+            StartCoroutine(ReplyQualityJudge.EvaluateAsync(judgeInput, judgeReply, result =>
+            {
+                QualityTelemetry.RecordChatQuality(
+                    replySource, replyModel, result, judgeCaseId);
+            }));
+        }
+
         // ——— 处理队列中的下一条消息 ———
         if (_messageQueue.Count > 0)
         {
             var next = _messageQueue.Dequeue();
-            SendMessage(next.text, next.onUpdate);
+            SendMessageInternal(next.text, next.onUpdate, next.caseId);
         }
 
         // ——— 检查是否需要记忆反思（不阻塞对话流；测试模式跳过）———
@@ -645,6 +674,15 @@ public class ChatManager : MonoBehaviour
     /// <summary>
     /// 修复阶段的本地模式：只走 Ollama，不进入云端工具循环，也不在本地失败时回退云端。
     /// </summary>
+    private string GetLastUserMessage()
+    {
+        for (int i = _history.Count - 1; i >= 0; i--)
+        {
+            if (_history[i].role == "user") return _history[i].content ?? "";
+        }
+        return "";
+    }
+
     private IEnumerator DoOllamaOnlyReply()
     {
         float deadline = Time.time + 20f;
@@ -659,7 +697,7 @@ public class ChatManager : MonoBehaviour
         if (!handled)
         {
             _lastError = "Ollama 未就绪或本地模型生成失败";
-            OnRequestError?.Invoke("⚠ 本地 Ollama 未就绪，请确认 Ollama 已启动且已安装 qwen2.5:3b");
+            OnRequestError?.Invoke($"⚠ 本地 Ollama 未就绪，请确认 Ollama 已启动且已安装 {LocalLLMClient.ModelName}");
         }
     }
 
@@ -743,7 +781,7 @@ public class ChatManager : MonoBehaviour
                 QualityTelemetry.RecordChat(
                     "cloud", model, false, false,
                     Mathf.RoundToInt((Time.realtimeSinceStartup - cloudStartedAt) * 1000f),
-                    "request_error", 0, false);
+                    "request_error", 0, false, _activeRequestCaseId);
                 Debug.LogError($"[ChatManager] ❌ API 请求失败 (round={round}): {_lastError}");
 
                 // ★ 自动重试：网络/限流错误（非 4xx 业务错误）重试最多 3 次
@@ -777,7 +815,7 @@ public class ChatManager : MonoBehaviour
                 "cloud", model, true, true,
                 Mathf.RoundToInt((Time.realtimeSinceStartup - cloudStartedAt) * 1000f),
                 hasToolCalls ? "tool_call" : "final_reply",
-                (fullContent ?? "").Length, hasToolCalls);
+                (fullContent ?? "").Length, hasToolCalls, _activeRequestCaseId);
 
             // ——— 如果没有 tool_call，结束 ———
             if (!hasToolCalls)
@@ -1432,9 +1470,9 @@ public class ChatManager : MonoBehaviour
         if (LocalLLMAgentService.Instance == null || !LocalLLMAgentService.Instance.CanProcess)
         {
             QualityTelemetry.RecordChat(
-                "local", LocalLLMClient.ModelName, false, false,
+                "local", LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ModelName), false, false,
                 Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
-                "not_ready", 0, false);
+                "not_ready", 0, false, _activeRequestCaseId);
             onHandled?.Invoke(false);
             yield break;
         }
@@ -1474,42 +1512,54 @@ public class ChatManager : MonoBehaviour
 
         bool fallbackSuccess = false;
         string fallbackReply = "";
+        string deterministicReply;
 
-        // 等待本地模型生成回复（通过队列，不阻塞太久）
-        float timeout = 15f;
-        float startTime = Time.time;
-        bool gotResult = false;
-
-        LocalLLMAgentService.Instance.GenerateFallbackReply(characterDesc, recentHistory, userMessage, (ok, reply) =>
+        // 时间/天气属于实时事实，不交给本地小模型猜测；有明确数据时直接回答，
+        // 没有天气数据时也明确返回“未知”，避免生成看似合理的伪事实。
+        if (LocalContextAnswer.TryBuild(userMessage, out deterministicReply))
         {
-            gotResult = true;
-            fallbackSuccess = ok;
-            fallbackReply = reply;
-        });
+            fallbackSuccess = true;
+            fallbackReply = deterministicReply;
+        }
 
-        // 等待结果或超时
-        while (!gotResult)
+        // 非实时事实才交给本地模型生成（通过队列，不阻塞太久）
+        bool gotResult = fallbackSuccess;
+        if (!fallbackSuccess)
         {
-            if (Time.time - startTime > timeout)
+            float timeout = 15f;
+            float startTime = Time.time;
+            LocalLLMAgentService.Instance.GenerateFallbackReply(characterDesc, recentHistory, userMessage, (ok, reply) =>
             {
-                Debug.LogWarning("[ChatManager] ⏰ 离线回退超时");
-                break;
+                gotResult = true;
+                fallbackSuccess = ok;
+                fallbackReply = reply;
+            });
+
+            // 等待结果或超时
+            while (!gotResult)
+            {
+                if (Time.time - startTime > timeout)
+                {
+                    Debug.LogWarning("[ChatManager] ⏰ 离线回退超时");
+                    break;
+                }
+                yield return new WaitForSeconds(0.1f);
             }
-            yield return new WaitForSeconds(0.1f);
         }
 
         if (!fallbackSuccess || string.IsNullOrEmpty(fallbackReply))
         {
             QualityTelemetry.RecordChat(
-                "local", LocalLLMClient.ModelName, false, false,
+                "local", LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ModelName), false, false,
                 Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
-                "local_generation_failed", 0, false);
+                "local_generation_failed", 0, false, _activeRequestCaseId);
             Debug.LogWarning("[ChatManager] 离线回退未能生成有效回复");
             onHandled?.Invoke(false);
             yield break;
         }
 
-        // 成功：将本地回复加入历史
+        // 成功：先做零 Token 人设护栏，再加入历史和遥测，保证 UI/复核看到的是最终文本
+        fallbackReply = LocalReplyPostProcessor.Process(fallbackReply, userMessage);
         _history.Add(new Entry { role = "assistant", content = fallbackReply });
         // ★ 清洗后再赋值，避免 markdown/表情标记泄漏到 UI
         _lastReply = CleanDisplayText(fallbackReply);
@@ -1523,9 +1573,9 @@ public class ChatManager : MonoBehaviour
         RecordConversationMemory(fallbackReply);
 
         QualityTelemetry.RecordChat(
-            "local", LocalLLMClient.ModelName, true, true,
+            "local", LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ModelName), true, true,
             Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
-            telemetryReason ?? "local_reply", fallbackReply.Length, false);
+            telemetryReason ?? "local_reply", fallbackReply.Length, false, _activeRequestCaseId);
 
         Debug.Log($"[ChatManager] 🔄 离线回退成功（{fallbackReply.Length} 字）");
         onHandled?.Invoke(true);

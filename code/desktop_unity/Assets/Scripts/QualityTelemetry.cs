@@ -54,7 +54,7 @@ public static class QualityTelemetry
 
     public static void RecordChat(
         string source, string model, bool success, bool accepted,
-        long latencyMs, string reason, int replyChars, bool toolCall)
+        long latencyMs, string reason, int replyChars, bool toolCall, string caseId = null)
     {
         Record(new QualityEvent
         {
@@ -71,7 +71,39 @@ public static class QualityTelemetry
             Keyframes = -1,
             ToolCall = toolCall,
             Reason = reason,
-            CaseId = CurrentCaseId
+            CaseId = string.IsNullOrEmpty(caseId) ? CurrentCaseId : caseId
+        });
+    }
+
+    /// <summary>
+    /// 记录回答内容五维评分。只记录分数和短原因，不记录输入或完整回答。
+    /// </summary>
+    public static void RecordChatQuality(
+        string source, string model, ReplyQualityJudge.Result result, string caseId = null)
+    {
+        if (result == null) return;
+        Record(new QualityEvent
+        {
+            Task = "chat_quality",
+            Source = source,
+            Model = model,
+            Success = result.AverageScore >= 0,
+            Accepted = result.AverageScore >= 3,
+            ParseValid = result.AverageScore >= 0,
+            SafetyValid = true,
+            Score = result.AverageScore,
+            LatencyMs = 0,
+            ReplyChars = -1,
+            Keyframes = -1,
+            ToolCall = false,
+            Reason = result.Reason,
+            CaseId = string.IsNullOrEmpty(caseId) ? CurrentCaseId : caseId,
+            JudgeProvider = result.Provider,
+            JudgePersona = result.Persona,
+            JudgeMemory = result.Memory,
+            JudgeTime = result.Time,
+            JudgeRelevance = result.Relevance,
+            JudgeConstraint = result.Constraint
         });
     }
 
@@ -165,6 +197,12 @@ public static class QualityTelemetry
             .Append(",\"reply_chars\":").Append(e.ReplyChars)
             .Append(",\"keyframes\":").Append(e.Keyframes)
             .Append(",\"tool_call\":").Append(e.ToolCall ? "true" : "false")
+            .Append(",\"judge_provider\":\"").Append(JsonEscape(e.JudgeProvider))
+            .Append("\",\"judge_persona\":").Append(e.JudgePersona)
+            .Append(",\"judge_memory\":").Append(e.JudgeMemory)
+            .Append(",\"judge_time\":").Append(e.JudgeTime)
+            .Append(",\"judge_relevance\":").Append(e.JudgeRelevance)
+            .Append(",\"judge_constraint\":").Append(e.JudgeConstraint)
             .Append(",\"reason\":\"").Append(JsonEscape(NormalizeReason(e.Reason)))
             .Append("\"}\n");
         return line.ToString();
@@ -186,6 +224,12 @@ public static class QualityTelemetry
         public int Keyframes;
         public bool ToolCall;
         public string Reason;
+        public string JudgeProvider = "";
+        public int JudgePersona = -1;
+        public int JudgeMemory = -1;
+        public int JudgeTime = -1;
+        public int JudgeRelevance = -1;
+        public int JudgeConstraint = -1;
     }
 
     private static void Record(QualityEvent e)

@@ -105,7 +105,17 @@ if ($IncludeNode) {
     $zip = Join-Path $Downloads "node-$NodeVersion-win-x64.zip"
     $url = "https://nodejs.org/dist/$NodeVersion/node-$NodeVersion-win-x64.zip"
     try {
-        Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+        if (Test-Path $zip) {
+            $zipHead = [System.IO.File]::ReadAllBytes($zip)[0..3]
+            if ($zipHead[0] -eq 0x50 -and $zipHead[1] -eq 0x4B -and $zipHead[2] -eq 0x03 -and $zipHead[3] -eq 0x04) {
+                Write-Host "    [OK] 复用缓存 Node 压缩包: $zip"
+            } else {
+                Remove-Item -LiteralPath $zip -Force
+                Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+            }
+        } else {
+            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+        }
         Expand-Archive $zip (Join-Path $OutDir "bridge\node") -Force
         # 展开后层级是 node-vX-win-x64\ → 上移一层
         $inner = Join-Path $OutDir "bridge\node\node-$NodeVersion-win-x64"

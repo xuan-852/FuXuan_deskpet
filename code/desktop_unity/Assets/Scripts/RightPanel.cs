@@ -27,7 +27,7 @@ public partial class RightPanel : MonoBehaviour
     [Header("窗口尺寸（常规窗口）")]
     public float panelWidth = 560f;        // 窗口宽度
     public float panelHeight = 720f;       // 窗口高度（长方形偏正方）
-    public float inputBarHeight = 72f;     // 底部输入框高度（QQ 参照，1.5×48）
+    public float inputBarHeight = 64f;     // 底部输入框高度，保留底部呼吸空间
 
     [Header("热键")]
     public KeyCode toggleKey = KeyCode.BackQuote;  // ~ 键切换（窗口内）
@@ -36,10 +36,12 @@ public partial class RightPanel : MonoBehaviour
     // 说明：不用 RegisterHotKey（WM_HOTKEY 会被 Unity 消息泵吞掉，收不到），
     // 改用 GetAsyncKeyState 直接轮询物理键盘状态，任意窗口焦点下均有效。
     private const int VK_OEM_3 = 0xC0;           // ~ 键虚拟码
+    private const int VK_F2 = 0x71;               // F2 虚拟码
     private const int VK_LSHIFT = 0xA0;          // 左 Shift
     private const int VK_RSHIFT = 0xA1;          // 右 Shift
     private const int KEY_DOWN = 0x8000;         // 高位为 1 表示按下
     private bool _globalTildeWasDown = false;    // 按下沿检测（防止按住连发）
+    private bool _globalF2WasDown = false;       // F2 按下沿检测（外置窗口焦点下仍可用）
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
@@ -384,6 +386,8 @@ public partial class RightPanel : MonoBehaviour
     private GUIStyle _termLogStyle;        // 日志-符玄（紫）
     private GUIStyle _termLogUserStyle;    // 日志-用户（浅蓝白）
     private GUIStyle _termLogDimStyle;     // 日志-系统/工具（灰）
+    private GUIStyle _emptyStateTitleStyle;
+    private GUIStyle _emptyStateHintStyle;
     private GUIStyle _termPromptStyle;     // > 提示符
     private GUIStyle _termInputStyle;      // 终端输入框（透明）
     private GUIStyle _termPlaceholderStyle;
@@ -397,6 +401,7 @@ public partial class RightPanel : MonoBehaviour
     private Texture2D _logRowAltTex;       // 日志交替行背景（极淡紫）
     private Texture2D _titleBarPixelTex;   // 标题栏像素渐变背景
     private Texture2D _inputBarPixelTex;   // 输入栏像素背景
+    private Texture2D _transparentTex;     // 输入控件样式透明底，避免 GUI 默认黑底
 
     // ==================== 装饰状态 ====================
     private string _timeDisplay = "";
@@ -447,7 +452,15 @@ public partial class RightPanel : MonoBehaviour
         RefreshRefs();
         DisableLegacyBallPanels();
         // 恢复字体档位（默认 1=A2 1.2×）
-        _fontScaleLevel = Mathf.Clamp(PlayerPrefs.GetInt("RightPanelFontScale", 1), 0, FONT_SCALES.Length - 1);
+        try
+        {
+            _fontScaleLevel = Mathf.Clamp(PlayerPrefs.GetInt("RightPanelFontScale", 1), 0, FONT_SCALES.Length - 1);
+        }
+        catch (Exception ex)
+        {
+            _fontScaleLevel = 1;
+            Debug.LogWarning($"[RightPanel] 字体档位读取失败，使用默认值（无害）: {ex.Message}");
+        }
         // QQ 式两级界面：初始为第一级「会话列表」窄条（324×846，贴 QQ 实测），热键打开后双击进聊天
         _currentView = PanelView.SessionList;
         float w = Mathf.Min(SESSION_LIST_W, Screen.width - 20f);
@@ -972,18 +985,19 @@ public partial class RightPanel : MonoBehaviour
         }
     }
 
-    /// <summary>轮询全局热键 Shift+~（GetAsyncKeyState 物理按键，不依赖消息队列）</summary>
+    /// <summary>轮询全局热键 Shift+~ / F2（不依赖 Unity 窗口焦点）</summary>
     private void CheckGlobalHotkey()
     {
         bool shiftDown = (GetAsyncKeyState(VK_LSHIFT) & KEY_DOWN) != 0
                       || (GetAsyncKeyState(VK_RSHIFT) & KEY_DOWN) != 0;
         bool tildeDown = (GetAsyncKeyState(VK_OEM_3) & KEY_DOWN) != 0;
+        bool f2Down = (GetAsyncKeyState(VK_F2) & KEY_DOWN) != 0;
 
-        // ★ 输入框聚焦时不响应全局热键（防打字误触）
-        if (GUI.GetNameOfFocusedControl() == "rightPanelInput") { _globalTildeWasDown = tildeDown; return; }
-
-        // 按下沿触发：Shift 按住时 ~ 从「未按下」→「按下」瞬间触发一次
-        if (shiftDown && tildeDown && !_globalTildeWasDown && Time.frameCount != _hotkeyFrame)
+        // 使用带修饰键的组合或 F2，均不受旧 IMGUI 输入焦点影响；
+        // Shift+~ 不会与普通聊天文字冲突，F2 兼容用户已有的桌宠习惯。
+        bool tildePressed = shiftDown && tildeDown && !_globalTildeWasDown;
+        bool f2Pressed = f2Down && !_globalF2WasDown;
+        if ((tildePressed || f2Pressed) && Time.frameCount != _hotkeyFrame)
         {
             _hotkeyFrame = Time.frameCount;
             // 全局热键的关闭语义必须是幂等 Close；Toggle 在淡出期间会取消关闭，
@@ -991,6 +1005,7 @@ public partial class RightPanel : MonoBehaviour
             ToggleHotkeyPanel();
         }
         _globalTildeWasDown = tildeDown;
+        _globalF2WasDown = f2Down;
     }
 
     /// <summary>
@@ -1348,9 +1363,9 @@ public partial class RightPanel : MonoBehaviour
         _separatorStyle = new GUIStyle { normal = { background = _separatorTex } };
 
         // ——— 输入框背景 ——— 圆角胶囊（复刻 ChatBubble 圆角风格，替代直角 1×1）
-        _inputBgTex = UiTextureFactory.GenRoundedRect(64, 48, 14, new Color(0.22f, 0.16f, 0.35f, 0.80f));
-        _inputHoverBgTex = UiTextureFactory.GenRoundedRect(64, 48, 14, new Color(0.32f, 0.24f, 0.48f, 0.90f));
-        _inputGlowTex = UiTextureFactory.GenGlowRoundedRect(64, 48, 14, new Color(0.72f, 0.55f, 0.95f, 0.9f));
+        _inputBgTex = UiTextureFactory.GenRoundedRect(64, 48, 10, new Color(0.16f, 0.13f, 0.27f, 0.92f));
+        _inputHoverBgTex = UiTextureFactory.GenRoundedRect(64, 48, 10, new Color(0.23f, 0.18f, 0.37f, 0.96f));
+        _inputGlowTex = UiTextureFactory.GenGlowRoundedRect(64, 48, 10, new Color(0.48f, 0.36f, 0.72f, 0.42f));
         _inputStyle = new GUIStyle
         {
             normal = { textColor = cTextMain, background = _inputBgTex },
@@ -1442,6 +1457,18 @@ public partial class RightPanel : MonoBehaviour
             normal = { textColor = new Color(0.55f, 0.54f, 0.60f, 0.9f) },
             alignment = TextAnchor.UpperLeft
         };
+        _emptyStateTitleStyle = new GUIStyle
+        {
+            font = _monoFont, fontSize = 16, fontStyle = FontStyle.Bold,
+            normal = { textColor = new Color(0.76f, 0.68f, 0.92f, 0.92f) },
+            alignment = TextAnchor.MiddleCenter
+        };
+        _emptyStateHintStyle = new GUIStyle
+        {
+            font = _monoFont, fontSize = 13,
+            normal = { textColor = new Color(0.55f, 0.54f, 0.64f, 0.82f) },
+            alignment = TextAnchor.MiddleCenter
+        };
         _termPromptStyle = new GUIStyle
         {
             font = _monoFont, fontSize = 17, fontStyle = FontStyle.Bold,
@@ -1451,8 +1478,10 @@ public partial class RightPanel : MonoBehaviour
         _termInputStyle = new GUIStyle
         {
             font = _monoFont, fontSize = 15,
-            normal = { textColor = Color.white },
-            focused = { textColor = Color.white },
+            normal = { textColor = Color.white, background = _transparentTex },
+            focused = { textColor = Color.white, background = _transparentTex },
+            hover = { textColor = Color.white, background = _transparentTex },
+            active = { textColor = Color.white, background = _transparentTex },
             alignment = TextAnchor.MiddleLeft,
             padding = new RectOffset(8, 6, 4, 4),
             clipping = TextClipping.Clip
@@ -1638,6 +1667,12 @@ public partial class RightPanel : MonoBehaviour
 
         // 输入栏像素背景（略深，与日志区区分）
         _inputBarPixelTex = UiTextureFactory.MakeTex(1, 1, new Color(0.10f, 0.07f, 0.16f, 0.90f));
+        _transparentTex = UiTextureFactory.MakeTex(1, 1, new Color(0f, 0f, 0f, 0f));
+        // 输入样式在前面初始化，此处补绑定透明背景，避免 GUIStyle 使用默认黑底。
+        _termInputStyle.normal.background = _transparentTex;
+        _termInputStyle.focused.background = _transparentTex;
+        _termInputStyle.hover.background = _transparentTex;
+        _termInputStyle.active.background = _transparentTex;
 
         // 子面板样式（设置/便签/报告 — 星空紫金主题）→ 已拆分至 RightPanel.SubPanels.cs
         InitSubPanelStyles();
@@ -2106,6 +2141,7 @@ public partial class RightPanel : MonoBehaviour
         if (_logRowAltTex != null) Destroy(_logRowAltTex);
         if (_titleBarPixelTex != null) Destroy(_titleBarPixelTex);
         if (_inputBarPixelTex != null) Destroy(_inputBarPixelTex);
+        if (_transparentTex != null) Destroy(_transparentTex);
         if (_monoFont != null) Destroy(_monoFont);
         // ★ 退出顺序：先停外置窗口线程（避免窗口线程访问已释放的 RT/NativeArray 或与
         //   引擎 D3D 设备销毁竞态 → destroyTJDevice 崩溃），再释放渲染资源
@@ -2156,7 +2192,7 @@ public partial class RightPanel : MonoBehaviour
         int w = Mathf.Max(320, Mathf.RoundToInt(_panelRect.width));
         int h = Mathf.Max(200, Mathf.RoundToInt(_panelRect.height));
         ExternalChatWindow.Show(w, h);
-        ExternalChatWindow.ShowInputBar(false); // 面板自带 IMGUI 输入栏视觉，原生输入栏默认隐藏
+        ExternalChatWindow.ShowInputBar(false); // 原生 EDIT 仅作屏外输入桥，Unity 绘制可见文字/光标/背景
         Debug.Log("[RightPanel] ⧉ 已切换到独立面板窗口（可被其他窗口遮挡）");
     }
 

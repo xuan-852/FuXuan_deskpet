@@ -280,18 +280,31 @@
 
 ## 十、输入焦点、热键与子面板关闭回归（2026-08-17）
 
-- 外置原生 `EDIT` 继续保持屏外透明输入通道，但输入聚焦后由 IMGUI/RenderTexture 绘制明确的紫白插入光标；内嵌模式也绘制同一焦点提示。
+- 外置原生 `EDIT` 曾作为屏外透明输入通道；2026-08-19 验证直接覆盖会引入黑色客户区后，保持为屏外输入桥，文字、光标和中文输入法视觉统一由 Unity 负责。
 - 外置窗口类显式设置箭头/I-beam 系统光标，并处理 `WM_SETCURSOR`；输入状态下鼠标不再因透明控件而消失。
 - 启动和热键触发时遍历禁用所有遗留 `BallPanel` 实例，兼容旧 prefab 将该组件挂在独立对象上的情况，避免左下角旧系统面板偶发出现。
 - 子面板（设置/便签/报告/消耗）的 X 统一走 `RequestClosePanel()`：内嵌模式播放淡出，外置模式直接请求原生窗口关闭，避免停留在紫色 RenderTexture。
 
 验证：最终 Quick、完整构建、EditMode 78/78、隔离 `runtime_smoke.cjs --verbose` 均通过；真实外置输入日志达到 `input hit → hit+rect → input focused`，子面板 X 日志确认已退出独立窗口。
 
-## 十一、热键唤出前台层级（2026-08-17）
+## 十一、热键唤出前台层级（2026-08-17，2026-08-19 修订）
 
-- 外置窗口首次由热键或统一唤出链路显示时，窗口线程执行 `ShowWindow(SW_RESTORE)`、`BringWindowToTop` 和 `SetForegroundWindow`，确保瞬间显示在当前普通窗口之上。
-- 不使用 `HWND_TOPMOST`；唤出后的聊天窗口仍是普通 Windows 窗口，后续可被用户新激活的其他窗口遮挡。Live2D 所在 Unity 透明窗口继续由 `WindowOverlay` 保持 TOPMOST。
-- 实测日志：`raised=True foreground=True topmost=false`。
+- 外置窗口首次由热键或统一唤出链路显示时，窗口线程执行 `ShowWindow(SW_RESTORE)`、临时 `HWND_TOPMOST` 提升、`BringWindowToTop` 和 `SetForegroundWindow`，随后恢复 `HWND_NOTOPMOST`，确保瞬间显示在当前普通窗口之上但不永久置顶。
+- 唤出后的聊天窗口仍是普通 Windows 窗口，后续可被用户新激活的其他窗口遮挡。Live2D 所在 Unity 透明窗口继续由 `WindowOverlay` 保持 TOPMOST。
+- `F2` 与 `Shift+~` 均通过全局按下沿轮询，不再受外置窗口焦点或旧 IMGUI 输入框焦点影响。
+
+## 十三、外置输入框统一（2026-08-19）
+
+- 原因：外置窗口若让 Win32 `EDIT` 直接覆盖皮肤，Windows 主题/客户区擦除可能留下大面积黑色矩形；同时 Unity 与原生控件各绘制一套文字也容易错位。
+- 现在：可见输入框的背景、文字和光标统一由 Unity 绘制；Win32 `EDIT` 隐藏并移到屏外，只负责键盘、回车和中文输入法桥接，避免原生黑块进入 RenderTexture/外置窗口。
+- `RightPanel.ChatView` 仍按当前逻辑矩形和 DPI 同步 `ExternalChatWindow.SetInputRect`，保留输入命中、焦点和布局记录，但不再把原生控件放入可见区域。
+- `_termInputStyle` 的 normal/focused/hover/active 背景显式绑定透明纹理；圆角背景、发光描边、占位符、光标和发送按钮均由 Unity 绘制。
+- 原生发送按钮保持隐藏，外置发送由 Unity 命中表处理；输入焦点时屏外 EDIT 仍接收真实文本，Unity 每帧通过 `GetInputText()` 同步显示。
+- 2026-08-19 视觉回归：输入区改为底部留白的单行消息栏（高度 64、左右内缩 16），移除 `>` 提示和头像黑色衬底；头像缩至 40px，输入框默认低对比度，仅悬停/聚焦显示柔和描边，发送按钮统一为圆形箭头。
+- 2026-08-19 输入交互回归：光标仅在获得焦点时显示，并按 1 秒周期闪烁；位置使用 `GUIStyle.GetCursorPixelPosition(Rect, GUIContent, int)`，避免重复叠加输入样式 padding 造成文字与光标间距异常。窗口顶部可能出现的白色候选条属于 Windows 中文输入法，不属于桌宠绘制层。
+- 2026-08-19 输入法定位修复：原生 `EDIT` 继续作为不可见的键盘/输入法桥接层，但通过 `imm32` 的组合/候选窗口定位 API 将候选栏锚定到底部输入栏；`WM_IME_COMPOSITION` 的正在组词文本同步由 Unity 绘制，用户可在输入栏内看到完整的拼音/组词反馈，避免黑色原生客户区再次出现。
+- 2026-08-20 崩溃修复：禁止在 `EditProc` 处理 `WM_IME_*` 回调时再次调用 `ImmSetCompositionWindow`；该 API 会回发输入法消息，导致 `EditProc → IMM → EditProc` 递归并触发 Mono 原生崩溃。候选栏定位仅在输入框获得焦点或布局矩形更新时执行，输入法回调只读取组词文本。
+- 2026-08-19 第二轮视觉统一：空消息区增加“本座已候命 / 输入消息，开始与符玄对话”空状态；聊天工具项保持当前态底色和强调线，其他工具仅在 hover 时提亮；标题头像移除黑色方形衬底，侧栏头像缩小为 44px，减少头像层级差异。
 
 ## 十二、外置窗口残留生命周期修复（2026-08-17）
 

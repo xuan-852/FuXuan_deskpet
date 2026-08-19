@@ -101,6 +101,26 @@ foreach ($lockPath in $UnityLockPaths) {
     }
 }
 
+# IL post-processing also leaves a PID marker after a forcibly terminated
+# editor.  Only remove it when the recorded PID is no longer alive; an active
+# marker is left untouched so two editors cannot run against the same Library.
+$IlppPidPath = Join-Path $ProjectDir "Library\ilpp.pid"
+if (Test-Path -LiteralPath $IlppPidPath) {
+    $IlppPidText = (Get-Content -LiteralPath $IlppPidPath -Raw -ErrorAction Stop).Trim()
+    $IlppPid = 0
+    if ([int]::TryParse($IlppPidText, [ref]$IlppPid)) {
+        if (-not (Get-Process -Id $IlppPid -ErrorAction SilentlyContinue)) {
+            Remove-Item -LiteralPath $IlppPidPath -Force -ErrorAction Stop
+            Write-Host "[BUILD] Removed stale ILPP PID marker: $IlppPidPath (PID $IlppPid not running)"
+        } else {
+            Write-Host "[ERROR] Active ILPP process found (PID $IlppPid); refusing to remove marker" -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host "[WARN] Ignoring malformed ILPP PID marker: $IlppPidPath" -ForegroundColor Yellow
+    }
+}
+
 # ---- Detect running DesktopPet (would lock output exe and fail the build) ----
 $PetProc = Get-Process -Name "DesktopPet" -ErrorAction SilentlyContinue
 if ($PetProc) {

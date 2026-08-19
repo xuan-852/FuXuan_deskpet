@@ -32,7 +32,7 @@ public class LocalLLMAgentService : MonoBehaviour
         DontDestroyOnLoad(gameObject);
 
         // 设置模型为 3b（覆盖可能被 MotionAgent 改掉的值）
-        LocalLLMClient.SetModel("qwen2.5:3b");
+        LocalLLMClient.SetModel(LocalLLMClient.ResolveConfiguredModel("qwen2.5:3b"));
     }
 
     void Start()
@@ -176,15 +176,13 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
     /// <param name="onResult">回调 (success, replyText)</param>
     public void GenerateFallbackReply(string characterDesc, string recentHistory, string userMessage, Action<bool, string> onResult)
     {
-        string prompt = $@"{characterDesc}
+        string prompt = LocalRoleplayPromptBuilder.Build(characterDesc, recentHistory, userMessage);
 
-以下是与主人的最近对话：
-{recentHistory}
-
-请以角色身份回复主人的最新消息：「{userMessage}」
-回复应当简短自然（1-3句话即可），符合角色性格。注意：你只能进行对话回复，没有工具调用能力。";
-
-        EnqueueTask(() => LocalLLMClient.SimplePromptAsync(prompt, onResult, temperature: 0.8f, maxTokens: 256));
+        // 短句组合需要稍低随机性，避免 3B 模型在长回复中跑偏；max_tokens 只是上限，
+        // 实际长度由提示中的“2~7 句”约束控制。
+        float temperature = LocalRoleplayPromptBuilder.Variant == LocalRoleplayPromptBuilder.BaselineVariant ? 0.8f : 0.68f;
+        int maxTokens = LocalRoleplayPromptBuilder.Variant == LocalRoleplayPromptBuilder.CardVariant ? 320 : 288;
+        EnqueueTask(() => LocalLLMClient.SimplePromptAsync(prompt, onResult, temperature: temperature, maxTokens: maxTokens));
     }
 
     // ──────────────────────────────────────────────────────────────────

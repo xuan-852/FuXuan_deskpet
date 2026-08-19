@@ -208,7 +208,7 @@ public class MotionAgent : MonoBehaviour
 
         // 设置本地 LLM
         LocalLLMClient.SetBaseUrl(localApiUrl);
-        LocalLLMClient.SetModel(localModel);
+        LocalLLMClient.SetModel(LocalLLMClient.ResolveConfiguredModel(localModel));
 
         // 启动健康检查（不阻塞启动流程）
         StartCoroutine(DelayedHealthCheck());

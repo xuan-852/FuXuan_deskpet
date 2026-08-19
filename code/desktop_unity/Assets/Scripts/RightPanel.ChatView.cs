@@ -13,6 +13,10 @@ public partial class RightPanel
     private bool _sessionDirty = true;           // 会话列表数据待刷新（History 变化置 true）
     private int _activeSession = 0;              // 当前会话索引（第二级左侧高亮）
     private readonly List<ChatSession> _sessions = new List<ChatSession>(); // 会话列表（当前单角色，多角色扩展预留）
+    private float _inputCaretBlinkStart = -1f;
+    private string _inputCaretTextSnapshot = string.Empty;
+    private bool _inputCaretFocusSnapshot;
+    private const float INPUT_CARET_BLINK_PERIOD = 1.0f;
 
     /// <summary>会话条目（QQ 式会话列表项）</summary>
     private class ChatSession
@@ -47,10 +51,8 @@ public partial class RightPanel
         RegisterExtHit(backRect, BackToSessionList); // 外部命中：返回会话列表
 
         // 符玄头像（标题栏左侧，30×30，带深色描边以增强对比）
-        float fxHeadSize = 42f;
+        float fxHeadSize = 38f;
         Rect fxHeadRect = new Rect(px + 54f, py + 6f, fxHeadSize, fxHeadSize);
-        // 描边（在头像下方画一层深色方形，让小头像在亮背景上更易识别）
-        UiTextureFactory.DrawPixelRect(new Rect(fxHeadRect.x - 2f, fxHeadRect.y - 2f, fxHeadRect.width + 4f, fxHeadRect.height + 4f), new Color(0f, 0f, 0f, 0.65f));
         GUI.DrawTexture(fxHeadRect, _pixelFxTex);
 
         bool waiting = _chat != null && _chat.IsWaiting;
@@ -192,18 +194,21 @@ public partial class RightPanel
             Rect tbRect = new Rect(toolStartX + i * (toolBtnW + toolBtnGap), toolRowY, toolBtnW, toolBtnH);
             // 外置 RT 的 mp 是客户区局部坐标，不能再拿 Unity 屏幕坐标的 _panelRect 判断。
             bool tbHover = (_externalRender || _panelRect.Contains(mp)) && tbRect.Contains(mp);
+            bool tbActive = _tools[i].label == "聊天";
             if (tbHover)
             {
                 hoveredTool = i;
                 hoveredToolRect = tbRect;
             }
-            // hover 时画淡紫方块背景
-            if (tbHover)
-                UiTextureFactory.DrawPixelRect(tbRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
-            // 底部 1px 强调线
+            // 当前页使用稳定的低对比度底色，hover 只提高亮度，避免所有按钮同时抢焦点。
+            if (tbActive || tbHover)
+                UiTextureFactory.DrawPixelRect(tbRect, tbActive
+                    ? new Color(0.46f, 0.34f, 0.70f, 0.30f)
+                    : new Color(0.50f, 0.35f, 0.80f, 0.22f));
             UiTextureFactory.DrawPixelRect(new Rect(tbRect.x, tbRect.yMax - 1f, tbRect.width, 1f),
-                tbHover ? new Color(0.66f, 0.50f, 0.95f, 0.8f) : new Color(0.40f, 0.28f, 0.65f, 0.3f));
-            if (GUI.Button(tbRect, _tools[i].icon, tbHover ? _termToolBtnHoverStyle : _termToolBtnStyle))
+                tbActive ? new Color(0.78f, 0.64f, 1.00f, 0.9f)
+                    : (tbHover ? new Color(0.66f, 0.50f, 0.95f, 0.8f) : new Color(0.40f, 0.28f, 0.65f, 0.3f)));
+            if (GUI.Button(tbRect, _tools[i].icon, (tbActive || tbHover) ? _termToolBtnHoverStyle : _termToolBtnStyle))
             {
                 var tool = _tools[i];
                 if (!_externalRender && tool.panelType.HasValue)
@@ -275,6 +280,13 @@ public partial class RightPanel
         Rect content = new Rect(0f, 0f, logViewW, Mathf.Max(totalH + mascotReserve, logH));
 
         _logScroll = GUI.BeginScrollView(logView, _logScroll, content, false, false, _invisibleScrollbar, _invisibleScrollbar);
+
+        if (_logLines.Count == 0 && !waiting)
+        {
+            float emptyY = Mathf.Max(72f, (logH - 52f) * 0.46f);
+            GUI.Label(new Rect(24f, emptyY, logViewW - 48f, 24f), "本座已候命", _emptyStateTitleStyle);
+            GUI.Label(new Rect(24f, emptyY + 28f, logViewW - 48f, 22f), "输入消息，开始与符玄对话", _emptyStateHintStyle);
+        }
 
         // 第二遍：QQ 式左右对话气泡 —— 符玄=左紫气泡，用户=右蓝气泡，系统=居中灰字
         float yCursor = 8f;
@@ -403,37 +415,44 @@ public partial class RightPanel
         // ═══════════════════════════════════════
         Rect inputBgRect = default, fxRect = default, sendBtnRect = default;
         {
-        float inputY = py + ph - inputBarHeight - 6f;
-        float inputX = px + 8f;
-        float inputW = pw - 16f;
+        float inputY = py + ph - inputBarHeight - 14f;
+        float inputX = px + 16f;
+        float inputW = pw - 32f;
 
-        // 输入栏背景 + 顶部分隔线
-        Rect inputBarBgRect = new Rect(px + 2f, inputY - 4f, pw - 4f, inputBarHeight + 10f);
-        GUI.DrawTexture(inputBarBgRect, _inputBarPixelTex);
-        UiTextureFactory.DrawPixelRect(new Rect(px + 2f, inputY - 4f, pw - 4f, 1f), new Color(0.58f, 0.42f, 0.88f, 0.5f));
+        // 输入栏不再贴边铺满，只保留一条很淡的分隔线，让消息区和输入区有呼吸感。
+        UiTextureFactory.DrawPixelRect(
+            new Rect(inputX, inputY - 8f, inputW, 1f),
+            new Color(0.45f, 0.38f, 0.66f, 0.24f));
 
         // 符玄头像（输入框内最左，高清原图）★多模态资源：Resources/PixelFuXuan.png
-        float fxSize = 56f; // 高清原图平滑显示
-        fxRect = new Rect(inputX + 4f, inputY + (inputBarHeight - fxSize) / 2f, fxSize, fxSize);
-        // 背景描边
-        UiTextureFactory.DrawPixelRect(new Rect(fxRect.x - 3f, fxRect.y - 3f, fxRect.width + 6f, fxRect.height + 6f), new Color(0f, 0f, 0f, 0.7f));
+        float fxSize = 40f;
+        fxRect = new Rect(inputX, inputY + (inputBarHeight - fxSize) / 2f, fxSize, fxSize);
         GUI.DrawTexture(fxRect, _pixelFxTex);
 
-        // > 提示符
-        float promptW = 16f;
         float tfH = 44f + _fontScaleLevel * 4f;
         float tfY = inputY + (inputBarHeight - tfH) / 2f;
-        GUI.Label(new Rect(inputX + fxSize + 8f, tfY, promptW, tfH), ">", _termPromptStyle);
 
         // 输入框（透明背景，文字直接绘在输入条上）
-        float sendBtnSize = 44f;
-        float tfX = inputX + fxSize + promptW + 12f;
-        float tfW = inputW - fxSize - promptW - 18f - sendBtnSize - 6f;
+        float sendBtnSize = 40f;
+        float tfX = inputX + fxSize + 10f;
+        float tfW = inputW - fxSize - 10f - sendBtnSize - 10f;
         inputBgRect = new Rect(tfX, tfY, tfW, tfH);
 
-        // 输入框背景（圆角胶囊 + 发光描边）
+        // 外置窗口使用屏外原生 EDIT 接收真实键盘/中文输入；可见文字、光标和背景统一由 Unity 绘制。
+        // 仍每帧同步逻辑矩形，防止面板尺寸/DPI/视图切换后输入命中状态漂移。
+        if (_externalRender)
+        {
+            ExternalChatWindow.SetInputRect(
+                Mathf.RoundToInt(inputBgRect.x + 8f), Mathf.RoundToInt(inputBgRect.y + 2f),
+                Mathf.RoundToInt(inputBgRect.width - 14f), Mathf.RoundToInt(inputBgRect.height - 4f));
+        }
+
+        // 输入框背景：默认低对比度，悬停/聚焦时才显示轻微描边。
         GUI.DrawTexture(inputBgRect, _inputBgTex);
-        GUI.DrawTexture(inputBgRect, _inputGlowTex);
+        bool inputVisualActive = inputBgRect.Contains(mp)
+            || (_externalRender ? ExternalChatWindow.IsInputFocused : GUI.GetNameOfFocusedControl() == "rightPanelInput");
+        if (inputVisualActive)
+            GUI.DrawTexture(inputBgRect, _inputGlowTex);
 
         if (!_externalRender)
         {
@@ -457,8 +476,25 @@ public partial class RightPanel
         }
         else
         {
-            // 外置模式：只绘制当前输入文本（交互由原生 EDIT 处理，Phase A3 接入）
+            // 外置模式：屏外原生 EDIT 只负责输入桥，Unity 负责绘制可见文本。
+            // 外置模式：原生 EDIT 仅作为输入法/键盘桥接；已提交文字和正在组词的文字均由 Unity 绘制。
+            // 这样原生控件可以保持无黑框，同时用户不会丢失中文输入法的组词反馈。
             GUI.Label(inputBgRect, _inputText, _termInputStyle);
+            string composition = ExternalChatWindow.GetInputComposition();
+            if (ExternalChatWindow.IsInputFocused && !string.IsNullOrEmpty(composition))
+            {
+                Vector2 compositionStart = _termInputStyle.GetCursorPixelPosition(
+                    inputBgRect, new GUIContent(_inputText ?? string.Empty), (_inputText ?? string.Empty).Length);
+                float compositionX = Mathf.Clamp(compositionStart.x + 1f,
+                    inputBgRect.x + _termInputStyle.padding.left,
+                    inputBgRect.xMax - _termInputStyle.padding.right - 3f);
+                GUI.Label(new Rect(compositionX, inputBgRect.y, inputBgRect.width - (compositionX - inputBgRect.x), inputBgRect.height),
+                    composition, _termInputStyle);
+                UiTextureFactory.DrawPixelRect(
+                    new Rect(compositionX, inputBgRect.yMax - 7f,
+                        Mathf.Min(140f, Mathf.Max(18f, _termInputStyle.CalcSize(new GUIContent(composition)).x)), 2f),
+                    new Color(0.86f, 0.76f, 1f, 0.9f));
+            }
         }
 
         // 原生 EDIT 为避免黑框已移到屏外，不能依赖系统插入光标；在 IMGUI/RT 中绘制稳定的紫白光标，
@@ -466,10 +502,27 @@ public partial class RightPanel
         bool inputCaretFocused = _externalRender
             ? ExternalChatWindow.IsInputFocused
             : GUI.GetNameOfFocusedControl() == "rightPanelInput";
-        if (inputCaretFocused)
+        string caretText = _inputText ?? string.Empty;
+        if (_externalRender)
+            caretText += ExternalChatWindow.GetInputComposition();
+        if (_inputCaretBlinkStart < 0f
+            || inputCaretFocused != _inputCaretFocusSnapshot
+            || !string.Equals(caretText, _inputCaretTextSnapshot, StringComparison.Ordinal))
         {
-            float textW = _termInputStyle.CalcSize(new GUIContent(_inputText ?? "")).x;
-            float caretX = Mathf.Clamp(inputBgRect.x + _termInputStyle.padding.left + textW + 1f,
+            _inputCaretBlinkStart = Time.unscaledTime;
+            _inputCaretTextSnapshot = caretText;
+            _inputCaretFocusSnapshot = inputCaretFocused;
+        }
+        float caretBlinkPhase = inputCaretFocused
+            ? Mathf.Repeat(Time.unscaledTime - _inputCaretBlinkStart, INPUT_CARET_BLINK_PERIOD)
+            : 1f;
+        bool inputCaretVisible = inputCaretFocused && caretBlinkPhase < INPUT_CARET_BLINK_PERIOD * 0.5f;
+        if (inputCaretVisible)
+        {
+            // 使用 Unity 的实际光标测量结果，避免 CalcSize 后再次叠加 padding 造成“字与光标之间多一个空格”。
+            Vector2 caretPos = _termInputStyle.GetCursorPixelPosition(
+                inputBgRect, new GUIContent(caretText), caretText.Length);
+            float caretX = Mathf.Clamp(caretPos.x + 1f,
                 inputBgRect.x + _termInputStyle.padding.left,
                 inputBgRect.xMax - _termInputStyle.padding.right - 3f);
             float caretH = Mathf.Min(26f, inputBgRect.height - 12f);
@@ -479,26 +532,13 @@ public partial class RightPanel
         }
 
         // ——— 发送按钮（太极图，符玄道法风，hover 紫色光晕） ———
-        sendBtnRect = new Rect(tfX + tfW + 6f, inputY + (inputBarHeight - sendBtnSize) / 2f, sendBtnSize, sendBtnSize);
+        sendBtnRect = new Rect(tfX + tfW + 10f, inputY + (inputBarHeight - sendBtnSize) / 2f, sendBtnSize, sendBtnSize);
         bool sendHover = sendBtnRect.Contains(mp);
-        if (_taijiTex != null)
-        {
-            GUI.DrawTexture(sendBtnRect, _taijiTex);
-            if (sendHover) GUI.DrawTexture(sendBtnRect, _glowTex); // 紫色光晕提亮
-        }
-        else
-        {
-            // 回退：像素方块背景
-            UiTextureFactory.DrawPixelRect(sendBtnRect, sendHover
-                ? new Color(0.66f, 0.50f, 0.95f, 0.5f)
-                : new Color(0.50f, 0.35f, 0.80f, 0.25f));
-        }
-        // 边框
-        UiTextureFactory.DrawPixelRect(new Rect(sendBtnRect.x, sendBtnRect.y, sendBtnRect.width, 1f), new Color(0.58f, 0.42f, 0.88f, 0.6f));
-        UiTextureFactory.DrawPixelRect(new Rect(sendBtnRect.x, sendBtnRect.yMax - 1f, sendBtnRect.width, 1f), new Color(0.58f, 0.42f, 0.88f, 0.6f));
-        UiTextureFactory.DrawPixelRect(new Rect(sendBtnRect.x, sendBtnRect.y, 1f, sendBtnRect.height), new Color(0.58f, 0.42f, 0.88f, 0.6f));
-        UiTextureFactory.DrawPixelRect(new Rect(sendBtnRect.xMax - 1f, sendBtnRect.y, 1f, sendBtnRect.height), new Color(0.58f, 0.42f, 0.88f, 0.6f));
-        if (!_externalRender && GUI.Button(sendBtnRect, new GUIContent(" ", "发送 (Enter)"), _sendBtnStyle))
+        // 单一圆形按钮和箭头，避免太极图与输入框描边抢视觉焦点。
+        GUIStyle sendVisualStyle = sendHover ? _sendBtnHoverStyle : _sendBtnStyle;
+        if (_externalRender)
+            GUI.Label(sendBtnRect, "→", sendVisualStyle);
+        if (!_externalRender && GUI.Button(sendBtnRect, new GUIContent("→", "发送 (Enter)"), _sendBtnStyle))
         {
             string sendMsg = _inputText.Trim();
             if (sendMsg.Length > 0)
@@ -522,7 +562,10 @@ public partial class RightPanel
         });
 
         // 空输入框提示
-        if (string.IsNullOrEmpty(_inputText) && (_externalRender || GUI.GetNameOfFocusedControl() != "rightPanelInput"))
+        bool showPlaceholder = _externalRender
+            ? !ExternalChatWindow.IsInputFocused
+            : GUI.GetNameOfFocusedControl() != "rightPanelInput";
+        if (string.IsNullOrEmpty(_inputText) && string.IsNullOrEmpty(ExternalChatWindow.GetInputComposition()) && showPlaceholder)
         {
             GUI.Label(inputBgRect, "向符玄下达指令…", _termPlaceholderStyle);
         }
@@ -532,8 +575,8 @@ public partial class RightPanel
             // ★ 输入聚焦状态机第 1 步（codex 2026-08-17 建议 5.2）：Unity 侧命中输入区
             Debug.Log("[ExternalChat] input hit");
             ExternalChatWindow.SetInputRect(
-                Mathf.RoundToInt(inputBgRect.x), Mathf.RoundToInt(inputBgRect.y),
-                Mathf.RoundToInt(inputBgRect.width), Mathf.RoundToInt(inputBgRect.height));
+                Mathf.RoundToInt(inputBgRect.x + 8f), Mathf.RoundToInt(inputBgRect.y + 2f),
+                Mathf.RoundToInt(inputBgRect.width - 14f), Mathf.RoundToInt(inputBgRect.height - 4f));
             ExternalChatWindow.FocusInput();
         });
 
@@ -801,7 +844,7 @@ public partial class RightPanel
                 UiTextureFactory.DrawPixelRect(itemRect, new Color(0.55f, 0.40f, 0.85f, 0.30f));       // 选中高亮
             else if (itemRect.Contains(mp))
                 UiTextureFactory.DrawPixelRect(itemRect, new Color(0.50f, 0.35f, 0.80f, 0.15f));       // 悬停
-            float av = 54f;
+            float av = 44f;
             Rect avRect = new Rect(itemRect.x + 12f, itemRect.y + (itemH - 8f - av) / 2f, av, av);
             GUI.DrawTexture(avRect, s.avatar ?? _pixelFxTex);
             GUI.Label(new Rect(avRect.xMax + 12f, itemRect.y + 12f, w - av - 40f, 26f), s.name,

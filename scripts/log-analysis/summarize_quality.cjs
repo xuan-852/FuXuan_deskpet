@@ -57,7 +57,7 @@ function qualitySummary(rows) {
 
 function usageSummary(rows) {
   const groups = new Map();
-  for (const row of rows) {
+  for (const row of rows.filter((row) => row.src)) {
     const key = row.src || '?';
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
@@ -77,10 +77,32 @@ function usageSummary(rows) {
   }
 }
 
+function judgeSummary(rows) {
+  const judged = rows.filter((row) => row.task === 'chat_quality');
+  if (!judged.length) return;
+  const fields = ['judge_persona', 'judge_memory', 'judge_time', 'judge_relevance', 'judge_constraint', 'score'];
+  const average = (field) => {
+    const values = judged.map((row) => Number(row[field])).filter((value) => Number.isFinite(value) && value >= 0);
+    return values.length ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(2) : '-';
+  };
+  console.log('\n回复内容质量（0-5，-1=不适用）:');
+  console.log('provider\tcases\tpersona\tmemory\ttime\trelevance\tconstraint\taverage');
+  const providers = [...new Set(judged.map((row) => row.judge_provider || 'unknown'))].sort();
+  for (const provider of providers) {
+    const group = judged.filter((row) => (row.judge_provider || 'unknown') === provider);
+    const values = (field) => {
+      const nums = group.map((row) => Number(row[field])).filter((value) => Number.isFinite(value) && value >= 0);
+      return nums.length ? (nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2) : '-';
+    };
+    console.log([provider, group.length, values(fields[0]), values(fields[1]), values(fields[2]), values(fields[3]), values(fields[4]), values(fields[5])].join('\t'));
+  }
+}
+
 if (!fs.existsSync(qualityPath)) {
   console.error(`未找到质量日志：${qualityPath}`);
   process.exitCode = 1;
 } else {
   qualitySummary(readJsonl(qualityPath));
+  judgeSummary(readJsonl(qualityPath));
   usageSummary(readJsonl(usagePath));
 }

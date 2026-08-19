@@ -1,7 +1,7 @@
 # AI 对话系统 — ChatManager 与 Token 优化
 
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
-> **基本架构**: 用户输入 → `ChatManager`（10 轮回环 / 意图过滤 / 600s 看门狗）→ `ApiClient`（DeepSeek SSE 流式，Function Calling）→ `ToolEngine/` 插件调度；`LocalLLMAgentService`（Ollama qwen2.5:3b）提供 4 项离线能力兜底；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`（1,595 行）、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
+> **基本架构**: 用户输入 → `ChatManager`（10 轮回环 / 意图过滤 / 600s 看门狗）→ `ApiClient`（DeepSeek SSE 流式，Function Calling）→ `ToolEngine/` 插件调度；`LocalLLMAgentService`（Ollama，默认 `qwen2.5:3b`，可由 `FU_XUAN_LOCAL_MODEL` 覆盖）提供 4 项离线能力兜底；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`（1,595 行）、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
 > **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀；2026-08-12 P5 注入链新增任务轨迹（TaskTrajectoryManager，太卜手札）与任务模板（TaskTemplateManager，太卜阵法图），同样置于【当前时刻】之前；2026-08-18 成本闸门接入全部主要云端直连点，新增 `PromptContextBudget` / `ToolResultBudget` / `QualityTelemetry`，EditMode 99/99 通过。
 > **编写注意事项**: ①测试必须开测试模式（`D:\DesktopPetData\.test_mode`）否则污染 pet_memory/pet_personality；②`{current_time}` 等动态内容**必须放 system prompt 尾部**（放开头会摧毁 DeepSeek 缓存命中，全价 ¥1/M）；③deepseek-v4-flash 是推理模型，必须显式 `"thinking":{"type":"disabled"}` + `max_tokens:1200` 否则 `content=""`；④历史裁剪须按字符预算且向前对齐最近 user 消息，防止切断 tool_calls↔tool 配对导致 API 400。
 
@@ -96,6 +96,39 @@
 ### 2.7 测试模式（IsTestMode）
 
 存在 `D:\DesktopPetData\.test_mode` 标记文件 → 跳过记忆/人格/反思全部持久化写入。**自动化测试必须开启**，否则污染忆境与人格演化计数。
+
+### 2.8 本地 3B 回复护栏（2026-08-19）
+
+本地 Ollama 回退链路不直接复用云端完整 system prompt，而由 `LocalRoleplayPromptBuilder` 生成短角色卡和短句组合约束：
+
+1. 只向 3B 模型提供最近一条助手回复与当前用户输入，避免连续测试或长对话中的旧主题抢占注意力；长期信息由上层摘要/记忆系统承担。
+2. 普通回复目标为 2～4 句，详细问题为 4～7 句；每句只表达一个意思。计划类请求必须给具体步骤，明确总时长时各段时间必须加总，详细问题先回答再追问。
+3. `LocalContextAnswer` 直接处理时间、天气和符玄偏好类固定问题：时间读 `DateTime.Now`，天气只读 `TimeWeatherController.weatherFetched` 后的数据，未取得天气时明确返回未知，不让模型猜测。
+4. `LocalReplyPostProcessor` 在回复入历史、显示和复核前执行零 Token 护栏：去除“将军”、限制“主人”重复、将普通自称“我”改为“本座”，但保留“自我”等固定词；用户明确要求“一句/三句”时只做确定性句数裁剪，不进行第二次模型重写。
+5. 质量测试用 `FU_XUAN_LOCAL_PROMPT_VARIANT=micro_v1`，遥测模型名带 `/fu_card_v2` 角色卡版本后缀；`baseline` 和 `card_v1` 保留用于消融对照。
+
+### 2.9 分层符玄角色卡（2026-08-19）
+
+`FuXuanCharacterCard.cs` 将角色卡拆成四层，避免把完整世界观重复塞进每次本地请求：
+
+1. 常驻核心：太卜司身份、直接聪慧且实际关心他人的性格、使用“本座”、对用户使用“你/偶尔主人”、不称“将军”。
+2. 按问题选择的示例：计划、情绪支持、一般判断分别使用短示例，帮助低能力模型学习回答结构。
+3. 关键词 Lorebook：仅在出现青雀、景元、太卜司/穷观阵、宿命/未来等关键词时注入相关背景，最多两条。
+4. 历史末尾护栏：当前问题优先，禁止复制上一轮安慰语/邀约/反问；事实解释、推荐和计划完成后不追加无关追问。
+
+角色事实取自公开剧情与台词资料：符玄是罗浮太卜司之首，擅长推演，强调推演用于看清选择而非用宿命论逃避；青雀、景元关系作为按需背景使用。角色卡采用分层字段的做法，结构参考 SillyTavern V2 的 system prompt、示例消息与可选 character book 思路，不复制第三方完整角色卡。
+
+最终构建后的 `qwen3:8b + micro_v1 + fu_card_v2` 本地 10 条聊天复测：10/10 成功，平均延迟 1017ms，自动质量均分 4.70/5，persona 4.60、relevance 5.00、constraint 5.00；`chat_006` 的“三句话”已被确定性护栏稳定为三句。该批次 `usage_log` 仅有 local 记录，成本 ¥0。
+
+2026-08-19 `qwen2.5:3b` 30 条本地聊天回归：30/30 成功，平均延迟 681ms，平均回复 97.80 字，平均 3.33 句，`将军` 0 次；质量规则裁判 4.13/5。规则裁判会把“今天/幸运日”等语义误判为时间问题，不能替代人工复核。
+
+### 2.10 Qwen3 模型切换与推理预算（2026-08-19）
+
+- `FU_XUAN_LOCAL_MODEL`：覆盖本地模型名；未设置时保持 `qwen2.5:3b`，因此测试模型不会意外成为生产默认值。
+- `FU_XUAN_LOCAL_REASONING_EFFORT`：支持 `none/low/medium/high/max`。未设置时，模型名以 `qwen3` 开头则自动发送 Ollama OpenAI 兼容接口的 `reasoning_effort: "none"`；其他模型保持原行为。
+- 原因：Ollama `/v1/chat/completions` 对 Qwen3 默认启用 thinking，`max_tokens` 可能被思考过程消耗，导致最终 `message.content` 为空。日常聊天关闭推理，复杂任务可按路由设置 `low/medium/high`。
+- `qwen3:8b` 隔离回归（`FU_XUAN_LOCAL_PROMPT_VARIANT=micro_v1`）：30/30 成功，平均 1141ms，P50 1242ms，P95 1842ms，规则质量 4.80/5；单模型驻留约 5.6GB 显存，测试结束已执行 `ollama stop qwen3:8b` 释放显存。
+- 与 `qwen2.5:3b` 的同批次基线相比：平均延迟增加约 460ms，规则质量由 4.13 提升至 4.80，适合作为聊天模型候选；动作/摘要等实时能力仍应保留轻量模型。
 
 ## 三、开发历史迭代
 

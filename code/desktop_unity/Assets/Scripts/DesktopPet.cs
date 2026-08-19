@@ -375,6 +375,43 @@ public class DesktopPet : MonoBehaviour
     private const string PREF_CLEAN_EXIT = "_clean_exit";
     private const int MAX_CRASHES_BEFORE_SAFE_MODE = 2;
 
+    // PlayerPrefs 是启动辅助状态，不应成为桌宠主流程的硬依赖。
+    // 沙盒权限、注册表损坏或测试隔离环境均可能让 Unity PlayerPrefs 抛异常；
+    // 此时保留默认行为即可，不能阻断 RightPanel/ChatManager 初始化。
+    private static int SafePrefsGetInt(string key, int fallback)
+    {
+        try { return PlayerPrefs.GetInt(key, fallback); }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[DesktopPet] PlayerPrefs 读取失败，使用默认值: {ex.Message}");
+            return fallback;
+        }
+    }
+
+    private static void SafePrefsDeleteKey(string key)
+    {
+        try { PlayerPrefs.DeleteKey(key); }
+        catch (Exception ex) { Debug.LogWarning($"[DesktopPet] PlayerPrefs 删除失败（无害）: {ex.Message}"); }
+    }
+
+    private static void SafePrefsSetInt(string key, int value)
+    {
+        try { PlayerPrefs.SetInt(key, value); }
+        catch (Exception ex) { Debug.LogWarning($"[DesktopPet] PlayerPrefs 写入失败（无害）: {ex.Message}"); }
+    }
+
+    private static void SafePrefsSetString(string key, string value)
+    {
+        try { PlayerPrefs.SetString(key, value); }
+        catch (Exception ex) { Debug.LogWarning($"[DesktopPet] PlayerPrefs 写入失败（无害）: {ex.Message}"); }
+    }
+
+    private static void SafePrefsSave()
+    {
+        try { PlayerPrefs.Save(); }
+        catch (Exception ex) { Debug.LogWarning($"[DesktopPet] PlayerPrefs 保存失败（无害）: {ex.Message}"); }
+    }
+
     private void Awake()
     {
         // ---- 确保统一日志目录存在（崩溃日志写入前提）----
@@ -387,32 +424,32 @@ public class DesktopPet : MonoBehaviour
         Application.logMessageReceivedThreaded += MirrorAllLogs;
 #endif
         // ★ 看门狗逻辑：检查上次是否正常退出（方式1: clean_exit 标记）
-        bool previousCleanExit = PlayerPrefs.GetInt(PREF_CLEAN_EXIT, 0) == 1;
-        PlayerPrefs.DeleteKey(PREF_CLEAN_EXIT); // 清除标记，等正常退出时重新设置
-        PlayerPrefs.Save();
+        bool previousCleanExit = SafePrefsGetInt(PREF_CLEAN_EXIT, 0) == 1;
+        SafePrefsDeleteKey(PREF_CLEAN_EXIT); // 清除标记，等正常退出时重新设置
+        SafePrefsSave();
 
         if (!previousCleanExit)
         {
             // 上次异常退出 → 崩溃计数+1
-            int crashCount = PlayerPrefs.GetInt(PREF_CRASH_COUNT, 0) + 1;
-            PlayerPrefs.SetInt(PREF_CRASH_COUNT, crashCount);
-            PlayerPrefs.Save();
+            int crashCount = SafePrefsGetInt(PREF_CRASH_COUNT, 0) + 1;
+            SafePrefsSetInt(PREF_CRASH_COUNT, crashCount);
+            SafePrefsSave();
             Debug.LogWarning($"[DesktopPet] ⚠ 上次异常退出（崩溃计数={crashCount}/{MAX_CRASHES_BEFORE_SAFE_MODE}）");
 
             if (crashCount >= MAX_CRASHES_BEFORE_SAFE_MODE)
             {
                 // 连续多次崩溃 → 下一次唤醒跳过 DWM 重建（黑色背景不透明，但程序稳定运行）
-                PlayerPrefs.SetString("_skip_dwm_rebuild", "1");
-                PlayerPrefs.Save();
+                SafePrefsSetString("_skip_dwm_rebuild", "1");
+                SafePrefsSave();
                 Debug.LogWarning("[DesktopPet] 🛡 连续崩溃超过阈值，下次睡眠唤醒跳过 DWM 玻璃层重建（安全模式）");
             }
         }
         else
         {
             // 上次正常退出 → 重置崩溃计数 + 清除安全模式
-            PlayerPrefs.SetInt(PREF_CRASH_COUNT, 0);
-            PlayerPrefs.DeleteKey("_skip_dwm_rebuild");
-            PlayerPrefs.Save();
+            SafePrefsSetInt(PREF_CRASH_COUNT, 0);
+            SafePrefsDeleteKey("_skip_dwm_rebuild");
+            SafePrefsSave();
         }
 
         // ---- 单例互斥锁：防止 Build and Run 产生多个实例 ----
@@ -437,14 +474,14 @@ public class DesktopPet : MonoBehaviour
             // 上一个实例崩溃了，Mutex 被系统遗弃 — 我们获得了所有权，正常启动
             Debug.LogWarning("[DesktopPet] 检测到上一个实例异常崩溃，已接管互斥锁，正常启动");
             // 方式2: 互斥锁遗弃也视为崩溃
-            int crashCount = PlayerPrefs.GetInt(PREF_CRASH_COUNT, 0) + 1;
-            PlayerPrefs.SetInt(PREF_CRASH_COUNT, crashCount);
+            int crashCount = SafePrefsGetInt(PREF_CRASH_COUNT, 0) + 1;
+            SafePrefsSetInt(PREF_CRASH_COUNT, crashCount);
             if (crashCount >= MAX_CRASHES_BEFORE_SAFE_MODE)
             {
-                PlayerPrefs.SetString("_skip_dwm_rebuild", "1");
+                SafePrefsSetString("_skip_dwm_rebuild", "1");
                 Debug.LogWarning("[DesktopPet] 🛡 连续崩溃超过阈值，下次睡眠唤醒跳过 DWM 玻璃层重建（安全模式）");
             }
-            PlayerPrefs.Save();
+            SafePrefsSave();
         }
         catch (System.Exception ex)
         {

@@ -72,8 +72,9 @@ New-Item -ItemType Directory -Force -Path $cloudRoot | Out-Null
 Remove-Item -LiteralPath (Join-Path $cloudRoot '.test_mode') -Force -ErrorAction SilentlyContinue
 $env:FU_XUAN_DATA = $cloudRoot
 Remove-Item Env:FU_XUAN_OLLAMA -ErrorAction SilentlyContinue
-$env:FU_XUAN_CLOUD_BASELINE = '1'
-Start-Process -FilePath (Resolve-Path '.\Build\DesktopPet.exe') -ArgumentList '--cloud-baseline'
+ $env:FU_XUAN_CLOUD_BASELINE = '1'
+ $env:FU_XUAN_EXPECTED_DEEPSEEK_KEY_ID = 'sk-3707b*****52ca'
+ Start-Process -FilePath (Resolve-Path '.\Build\DesktopPet.exe') -ArgumentList '--cloud-baseline'
 ```
 
 `--cloud-baseline` 会允许隔离目录的 `inbox.txt` 驱动案例，但不会开启普通测试模式，因此云端请求不会被 `BlockCloudInTestMode` 拦截。云端组每条案例都会真实消耗 Token；达到计划样本量后立即停止，不要长时间让后台主动行为混入样本。
@@ -168,3 +169,31 @@ node scripts/log-analysis/compare_quality.cjs `
 - `validate_quality_run.cjs` 不应出现 `MISSING` 或 `INVALID`；云端动作出现 `budget_blocked` 时必须整批重排。
 - `template` 动作单独统计，不与模型生成动作混合。
 - 云端组出现请求失败、Key 缺失、预算拦截或后台主动消息时，标记对应案例无效并重测，不拿失败原因当模型质量。
+
+## 九、本地角色提示 A/B 测试（短句组合）
+
+本地模型使用 `FU_XUAN_LOCAL_PROMPT_VARIANT` 选择提示版本。三组必须使用相同的案例、相同的 Ollama 模型和独立数据目录：
+
+| 版本 | 作用 | 预期验证点 |
+|------|------|------------|
+| `baseline` | 保留旧的 200 字角色描述与“1～3 句话”要求 | 作为消融基线 |
+| `micro_v1` | 短角色卡 + 先结论、后补充、可选收尾；每句一个意思 | 单句长度、称呼和人设稳定性 |
+| `card_v1` | `micro_v1` 加少量示例和输出前自检 | 长问题的多句组合、相关性 |
+
+建议先测 `baseline` 与 `micro_v1`，只有 `micro_v1` 明显改善且没有明显变啰嗦，再测 `card_v1`。提示版本会写入本地质量记录的 `model` 后缀，例如 `qwen2.5:3b/micro_v1`。
+
+```powershell
+$env:FU_XUAN_LOCAL_PROMPT_VARIANT = 'baseline' # 下一组改为 micro_v1 / card_v1
+$env:FU_XUAN_DATA = 'D:\DesktopPetData\local_prompt_baseline_20260819'
+$env:FU_XUAN_OLLAMA = '1'
+$env:FU_XUAN_REVIEW_EXPORT = '1'
+$env:FU_XUAN_REPLY_JUDGE = 'rule'
+Start-Process -FilePath (Resolve-Path '.\Build\DesktopPet.exe') -ArgumentList '--ollama'
+node scripts/test/run_quality_cases.cjs --local --cases chat --timeout-ms 60000
+node scripts/log-analysis/summarize_quality.cjs $env:FU_XUAN_DATA
+node scripts/log-analysis/analyze_reply_style.cjs $env:FU_XUAN_DATA
+```
+
+`analyze_reply_style.cjs` 只输出聚合指标：平均回复字数、平均句数、平均/最大单句长度、两句以上的比例，以及“本座 / 我 / 主人 / 你 / 将军”的出现案例数。它不能代替人工质量评分；人工只复核自动裁判标为不确定或两组差异较大的案例。当前称呼规则是“主人”和“你”可以混用，“将军”不应由模型随意使用。
+
+本阶段不把“回复更长”直接当成质量提升。主要验收顺序为：相关性与事实正确 → 符玄人设 → 用户约束 → 单句不过长 → 需要详细时是否由多句共同完成信息。`baseline`、`micro_v1`、`card_v1` 的自动裁判均使用规则裁判时才可直接比较；本地模型裁判分数不能与云端裁判分数直接相减。

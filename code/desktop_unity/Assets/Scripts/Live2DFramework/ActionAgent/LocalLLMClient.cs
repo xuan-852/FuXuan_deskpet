@@ -35,7 +35,7 @@ public static class LocalLLMClient
     /// 当前使用的模型名（可通过 SetModel 修改）
     /// MotionAgent 启动时会覆盖为 3b，这里设为 3b 作为默认值便于本地服务使用
     /// </summary>
-    public static string ModelName { get; private set; } = "qwen2.5:3b";
+    public static string ModelName { get; private set; } = ResolveConfiguredModel("qwen2.5:3b");
 
     /// <summary>
     /// 是否就绪（上次连接成功则 true）
@@ -68,6 +68,18 @@ public static class LocalLLMClient
     public static void SetModel(string model)
     {
         ModelName = model;
+    }
+
+    /// <summary>
+    /// 返回当前进程配置的本地模型。
+    /// FU_XUAN_LOCAL_MODEL 只用于实验/部署覆盖，未设置时保持生产默认模型。
+    /// </summary>
+    public static string ResolveConfiguredModel(string fallback)
+    {
+        string configured = Environment.GetEnvironmentVariable("FU_XUAN_LOCAL_MODEL");
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured.Trim();
+        return fallback;
     }
 
     /// <summary>
@@ -260,6 +272,11 @@ public static class LocalLLMClient
         sb.Append("\"model\":\"").Append(EscapeJson(ModelName)).Append("\",");
         sb.Append("\"temperature\":").Append(temperature.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(',');
         sb.Append("\"max_tokens\":").Append(maxTokens).Append(',');
+        // Qwen3 等推理模型在 Ollama /v1 兼容接口默认会开启 thinking。
+        // 日常桌宠回复需要把预算留给最终 content；复杂任务可通过环境变量重新开启。
+        string reasoningEffort = ResolveReasoningEffort();
+        if (!string.IsNullOrEmpty(reasoningEffort))
+            sb.Append("\"reasoning_effort\":\"").Append(EscapeJson(reasoningEffort)).Append("\",");
         // ★ 2026-08-15：显式扩展上下文窗口到 8K——动作翻译/闲话 prompt 较大（schema 可达 5K 字符），
         //   默认 4K 上下文会截断导致本地模型 JSON 解析失败回退云端。Ollama 支持按请求覆盖 num_ctx。
         sb.Append("\"options\":{\"num_ctx\":8192},");
@@ -277,6 +294,26 @@ public static class LocalLLMClient
         sb.Append("]");
         sb.Append('}');
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// 解析本地模型的推理开关。
+    /// FU_XUAN_LOCAL_REASONING_EFFORT 支持 none/low/medium/high/max；
+    /// 未设置时仅对 qwen3 系列默认关闭，保持 qwen2.5 等非推理模型原行为。
+    /// </summary>
+    private static string ResolveReasoningEffort()
+    {
+        string configured = Environment.GetEnvironmentVariable("FU_XUAN_LOCAL_REASONING_EFFORT");
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            if (!ModelName.StartsWith("qwen3", StringComparison.OrdinalIgnoreCase))
+                return null;
+            return "none";
+        }
+
+        string value = configured.Trim().ToLowerInvariant();
+        return value == "none" || value == "low" || value == "medium"
+            || value == "high" || value == "max" ? value : null;
     }
 
     // ──────────────────────────────────────────────

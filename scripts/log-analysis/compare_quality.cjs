@@ -79,3 +79,21 @@ for (const task of tasks) {
     diff(local, cloud, 'latency_ms', average)
   ].join('\t'));
 }
+
+const judgeKeys = keys.filter((key) => key.startsWith('chat_quality\t'));
+if (judgeKeys.length) {
+  const local = judgeKeys.map((key) => localMap.get(key));
+  const cloud = judgeKeys.map((key) => cloudMap.get(key));
+  console.log('');
+  console.log('chat_quality	cases	persona(local/cloud)	memory(local/cloud)	time(local/cloud)	relevance(local/cloud)	constraint(local/cloud)	average(local/cloud)');
+  console.log([
+    'chat_quality',
+    judgeKeys.length,
+    diff(local, cloud, 'judge_persona', average),
+    diff(local, cloud, 'judge_memory', average),
+    diff(local, cloud, 'judge_time', average),
+    diff(local, cloud, 'judge_relevance', average),
+    diff(local, cloud, 'judge_constraint', average),
+    diff(local, cloud, 'score', average)
+  ].join('\t'));
+}

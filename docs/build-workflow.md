@@ -6,7 +6,7 @@
 
 ---
 
-> **2026-08-19 构建修复**：`build.ps1 -Quick` 现在复用 EditMode harness 编译路径，并自动使用临时 `FU_XUAN_DATA/.test_mode`；Quick/完整构建均带 `-nographics`。Tuanjie 必须在 full-access 环境启动，否则 Windows 沙箱可能在授权初始化阶段卡死且不创建日志。构建脚本会在确认没有 Tuanjie 进程后清理 `ArtifactDB-lock` / `SourceAssetDB-lock`。
+> **2026-08-19 构建修复**：`build.ps1 -Quick` 现在复用 EditMode harness 编译路径，并自动使用临时 `FU_XUAN_DATA/.test_mode`；Quick/完整构建均带 `-nographics`。Tuanjie 必须在 full-access 环境启动，否则 Windows 沙箱可能在授权初始化阶段卡死且不创建日志。构建脚本会在确认没有 Tuanjie 进程后清理 `ArtifactDB-lock` / `SourceAssetDB-lock`，并在确认 ILPP PID 已退出后清理陈旧的 `Library\ilpp.pid`。
 
 ## 一、编译入口速查
 
@@ -60,6 +60,9 @@ Start-Process .\Build\DesktopPet.exe
 # ① 先诊断：自动清理残留 + 验证授权客户端 + 带超时试编译
 .\scripts\diagnose_tuanjie.ps1 -StartupTimeoutSec 120
 
+# 如果 direct_compile.log 未创建，使用 full-access PowerShell 重跑：
+# build.ps1 / Tuanjie 的授权初始化可能被 workspace 沙箱拦截。
+
 # 诊断脚本会输出关键结论：
 #   - direct_compile.log 已创建 → 环境正常，编辑器能启动 → 直接构建
 #   - direct_compile.log 未创建 → 启动早期卡死 → 看授权/残留
@@ -89,6 +92,7 @@ Stop-Process -Name Tuanjie.Licensing.Client -Force -ErrorAction SilentlyContinue
 1. **构建必须在沙箱 `danger-full-access` 下执行**：`Start-Process Tuanjie.exe` 被 workspace-write 沙箱拒绝（`Access is denied`）。首次被拒后**同命令升级重试一次**。
 2. **`build.ps1 -Quick` 只验证编译，不更新 `Build/DesktopPet.exe`**——需要真机时**必须跑完整 `.\build.ps1`**，否则运行的是旧 exe（2026-08-17 实测踩过）。
 3. **退出码读取**：`Start-Process -NoNewWindow` 下 `$proc.ExitCode` 偶发读取为空（宿主交互限制）——以 `-logFile` 是否存在 + 内容判定，不要当成构建失败。
+4. **ILPP 陈旧 PID**：强杀 Tuanjie 后若 `Library\ilpp.pid` 仍存在，先确认其中 PID 已不存在；新版 `build.ps1` 会自动安全清理，活动 PID 则拒绝删除。
 4. **32 位进程无 `SetWindowLongPtrW/GetWindowLongPtrW`**（`EntryPointNotFoundException` 杀线程）——P/Invoke 用 `SetWindowLongW/GetWindowLongW`。
 5. **PS 5.1 无 `?:` 三元运算符**——脚本里避免（构建脚本本身已兼容）。
 6. **`direct_compile.log` 留痕**：诊断脚本在 `logs/build/direct_compile.log` 留下最近一次试编译日志，作为判断依据。

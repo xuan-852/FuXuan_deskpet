@@ -42,10 +42,22 @@ const fromId = fromIdx >= 0 ? (args[fromIdx + 1] || null) : null;
 const toIdx = args.indexOf('--to');
 const toId = toIdx >= 0 ? (args[toIdx + 1] || null) : null;
 
-function writeInbox(text) {
-  fs.writeFileSync(INBOX, text, 'utf8');
-}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function writeInbox(text, attempts = 12) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      fs.writeFileSync(INBOX, text, 'utf8');
+      return;
+    } catch (error) {
+      lastError = error;
+      if (error.code !== 'EBUSY' && error.code !== 'EPERM') throw error;
+      await sleep(250);
+    }
+  }
+  throw lastError;
+}
 
 function readRows() {
   const logPath = path.join(DATA_ROOT, 'quality_log.jsonl');
@@ -107,9 +119,9 @@ async function waitForCase(caseId, task, timeout) {
   let done = 0, fail = 0, blocked = 0;
   for (const c of filtered) {
     try {
-      writeInbox(`@@case:${c.id}`);
+      await writeInbox(`@@case:${c.id}`);
       await sleep(500);
-      writeInbox(c.type === 'motion' ? `@@motion:${c.input}` : c.input);
+      await writeInbox(c.type === 'motion' ? `@@motion:${c.input}` : c.input);
       const expectedTask = c.type === 'motion' ? 'motion_translation' : 'chat';
       const row = await waitForCase(c.id, expectedTask, timeoutMs);
       if (!row) {
