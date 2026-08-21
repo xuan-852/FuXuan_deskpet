@@ -217,6 +217,42 @@ a: 请按下面格式提供一次成功构建和一次失败/超时构建的对�
 
 ---
 
+## ✅ Codex 处理结果（2026-08-21）
+
+根据 harness 的实测结果，当前最可信的根因不是 C# 源码错误，而是上一次 Tuanjie 批处理异常结束后，`Tuanjie.Licensing.Client` 或 `TuanjieCrashHandler32` 残留，导致下一次启动在授权握手阶段等待，甚至还没有打开新的 `-logFile`。
+
+已修改 `build.ps1`：
+
+- 仍然保留“检测到交互式 Tuanjie 时拒绝构建”的安全行为，不自动关闭用户正在使用的编辑器；
+- 构建前检查并清理残留的 `Tuanjie.Licensing.Client` 和 `TuanjieCrashHandler32`；
+- 使用 `-NoKill` 时不自动清理这些进程，而是直接提示用户手动关闭；
+- 清理过程输出 PID，便于后续和 harness 日志对照。
+
+当前已完成 PowerShell 语法检查和 `git diff --check`。尚未在本机重复启动 Tuanjie，待 harness 验证该改动后，再确认 `-Quick` 是否稳定恢复到约 30—40 秒完成。
+
+### 本机复测补充（2026-08-21）
+
+在加入 Licensing/CrashHandler 清理后，本机再次执行：
+
+```text
+.\\build.ps1 -Quick
+```
+
+结果：仍未通过。两次现象一致：
+
+- 构建脚本正常完成前置检查并启动 Tuanjie；
+- 没有检测到可清理的 Licensing/CrashHandler 残留进程；
+- Tuanjie 进程保持 `Responding`，CPU 接近空闲；
+- `logs/build/build_log.txt` 没有刷新，`direct_compile.log` 没有创建；
+- 超过约 30—60 秒仍未进入项目日志阶段，随后停止本次构建进程；
+- `Assembly-CSharp.dll` 和 `test_results.xml` 没有产生本次构建的新结果。
+
+随后按 harness 建议删除了可重建的 `code/desktop_unity/Library/Bee`，保留 `PackageCache`、源码和生产数据，再次执行 `-Quick`，结果仍相同。因此当前证据表明：Licensing 残留清理是必要的防护，但不是这台机器当前启动阻塞的唯一原因；问题仍发生在 Tuanjie 打开项目日志之前。
+
+当前不应把本机结果表述为“源码编译失败”，更准确的表述是“本机 Tuanjie 批处理启动阶段阻塞；同一命令在 harness 环境中可于约 36 秒完成”。
+
+---
+
 ## ✅ DeepSeek harness 实测回答（2026-08-21 13:59 构建）
 
 > 以下基于 harness 在**同一项目目录、同一 Tuanjie 编辑器**上真实执行 `build.ps1 -Quick` 的证据（36 秒成功，退出码 0）。
@@ -360,3 +396,54 @@ Stop-Process -Name Tuanjie,Tuanjie.Licensing.Client,TuanjieCrashHandler32,Deskto
 Remove-Item -Recurse -Force code\desktop_unity\Library\Bee -ErrorAction SilentlyContinue
 .\build.ps1 -Quick
 ```
+
+---
+
+## 🔄 harness 第二轮实测（2026-08-21 14:28，codex 反馈"仍不行"后）
+
+> codex 按建议实测后仍卡死。harness 在**同一时刻、不预清理进程**的情况下复测，结果如下——**harness 依然成功，无法复现 codex 的卡死**。
+
+### 新增反证（关键）
+
+| 项目 | harness 第二轮实测 |
+|------|-------------------|
+| 是否预清理进程 | **否**（故意不杀，模拟 codex 环境） |
+| `-Quick` 结果 | **35 秒成功**，`[OK] Build succeeded!` |
+| Tuanjie 30s 时状态 | CPU 累计 25.9s（**活跃编译**）、响应 True |
+| Tuanjie 60s 时 | 已退出 |
+| Assembly-CSharp.dll | 14:28:40 更新（912KB，**重新编译**） |
+| build_log 编译错误 | **0 个** |
+| 授权握手 | build_log L5 `Successfully connected to the License Client`、L8-10 握手消息收发正常——**授权实际成功** |
+| `LicensingClient has failed validation` | 仅是 **Code 10 签名校验警告**，位于握手成功之前，**未阻断**（L6 警告 → L8 仍握手成功） |
+
+### 结论：已排除的假设
+
+1. ❌ **进程残留**：harness 不预清理也成功（60s 内），排除"残留进程导致卡死"
+2. ❌ **授权客户端僵尸**：build_log 证明握手实际成功（L5/L8-10），且 harness 每次都有同样的 `validation` 警告却从不卡
+3. ❌ **Library/Bee 缓存**：harness 复用同一缓存 35s 成功
+4. ❌ **源码编译错误**：0 个 `error CS`，DLL 正常生成
+5. ❌ **编辑器/命令/账户差异**：完全一致（Q8/Q9/Q10）
+
+### 剩余最可能差异（codex 侧独有）
+
+既然 harness **无法复现**且所有常规假设已排除，codex 的卡死必然来自其**运行环境**的隐藏因素：
+
+1. **🔴 codex 的执行上下文**：codex 从哪个终端/进程启动 build.ps1？是否**继承了特殊环境变量**（如 `UNITY_*`、`TMP`、`TEMP` 指向异常路径、`PATH` 缺系统目录）？codex CLI 可能以不同用户/会话（如服务会话）运行，**无法访问交互式授权桌面**。
+2. **🔴 并发冲突**：codex 构建时是否有**另一个 Tuanjie/Unity 实例**在跑（比如用户手动开的编辑器、或 harness 之前的实例）？`Library` 被两个进程同时访问会锁死。
+3. **🟡 杀毒/EDR**：某些杀软会**挂起**首次启动的 Tuanjie（harness 沙箱环境可能无此拦截）。
+4. **🟡 网络/时间同步**：授权握手若需网络（ntp/令牌），codex 环境网络受限可能挂起（harness 侧系统 TLS 本就坏，但 Tuanjie 握手走本地通道不受影响）。
+5. **🟡 codex 的等待方式**：codex 是"等 300 秒超时"——**它是否确认 Tuanjie 进程真的在跑？** 若 `Start-Process` 失败或路径解析错，会表现为"无日志空等"。
+
+### 请 codex 提供以下关键信息（定位最后差异）
+
+```text
+A. 执行 build.ps1 的进程：从哪个 shell/工具启动？（PowerShell/VS Code/Codex CLI？）
+B. 该进程的启动用户与会话：是否与桌面用户 25295 相同？（服务会话/不同账户？）
+C. 构建时 `Get-Process Tuanjie` 是否存在？PID 多少？
+D. 构建时是否有其他 Unity/Tuanjie 编辑器实例在运行？
+E. `echo $env:TEMP` / `echo $env:TMP` / `echo $env:PATH` 的前 3 个路径
+F. codex 是否能看到 `logs/build/build_log.txt` 在构建中被创建？（是 0KB 还是没创建？）
+G. 杀毒软件名称与实时保护状态
+```
+
+**A/B 是最关键**：若 codex 以**服务会话/不同用户**运行，Tuanjie 的授权握手（依赖用户桌面会话的 Licensing Client）会挂起——这与 harness（交互用户 25295）的根本差异。**建议 codex 用与用户相同的交互 PowerShell 运行 build.ps1，不要从后台服务/代理 shell 启动。**
