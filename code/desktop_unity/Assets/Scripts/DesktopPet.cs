@@ -419,6 +419,8 @@ public class DesktopPet : MonoBehaviour
     private void Awake()
     {
         // ---- 确保统一日志目录存在（崩溃日志写入前提）----
+        if (!DataPathConfig.EnsureDataRoot(out var dataRootError))
+            Debug.LogWarning($"[DesktopPet] 数据目录不可用: {DataPathConfig.DataRoot}，{dataRootError}");
         try { System.IO.Directory.CreateDirectory(CrashLogDir); } catch { }
 
         // ---- 崩溃看门狗 ----

@@ -17,7 +17,7 @@
 param(
     [switch]$SkipPack,
     [switch]$Test,
-    [string]$Version = "1.0.0"
+    [string]$Version = "1.0.8"
 )
 
 . "$PSScriptRoot\..\scripts\encoding\init-utf8.ps1"
@@ -136,7 +136,7 @@ if ($Test) {
         $proc2 = Start-Process -FilePath $unins -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait -PassThru
         if ($proc2.ExitCode -ne 0) { Write-Host "[WARN] 卸载 exit=$($proc2.ExitCode)" }
         Start-Sleep -Seconds 2
-        if (Test-Path $testDir) { Write-Host "    [WARN] 卸载后目录仍存在（可能因文件占用，属已知 Inno 行为）" } else { Write-Host "    [OK] 卸载后目录已清理" }
+        if (Test-Path $testDir) { Write-Host "    [WARN] 卸载后目录仍存在（请检查卸载日志或被占用文件）" } else { Write-Host "    [OK] 卸载后目录已清理" }
     } else {
         Write-Host "    [WARN] 未找到 unins000.exe（安装可能未完成）"
     }

@@ -315,7 +315,7 @@ flowchart TB
 
 ## 七、数据持久化真相
 
-> 根目录硬编码在 `DataPathConfig.cs`：**`D:\DesktopPetData\`**（唯一事实源；2026-08-14 起扩展 `LogsDir` / `DocumentsDir` / `TestModeFile` / `InboxFile` 子路径，DesktopPet 日志、ChatManager 测试模式、OfficeTools 输出、ToolBenchmark、RightPanel 收件箱已全部收敛到该配置类）
+> 默认根目录在 `DataPathConfig.cs`：**`D:\DesktopPetData\`**（唯一事实源；可由 `FU_XUAN_DATA` 覆盖；配置路径失效且默认目录已有数据时自动复用默认目录，避免重装产生第二份活动数据；2026-08-21 起扩展 `EnsureDataRoot`）。`LogsDir` / `DocumentsDir` / `TestModeFile` / `InboxFile` 子路径均从该根目录派生。
 
 | 文件 | 用途 |
 |---|---|

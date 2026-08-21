@@ -1,7 +1,7 @@
 # 记忆与人格系统 — PetMemory、人格演化与知识库
 
 > **文档作用**: 本模块文档描述桌宠「记忆与人格」子系统的**代码真相**——PetMemory 三层记忆、PersonalityManager 五维人格演化、KnowledgeBaseManager 本地 RAG 知识库，以及数据持久化文件地图。改记忆读写/人格演化/知识库相关代码前必读。
-> **基本架构**: `PetMemory`（entries + coreFacts + conversationSummary 三层存储；entries 按四层配额治理，按当前问题相关性收束注入）；`PersonalityManager`（五维人格 × 三维关系 × 情绪联动，`pet_personality.json`）；`KnowledgeBaseManager`（Ollama nomic-embed-text 嵌入 + 余弦 TopK 检索，`knowledge_base.json`）；反思链路（CheckReflection → DoReflection → CommitReflection）。数据根目录硬编码 `D:\DesktopPetData\`（`DataPathConfig.cs`）。
+> **基本架构**: `PetMemory`（entries + coreFacts + conversationSummary 三层存储；entries 按四层配额治理，按当前问题相关性收束注入）；`PersonalityManager`（五维人格 × 三维关系 × 情绪联动，`pet_personality.json`）；`KnowledgeBaseManager`（Ollama nomic-embed-text 嵌入 + 余弦 TopK 检索，`knowledge_base.json`）；反思链路（CheckReflection → DoReflection → CommitReflection）。数据根目录由 `DataPathConfig.cs` 统一解析：默认 `D:\DesktopPetData\`，可用 `FU_XUAN_DATA` 覆盖，失效配置会在已有默认目录存在时回退，防止重装生成第二份活动目录。
 > **开发历史迭代**: N39 修复两大缺口——反思链路实际接线（死回调 OnReflectRequest 删除）、知识库上下文实际注入（GetFormattedContext 返回 LastFormattedContext 缓存）；测试模式 IsTestMode 防污染（.test_mode 标记文件）；2026-08-12 P4 新增 PreferencesManager 偏好结构化存储（`pet_preferences.json` + set/query/remove 三工具）。
 > **编写注意事项**: ①测试必须开 `.test_mode`（防污染 pet_memory.json 忆境 + pet_personality.json 人格计数），测后清理用 `scripts/openclaw/clean_test_pollution.cjs`；②人格触发词注意区分正负触发（"我的"/"我在"等 importantMarkers）；③`DriftTowardNeutral()` 存在但 ActionAgent 内无调用者（潜在死代码）；④知识库检索是协程异步填充缓存，同步 API 返回最近结果（可能有 1 帧延迟）。
 

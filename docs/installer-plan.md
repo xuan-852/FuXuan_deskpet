@@ -75,13 +75,12 @@ const { GatewayChatClient } = await import(pathToFileURL(join(OPENCLAW_LIB, 'dis
 
 ### 障碍 2：数据目录硬编码值 🔴
 
-`DataPathConfig.cs` L9：`DataRoot => @"D:\DesktopPetData"`（值硬编码，虽然已集中到一处）。
+`DataPathConfig.cs`：数据根目录集中在唯一配置源；默认仍为 `D:\DesktopPetData`，可由 `FU_XUAN_DATA` 覆盖。
 
-**改造方案**：支持环境变量覆盖，默认值不变（向后兼容）：
+**当前实现**：支持环境变量覆盖，并在配置路径失效但默认目录已有数据时回退到默认目录，避免重装或旧环境变量导致第二份空数据目录：
 
 ```csharp
-public static string DataRoot =>
-    Environment.GetEnvironmentVariable("FU_XUAN_DATA") ?? @"D:\DesktopPetData";
+public static string DataRoot => ResolveDataRoot();
 ```
 
 目标机若 D 盘不存在/无权限，安装器可写 `FU_XUAN_DATA` 指向其他盘。
@@ -138,7 +137,7 @@ C:\Program Files\FuXuan\                  ← 安装目录（用户可选，默�
    [勾选] TeX (MiKTeX)（默认不勾，compile_latex 才需要）
    [勾选] Everything 便携 / Pogget（默认不勾）
 4. 安装目录选择（默认 Program Files\FuXuan）
-5. 数据目录选择（默认 D:\DesktopPetData，可改 → 写 FU_XUAN_DATA）
+5. 数据目录选择：先检测已有 `FU_XUAN_DATA`，再检测已有 `D:\DesktopPetData`，只有两者都不存在时才创建默认目录；用户确认后写入 `FU_XUAN_DATA`
 6. 配置收集页（首次安装才显示）：
    - DeepSeek API Key（必填）
    - GLM-4V API Key（必填）
@@ -161,7 +160,8 @@ C:\Program Files\FuXuan\                  ← 安装目录（用户可选，默�
 |---|---|
 | 重复安装（升级） | Inno Setup 覆盖安装目录；`AppMutex` 防止桌宠/桥运行中升级（先提示停止服务）；**数据目录不触碰** |
 | 版本号 | 与 CHANGELOG 迭代号对齐：`v<N号>.<build>`（如 `v42.1`），写入 `version.txt`；安装器「关于」页显示 |
-| 卸载 | 删安装目录 + 移除环境变量 + 停并删桥服务/计划任务；**卸载时询问是否保留 D:\DesktopPetData**（默认保留） |
+| 卸载保留 | 删安装目录 + 停并删桥服务；**原地保留数据目录，并保留 `FU_XUAN_DATA` 指向**，重装会自动复用，不创建第二份活动目录 |
+| 卸载删除 | 用户明确选择后，只删除已记录的专用数据目录；删除失败则保留环境变量入口并提示，避免留下无法找回的数据 |
 
 ---
 
@@ -239,7 +239,7 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 | `QWEATHER_API_KEY` | 可选，用户输入 | 向导收集 |
 | `BRIDGE_TOKEN` | 随机 64 字符 | 安装器生成（不落盘明文） |
 | `GATEWAY_TOKEN` | — | 桥自动从 `~/.openclaw/openclaw.json` 读取（无需写） |
-| `FU_XUAN_DATA` | 数据目录（默认 `D:\DesktopPetData`） | 安装器写入 |
+| `FU_XUAN_DATA` | 唯一数据目录（默认 `D:\DesktopPetData`） | 安装器检测/写入；保留数据卸载时不清除 |
 | `OFFICE_PYTHON` | `scripts\python\python.exe` | 安装器写入 |
 | `OFFICE_SCRIPTS_DIR` / `KNOWLEDGE_SCRIPTS_DIR` | `scripts\office` / `scripts\knowledge` | 安装器写入 |
 | `OPENCLAW_NODE_MODULES` | `npm root -g`（openclaw 全局安装位置） | 安装器写入（配合障碍 1 改造） |
@@ -270,7 +270,9 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 - [ ] `knowledge_index` 索引 PDF（PyMuPDF 链路）
 - [ ] `compile_latex`（若装了 TeX）出 PDF
 - [ ] 重启电脑：桥服务自启、桌宠（若勾选自启）自启
-- [ ] 卸载：安装目录清空、服务移除、环境变量移除、`D:\DesktopPetData` 按选择保留
+- [ ] 卸载保留：安装目录清空、服务移除、数据目录原地保留、`FU_XUAN_DATA` 仍指向原目录
+- [ ] 卸载删除：用户明确确认后删除原目录；删除失败时不清除环境变量入口
+- [ ] 重装检测：已有自定义目录或默认目录时不创建第二份活动数据目录
 - [ ] 升级：旧数据目录完好，新版本正常
 
 ---
@@ -281,7 +283,7 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 |---|---|---|---|
 | **0** | 三个移植障碍代码改造（§三清单）+ `build.ps1 -Quick` + 测试 + 更新架构文档 | 0.5~1 天 | ✅ 2026-08-14 完成（import 动态解析 / `FU_XUAN_DATA` / requirements.txt / Pogget 环境变量；EditMode 78/78 + 冒烟测试通过） |
 | **1** | 便携目录原型：内置 Node/Python 解包 + `start-bridge.cmd` + 数据目录 + 环境变量脚本 | 1 天 | ✅ 2026-08-14 完成（`installer\build-portable.ps1` 组装 `installer\portable\`；便携桥 `/health`+`/extract_pdf` 通过、桌宠从便携目录启动零异常；**Node 锁定 v22.22.3+**（OpenClaw 要求 SQLite 3.51.3+，v22.14.0 实测启动报 WAL bug）；⚠️ Python embeddable 内置待补测，当前回退系统 Python） |
-| **2** | Inno Setup 安装器：§四全部页面/组件/注册/卸载 | 1~2 天 | ✅ 2026-08-15 完成（`fuxuan-installer.iss`：中文向导 + API 密钥收集页 + 数据目录页 + 组件选择 + 环境变量写入/卸载清理 + 卸载保留数据；`build-installer.ps1` 自动获取便携 ISCC；产物 `FuXuanSetup-1.0.0.exe` 112.9MB；本地静默安装→7 项产物校验→静默卸载 全过；⚠️ NSSM 服务注册与 OpenClaw/Ollama/TeX 组件自动化归入阶段 3） |
+| **2** | Inno Setup 安装器：§四全部页面/组件/注册/卸载 | 1~2 天 | ✅ 2026-08-15 完成；✅ 2026-08-21 补强数据目录生命周期（已有目录检测、保留卸载保留环境变量、删除失败保护、静默卸载默认保留、卸载标记清理）；产物 `FuXuanSetup-1.0.8.exe` 已重新打包 |
 | **3** | 组件安装脚本：OpenClaw npm 静默 + Ollama 拉模型 + MiKTeX + VC++ + Everything | 1 天 | ✅ 2026-08-15 完成（`installer\components\` 7 脚本均含 `/CHECK` 只检测模式：install-vcredist / install-openclaw（网关启动走内置 CLI，openclaw 包已内置故免 npm -g）/ install-ollama（含模型存在跳过）/ install-miktex / install-everything / install-service + uninstall-service（NSSM 2.24，wrapper+env 文件规避 LocalSystem 读不到用户环境变量）；已接入 [Run] 组件链 + [UninstallRun]，`/SKIPCOMPONENTS` 本地测试开关；本机实测：VC++/OpenClaw/Ollama 已装跳过、MiKTeX 缺失、NSSM 下载+检查正常） |
 | **4** | 虚拟机验收（§八清单）+ 版权/密钥文档 + 发布流程（构建→打包→版本号） | 0.5~1 天 | ✅ **验收完成（2026-08-15）**：三环境交叉验证——本机 15 PASS（聊天/工具/PPT/PDF 真跑通）；腾讯云 2C4G 干净 Win Server 10 PASS（**完整环境变量路径 + NSSM 服务 RUNNING**，/health 因弱机资源崩溃）；Win10 VM 安装产物 5/5 PASS（剩余 FAIL 均为 VM 环境细节：无 D 盘、注入乱局路径截断，非产品缺陷）。结论：**安装包验收达成，产品级缺陷 0**。⚠️ 待办：版权/密钥分发文档、发布流程（版本号/CHANGELOG/推送） |
 | 合计 | | **4~6 天** | |
@@ -298,5 +300,6 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 | Node 便携版与 OpenClaw 版本不匹配（哈希文件名） | 阶段 0 障碍 1 用 `gateway-chat-*.js` 通配匹配兜底 |
 | Ollama 2.2GB 模型下载中断/超时 | 组件页显示进度；`ollama pull` 可断点续传；失败允许跳过（桌宠降级为云端 LLM 模式） |
 | 目标机无 D 盘 | `FU_XUAN_DATA` 指向其他盘（阶段 0 改造 0.2） |
-| 卸载误删用户数据 | 卸载器二次确认，默认保留 `D:\DesktopPetData` |
+| 卸载误删用户数据 | 卸载器二次确认；保留时原地保留目录与 `FU_XUAN_DATA`，删除失败不清除入口 |
+| 重装生成第二份数据 | 安装器优先检测已有环境变量/默认目录；运行时对失效配置回退到已有默认目录 |
 | 符玄模型版权 | §七.3：公开分发前必须解决授权或提供自定义模型接口 |

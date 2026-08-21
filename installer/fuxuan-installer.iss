@@ -16,6 +16,7 @@
 #define MyAppName "符玄桌宠 FuXuan"
 #define MyAppExeName "DesktopPet.exe"
 #define MyAppMutex "FuXuanDesktopPetMutex"
+#define DefaultDataDir "D:\DesktopPetData"
 #define MyAppPublisher "xuan"
 
 [Setup]
@@ -126,6 +127,69 @@ begin
     Result := '';
 end;
 
+function NormalizeDataDir(const Value: String): String;
+begin
+  Result := Trim(Value);
+  while (Length(Result) > 1) and (Result[1] = '"') and
+    (Result[Length(Result)] = '"') do
+  begin
+    Delete(Result, Length(Result), 1);
+    Delete(Result, 1, 1);
+    Result := Trim(Result);
+  end;
+  if Result <> '' then
+    Result := ExpandFileName(Result);
+  while (Length(Result) > 3) and
+    ((Result[Length(Result)] = '\') or (Result[Length(Result)] = '/')) do
+    Delete(Result, Length(Result), 1);
+end;
+
+function IsDriveRoot(const Value: String): Boolean;
+begin
+  Result := (Length(Value) = 3) and (Value[2] = ':') and
+    ((Value[3] = '\') or (Value[3] = '/'));
+end;
+
+function IsSameOrChildPath(const Path, Parent: String): Boolean;
+var
+  P, B: String;
+begin
+  P := AddBackslash(NormalizeDataDir(Path));
+  B := AddBackslash(NormalizeDataDir(Parent));
+  Result := (P <> '\') and (B <> '\') and (Pos(B, P) = 1);
+end;
+
+function GetDetectedDataDir: String;
+var
+  Configured, DefaultDir: String;
+begin
+  Configured := NormalizeDataDir(GetExistingUserEnv('FU_XUAN_DATA'));
+  DefaultDir := NormalizeDataDir('{#DefaultDataDir}');
+  if (Configured <> '') and DirExists(Configured) then
+  begin
+    Result := Configured;
+    exit;
+  end;
+  if DirExists(DefaultDir) then
+  begin
+    Result := DefaultDir;
+    exit;
+  end;
+  Result := DefaultDir;
+end;
+
+function IsValidDataDir(const Value: String): Boolean;
+var
+  DataDir, AppDir: String;
+begin
+  DataDir := NormalizeDataDir(Value);
+  AppDir := NormalizeDataDir(ExpandConstant('{app}'));
+  Result := (DataDir <> '') and (not IsDriveRoot(DataDir)) and
+    (CompareText(DataDir, AppDir) <> 0) and
+    (not IsSameOrChildPath(DataDir, AppDir)) and
+    (not IsSameOrChildPath(AppDir, DataDir));
+end;
+
 procedure InitializeWizard;
 var
   Label1, Label2: TNewStaticText;
@@ -137,9 +201,7 @@ begin
     '卸载/升级不会删除该目录。',
     False, '');
   DataDirPage.Add('');
-  DataDirPage.Values[0] := GetExistingUserEnv('FU_XUAN_DATA');
-  if DataDirPage.Values[0] = '' then
-    DataDirPage.Values[0] := 'D:\DesktopPetData';
+  DataDirPage.Values[0] := GetDetectedDataDir;
 
   // ── API 密钥页 ──
   KeyPage := CreateCustomPage(wpSelectComponents, 'API 密钥', '填写桌宠所需的 API 密钥（写入用户级环境变量，不落盘明文）');
@@ -164,17 +226,43 @@ begin
   edGlm.Text := GetExistingUserEnv('GLM_API_KEY');
 end;
 
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  DataDir: String;
+begin
+  Result := True;
+  if CurPageID = DataDirPage.ID then
+  begin
+    DataDir := NormalizeDataDir(DataDirPage.Values[0]);
+    if not IsValidDataDir(DataDir) then
+    begin
+      MsgBox('数据目录无效：不能使用磁盘根目录，也不能放在安装目录内。' + #13#10 +
+        '请选一个专用的数据目录，例如 D:\DesktopPetData。', mbError, MB_OK);
+      Result := False;
+      exit;
+    end;
+    DataDirPage.Values[0] := DataDir;
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  PyPath: String;
+  PyPath, DataDir: String;
 begin
   if CurStep = ssPostInstall then
   begin
-    CreateDir(DataDirPage.Values[0]);
+    DataDir := NormalizeDataDir(DataDirPage.Values[0]);
+    if not ForceDirectories(DataDir) then
+    begin
+      Log('FuXuan install: data dir creation failed: ' + DataDir);
+      MsgBox('无法创建数据目录：' + DataDir + #13#10 +
+        '请检查磁盘权限后重新安装。', mbError, MB_OK);
+      exit;
+    end;
     if not SkipEnv then
     begin
       BridgeToken := GenerateToken;
-      SetUserEnv('FU_XUAN_DATA', DataDirPage.Values[0]);
+      SetUserEnv('FU_XUAN_DATA', DataDir);
       SetUserEnv('BRIDGE_TOKEN', BridgeToken);
       SetUserEnv('OFFICE_SCRIPTS_DIR', ExpandConstant('{app}\scripts\office'));
       SetUserEnv('KNOWLEDGE_SCRIPTS_DIR', ExpandConstant('{app}\scripts\knowledge'));
@@ -188,7 +276,7 @@ begin
         SetUserEnv('GLM_API_KEY', Trim(edGlm.Text));
       SaveStringToFile(ExpandConstant('{app}\.env-written'), '1', False);
     end;
-    Log('FuXuan install done. DataDir=' + DataDirPage.Values[0]);
+    Log('FuXuan install done. DataDir=' + DataDir);
   end;
 end;
 
@@ -197,50 +285,63 @@ var
   S: String;
 begin
   S := GetExistingUserEnv('FU_XUAN_DATA');
-  if S = '' then S := 'D:\DesktopPetData';
-  Result := S;
+  if S = '' then S := '{#DefaultDataDir}';
+  Result := NormalizeDataDir(S);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   EnvWritten: Boolean;
   DataDir: String;
+  DataRemoved: Boolean;
 begin
   EnvWritten := FileExists(ExpandConstant('{app}\.env-written'));
   if CurUninstallStep = usUninstall then
   begin
-    KeepData := True; // 默认保留；仅用户明确选「否」才删除（静默卸载 = 保留）
-    if MsgBox('是否保留数据目录（忆境/人格/文档）？' + #13#10 +
-      '选择「是」将保留 ' + GetDataDirForUninstall + #13#10 +
-      '选择「否」将删除全部数据（不可恢复！）',
-      mbConfirmation, MB_YESNO or MB_DEFBUTTON1) = IDNO then
-      KeepData := False;
+    KeepData := True;
+    // 静默卸载不弹确认框，默认保留数据，避免因隐藏 MsgBox 造成不确定行为。
+    if not UninstallSilent then
+      if MsgBox('是否保留数据目录（忆境/人格/文档）？' + #13#10 +
+        '选择「是」将原地保留 ' + GetDataDirForUninstall + #13#10 +
+        '选择「否」将删除全部数据（不可恢复！）',
+        mbConfirmation, MB_YESNO or MB_DEFBUTTON1) = IDNO then
+        KeepData := False;
   end;
   if CurUninstallStep = usPostUninstall then
   begin
+    DataDir := GetDataDirForUninstall;
+    DataRemoved := False;
     if not KeepData then
     begin
-      // ★ 用户明确选择删除：删数据目录（带安全护栏，防误删系统/安装目录）
-      DataDir := GetDataDirForUninstall;
-      if (DataDir <> '') and (DataDir <> ExpandConstant('{app}')) and
-         (DataDir <> 'C:\') and (DataDir <> 'D:\') and
-         (CompareText(DataDir, 'C:\Windows') <> 0) then
+      // 只删除安装时记录的专用目录，拒绝磁盘根目录和安装目录。
+      if IsValidDataDir(DataDir) then
       begin
-        if DelTree(DataDir, True, True, True) then
+        DataRemoved := (not DirExists(DataDir)) or DelTree(DataDir, True, True, True);
+        if DataRemoved then
           Log('FuXuan uninstall: data dir removed: ' + DataDir)
         else
           Log('FuXuan uninstall: data dir removal failed (may be in use): ' + DataDir);
       end;
+      if (not DataRemoved) and (not UninstallSilent) then
+        MsgBox('数据目录未能删除（可能仍有桌宠/桥接进程占用）：' + #13#10 +
+          DataDir + #13#10 + '为避免丢失入口，已保留 FU_XUAN_DATA 配置。', mbError, MB_OK);
     end;
     if EnvWritten then
     begin
-      RegDeleteValue(HKCU, 'Environment', 'FU_XUAN_DATA');
+      // 保留数据时保留 FU_XUAN_DATA。自定义目录重装会被自动检测，
+      // 不会因环境变量被删而在 D:\DesktopPetData 再创建第二份记忆。
+      if (not KeepData) and DataRemoved then
+        RegDeleteValue(HKCU, 'Environment', 'FU_XUAN_DATA');
       RegDeleteValue(HKCU, 'Environment', 'BRIDGE_TOKEN');
       RegDeleteValue(HKCU, 'Environment', 'OFFICE_SCRIPTS_DIR');
       RegDeleteValue(HKCU, 'Environment', 'KNOWLEDGE_SCRIPTS_DIR');
       RegDeleteValue(HKCU, 'Environment', 'OPENCLAW_NODE_MODULES');
       RegDeleteValue(HKCU, 'Environment', 'OFFICE_PYTHON');
     end;
+    // .env-written is created at install time and is not part of the Inno file log.
+    // Remove it explicitly, then remove the app directory only if it is empty.
+    DeleteFile(ExpandConstant('{app}\\.env-written'));
+    RemoveDir(ExpandConstant('{app}'));
   end;
 end;
 

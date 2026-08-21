@@ -6,12 +6,66 @@
 /// </summary>
 public static class DataPathConfig
 {
+    /// <summary>默认数据根目录。安装器和运行时共享这一事实源。</summary>
+    public const string DefaultDataRoot = @"D:\DesktopPetData";
+
     /// <summary>
-    /// 数据根目录。优先取环境变量 FU_XUAN_DATA（安装器/换机部署用），默认 D:\DesktopPetData（向后兼容）。
-    /// 目标机若 D 盘不存在/无权限，安装器可写 FU_XUAN_DATA 指向其他盘。
+    /// 数据根目录。
+    /// 既有配置优先；配置失效但默认目录已有数据时回退到默认目录，避免重装产生第二份数据。
+    /// 两者都不存在时才使用配置目标或默认目录，首次启动再创建。
     /// </summary>
-    public static string DataRoot =>
-        System.Environment.GetEnvironmentVariable("FU_XUAN_DATA") ?? @"D:\DesktopPetData";
+    public static string DataRoot => ResolveDataRoot();
+
+    /// <summary>当前是否存在有效的用户自定义数据目录。</summary>
+    public static bool HasConfiguredDataRoot
+    {
+        get
+        {
+            var configured = Normalize(System.Environment.GetEnvironmentVariable("FU_XUAN_DATA"));
+            return !string.IsNullOrEmpty(configured) &&
+                   System.IO.Directory.Exists(configured);
+        }
+    }
+
+    /// <summary>确保唯一数据根目录存在；失败只返回错误，不阻断桌宠主流程。</summary>
+    public static bool EnsureDataRoot(out string error)
+    {
+        error = null;
+        try
+        {
+            var root = DataRoot;
+            if (!System.IO.Directory.Exists(root))
+                System.IO.Directory.CreateDirectory(root);
+            return true;
+        }
+        catch (System.Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    private static string ResolveDataRoot()
+    {
+        var configured = Normalize(System.Environment.GetEnvironmentVariable("FU_XUAN_DATA"));
+        if (!string.IsNullOrEmpty(configured) && System.IO.Directory.Exists(configured))
+            return configured;
+
+        var defaultRoot = Normalize(DefaultDataRoot);
+        if (!string.IsNullOrEmpty(configured) && System.IO.Directory.Exists(defaultRoot))
+            return defaultRoot;
+
+        return string.IsNullOrEmpty(configured) ? defaultRoot : configured;
+    }
+
+    private static string Normalize(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        var result = value.Trim().Trim('"');
+        if (result.Length > 3)
+            result = result.TrimEnd('\\', '/');
+        return result;
+    }
 
     /// <summary>统一日志目录（崩溃日志 / player_log 镜像）</summary>
     public static string LogsDir => System.IO.Path.Combine(DataRoot, "logs");
