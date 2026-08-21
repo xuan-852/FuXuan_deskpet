@@ -496,6 +496,27 @@ public class PetMemory : MonoBehaviour
         return _data.entries.OrderByDescending(e => e.timestamp).ToList();
     }
 
+    /// <summary>返回核心事实副本，供记忆管理 UI 只读展示。</summary>
+    public List<string> GetCoreFacts()
+    {
+        return new List<string>(_data.coreFacts);
+    }
+
+    /// <summary>清理已过期记忆，返回实际移除条数。</summary>
+    public int RemoveExpiredMemories()
+    {
+        DateTime now = DateTime.Now;
+        int removed = _data.entries.RemoveAll(e => MemoryGovernance.IsExpired(e, now));
+        if (removed > 0)
+        {
+            _data.lastReflectionIndex = Mathf.Min(_data.lastReflectionIndex, _data.entries.Count);
+            RebuildReflectionAccum();
+            Save();
+            Debug.Log($"[PetMemory] 🧹 已清理过期记忆: {removed} 条");
+        }
+        return removed;
+    }
+
     /// <summary>按关键词搜索记忆</summary>
     public List<MemoryEntry> SearchMemories(string keyword)
     {

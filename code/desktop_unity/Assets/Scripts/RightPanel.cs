@@ -282,13 +282,14 @@ public partial class RightPanel : MonoBehaviour
         }
 
         float toolY = py + ph - 76f;
-        float toolW = (pw - 48f) / 4f;
+        float toolW = (pw - 48f) / 5f;
         var toolDefs = new (string label, BallPanel.PanelType type)[]
         {
             ("设置", BallPanel.PanelType.Settings),
             ("便签", BallPanel.PanelType.Reminders),
             ("报告", BallPanel.PanelType.Report),
-            ("消耗", BallPanel.PanelType.Usage)
+            ("消耗", BallPanel.PanelType.Usage),
+            ("忆境", BallPanel.PanelType.Memory)
         };
         for (int i = 0; i < toolDefs.Length; i++)
         {
@@ -333,7 +334,7 @@ public partial class RightPanel : MonoBehaviour
 
     // ==================== QQ 式两级界面（会话列表 ⇄ 聊天）+ 子面板（设置/便签/报告） ====================
     /// <summary>窗口视图：SessionList=第一级窄条会话列表；Chat=第二级展开（左会话栏+右聊天区）；Settings/Reminders/Report=对话框内子面板</summary>
-    private enum PanelView { SessionList, Chat, Settings, Reminders, Report, Usage }
+    private enum PanelView { SessionList, Chat, Settings, Reminders, Report, Usage, Memory }
     private PanelView _currentView = PanelView.SessionList;
 
     // 尺寸参照 QQ 实测（Win32：324×846 窄条模式）；展开后左会话栏 280 + 右聊天区 580
@@ -738,7 +739,7 @@ public partial class RightPanel : MonoBehaviour
     /// <summary>判断是否为子面板视图（设置/便签/报告）</summary>
     private bool IsSubPanelView(PanelView v)
     {
-        return v == PanelView.Settings || v == PanelView.Reminders || v == PanelView.Report || v == PanelView.Usage;
+        return v == PanelView.Settings || v == PanelView.Reminders || v == PanelView.Report || v == PanelView.Usage || v == PanelView.Memory;
     }
 
     /// <summary>打开子面板（设置/便签/报告）：记录来源视图，切换为页内视图并应用子面板尺寸</summary>
@@ -751,6 +752,7 @@ public partial class RightPanel : MonoBehaviour
             case BallPanel.PanelType.Reminders: _currentView = PanelView.Reminders; break;
             case BallPanel.PanelType.Report: _currentView = PanelView.Report; break;
             case BallPanel.PanelType.Usage: _currentView = PanelView.Usage; break;
+            case BallPanel.PanelType.Memory: _currentView = PanelView.Memory; break;
             default: return;
         }
         // 进入子面板时从宠物实时权重加载（设置页专用）
@@ -981,6 +983,7 @@ public partial class RightPanel : MonoBehaviour
             case "reminders": OpenSubPanel(BallPanel.PanelType.Reminders); break;
             case "report": OpenSubPanel(BallPanel.PanelType.Report); break;
             case "usage": OpenSubPanel(BallPanel.PanelType.Usage); break;
+            case "memory": OpenSubPanel(BallPanel.PanelType.Memory); break;
             case "chat":
                 if (_currentView != PanelView.Chat)
                 {
@@ -1291,7 +1294,7 @@ public partial class RightPanel : MonoBehaviour
         }
         // ——— 子面板视图（设置/便签/报告/消耗） ———
         else if (_currentView == PanelView.Settings || _currentView == PanelView.Reminders
-            || _currentView == PanelView.Report || _currentView == PanelView.Usage)
+            || _currentView == PanelView.Report || _currentView == PanelView.Usage || _currentView == PanelView.Memory)
         {
             DrawSubPanelView(px, py, pw, ph, mp);
         }

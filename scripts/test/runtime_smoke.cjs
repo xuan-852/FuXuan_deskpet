@@ -77,6 +77,8 @@ const COMMANDS = [
     ['@@view:back', '[TestInbox] @@view 命令: back'],
     ['@@view:reminders', '[TestInbox] @@view 命令: reminders'],
     ['@@view:back', '[TestInbox] @@view 命令: back'],
+    ['@@view:memory', '[TestInbox] @@view 命令: memory'],
+    ['@@view:back', '[TestInbox] @@view 命令: back'],
     ['@@view:list', '[TestInbox] @@view 命令: list'],
     ['@@view:external', '[TestInbox] @@view 命令: external'],
     // ★ 外置面板交互链路（Phase A3/A4）：会话项双击进聊天 → 工具行进设置 → ◀ 返回 → 审批注入

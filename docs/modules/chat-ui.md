@@ -112,12 +112,13 @@
 
 ### 2.7 设置/便签/报告页内子面板 + 淡入淡出 + 工具提示（2026-08-13）
 
-**子面板页内化**：设置/便签/报告不再开独立的灰色 BallPanel 窗口，而是在 RightPanel 对话框内以 860×900 子面板视图呈现（`SUB_PANEL_W/H`）。新增 `PanelView.Settings / Reminders / Report` 三个视图 + `IsSubPanelView()` 判断，由 `OpenSubPanel(BallPanel.PanelType)` 打开（记录 `_prevView` 供 ◀ 返回），`BackFromSubPanel()` 返回来源视图。BallPanel.cs 保留仅用于 `DragHandler` 兼容与 `PanelType` 枚举。
+**子面板页内化**：设置/便签/报告/消耗/忆境不再开独立的灰色 BallPanel 窗口，而是在 RightPanel 对话框内以 860×900 子面板视图呈现（`SUB_PANEL_W/H`）。新增 `PanelView.Settings / Reminders / Report / Usage / Memory` 视图 + `IsSubPanelView()` 判断，由 `OpenSubPanel(BallPanel.PanelType)` 打开（记录 `_prevView` 供 ◀ 返回），`BackFromSubPanel()` 返回来源视图。BallPanel.cs 保留仅用于 `DragHandler` 兼容与 `PanelType` 枚举。
 
 **三个子面板内容**：- **设置（DrawSettingsSubPanel）**：⚙任务权重 5 行（`DrawWeightRowGui`，读写 `DesktopPet` 的 taskWeight 字段，✓应用权重即时生效）+ 📦预设（好动 3,3,3,3,1 / 均衡 2,2,2,2,2 / 安静 1,1,1,1,6）+ 💾持久化（💿保存配置 / 🗑清空忆境，走 PetConfig/PetMemory）；
 - **报告（DrawReportSubPanel）**：🔄刷新 / 📋复制 + `MotionMemoryManager.Instance.GetStatistics()` 统计展示（try/catch 兜底空数据）；
 - **便签（DrawRemindersSubPanel）**：✚新建（文本 + 时间输入）/ 🔄刷新 / ✅已完成⇄⏳看待办切换 / 列表项 MarkDone / DeleteReminder。
 - **消耗（DrawUsageSubPanel，2026-08-15）**：💰 Token 统计——近 1 小时 + 累计两个口径（调用次数/输入输出 tokens/缓存命中率/估算费用）+「来源明细」（chat/motion/idle/weather/reflect/glm/local 分源）。数据源 `UsageStats.cs`（内存近期窗口，`ApiClient.ExtractUsageSummary` 每次带 usage 的响应自动 `Record`）+ `UsageLogger.cs`（JSONL 持久化 `DataRoot/usage_log.jsonl`，启动时 `LoadHistoryIntoUsageStats` 回填跨重启累计，2MB/2 万行封顶）；本地 Ollama 不计费（src=local cost=0）。价格常量 DeepSeek 非高峰价 ¥2/0.5/3 每 M 可调。测试命令 `@@view:usage`。
+- **忆境（DrawMemorySubPanel，2026-08-21）**：🧠 只读展示核心事实与长期记忆元数据（来源/重要度/可信度/访问次数/过期状态）；「清理过期」安全移除已过期条目；「清空忆境」二次确认后清空记忆数据。测试命令 `@@view:memory`。
 
 **淡入淡出**：`_isOpen / _closing / _animAlpha / _panelTint`（每帧 `GUI.color = _panelTint` 施加全局透明度），`FADE_SPEED=5f`；Update 中推进 alpha，`_closing && _animAlpha<=0.001f` 时隐藏面板；`Toggle()` 第二次按下取消淡出，`Close()` 置 `_closing=true`。**坑**：① 绘制星星/拖尾等自设颜色的代码必须显式 `* _animAlpha`（它们覆盖 `GUI.color`）；② 任何 `GUI.color` 赋值后须在分支结束/OnGUI 末尾恢复 `Color.white`，否则全局淡入淡出失效。
 
@@ -127,7 +128,7 @@
 
 | 命令 | 效果 |
 |------|------|
-| `@@view:settings\|reminders\|report\|usage` | 打开对应页内子面板（usage=Token 消耗统计） |
+| `@@view:settings\|reminders\|report\|usage\|memory` | 打开对应页内子面板（usage=Token 消耗统计，memory=忆境治理） |
 | `@@view:chat` | 切聊天视图（无会话时建默认会话） |
 | `@@view:list` | 切回会话列表 |
 | `@@view:back` | 子面板 ◀ 返回来源视图 |

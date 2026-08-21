@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 /// <summary>
 /// RightPanel 子面板分部（2026-08-14 拆分自 RightPanel.cs）
-/// 页内子面板：设置（任务权重）/ 便签（卜算记事簿）/ 报告（演武心经）。
+/// 页内子面板：设置（任务权重）/ 便签（卜算记事簿）/ 报告（演武心经）/ 忆境（核心记忆治理）。
 /// 与主文件共用实例状态（_chat/_reminders/_pet/_animAlpha 等），partial class 保证行为逐字节不变。
 /// 改子面板 UI（权重行/预设/便签列表/报告滚动）只动本文件。
 /// </summary>
@@ -17,6 +17,10 @@ public partial class RightPanel
     private Vector2 _reportScrollPos;        // 报告页滚动
     private string _lastReportText = "";     // 报告缓存（复制用）
     private Vector2 _reminderScrollPos;      // 便签页滚动
+    private Vector2 _memoryScrollPos;        // 忆境页滚动
+    private bool _memoryClearConfirm = false;
+    private string _memoryStatusMsg = "";
+    private Color _memoryStatusColor = Color.gray;
     private string _newReminderText = "";
     private string _newReminderTime = "";
     private string _reminderStatusMsg = "";
@@ -59,6 +63,7 @@ public partial class RightPanel
             PanelView.Reminders => "📋 便签 · 卜算记事簿",
             PanelView.Report => "📝 报告 · 演武心经",
             PanelView.Usage => "💰 消耗 · Token 统计",
+            PanelView.Memory => "🧠 忆境 · 核心记忆",
             _ => ""
         };
         GUI.Label(new Rect(px + 56f, py + 8f, pw - 200f, 26f), subTitle, _termTitleStyle);
@@ -66,6 +71,7 @@ public partial class RightPanel
             _currentView == PanelView.Settings ? "调教本座走位习惯，微调权重以符占卜之数" :
             _currentView == PanelView.Reminders ? "卜算记事簿 — 记要事，勿相忘" :
             _currentView == PanelView.Usage ? "Token 消耗统计 — 看看本座每小时烧多少" :
+            _currentView == PanelView.Memory ? "核心事实与长期记忆 — 可查看、清理，不会误触对话注入" :
             "演武心经 — 每次演武后 AI 自评记录的修为报告", _termLogDimStyle);
 
         // —— 时间 + ✕ 关闭 ——
@@ -103,6 +109,7 @@ public partial class RightPanel
             case PanelView.Reminders: DrawRemindersSubPanel(contentX, contentY, contentW, contentH, mp); break;
             case PanelView.Report: DrawReportSubPanel(contentX, contentY, contentW, contentH, mp); break;
             case PanelView.Usage: DrawUsageSubPanel(contentX, contentY, contentW, contentH, mp); break;
+            case PanelView.Memory: DrawMemorySubPanel(contentX, contentY, contentW, contentH, mp); break;
         }
 
         // 右键关闭（快捷收面板）
@@ -111,6 +118,156 @@ public partial class RightPanel
             Close();
             Event.current.Use();
         }
+    }
+
+    // ==================================================================
+    //  子面板内容：忆境（记忆治理）— 只读浏览 + 过期清理 + 二次确认清空
+    // ==================================================================
+    private void DrawMemorySubPanel(float x, float y, float w, float h, Vector2 mp)
+    {
+        var memory = PetMemory.Instance;
+        if (memory == null)
+        {
+            GUI.Label(new Rect(x, y + 24f, w, 40f), "⚠ 忆境模块尚未初始化", new GUIStyle(_subLabelStyle)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = new Color(1f, 0.55f, 0.55f, 1f) }
+            });
+            return;
+        }
+
+        float actionY = y;
+        Rect refreshRect = new Rect(x, actionY, 110f, 38f);
+        if (GUI.Button(refreshRect, "🔄 刷新", _subBtnStyle))
+        {
+            _memoryClearConfirm = false;
+            _memoryStatusMsg = "已刷新当前忆境视图";
+            _memoryStatusColor = Color.gray;
+        }
+        RegisterExtHit(refreshRect, () =>
+        {
+            _memoryClearConfirm = false;
+            _memoryStatusMsg = "已刷新当前忆境视图";
+            _memoryStatusColor = Color.gray;
+        });
+
+        Rect cleanupRect = new Rect(x + 120f, actionY, 140f, 38f);
+        if (GUI.Button(cleanupRect, "🧹 清理过期", _subBtnStyle))
+            CleanExpiredMemories(memory);
+        RegisterExtHit(cleanupRect, () => CleanExpiredMemories(memory));
+
+        Rect clearRect = new Rect(x + 270f, actionY, 140f, 38f);
+        string clearLabel = _memoryClearConfirm ? "⚠ 再点一次清空" : "🗑 清空忆境";
+        if (GUI.Button(clearRect, clearLabel, _memoryClearConfirm ? _closeBtnStyle : _subBtnStyle))
+            RequestClearMemories(memory);
+        RegisterExtHit(clearRect, () => RequestClearMemories(memory));
+
+        float cursorY = actionY + 48f;
+        if (!string.IsNullOrEmpty(_memoryStatusMsg))
+        {
+            GUI.Label(new Rect(x, cursorY, w, 24f), _memoryStatusMsg,
+                new GUIStyle(_subLabelStyle) { fontSize = 14, normal = { textColor = _memoryStatusColor } });
+            cursorY += 28f;
+        }
+
+        var facts = memory.GetCoreFacts();
+        var entries = memory.GetAllMemories();
+        float summaryH = 62f;
+        Rect summaryRect = new Rect(x, cursorY, w, summaryH);
+        UiTextureFactory.DrawPixelRect(summaryRect, new Color(0.22f, 0.16f, 0.35f, 0.42f));
+        GUI.Label(new Rect(x + 14f, cursorY + 8f, w - 28f, 22f),
+            $"忆境总览   记忆 {entries.Count}/{memory.maxMemories} 条   ·   核心事实 {facts.Count} 条",
+            new GUIStyle(_termTitleStyle) { fontSize = 17 });
+        GUI.Label(new Rect(x + 14f, cursorY + 34f, w - 28f, 20f),
+            "当前列表为持久化记忆的只读快照；访问次数会在对话检索时更新。",
+            new GUIStyle(_termLogDimStyle) { fontSize = 13 });
+        cursorY += summaryH + 12f;
+
+        float listH = h - (cursorY - y) - 4f;
+        if (listH < 80f) listH = 80f;
+        Rect viewRect = new Rect(x, cursorY, w, listH);
+        UiTextureFactory.DrawPixelRect(viewRect, new Color(0.05f, 0.04f, 0.09f, 0.35f));
+
+        float itemH = 76f;
+        float factH = facts.Count > 0 ? 34f + facts.Count * 42f : 0f;
+        float contentH = Mathf.Max(listH, 18f + factH + 38f + entries.Count * itemH);
+        Rect contentRect = new Rect(0f, 0f, w - 14f, contentH);
+        _memoryScrollPos = GUI.BeginScrollView(viewRect, _memoryScrollPos, contentRect, false, false,
+            _invisibleScrollbar, _invisibleScrollbar);
+
+        float localY = 10f;
+        var sectionStyle = new GUIStyle(_subSectionStyle) { fontSize = 16 };
+        GUI.Label(new Rect(8f, localY, contentRect.width - 16f, 28f), "◆ 核心事实（始终注入）", sectionStyle);
+        localY += 34f;
+        if (facts.Count == 0)
+        {
+            GUI.Label(new Rect(16f, localY, contentRect.width - 32f, 30f), "暂无核心事实", _subLabelStyle);
+            localY += 34f;
+        }
+        else
+        {
+            for (int i = 0; i < facts.Count; i++)
+            {
+                Rect factRect = new Rect(8f, localY, contentRect.width - 16f, 34f);
+                UiTextureFactory.DrawPixelRect(factRect, new Color(0.18f, 0.14f, 0.28f, 0.52f));
+                GUI.Label(new Rect(factRect.x + 10f, factRect.y + 2f, factRect.width - 20f, 30f),
+                    "• " + facts[i], new GUIStyle(_subLabelStyle) { fontSize = 15, wordWrap = false });
+                localY += 42f;
+            }
+        }
+
+        GUI.Label(new Rect(8f, localY + 2f, contentRect.width - 16f, 28f), "◆ 长期记忆（按时间倒序）", sectionStyle);
+        localY += 36f;
+        if (entries.Count == 0)
+        {
+            GUI.Label(new Rect(16f, localY, contentRect.width - 32f, 34f), "暂无长期记忆。完成一次对话或工具任务后再来查看吧。", _subLabelStyle);
+        }
+        else
+        {
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                Rect itemRect = new Rect(8f, localY, contentRect.width - 16f, itemH - 8f);
+                bool expired = MemoryGovernance.IsExpired(entry, System.DateTime.Now);
+                Color itemBg = expired ? new Color(0.30f, 0.16f, 0.16f, 0.52f) : new Color(0.12f, 0.10f, 0.18f, 0.60f);
+                UiTextureFactory.DrawPixelRect(itemRect, itemBg);
+                string state = expired ? " · 已过期" : "";
+                string meta = $"[{entry.category}/{entry.source}] 重要度 {entry.importance}/10 · 可信度 {entry.confidence:F2} · 访问 {entry.accessCount} 次{state}";
+                GUI.Label(new Rect(itemRect.x + 12f, itemRect.y + 6f, itemRect.width - 24f, 30f),
+                    entry.summary ?? "（空记忆）", new GUIStyle(_subLabelStyle)
+                    {
+                        fontSize = 15, wordWrap = true,
+                        normal = { textColor = expired ? new Color(1f, 0.65f, 0.65f, 1f) : Color.white }
+                    });
+                GUI.Label(new Rect(itemRect.x + 12f, itemRect.y + 38f, itemRect.width - 24f, 20f),
+                    $"{meta} · 记录 {entry.timestamp}", new GUIStyle(_termLogDimStyle) { fontSize = 12 });
+                localY += itemH;
+            }
+        }
+        GUI.EndScrollView();
+    }
+
+    private void CleanExpiredMemories(PetMemory memory)
+    {
+        int removed = memory.RemoveExpiredMemories();
+        _memoryClearConfirm = false;
+        _memoryStatusMsg = removed > 0 ? $"✅ 已清理过期记忆 {removed} 条" : "当前没有已过期记忆";
+        _memoryStatusColor = removed > 0 ? new Color(0.55f, 0.85f, 0.55f, 1f) : Color.gray;
+    }
+
+    private void RequestClearMemories(PetMemory memory)
+    {
+        if (!_memoryClearConfirm)
+        {
+            _memoryClearConfirm = true;
+            _memoryStatusMsg = "再次点击将清空长期记忆与核心事实；此操作不可撤销";
+            _memoryStatusColor = new Color(1f, 0.65f, 0.35f, 1f);
+            return;
+        }
+        memory.ClearMemories();
+        _memoryClearConfirm = false;
+        _memoryStatusMsg = "🧹 忆境已清空";
+        _memoryStatusColor = new Color(0.55f, 0.85f, 0.55f, 1f);
     }
 
     // ==================================================================

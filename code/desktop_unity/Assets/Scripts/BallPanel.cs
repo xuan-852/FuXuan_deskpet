@@ -17,7 +17,7 @@ using System;
 /// </summary>
 public class BallPanel : MonoBehaviour
 {
-    public enum PanelType { None, Settings, Report, Reminders, Usage }
+    public enum PanelType { None, Settings, Report, Reminders, Usage, Memory }
 
     // ==================== 运行时状态 ====================
     private PanelType _currentPanel = PanelType.None;
@@ -219,6 +219,7 @@ public class BallPanel : MonoBehaviour
             PanelType.Settings => "⚙ 设置",
             PanelType.Report => "📊 演武心经",
             PanelType.Reminders => "📋 卜算记事簿",
+            PanelType.Memory => "🧠 忆境",
             _ => ""
         };
         GUILayout.Label(title, _titleStyle);
