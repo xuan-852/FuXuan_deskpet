@@ -12,7 +12,7 @@ using UnityEngine;
 /// 4. 💾 记忆提取 — 从对话中提取重要信息存入忆境
 ///
 /// 使用协程队列串行处理任务，避免并发冲突。
-/// 依赖 LocalLLMClient 连接 Ollama（qwen2.5:3b）。
+/// 依赖 LocalLLMClient 连接 Ollama；动作/摘要使用轻量模型，聊天使用独立的质量模型。
 /// </summary>
 public class LocalLLMAgentService : MonoBehaviour
 {
@@ -31,7 +31,7 @@ public class LocalLLMAgentService : MonoBehaviour
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
-        // 设置模型为 3b（覆盖可能被 MotionAgent 改掉的值）
+        // 设置动作/摘要模型；聊天模型由 LocalLLMClient.ChatModelName 独立管理。
         LocalLLMClient.SetModel(LocalLLMClient.ResolveConfiguredModel("qwen2.5:3b"));
     }
 
@@ -48,6 +48,10 @@ public class LocalLLMAgentService : MonoBehaviour
     /// <summary>本地模型是否可用（就绪且未暂停）</summary>
     public bool CanProcess => LocalLLMClient.IsReady && !LocalLLMClient.Paused;
 
+    /// <summary>聊天模型是否可用；与动作/摘要模型的就绪状态分离。</summary>
+    public bool CanProcessChat => LocalLLMClient.IsModelReady(LocalLLMClient.ChatModelName)
+        && !LocalLLMClient.Paused;
+
     /// <summary>延迟 3 秒后做健康检查，避免启动时并发</summary>
     private IEnumerator LazyHealthCheck()
     {
@@ -57,6 +61,12 @@ public class LocalLLMAgentService : MonoBehaviour
             yield return LocalLLMClient.CheckHealthAsync((ok, msg) => {
                 Debug.Log($"[LocalLLMAgent] {msg}");
             });
+        }
+        if (!LocalLLMClient.IsModelReady(LocalLLMClient.ChatModelName))
+        {
+            yield return LocalLLMClient.CheckHealthAsync((ok, msg) => {
+                Debug.Log($"[LocalLLMAgent] chat {msg}");
+            }, LocalLLMClient.ChatModelName);
         }
     }
 
@@ -68,9 +78,12 @@ public class LocalLLMAgentService : MonoBehaviour
     private bool _isProcessing = false;
 
     /// <summary>将一个任务加入队列</summary>
-    private void EnqueueTask(Func<IEnumerator> task)
+    private void EnqueueTask(Func<IEnumerator> task, string requiredModel = null)
     {
-        if (!CanProcess)
+        bool modelReady = string.IsNullOrWhiteSpace(requiredModel)
+            ? LocalLLMClient.IsReady
+            : LocalLLMClient.IsModelReady(requiredModel);
+        if (!modelReady || LocalLLMClient.Paused)
         {
             Debug.LogWarning("[LocalLLMAgent] 本地模型不可用，跳过任务");
             return;
@@ -178,11 +191,17 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
     {
         string prompt = LocalRoleplayPromptBuilder.Build(characterDesc, recentHistory, userMessage);
 
-        // 短句组合需要稍低随机性，避免 3B 模型在长回复中跑偏；max_tokens 只是上限，
-        // 实际长度由提示中的“2~7 句”约束控制。
-        float temperature = LocalRoleplayPromptBuilder.Variant == LocalRoleplayPromptBuilder.BaselineVariant ? 0.8f : 0.68f;
-        int maxTokens = LocalRoleplayPromptBuilder.Variant == LocalRoleplayPromptBuilder.CardVariant ? 320 : 288;
-        EnqueueTask(() => LocalLLMClient.SimplePromptAsync(prompt, onResult, temperature: temperature, maxTokens: maxTokens));
+        // 聊天质量优先：聊天单独使用 qwen3:8b，允许更长的成段回复；动作/摘要仍走轻量模型。
+        float temperature = LocalRoleplayPromptBuilder.Variant == LocalRoleplayPromptBuilder.BaselineVariant ? 0.76f : 0.64f;
+        int maxTokens = LocalRoleplayPromptBuilder.Variant == LocalRoleplayPromptBuilder.CardVariant ? 640 : 576;
+        EnqueueTask(() => LocalLLMClient.PromptAsync(
+            "你是符玄。请严格按照下面的本地角色卡和输出契约作答。\n\n" + prompt,
+            userMessage,
+            onResult,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            timeout: 75,
+            modelOverride: LocalLLMClient.ChatModelName), LocalLLMClient.ChatModelName);
     }
 
     // ──────────────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ Invoke-RestMethod http://127.0.0.1:11434/api/tags
 ollama list
 ```
 
-当前默认动作/对话模型是 `qwen2.5:3b`。如果列表中没有它，先执行 `ollama pull qwen2.5:3b`。
+当前默认动作/分类/摘要模型是 `qwen2.5:3b`，聊天模型是 `qwen3:8b`。如果列表中缺少任一模型，先执行对应的 `ollama pull`；也可用 `FU_XUAN_LOCAL_CHAT_MODEL` 单独指定聊天模型。
 
 3. 测量目录可以使用独立目录，避免污染生产记忆。**不要在测量目录创建 `.test_mode`**：本地模式本身已经通过 `--ollama` / `FU_XUAN_OLLAMA=1` 禁用云端，`.test_mode` 会额外改变记忆和 UI 行为。
 
@@ -125,7 +125,7 @@ node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData\measure_ollama
 ## 七、通过标准
 
 - 编译验收脚本通过，且 DLL 含 `QualityTelemetry`。
-- Ollama 健康检查通过，实际使用的模型为 `qwen2.5:3b`。
+- Ollama 健康检查通过；动作/分类/摘要实际使用 `qwen2.5:3b`，聊天实际使用 `qwen3:8b`（以 `quality_log.jsonl` 的 `model` 字段为准）。
 - 本地采样期间 `usage_log.jsonl` 没有云端来源和费用。
 - `quality_log.jsonl` 能产生 `chat`、`motion_decision` 或 `motion_translation` 记录。
 - 采样结束后能用汇总脚本输出统计；失败样本能在 `player_log.txt` 找到原因。

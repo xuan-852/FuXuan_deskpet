@@ -1,7 +1,7 @@
 # AI 对话系统 — ChatManager 与 Token 优化
 
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
-> **基本架构**: 用户输入 → `ChatManager`（10 轮回环 / 意图过滤 / 600s 看门狗）→ `ApiClient`（DeepSeek SSE 流式，Function Calling）→ `ToolEngine/` 插件调度；`LocalLLMAgentService`（Ollama，默认 `qwen2.5:3b`，可由 `FU_XUAN_LOCAL_MODEL` 覆盖）提供 4 项离线能力兜底；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`（1,595 行）、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
+> **基本架构**: 用户输入 → `ChatManager`（10 轮回环 / 意图过滤 / 600s 看门狗）→ `ApiClient`（DeepSeek SSE 流式，Function Calling）→ `ToolEngine/` 插件调度；`LocalLLMAgentService`（Ollama）提供 4 项离线能力，其中动作/分类/摘要使用轻量 `qwen2.5:3b`，聊天单独使用质量优先的 `qwen3:8b`（均可由环境变量覆盖）；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`（1,595 行）、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
 > **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀；2026-08-12 P5 注入链新增任务轨迹（TaskTrajectoryManager，太卜手札）与任务模板（TaskTemplateManager，太卜阵法图），同样置于【当前时刻】之前；2026-08-18 成本闸门接入全部主要云端直连点，新增 `PromptContextBudget` / `ToolResultBudget` / `QualityTelemetry`，EditMode 99/99 通过。
 > **编写注意事项**: ①测试必须开测试模式（`D:\DesktopPetData\.test_mode`）否则污染 pet_memory/pet_personality；②`{current_time}` 等动态内容**必须放 system prompt 尾部**（放开头会摧毁 DeepSeek 缓存命中，全价 ¥1/M）；③deepseek-v4-flash 是推理模型，必须显式 `"thinking":{"type":"disabled"}` + `max_tokens:1200` 否则 `content=""`；④历史裁剪须按字符预算且向前对齐最近 user 消息，防止切断 tool_calls↔tool 配对导致 API 400。
 
@@ -75,7 +75,7 @@
 | `【动作:伸懒腰】` | `【动作:伸懒腰】活动一下~` | ForceAction |
 | `（自然描述）` | `（害羞捂脸）人家才没有` | TryMatchKnown 模糊匹配 |
 
-### 2.5 本地 LLM 能力（LocalLLMAgentService，Ollama qwen2.5:3b @ 127.0.0.1:11434）
+### 2.5 本地 LLM 能力（LocalLLMAgentService，Ollama 分层模型 @ 127.0.0.1:11434）
 
 | 能力 | 方法 | 作用 |
 |------|------|------|
@@ -83,6 +83,8 @@
 | 兜底回复 | `GenerateFallbackReply` | API 挂时的兜底 |
 | 对话摘要 | `SummarizeConversation` | T5 旧史压缩【旧事纪要】 |
 | 记忆提取 | `ExtractMemory` | 记忆提炼 |
+
+模型路由：`LocalLLMClient.ModelName` 默认用于动作、意图分类、摘要和记忆提取（`qwen2.5:3b`）；`LocalLLMClient.ChatModelName` 只用于聊天回退（`qwen3:8b`）。这样把质量模型的耗时限制在用户真正等待的聊天请求中，不拖慢动作循环。`FU_XUAN_LOCAL_CHAT_MODEL` 可单独覆盖聊天模型，`FU_XUAN_LOCAL_MODEL` 可同时覆盖两类模型。
 
 > ★ `LocalLLMClient.cs` 是**手写 JSON 构造**（非 Newtonsoft/JsonUtility），重试 2 次。
 
@@ -97,12 +99,12 @@
 
 存在 `D:\DesktopPetData\.test_mode` 标记文件 → 跳过记忆/人格/反思全部持久化写入。**自动化测试必须开启**，否则污染忆境与人格演化计数。
 
-### 2.8 本地 3B 回复护栏（2026-08-19）
+### 2.8 本地聊天质量护栏（2026-08-19～2026-08-21）
 
 本地 Ollama 回退链路不直接复用云端完整 system prompt，而由 `LocalRoleplayPromptBuilder` 生成短角色卡和短句组合约束：
 
-1. 只向 3B 模型提供最近一条助手回复与当前用户输入，避免连续测试或长对话中的旧主题抢占注意力；长期信息由上层摘要/记忆系统承担。
-2. 普通回复目标为 2～4 句，详细问题为 4～7 句；每句只表达一个意思。计划类请求必须给具体步骤，明确总时长时各段时间必须加总，详细问题先回答再追问。
+1. 聊天模型使用 `qwen3:8b`，保留最近两轮对话（最多 1600 字符）和当前输入（最多 900 字符），增加连贯性；长期信息由上层摘要/记忆系统承担。
+2. 普通回复目标为 3～6 句、90～180 字，详细问题为 5～9 句、180～320 字；每句只表达一个意思，禁止为了凑长度重复。计划类请求必须给具体步骤，明确总时长时各段时间必须加总，详细问题先回答再追问。
 3. `LocalContextAnswer` 直接处理时间、天气和符玄偏好类固定问题：时间读 `DateTime.Now`，天气只读 `TimeWeatherController.weatherFetched` 后的数据，未取得天气时明确返回未知，不让模型猜测。
 4. `LocalReplyPostProcessor` 在回复入历史、显示和复核前执行零 Token 护栏：去除“将军”、限制“主人”重复、将普通自称“我”改为“本座”，但保留“自我”等固定词；用户明确要求“一句/三句”时只做确定性句数裁剪，不进行第二次模型重写。
 5. 质量测试用 `FU_XUAN_LOCAL_PROMPT_VARIANT=micro_v1`，遥测模型名带 `/fu_card_v2` 角色卡版本后缀；`baseline` 和 `card_v1` 保留用于消融对照。
@@ -122,9 +124,12 @@
 
 2026-08-19 `qwen2.5:3b` 30 条本地聊天回归：30/30 成功，平均延迟 681ms，平均回复 97.80 字，平均 3.33 句，`将军` 0 次；质量规则裁判 4.13/5。规则裁判会把“今天/幸运日”等语义误判为时间问题，不能替代人工复核。
 
+2026-08-21 质量优先路由已落地：聊天请求使用 `qwen3:8b`、`max_tokens=640`、本地等待上限 75s，并显式关闭默认 thinking 预算；动作/分类/摘要仍使用 `qwen2.5:3b`。本机真实请求实测返回 131 个中文字符、8 个短句、约 1.84s（单次冷/热状态会波动），说明更长回复预算和分层模型路由已生效。
+
 ### 2.10 Qwen3 模型切换与推理预算（2026-08-19）
 
-- `FU_XUAN_LOCAL_MODEL`：覆盖本地模型名；未设置时保持 `qwen2.5:3b`，因此测试模型不会意外成为生产默认值。
+- `FU_XUAN_LOCAL_MODEL`：覆盖动作/分类/摘要等通用本地模型；未设置时保持 `qwen2.5:3b`。
+- `FU_XUAN_LOCAL_CHAT_MODEL`：只覆盖聊天模型；未设置时默认使用已安装的 `qwen3:8b`。聊天请求的质量预算与动作请求分离。
 - `FU_XUAN_LOCAL_REASONING_EFFORT`：支持 `none/low/medium/high/max`。未设置时，模型名以 `qwen3` 开头则自动发送 Ollama OpenAI 兼容接口的 `reasoning_effort: "none"`；其他模型保持原行为。
 - 原因：Ollama `/v1/chat/completions` 对 Qwen3 默认启用 thinking，`max_tokens` 可能被思考过程消耗，导致最终 `message.content` 为空。日常聊天关闭推理，复杂任务可按路由设置 `low/medium/high`。
 - `qwen3:8b` 隔离回归（`FU_XUAN_LOCAL_PROMPT_VARIANT=micro_v1`）：30/30 成功，平均 1141ms，P50 1242ms，P95 1842ms，规则质量 4.80/5；单模型驻留约 5.6GB 显存，测试结束已执行 `ollama stop qwen3:8b` 释放显存。

@@ -6,7 +6,7 @@ using System.Text;
 /// 本地小模型专用角色提示构建器。
 ///
 /// 设计原则：
-/// 1. 固定角色卡保持短小，避免把云端工具说明和长篇世界观塞给 3B 模型；
+/// 1. 固定角色卡保持短小，避免把云端工具说明和长篇世界观塞给本地模型；
 /// 2. 用可执行的“短句组合”约束替代抽象的“自然、丰富”；
 /// 3. 通过 FU_XUAN_LOCAL_PROMPT_VARIANT 切换 baseline / micro_v1 / card_v1，
 ///    让同一批 case 可以做可复现的 A/B 测试。
@@ -51,8 +51,9 @@ public static class LocalRoleplayPromptBuilder
             .AppendLine("- 不知道当前时间、天气或用户未提供的事实时，不要编造；需要真实数据时说明无法读取。")
             .AppendLine("\n【回复结构】")
             .AppendLine("- 先直接回答，再补充原因或建议，最后可用一句自然的关切收尾。")
-            .AppendLine("- 普通问题写 2 至 4 句；需要详细说明时写 4 至 6 句；没有要求展开时不要主动写成长文。")
-            .AppendLine("- 每句只表达一个意思，尽量控制在 8 至 35 个汉字；用多句短句组成完整回复，不写又长又绕的复句。")
+            .AppendLine("- 除非用户明确要求简短，普通问题写 3 至 6 句，目标 90 至 180 字；需要详细说明时写 5 至 9 句，目标 180 至 320 字。")
+            .AppendLine("- 每句只表达一个意思，尽量控制在 10 至 45 个汉字；用多句短句组成有内容的完整回复，不写又长又绕的复句。")
+            .AppendLine("- 不要为了凑句数重复同一个意思；每句话都应补充事实、理由、建议或情绪回应中的至少一项。")
             .AppendLine("- 用户要求一句、三句、简短或特定格式时，严格服从数量和格式；不要用破折号、格言或额外总结偷偷增加句子。")
             .AppendLine("- 用户要计划、步骤或完整方案时，直接给出具体步骤和时间/顺序，不要只反问用户想学什么。")
             .AppendLine("- 用户只追问某个步骤时，只解释该步骤和必要的下一步，不要重新复述整套方案。")
@@ -69,9 +70,9 @@ public static class LocalRoleplayPromptBuilder
             prompt.AppendLine("\n" + triggeredLore);
 
         prompt.AppendLine("\n【最近对话】")
-            .AppendLine(TrimHistory(recentHistory, 900))
+            .AppendLine(TrimHistory(recentHistory, 1600))
             .AppendLine("\n【用户最新消息】")
-            .AppendLine(Trim(userMessage, 700))
+            .AppendLine(Trim(userMessage, 900))
             .AppendLine("\n【历史末尾护栏】")
             .AppendLine(FuXuanCharacterCard.PostHistoryPrompt);
 
@@ -99,9 +100,8 @@ public static class LocalRoleplayPromptBuilder
         if (string.IsNullOrEmpty(history)) return "（暂无）";
         string[] lines = history.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
         var kept = new List<string>();
-        // 本地 3B 只保留当前输入前最近一条助手回复和当前用户输入，
-        // 防止连续测试或长对话中较早主题抢占注意力；长期信息由上层摘要/记忆系统承担。
-        for (int i = Math.Max(0, lines.Length - 2); i < lines.Length; i++) kept.Add(lines[i]);
+        // 聊天模型提升到 8B 后保留最近两轮，增加连贯性；长期信息仍由上层摘要/记忆系统承担。
+        for (int i = Math.Max(0, lines.Length - 4); i < lines.Length; i++) kept.Add(lines[i]);
         return Trim(string.Join("\n", kept), maxChars);
     }
 

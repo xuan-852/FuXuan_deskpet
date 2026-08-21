@@ -697,7 +697,7 @@ public class ChatManager : MonoBehaviour
             string judgeCaseId = requestCaseId;
             string replySource = ChatConfig.UseOllamaMode ? "local" : "cloud";
             string replyModel = ChatConfig.UseOllamaMode
-                ? LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ModelName)
+                ? LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ChatModelName)
                 : model;
             QualityReviewStore.Record(judgeCaseId, replySource, replyModel, judgeInput, judgeReply);
             StartCoroutine(ReplyQualityJudge.EvaluateAsync(judgeInput, judgeReply, result =>
@@ -749,7 +749,7 @@ public class ChatManager : MonoBehaviour
     {
         SetRequestStatus("检查本地模型…", RequestStage.Thinking);
         float deadline = Time.time + 20f;
-        while ((LocalLLMAgentService.Instance == null || !LocalLLMAgentService.Instance.CanProcess)
+        while ((LocalLLMAgentService.Instance == null || !LocalLLMAgentService.Instance.CanProcessChat)
             && Time.time < deadline)
         {
             yield return null;
@@ -762,7 +762,7 @@ public class ChatManager : MonoBehaviour
         {
             _lastError = "Ollama 未就绪或本地模型生成失败";
             SetRequestStatus("请求失败", RequestStage.Error);
-            OnRequestError?.Invoke($"⚠ 本地 Ollama 未就绪，请确认 Ollama 已启动且已安装 {LocalLLMClient.ModelName}");
+            OnRequestError?.Invoke($"⚠ 本地 Ollama 未就绪，请确认 Ollama 已启动且已安装聊天模型 {LocalLLMClient.ChatModelName}");
         }
     }
 
@@ -1538,10 +1538,10 @@ public class ChatManager : MonoBehaviour
     private IEnumerator OfflineFallbackCoroutine(Action<bool> onHandled, string telemetryReason)
     {
         float localStartedAt = Time.realtimeSinceStartup;
-        if (LocalLLMAgentService.Instance == null || !LocalLLMAgentService.Instance.CanProcess)
+        if (LocalLLMAgentService.Instance == null || !LocalLLMAgentService.Instance.CanProcessChat)
         {
             QualityTelemetry.RecordChat(
-                "local", LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ModelName), false, false,
+                "local", LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ChatModelName), false, false,
                 Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
                 "not_ready", 0, false, _activeRequestCaseId);
             onHandled?.Invoke(false);
@@ -1597,7 +1597,8 @@ public class ChatManager : MonoBehaviour
         bool gotResult = fallbackSuccess;
         if (!fallbackSuccess)
         {
-            float timeout = 15f;
+            // 本地聊天质量优先：允许 qwen3:8b 用更长时间完成完整回复，不再用动作模型的低延迟上限截断。
+            float timeout = 75f;
             float startTime = Time.time;
             LocalLLMAgentService.Instance.GenerateFallbackReply(characterDesc, recentHistory, userMessage, (ok, reply) =>
             {
@@ -1621,7 +1622,7 @@ public class ChatManager : MonoBehaviour
         if (!fallbackSuccess || string.IsNullOrEmpty(fallbackReply))
         {
             QualityTelemetry.RecordChat(
-                "local", LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ModelName), false, false,
+                "local", LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ChatModelName), false, false,
                 Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
                 "local_generation_failed", 0, false, _activeRequestCaseId);
             Debug.LogWarning("[ChatManager] 离线回退未能生成有效回复");
@@ -1644,7 +1645,7 @@ public class ChatManager : MonoBehaviour
         RecordConversationMemory(fallbackReply);
 
         QualityTelemetry.RecordChat(
-            "local", LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ModelName), true, true,
+            "local", LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ChatModelName), true, true,
             Mathf.RoundToInt((Time.realtimeSinceStartup - localStartedAt) * 1000f),
             telemetryReason ?? "local_reply", fallbackReply.Length, false, _activeRequestCaseId);
 

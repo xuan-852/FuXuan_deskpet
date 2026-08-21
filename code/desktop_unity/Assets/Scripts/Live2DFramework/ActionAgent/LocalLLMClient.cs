@@ -8,13 +8,13 @@ using UnityEngine.Networking;
 /// <summary>
 /// 本地轻量 LLM 客户端 — 连接 Ollama (OpenAI-compatible API)
 ///
-/// 用于 MotionAgent 的实时动作决策，调用本地小模型（如 Qwen2.5-0.5B）
-/// 替代每次都走云端 DeepSeek，实现低延迟、无网络的常驻动作控制。
+/// 用于 MotionAgent 的实时动作决策和聊天回退：动作/摘要使用轻量模型，
+/// 聊天请求可通过独立 ChatModelName 使用质量更高的本地模型。
 ///
 /// 兼容 OpenAI /chat/completions 格式：
 ///   POST http://localhost:11434/v1/chat/completions
 ///   {
-///     "model": "qwen2.5:0.5b",
+///     "model": "qwen2.5:3b",
 ///     "messages": [...],
 ///     "temperature": 0.7,
 ///     "max_tokens": 128
@@ -23,7 +23,7 @@ using UnityEngine.Networking;
 public static class LocalLLMClient
 {
     private const string DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1";
-    private const int DEFAULT_TIMEOUT = 60;
+    private const int DEFAULT_TIMEOUT = 75;
     private const int MAX_RETRY = 2;
 
     /// <summary>
@@ -37,10 +37,14 @@ public static class LocalLLMClient
     /// </summary>
     public static string ModelName { get; private set; } = ResolveConfiguredModel("qwen2.5:3b");
 
+    /// <summary>聊天专用模型。未显式覆盖时使用已安装的 qwen3:8b，和动作/摘要模型分离。</summary>
+    public static string ChatModelName { get; private set; } = ResolveConfiguredChatModel("qwen3:8b");
+
     /// <summary>
     /// 是否就绪（上次连接成功则 true）
     /// </summary>
     public static bool IsReady { get; private set; } = false;
+    private static readonly HashSet<string> ReadyModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// 是否被暂停（游戏检测暂停时设为 true，此时不发起新请求）
@@ -67,7 +71,11 @@ public static class LocalLLMClient
     /// </summary>
     public static void SetModel(string model)
     {
+        string previousModel = ModelName;
         ModelName = model;
+        IsReady = false;
+        ReadyModels.Remove(previousModel ?? "");
+        ReadyModels.Remove(model ?? "");
     }
 
     /// <summary>
@@ -83,6 +91,25 @@ public static class LocalLLMClient
     }
 
     /// <summary>
+    /// 解析聊天模型：专用环境变量优先，其次沿用全局本地模型覆盖，最后使用聊天质量默认值。
+    /// </summary>
+    public static string ResolveConfiguredChatModel(string fallback)
+    {
+        string configured = Environment.GetEnvironmentVariable("FU_XUAN_LOCAL_CHAT_MODEL");
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured.Trim();
+        configured = Environment.GetEnvironmentVariable("FU_XUAN_LOCAL_MODEL");
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured.Trim();
+        return fallback;
+    }
+
+    public static bool IsModelReady(string model)
+    {
+        return !string.IsNullOrWhiteSpace(model) && ReadyModels.Contains(model);
+    }
+
+    /// <summary>
     /// 重置就绪状态（连接失败时调用）
     /// </summary>
     public static void MarkUnready()
@@ -95,8 +122,9 @@ public static class LocalLLMClient
     // ──────────────────────────────────────────────
 
     /// <summary>检测本地 LLM 是否可用（协程）</summary>
-    public static IEnumerator CheckHealthAsync(Action<bool, string> onResult)
+    public static IEnumerator CheckHealthAsync(Action<bool, string> onResult, string modelOverride = null)
     {
+        string modelToCheck = string.IsNullOrWhiteSpace(modelOverride) ? ModelName : modelOverride;
         string url = BaseUrl.Replace("/v1", "") + "/api/tags";
         using (UnityWebRequest req = UnityWebRequest.Get(url))
         {
@@ -109,17 +137,21 @@ public static class LocalLLMClient
                 // The exact configured model must be present before requests are allowed.
                 string body = req.downloadHandler.text;
                 // 检查模型是否存在
-                bool modelFound = body.Contains(ModelName) || body.Contains(ModelName.Replace(":latest", ""));
-                IsReady = modelFound;
+                bool modelFound = body.Contains(modelToCheck) || body.Contains(modelToCheck.Replace(":latest", ""));
+                ReadyModels.RemoveWhere(m => string.Equals(m, modelToCheck, StringComparison.OrdinalIgnoreCase));
+                if (modelFound) ReadyModels.Add(modelToCheck);
+                if (string.Equals(modelToCheck, ModelName, StringComparison.OrdinalIgnoreCase))
+                    IsReady = modelFound;
                 string msg = modelFound
-                    ? $"✅ 本地 LLM 就绪（{ModelName}）"
-                    : $"⚠️ Ollama 在线，但模型「{ModelName}」未找到，需运行: ollama pull {ModelName}";
+                    ? $"✅ 本地 LLM 就绪（{modelToCheck}）"
+                    : $"⚠️ Ollama 在线，但模型「{modelToCheck}」未找到，需运行: ollama pull {modelToCheck}";
                 LastHealthMessage = msg;
                 onResult?.Invoke(modelFound, msg);
             }
             else
             {
-                IsReady = false;
+                if (string.Equals(modelToCheck, ModelName, StringComparison.OrdinalIgnoreCase))
+                    IsReady = false;
                 string err = $"❌ 本地 LLM 不可达: {req.error}（请确保 Ollama 已启动）";
                 LastHealthMessage = err;
                 onResult?.Invoke(false, err);
@@ -144,7 +176,8 @@ public static class LocalLLMClient
         Action<bool, string> onResult,
         float temperature = 0.7f,
         int maxTokens = 256,
-        int timeout = DEFAULT_TIMEOUT)
+        int timeout = DEFAULT_TIMEOUT,
+        string modelOverride = null)
     {
         // 被游戏模式暂停时直接跳过
         if (Paused)
@@ -153,11 +186,12 @@ public static class LocalLLMClient
             yield break;
         }
 
-        if (!IsReady)
+        string requestModel = string.IsNullOrWhiteSpace(modelOverride) ? ModelName : modelOverride;
+        if (!IsModelReady(requestModel))
         {
             // 首次使用前先做健康检查
             bool healthOk = false;
-            yield return CheckHealthAsync((ok, _) => healthOk = ok);
+            yield return CheckHealthAsync((ok, _) => healthOk = ok, requestModel);
             if (!healthOk)
             {
                 onResult?.Invoke(false, "本地 LLM 未就绪");
@@ -173,7 +207,7 @@ public static class LocalLLMClient
             if (retry > 0)
                 yield return new WaitForSeconds(0.5f);
 
-            string jsonBody = BuildChatRequestBody(messages, temperature, maxTokens);
+            string jsonBody = BuildChatRequestBody(messages, temperature, maxTokens, requestModel);
             string url = BaseUrl + "/chat/completions";
 
             using (UnityWebRequest req = new UnityWebRequest(url, "POST"))
@@ -195,7 +229,7 @@ public static class LocalLLMClient
                         content = extracted;
                         success = true;
                         // ★ 2026-08-16：本地调用也记录（免费，供消耗对比分析）
-                        UsageLogger.Record("local", ModelName, 0, 0, 0, 0);
+                        UsageLogger.Record("local", requestModel, 0, 0, 0, 0);
                         break;
                     }
                     Debug.LogWarning($"[LocalLLM] 解析响应为空 (retry={retry}): {StringTruncateExtension.Truncate(responseText, 100)}");
@@ -208,7 +242,9 @@ public static class LocalLLMClient
                     if (retry >= MAX_RETRY)
                     {
                         // 连续失败 → 标记不可用
-                        IsReady = false;
+                        ReadyModels.Remove(requestModel);
+                        if (string.Equals(requestModel, ModelName, StringComparison.OrdinalIgnoreCase))
+                            IsReady = false;
                         content = errMsg;
                     }
                 }
@@ -228,14 +264,16 @@ public static class LocalLLMClient
         string userPrompt,
         Action<bool, string> onResult,
         float temperature = 0.7f,
-        int maxTokens = 256)
+        int maxTokens = 256,
+        int timeout = DEFAULT_TIMEOUT,
+        string modelOverride = null)
     {
         var messages = new List<ChatMessage>
         {
             new ChatMessage { role = "system", content = systemPrompt },
             new ChatMessage { role = "user", content = userPrompt }
         };
-        return ChatAsync(messages, onResult, temperature, maxTokens);
+        return ChatAsync(messages, onResult, temperature, maxTokens, timeout, modelOverride);
     }
 
     /// <summary>仅发送 user prompt（无 system）</summary>
@@ -267,16 +305,16 @@ public static class LocalLLMClient
     //  请求构建
     // ──────────────────────────────────────────────
 
-    private static string BuildChatRequestBody(List<ChatMessage> messages, float temperature, int maxTokens)
+    private static string BuildChatRequestBody(List<ChatMessage> messages, float temperature, int maxTokens, string modelName)
     {
         var sb = new StringBuilder();
         sb.Append('{');
-        sb.Append("\"model\":\"").Append(EscapeJson(ModelName)).Append("\",");
+        sb.Append("\"model\":\"").Append(EscapeJson(modelName)).Append("\",");
         sb.Append("\"temperature\":").Append(temperature.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(',');
         sb.Append("\"max_tokens\":").Append(maxTokens).Append(',');
         // Qwen3 等推理模型在 Ollama /v1 兼容接口默认会开启 thinking。
         // 日常桌宠回复需要把预算留给最终 content；复杂任务可通过环境变量重新开启。
-        string reasoningEffort = ResolveReasoningEffort();
+        string reasoningEffort = ResolveReasoningEffort(modelName);
         if (!string.IsNullOrEmpty(reasoningEffort))
             sb.Append("\"reasoning_effort\":\"").Append(EscapeJson(reasoningEffort)).Append("\",");
         // ★ 2026-08-15：显式扩展上下文窗口到 8K——动作翻译/闲话 prompt 较大（schema 可达 5K 字符），
@@ -303,12 +341,12 @@ public static class LocalLLMClient
     /// FU_XUAN_LOCAL_REASONING_EFFORT 支持 none/low/medium/high/max；
     /// 未设置时仅对 qwen3 系列默认关闭，保持 qwen2.5 等非推理模型原行为。
     /// </summary>
-    private static string ResolveReasoningEffort()
+    private static string ResolveReasoningEffort(string modelName)
     {
         string configured = Environment.GetEnvironmentVariable("FU_XUAN_LOCAL_REASONING_EFFORT");
         if (string.IsNullOrWhiteSpace(configured))
         {
-            if (!ModelName.StartsWith("qwen3", StringComparison.OrdinalIgnoreCase))
+            if (!modelName.StartsWith("qwen3", StringComparison.OrdinalIgnoreCase))
                 return null;
             return "none";
         }
