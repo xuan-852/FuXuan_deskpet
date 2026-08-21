@@ -72,6 +72,8 @@ const COMMANDS = [
     ['@@view:open', '[TestInbox] @@view 命令: open'],
     ['@@view:chat', '[TestInbox] @@view 命令: chat'],
     ['@@view:settings', '[TestInbox] @@view 命令: settings'],
+    ['@@view:model', '[TestInbox] @@view 命令: model'],
+    ['@@view:back', '子面板返回 → Settings'],
     ['@@view:back', '[TestInbox] @@view 命令: back'],
     ['@@view:report', '[TestInbox] @@view 命令: report'],
     ['@@view:back', '[TestInbox] @@view 命令: back'],

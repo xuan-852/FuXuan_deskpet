@@ -334,8 +334,8 @@ public partial class RightPanel : MonoBehaviour
     private bool _approvalDialogOpen = false; // 审批弹窗是否打开
 
     // ==================== QQ 式两级界面（会话列表 ⇄ 聊天）+ 子面板（设置/便签/报告） ====================
-    /// <summary>窗口视图：SessionList=第一级窄条会话列表；Chat=第二级展开（左会话栏+右聊天区）；Settings/Reminders/Report=对话框内子面板</summary>
-    private enum PanelView { SessionList, Chat, Settings, Reminders, Report, Usage, Memory }
+    /// <summary>窗口视图：SessionList=第一级窄条会话列表；Chat=第二级展开；ModelSettings=独立模型设置页</summary>
+    private enum PanelView { SessionList, Chat, Settings, ModelSettings, Reminders, Report, Usage, Memory }
     private PanelView _currentView = PanelView.SessionList;
 
     // 尺寸参照 QQ 实测（Win32：324×846 窄条模式）；展开后左会话栏 280 + 右聊天区 580
@@ -737,7 +737,16 @@ public partial class RightPanel : MonoBehaviour
     /// <summary>判断是否为子面板视图（设置/便签/报告）</summary>
     private bool IsSubPanelView(PanelView v)
     {
-        return v == PanelView.Settings || v == PanelView.Reminders || v == PanelView.Report || v == PanelView.Usage || v == PanelView.Memory;
+        return v == PanelView.Settings || v == PanelView.ModelSettings || v == PanelView.Reminders || v == PanelView.Report || v == PanelView.Usage || v == PanelView.Memory;
+    }
+
+    /// <summary>打开独立模型设置页；模型切换不会改变动作模型。</summary>
+    private void OpenModelSettings()
+    {
+        _prevView = _currentView;
+        _currentView = PanelView.ModelSettings;
+        ApplyViewSize();
+        Debug.Log($"[RightPanel] 打开模型设置页（当前聊天模型 {LocalLLMClient.ChatModelName}）");
     }
 
     /// <summary>打开子面板（设置/便签/报告）：记录来源视图，切换为页内视图并应用子面板尺寸</summary>
@@ -776,6 +785,9 @@ public partial class RightPanel : MonoBehaviour
     {
         if (!IsSubPanelView(_prevView)) _prevView = PanelView.Chat;
         _currentView = _prevView;
+        // 子面板允许一层嵌套（设置 → 模型设置）。返回后清掉旧来源，
+        // 避免再次点击返回时仍停留在刚刚离开的设置页。
+        _prevView = PanelView.Chat;
         ApplyViewSize();
         Debug.Log($"[RightPanel] 子面板返回 → {_currentView}");
     }
@@ -978,6 +990,8 @@ public partial class RightPanel : MonoBehaviour
         switch (cmd)
         {
             case "settings": OpenSubPanel(BallPanel.PanelType.Settings); break;
+            case "model":
+            case "model-settings": OpenModelSettings(); break;
             case "reminders": OpenSubPanel(BallPanel.PanelType.Reminders); break;
             case "report": OpenSubPanel(BallPanel.PanelType.Report); break;
             case "usage": OpenSubPanel(BallPanel.PanelType.Usage); break;
@@ -1291,7 +1305,7 @@ public partial class RightPanel : MonoBehaviour
             DrawSessionListView(px, py, pw, ph, mp);
         }
         // ——— 子面板视图（设置/便签/报告/消耗） ———
-        else if (_currentView == PanelView.Settings || _currentView == PanelView.Reminders
+        else if (_currentView == PanelView.Settings || _currentView == PanelView.ModelSettings || _currentView == PanelView.Reminders
             || _currentView == PanelView.Report || _currentView == PanelView.Usage || _currentView == PanelView.Memory)
         {
             DrawSubPanelView(px, py, pw, ph, mp);

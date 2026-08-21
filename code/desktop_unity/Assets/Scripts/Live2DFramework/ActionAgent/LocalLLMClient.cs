@@ -79,6 +79,18 @@ public static class LocalLLMClient
     }
 
     /// <summary>
+    /// 设置聊天专用模型。聊天和动作模型分开切换，避免为了提高对话质量而抬高动作循环的资源占用。
+    /// </summary>
+    public static void SetChatModel(string model)
+    {
+        if (string.IsNullOrWhiteSpace(model)) return;
+        string previousModel = ChatModelName;
+        ChatModelName = model.Trim();
+        ReadyModels.Remove(previousModel ?? "");
+        ReadyModels.Remove(ChatModelName);
+    }
+
+    /// <summary>
     /// 返回当前进程配置的本地模型。
     /// FU_XUAN_LOCAL_MODEL 只用于实验/部署覆盖，未设置时保持生产默认模型。
     /// </summary>

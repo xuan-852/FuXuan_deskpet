@@ -202,6 +202,16 @@
 - 坑：聊天区提取时 `bgRect`（OnGUI 局部变量）被带入，改用等价字段 `_panelRect`（语义=窗口矩形）；新文件 `.meta` 由 Unity 首次编译自动生成
 - **坑（2026-08-14 真机验证发现）**：`StarField _starField` 字段拆分后必须**实例化**（`= new StarField()`）。漏了会引发双重故障：① `InitStyles` 内 `_starField.Init(42)` 首帧 NRE，且 `_stylesReady=true` 在抛异常**之前**已置位 → 900 行后全部样式/纹理永不创建（半初始化锁定）；② 面板打开后 `_starField.UpdateStarMotion()` 每帧 NRE，OnGUI 在视图分发前中断 → 面板只剩背景、列表/聊天/输入框不渲染。EditMode（nographics）跑不到 OnGUI 测不出，**必须真机开面板验证**（`@@view:open` 后查 Player.log 无 `NullReferenceException` 洪流）
 
+### 2.10 模型设置页（2026-08-21）
+
+模型页沿用同一套 IMGUI/外置 RenderTexture 渲染链，不新增 UGUI 或独立原生设置窗口：
+
+- 入口：设置页的「AI 模型设置」按钮；测试链路为 `@@view:model`。
+- 左侧：聊天模型选项栏，应用时只调用 `LocalLLMClient.SetChatModel`，动作模型仍保持轻量配置。
+- 右侧：`LocalModelDemoData` 中的真实隔离测试样例，显示案例、回复、耗时、字数和规则评分；样例不进入忆境。
+- 云端：当前为锁定占位，明确提示 API Key 安全工作未完成，避免把密钥输入框直接放入 IMGUI 并误写日志。
+- 返回：模型页从设置页进入时支持一层嵌套返回；返回后会清除旧来源，避免重复点击一直停留在设置页。
+
 ## 三、开发历史迭代
 
 | 版本 | 日期 | 变更 |
@@ -213,6 +223,7 @@
 | 2026-08-15 | **独立聊天窗口（大工程 Phase 1）**：原生 Win32 窗口（非置顶、可被遮挡、QQ 式）+ IMGUI→RenderTexture→BGRA 像素桥 + 原生 EDIT 输入 + 发送按钮 → `MainThreadDispatcher` → `ChatManager`；标题栏 ⧉ 切换 + `@@view:external/embed` 终端命令；桌宠主窗保持置顶不变。详见 §2.9 |
 | 2026-08-16 | **面板整体外置（大工程 Phase A1-A5）**：整个 `~` 面板（全部视图）搬入独立普通窗口——渲染桥扩展为整面板（`DrawPanelContent` 双模式共用）、标准窗口行为（非置顶/拖动/缩放/位置记忆）、手动命中表交互（会话双击/按钮/滚动/审批三按钮，DPI 坐标换算 + 模态清空）、原生 EDIT 输入唤起；新增 `@@view:extclick`/`@@approval` 测试链路。详见 §2.9 |
 | 2026-08-21 | **外置 UI 升帧**：打开外置聊天窗口时 `PerformanceMonitor` 临时切换为 High/Normal/Low = 60/45/30 FPS，关闭后恢复后台 30/24/15 FPS；高负载仍允许自动降档，RenderTexture 推送频率跟随当前档位；冒烟测试增加性能模式开关标记断言。 |
+| 2026-08-21 | **模型设置页**：增加聊天模型独立选择、真实本地生成样例和云端安全占位；新增 `@@view:model` 冒烟路径，修复嵌套子面板返回状态未清理问题。 |
 
 ### 像素化落地清单（按成本排序，2026-08-08）
 

@@ -36,6 +36,10 @@ public class PetConfig : MonoBehaviour
         public bool motionAgentEnabled = true;
         public string localModel = "qwen2.5:3b";
         public string localApiUrl = "http://127.0.0.1:11434/v1";
+
+        // ===== 对话模型 =====
+        // 与动作/摘要模型分离，允许低端设备保留轻量动作模型，同时单独选择聊天质量模型。
+        public string chatLocalModel = "qwen3:8b";
     }
 
     [Header("当前配置（保存后持久化）")]
@@ -139,6 +143,9 @@ public class PetConfig : MonoBehaviour
             agent.localApiUrl = data.localApiUrl;
         }
 
+        if (!string.IsNullOrWhiteSpace(data.chatLocalModel))
+            LocalLLMClient.SetChatModel(data.chatLocalModel);
+
         Debug.Log("[PetConfig] 已应用全部配置");
     }
 
@@ -180,5 +187,7 @@ public class PetConfig : MonoBehaviour
             data.localModel = agent.localModel;
             data.localApiUrl = agent.localApiUrl;
         }
+
+        data.chatLocalModel = LocalLLMClient.ChatModelName;
     }
 }
