@@ -1,5 +1,6 @@
 using UnityEngine;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 
 /// <summary>
@@ -47,6 +48,11 @@ public partial class RightPanel
     private int _selectedChatModelIndex = -1;
     private string _modelStatusMsg = "";
     private Color _modelStatusColor = Color.gray;
+    private readonly Dictionary<string, LocalModelDemoData.Sample[]> _modelSamplesByModel =
+        new Dictionary<string, LocalModelDemoData.Sample[]>(StringComparer.OrdinalIgnoreCase);
+    private Coroutine _modelDemoCoroutine;
+    private bool _modelDemoLoading;
+    private string _modelDemoLoadingModel = "";
 
     private void DrawSubPanelView(float px, float py, float pw, float ph, Vector2 mp)
     {
@@ -534,6 +540,105 @@ public partial class RightPanel
             : "已选择 " + profile.Model + "，点击「应用本地模型」后生效。";
         _modelStatusColor = profile.Cloud ? new Color(1f, 0.70f, 0.35f, 1f) : Color.gray;
         Debug.Log("[RightPanel] 模型设置页选择: " + profile.Model);
+        if (_modelDemoCoroutine != null)
+        {
+            StopCoroutine(_modelDemoCoroutine);
+            _modelDemoCoroutine = null;
+        }
+        _modelDemoLoading = false;
+        if (!profile.Cloud)
+            BeginModelDemoGeneration(profile.Model);
+    }
+
+    private LocalModelDemoData.Sample[] GetModelSamples(string model)
+    {
+        if (string.Equals(model, LocalModelDemoData.TestModel, StringComparison.OrdinalIgnoreCase))
+            return LocalModelDemoData.Qwen3Samples;
+        LocalModelDemoData.Sample[] samples;
+        return _modelSamplesByModel.TryGetValue(model ?? "", out samples) ? samples : null;
+    }
+
+    private void BeginModelDemoGeneration(string model)
+    {
+        if (string.IsNullOrWhiteSpace(model)) return;
+        if (GetModelSamples(model) != null)
+        {
+            _modelDemoLoading = false;
+            _modelDemoLoadingModel = model;
+            _modelStatusMsg = "已载入 " + model + " 的真实本地样例。";
+            _modelStatusColor = new Color(0.55f, 0.85f, 0.55f, 1f);
+            return;
+        }
+
+        if (_modelDemoCoroutine != null)
+            StopCoroutine(_modelDemoCoroutine);
+        _modelDemoCoroutine = StartCoroutine(GenerateModelDemoCoroutine(model));
+    }
+
+    private IEnumerator GenerateModelDemoCoroutine(string model)
+    {
+        _modelDemoLoading = true;
+        _modelDemoLoadingModel = model;
+        _modelDemoIndex = 0;
+        _modelStatusMsg = "正在用 " + model + " 生成真实样例，请稍候…";
+        _modelStatusColor = new Color(0.88f, 0.78f, 0.55f, 1f);
+
+        bool healthOk = false;
+        yield return LocalLLMClient.CheckHealthAsync((ok, _) => healthOk = ok, model);
+        if (!healthOk)
+        {
+            _modelDemoLoading = false;
+            _modelStatusMsg = "模型 " + model + " 未安装或 Ollama 不可用，未生成伪造样例。";
+            _modelStatusColor = new Color(1f, 0.55f, 0.45f, 1f);
+            _modelDemoCoroutine = null;
+            yield break;
+        }
+
+        var generated = new List<LocalModelDemoData.Sample>();
+        LocalModelDemoData.Sample[] prompts = LocalModelDemoData.Qwen3Samples;
+        for (int i = 0; i < prompts.Length; i++)
+        {
+            LocalModelDemoData.Sample test = prompts[i];
+            bool success = false;
+            string reply = "";
+            float startedAt = Time.realtimeSinceStartup;
+            string prompt = LocalRoleplayPromptBuilder.Build(FuXuanCharacterCard.CorePrompt, "", test.Input);
+            yield return LocalLLMClient.PromptAsync(
+                "你是符玄。请严格按照下面的本地角色卡和输出契约作答。\n\n" + prompt,
+                test.Input,
+                (ok, content) => { success = ok; reply = content ?? ""; },
+                temperature: 0.64f,
+                maxTokens: 640,
+                timeout: 75,
+                modelOverride: model);
+
+            if (!success || string.IsNullOrWhiteSpace(reply))
+            {
+                _modelDemoLoading = false;
+                _modelStatusMsg = model + " 的 " + test.CaseId + " 生成失败，未显示不完整测评。";
+                _modelStatusColor = new Color(1f, 0.55f, 0.45f, 1f);
+                _modelDemoCoroutine = null;
+                yield break;
+            }
+
+            reply = LocalReplyPostProcessor.Process(reply, test.Input);
+            ReplyQualityJudge.Result score = ReplyQualityJudge.EvaluateByRules(test.Input, reply);
+            generated.Add(new LocalModelDemoData.Sample(
+                test.CaseId, test.Input, reply,
+                Mathf.Max(1, Mathf.RoundToInt((Time.realtimeSinceStartup - startedAt) * 1000f)),
+                reply.Length, score.AverageScore));
+            Debug.Log(string.Format("[RightPanel] 模型样例案例: {0}/{1}, {2}ms, {3}字, 规则评分{4}/5",
+                model, test.CaseId, generated[generated.Count - 1].LatencyMs,
+                generated[generated.Count - 1].ReplyChars, generated[generated.Count - 1].RuleScore));
+            _modelStatusMsg = string.Format("正在测评 {0}：已完成 {1}/{2}…", model, i + 1, prompts.Length);
+        }
+
+        _modelSamplesByModel[model] = generated.ToArray();
+        _modelDemoLoading = false;
+        _modelStatusMsg = string.Format("{0} 测评完成：{1}/{1} 条真实样例。", model, generated.Count);
+        _modelStatusColor = new Color(0.55f, 0.85f, 0.55f, 1f);
+        _modelDemoCoroutine = null;
+        Debug.Log(string.Format("[RightPanel] 模型样例生成完成: {0}, {1} 条", model, generated.Count));
     }
 
     private void ApplySelectedChatModel()
@@ -558,35 +663,56 @@ public partial class RightPanel
             "以下是隔离测试得到的真实回复，不会写入生产忆境。",
             _modelSmallStyle);
 
+        string selectedModel = ModelSettingsProfiles[_selectedChatModelIndex].Model;
+        LocalModelDemoData.Sample[] samples = GetModelSamples(selectedModel);
         float tabsY = y + 80f;
-        float tabW = (w - 12f) / 3f;
-        for (int i = 0; i < LocalModelDemoData.Qwen3Samples.Length; i++)
+        if (samples != null && samples.Length > 0)
         {
-            Rect tab = new Rect(x + i * (tabW + 6f), tabsY, tabW, 34f);
-            if (i == _modelDemoIndex)
-                UiTextureFactory.DrawPixelRect(tab, new Color(0.45f, 0.30f, 0.78f, 0.30f));
-            int demoIndex = i;
-            if (GUI.Button(tab, LocalModelDemoData.Qwen3Samples[i].CaseId, _modelButtonStyle))
-                _modelDemoIndex = demoIndex;
-            RegisterExtHit(tab, () => _modelDemoIndex = demoIndex);
+            float tabW = (w - 12f) / samples.Length;
+            for (int i = 0; i < samples.Length; i++)
+            {
+                Rect tab = new Rect(x + i * (tabW + 6f), tabsY, tabW, 34f);
+                if (i == _modelDemoIndex)
+                    UiTextureFactory.DrawPixelRect(tab, new Color(0.45f, 0.30f, 0.78f, 0.30f));
+                int demoIndex = i;
+                if (GUI.Button(tab, samples[i].CaseId, _modelButtonStyle))
+                    _modelDemoIndex = demoIndex;
+                RegisterExtHit(tab, () => _modelDemoIndex = demoIndex);
+            }
         }
 
-        LocalModelDemoData.Sample sample = LocalModelDemoData.Qwen3Samples[Mathf.Clamp(_modelDemoIndex, 0, LocalModelDemoData.Qwen3Samples.Length - 1)];
         float cardY = tabsY + 48f;
         float cardH = Mathf.Min(470f, h - 180f);
-        UiTextureFactory.DrawPixelRect(new Rect(x, cardY, w, cardH), new Color(0.04f, 0.05f, 0.13f, 0.72f));
-        GUI.Label(new Rect(x + 14f, cardY + 12f, w - 28f, 24f),
-            "本地真实样例 · " + LocalModelDemoData.TestModel + " · " + LocalModelDemoData.TestDate,
-            _modelSmallStyle);
-        GUI.Label(new Rect(x + 14f, cardY + 48f, w - 28f, 54f),
-            "用户：" + sample.Input,
-            _modelBodyStyle);
-        GUI.Label(new Rect(x + 14f, cardY + 108f, w - 28f, cardH - 172f),
-            "符玄：" + sample.Reply,
-            _modelBodyStyle);
-        GUI.Label(new Rect(x + 14f, cardY + cardH - 52f, w - 28f, 40f),
-            string.Format("耗时 {0:0.0}s · {1} 字 · 规则评分 {2}/5", sample.LatencyMs / 1000f, sample.ReplyChars, sample.RuleScore),
-            _modelSmallStyle);
+        if (samples == null || samples.Length == 0)
+        {
+            cardH = Mathf.Min(330f, h - 180f);
+            UiTextureFactory.DrawPixelRect(new Rect(x, cardY, w, cardH), new Color(0.04f, 0.05f, 0.13f, 0.72f));
+            GUI.Label(new Rect(x + 14f, cardY + 18f, w - 28f, 28f),
+                _modelDemoLoading && string.Equals(_modelDemoLoadingModel, selectedModel, StringComparison.OrdinalIgnoreCase)
+                    ? "正在生成 " + selectedModel + " 的真实样例…"
+                    : selectedModel + " 尚未完成本地测评",
+                _modelBodyStyle);
+            GUI.Label(new Rect(x + 14f, cardY + 64f, w - 28f, cardH - 84f),
+                "这里不会复用 qwen3:8b 的旧回复。等待当前模型完成同一组测试问题后，才会显示它自己的回复、耗时和规则评分。",
+                _modelSmallStyle);
+        }
+        else
+        {
+            LocalModelDemoData.Sample sample = samples[Mathf.Clamp(_modelDemoIndex, 0, samples.Length - 1)];
+            UiTextureFactory.DrawPixelRect(new Rect(x, cardY, w, cardH), new Color(0.04f, 0.05f, 0.13f, 0.72f));
+            GUI.Label(new Rect(x + 14f, cardY + 12f, w - 28f, 24f),
+                "本地真实样例 · " + selectedModel + " · " + LocalModelDemoData.TestDate,
+                _modelSmallStyle);
+            GUI.Label(new Rect(x + 14f, cardY + 48f, w - 28f, 54f),
+                "用户：" + sample.Input,
+                _modelBodyStyle);
+            GUI.Label(new Rect(x + 14f, cardY + 108f, w - 28f, cardH - 172f),
+                "符玄：" + sample.Reply,
+                _modelBodyStyle);
+            GUI.Label(new Rect(x + 14f, cardY + cardH - 52f, w - 28f, 40f),
+                string.Format("耗时 {0:0.0}s · {1} 字 · 规则评分 {2}/5", sample.LatencyMs / 1000f, sample.ReplyChars, sample.RuleScore),
+                _modelSmallStyle);
+        }
 
         float cloudY = cardY + cardH + 18f;
         UiTextureFactory.DrawPixelRect(new Rect(x, cloudY, w, 104f), new Color(0.12f, 0.08f, 0.20f, 0.78f));
@@ -596,7 +722,10 @@ public partial class RightPanel
             _modelSmallStyle);
 
         GUI.Label(new Rect(x, h + y - 28f, w, 22f),
-            string.Format("本批次：3/3 成功 · 平均 {0:0.0}s · 小样本仅用于选型参考", LocalModelDemoData.AverageLatencyMs / 1000f),
+            samples == null || samples.Length == 0
+                ? "当前模型暂无可展示样例 · 不使用其他模型回复冒充"
+                : string.Format("当前模型：{0} 条成功 · 平均 {1:0.0}s · 小样本仅用于选型参考",
+                    samples.Length, LocalModelDemoData.AverageLatencyMsFor(samples) / 1000f),
             _modelSmallStyle);
     }
 

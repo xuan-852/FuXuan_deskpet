@@ -55,9 +55,15 @@ public static class LocalModelDemoData
     {
         get
         {
-            int total = 0;
-            for (int i = 0; i < Qwen3Samples.Length; i++) total += Qwen3Samples[i].LatencyMs;
-            return Qwen3Samples.Length == 0 ? 0 : total / Qwen3Samples.Length;
+            return AverageLatencyMsFor(Qwen3Samples);
         }
+    }
+
+    public static int AverageLatencyMsFor(Sample[] samples)
+    {
+        if (samples == null || samples.Length == 0) return 0;
+        int total = 0;
+        for (int i = 0; i < samples.Length; i++) total += samples[i].LatencyMs;
+        return total / samples.Length;
     }
 }
