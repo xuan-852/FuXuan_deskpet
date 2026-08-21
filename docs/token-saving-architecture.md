@@ -175,6 +175,8 @@ node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData
 4. `ChatManager` 在 Unity 侧校验工具白名单和参数，再复用 `ToolCallInvoker` / `ToolRegistry` 执行。
 5. 危险工具不因本地模式绕过 `ToolConfirmManager`；结果只以压缩副本回填给 `qwen3:8b`。
 
+规划容错：JSON 解析失败会用低温度短提示重试；对明确的系统查询、文件搜索、文件夹、剪贴板、办公和动作表达，再做零 Token 的高置信度复核。办公生成仍属于桥接慢任务，触发成功与文档最终返回分开记录。
+
 该链路的 Token 控制点是“少量本地规划 schema + 一次工具结果回注”，而不是将 65 个完整 schema 塞入聊天 Prompt；
 工具原始结果仍由 UI 和本地日志保留，模型只接收 `ToolResultBudget.Compact` 后的结果。
 

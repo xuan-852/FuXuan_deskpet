@@ -51,4 +51,35 @@ public class LocalToolRouterTests
         StringAssert.Contains("properties", compact);
         StringAssert.DoesNotContain("function", compact);
     }
+
+    [Test]
+    public void MalformedNoArgumentPlanCanRecoverSafeTool()
+    {
+        LocalToolPlan plan = LocalToolRouter.ParsePlan(
+            "{\"action\":\"call\",\"tool\":\"get_system_info\",\"arguments\":{\"reason\" \"系统状态\"}}" );
+
+        Assert.IsTrue(plan.Success);
+        Assert.IsTrue(plan.ShouldExecute);
+        Assert.AreEqual("get_system_info", plan.ToolName);
+        Assert.AreEqual("{}", plan.ArgumentsJson);
+    }
+
+    [Test]
+    public void KeywordFallbackBuildsCommonLocalTasks()
+    {
+        LocalToolPlan plan;
+
+        Assert.IsTrue(LocalToolRouter.TryBuildKeywordPlan("", "请查看当前系统信息", out plan));
+        Assert.AreEqual("get_system_info", plan.ToolName);
+
+        Assert.IsTrue(LocalToolRouter.TryBuildKeywordPlan("", "请搜索项目里的 README.md 文件", out plan));
+        Assert.AreEqual("search_files", plan.ToolName);
+        StringAssert.Contains("README.md", plan.ArgumentsJson);
+
+        Assert.IsTrue(LocalToolRouter.TryBuildKeywordPlan("", "请把“本地工具测试”复制到剪贴板", out plan));
+        Assert.AreEqual("set_clipboard", plan.ToolName);
+        StringAssert.Contains("本地工具测试", plan.ArgumentsJson);
+
+        Assert.IsTrue(LocalToolRouter.IsAllowed("generate_xlsx", "operation"));
+    }
 }

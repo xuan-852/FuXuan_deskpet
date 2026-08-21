@@ -227,6 +227,44 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
                 plan.Error = content;
         }, temperature: 0.1f, maxTokens: 320, timeout: 30, modelOverride: LocalLLMClient.ModelName);
 
+        // 轻量模型偶尔会在 arguments 内输出坏 JSON。先用更短、更硬的格式提示重试一次，
+        // 再交给受限关键词兜底，避免普通的“查看系统/搜索文件”被误判成闲聊。
+        if (!plan.Success)
+        {
+            string repairPrompt = "You are a local tool JSON repairer. Output exactly one valid JSON object on one line. "
+                + "No Markdown, explanation, or extra text. "
+                + "Use this format: {\"action\":\"call\",\"tool\":\"TOOL_NAME\",\"arguments\":{},\"reason\":\"short\"}. "
+                + "If no tool is needed use {\"action\":\"none\",\"tool\":\"\",\"arguments\":{},\"reason\":\"chat\"}. "
+                + "arguments must always be a valid JSON object. Available catalog:\n" + systemPrompt;
+
+            LocalToolPlan repaired = new LocalToolPlan
+            {
+                Success = false,
+                ShouldExecute = false,
+                ToolName = "",
+                ArgumentsJson = "{}",
+                Reason = "",
+                Error = "本地术式修复规划未返回"
+            };
+            yield return LocalLLMClient.PromptAsync(repairPrompt, userMessage, (ok, content) =>
+            {
+                if (ok) repaired = LocalToolRouter.ParsePlan(content);
+                else if (!string.IsNullOrEmpty(content)) repaired.Error = content;
+            }, temperature: 0f, maxTokens: 180, timeout: 25, modelOverride: LocalLLMClient.ModelName);
+
+            if (repaired.Success)
+                plan = repaired;
+        }
+
+        // 即使模型返回了合法的 action=none，也要对明确的“生成/搜索/打开”
+        // 进行一次高置信度复核，避免轻量模型把明显任务误判成闲聊。
+        if ((!plan.Success || !plan.ShouldExecute)
+            && LocalToolRouter.TryBuildKeywordPlan("", userMessage, out LocalToolPlan keywordPlan))
+        {
+            plan = keywordPlan;
+            Debug.LogWarning("[LocalLLMAgent] 已采用高置信度本地术式复核: " + plan.ToolName);
+        }
+
         onResult?.Invoke(plan);
     }
 

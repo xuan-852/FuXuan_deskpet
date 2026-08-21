@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -40,7 +41,7 @@ public static class LocalToolRouter
     {
         "set_expression", "play_action", "stop_action", "generate_motion", "take_screenshot",
         "get_system_info", "get_mouse_pos", "query_reminders", "set_reminder", "mark_reminder_done",
-        "delete_reminder"
+        "delete_reminder", "generate_ppt", "generate_docx", "generate_xlsx", "compile_latex"
     };
 
     private static readonly string[] FallbackTools =
@@ -198,8 +199,173 @@ public static class LocalToolRouter
         }
         catch (Exception ex)
         {
+            // qwen2.5 偶尔会在 arguments 内生成坏 JSON。对无参数工具，若仍能
+            // 提取出明确的 call/tool，则可以安全地补成 {}，避免整条请求退回闲聊。
+            string looseAction = Regex.Match(content, "\"action\"\\s*:\\s*\"(call|none)\"", RegexOptions.IgnoreCase).Groups[1].Value;
+            string looseTool = Regex.Match(content, "\"tool\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase).Groups[1].Value;
+            if (string.Equals(looseAction, "call", StringComparison.OrdinalIgnoreCase)
+                && IsNoArgumentTool(looseTool))
+            {
+                result.Success = true;
+                result.ShouldExecute = true;
+                result.ToolName = looseTool.Trim();
+                result.ArgumentsJson = "{}";
+                result.Error = "";
+                return result;
+            }
             result.Error = "本地工具规划 JSON 解析失败: " + ex.Message;
             return result;
+        }
+    }
+
+    /// <summary>
+    /// 规划模型失败时，对明确的日常短指令做受限兜底。这里不执行工具，
+    /// 只生成同样的 LocalToolPlan，后续仍由 ChatManager 做白名单、参数和危险确认。
+    /// </summary>
+    public static bool TryBuildKeywordPlan(string intent, string userMessage, out LocalToolPlan plan)
+    {
+        plan = new LocalToolPlan
+        {
+            Success = false,
+            ShouldExecute = false,
+            ToolName = "",
+            ArgumentsJson = "{}",
+            Reason = "",
+            Error = "未匹配到高置信度本地术式"
+        };
+
+        if (string.IsNullOrWhiteSpace(userMessage)) return false;
+        string message = userMessage.Trim();
+
+        if (ContainsAny(message, "系统信息", "CPU", "内存状态", "电脑状态", "硬件信息"))
+            return AssignPlan(out plan, "get_system_info", "{}", "用户明确查询系统状态");
+
+        if (ContainsAny(message, "天气", "温度", "下雨", "气温"))
+            return AssignPlan(out plan, "get_weather", "{}", "用户明确查询天气");
+
+        bool mentionsClipboard = message.IndexOf("剪贴板", StringComparison.OrdinalIgnoreCase) >= 0;
+        if (mentionsClipboard && ContainsAny(message, "查看", "读取", "内容", "复制了什么"))
+            return AssignPlan(out plan, "get_clipboard", "{}", "用户明确读取剪贴板");
+
+        if (mentionsClipboard && ContainsAny(message, "复制", "写入", "放到", "保存"))
+        {
+            string text = ExtractQuotedText(message);
+            if (!string.IsNullOrWhiteSpace(text))
+                return AssignPlan(out plan, "set_clipboard", JsonConvert.SerializeObject(new { text }), "用户明确写入剪贴板");
+        }
+
+        if (ContainsAny(message, "搜索", "查找", "找一下", "找找")
+            && ContainsAny(message, "文件", "README", ".md", ".cs", ".json", "项目"))
+        {
+            string query = ExtractFileQuery(message);
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                return AssignPlan(out plan, "search_files",
+                    JsonConvert.SerializeObject(new { query, root = "" }), "用户明确搜索文件");
+            }
+        }
+
+        if (ContainsAny(message, "打开", "开启")
+            && ContainsAny(message, "文件夹", "目录", "桌面", "下载", "文档"))
+        {
+            string folder = "";
+            if (message.Contains("下载")) folder = "Downloads";
+            else if (message.Contains("文档")) folder = "Documents";
+            else if (message.Contains("桌面")) folder = "Desktop";
+            return AssignPlan(out plan, "open_folder",
+                JsonConvert.SerializeObject(new { path = folder }), "用户明确打开文件夹");
+        }
+
+        if (ContainsAny(message, "生成", "创建", "做一个") && ContainsAny(message, "Excel", "xlsx", "表格"))
+        {
+            return AssignPlan(out plan, "generate_xlsx",
+                JsonConvert.SerializeObject(new { description = message }), "用户明确生成 Excel");
+        }
+
+        if (ContainsAny(message, "播放", "做一个") && ContainsAny(message, "动作", "挥手", "点头", "微笑"))
+        {
+            return AssignPlan(out plan, "play_action",
+                JsonConvert.SerializeObject(new { action = message }), "用户明确播放动作");
+        }
+
+        return false;
+    }
+
+    private static LocalToolPlan MakePlan(string toolName, string argumentsJson, string reason)
+    {
+        return new LocalToolPlan
+        {
+            Success = true,
+            ShouldExecute = true,
+            ToolName = toolName,
+            ArgumentsJson = string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson,
+            Reason = reason,
+            Error = ""
+        };
+    }
+
+    private static bool AssignPlan(out LocalToolPlan plan, string toolName, string argumentsJson, string reason)
+    {
+        plan = MakePlan(toolName, argumentsJson, reason);
+        return true;
+    }
+
+    private static bool ContainsAny(string message, params string[] keywords)
+    {
+        foreach (string keyword in keywords)
+        {
+            if (!string.IsNullOrEmpty(keyword)
+                && message.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+        }
+        return false;
+    }
+
+    private static string ExtractQuotedText(string message)
+    {
+        Match match = Regex.Match(message, "「([^」]+)」|“([^”]+)”|\"([^\"]+)\"|'([^']+)'|《([^》]+)》");
+        if (!match.Success) return "";
+        for (int i = 1; i < match.Groups.Count; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(match.Groups[i].Value))
+                return match.Groups[i].Value.Trim();
+        }
+        return "";
+    }
+
+    private static string ExtractFileQuery(string message)
+    {
+        Match fileName = Regex.Match(message, @"[A-Za-z0-9_\-]+\.(md|txt|cs|json|yaml|yml|js|ps1|xlsx|docx|pptx)", RegexOptions.IgnoreCase);
+        if (fileName.Success) return fileName.Value;
+
+        string quoted = ExtractQuotedText(message);
+        if (!string.IsNullOrWhiteSpace(quoted)) return quoted;
+
+        Match tail = Regex.Match(message, @"(?:搜索|查找|找一下|找找)(.+)$");
+        if (!tail.Success) return "";
+        string query = tail.Groups[1].Value.Trim();
+        query = Regex.Replace(query, @"^(一下|一个|项目里的|项目中的|电脑里的|文件夹里的)", "").Trim();
+        query = query.Trim('。', '？', '?', '！', '!');
+        return query;
+    }
+
+    private static bool IsNoArgumentTool(string toolName)
+    {
+        switch ((toolName ?? "").Trim())
+        {
+            case "get_system_info":
+            case "get_clipboard":
+            case "get_mouse_pos":
+            case "get_weather":
+            case "query_reminders":
+            case "query_exams":
+            case "query_scores":
+            case "query_user_status":
+            case "stop_action":
+            case "take_screenshot":
+                return true;
+            default:
+                return false;
         }
     }
 }
