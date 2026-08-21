@@ -33,11 +33,13 @@ public static class LocalRoleplayPromptBuilder
         return (model ?? "local") + "/" + Variant + "/" + FuXuanCharacterCard.Version;
     }
 
-    public static string Build(string characterDesc, string recentHistory, string userMessage)
+    public static string Build(string characterDesc, string recentHistory, string userMessage, string modelName = null)
     {
+        LocalChatModelProfile profile = LocalChatModelProfiles.Get(modelName);
         if (Variant == BaselineVariant)
         {
-            return BuildBaseline(characterDesc, recentHistory, userMessage);
+            return BuildBaseline(characterDesc, recentHistory, userMessage)
+                + "\n\n【当前模型适配】\n" + profile.PromptAdjustment;
         }
 
         var prompt = new StringBuilder(3200);
@@ -70,7 +72,7 @@ public static class LocalRoleplayPromptBuilder
             prompt.AppendLine("\n" + triggeredLore);
 
         prompt.AppendLine("\n【最近对话】")
-            .AppendLine(TrimHistory(recentHistory, 1600))
+            .AppendLine(TrimHistory(recentHistory, profile.HistoryChars))
             .AppendLine("\n【用户最新消息】")
             .AppendLine(Trim(userMessage, 900))
             .AppendLine("\n【历史末尾护栏】")
@@ -83,6 +85,9 @@ public static class LocalRoleplayPromptBuilder
                 .AppendLine("长回复也不要使用空泛铺垫，每一句都应推进回答。")
                 .AppendLine("输出前默检：身份正确、称呼自然、句子短、没有编造事实。");
         }
+
+        prompt.AppendLine("\n【当前模型适配】")
+            .AppendLine(profile.PromptAdjustment);
 
         return prompt.ToString();
     }

@@ -526,7 +526,8 @@ public partial class RightPanel
         RegisterExtHit(applyRect, () => { if (!cloud) ApplySelectedChatModel(); });
 
         GUI.Label(new Rect(x, applyY + 52f, w, 64f),
-            "当前聊天：" + LocalLLMClient.ChatModelName + "\n动作/摘要：" + LocalLLMClient.ModelName + "\n两者分离，避免动作循环跟着升高占用。",
+            "当前聊天：" + LocalLLMClient.ChatModelName + "\n策略：" + LocalChatModelProfiles.Get(LocalLLMClient.ChatModelName).Summary
+            + "\n动作/摘要：" + LocalLLMClient.ModelName + "（独立轻量链路）",
             _modelSmallStyle);
     }
 
@@ -602,14 +603,15 @@ public partial class RightPanel
             bool success = false;
             string reply = "";
             float startedAt = Time.realtimeSinceStartup;
-            string prompt = LocalRoleplayPromptBuilder.Build(FuXuanCharacterCard.CorePrompt, "", test.Input);
+            LocalChatModelProfile profile = LocalChatModelProfiles.Get(model);
+            string prompt = LocalRoleplayPromptBuilder.Build(FuXuanCharacterCard.CorePrompt, "", test.Input, model);
             yield return LocalLLMClient.PromptAsync(
                 "你是符玄。请严格按照下面的本地角色卡和输出契约作答。\n\n" + prompt,
                 test.Input,
                 (ok, content) => { success = ok; reply = content ?? ""; },
-                temperature: 0.64f,
-                maxTokens: 640,
-                timeout: 75,
+                temperature: profile.Temperature,
+                maxTokens: profile.MaxTokens,
+                timeout: profile.TimeoutSeconds,
                 modelOverride: model);
 
             if (!success || string.IsNullOrWhiteSpace(reply))
@@ -660,7 +662,7 @@ public partial class RightPanel
     {
         GUI.Label(new Rect(x, y, w, 34f), "生成质量对比", _modelSectionStyle);
         GUI.Label(new Rect(x, y + 34f, w, 38f),
-            "以下是隔离测试得到的真实回复，不会写入生产忆境。",
+            "当前模型的实时样例或已验证的隔离基准，不会写入生产忆境。",
             _modelSmallStyle);
 
         string selectedModel = ModelSettingsProfiles[_selectedChatModelIndex].Model;

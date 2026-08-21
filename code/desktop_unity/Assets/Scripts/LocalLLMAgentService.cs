@@ -189,18 +189,19 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
     /// <param name="onResult">回调 (success, replyText)</param>
     public void GenerateFallbackReply(string characterDesc, string recentHistory, string userMessage, Action<bool, string> onResult)
     {
-        string prompt = LocalRoleplayPromptBuilder.Build(characterDesc, recentHistory, userMessage);
+        LocalChatModelProfile profile = LocalChatModelProfiles.Get(LocalLLMClient.ChatModelName);
+        string prompt = LocalRoleplayPromptBuilder.Build(characterDesc, recentHistory, userMessage, profile.Model);
 
-        // 聊天质量优先：聊天单独使用 qwen3:8b，允许更长的成段回复；动作/摘要仍走轻量模型。
-        float temperature = LocalRoleplayPromptBuilder.Variant == LocalRoleplayPromptBuilder.BaselineVariant ? 0.76f : 0.64f;
-        int maxTokens = LocalRoleplayPromptBuilder.Variant == LocalRoleplayPromptBuilder.CardVariant ? 640 : 576;
+        // 不同聊天模型使用各自的质量预算；动作/摘要仍走轻量模型。
+        float temperature = profile.Temperature;
+        int maxTokens = profile.MaxTokens;
         EnqueueTask(() => LocalLLMClient.PromptAsync(
             "你是符玄。请严格按照下面的本地角色卡和输出契约作答。\n\n" + prompt,
             userMessage,
             onResult,
             temperature: temperature,
             maxTokens: maxTokens,
-            timeout: 75,
+            timeout: profile.TimeoutSeconds,
             modelOverride: LocalLLMClient.ChatModelName), LocalLLMClient.ChatModelName);
     }
 
