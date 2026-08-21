@@ -284,7 +284,7 @@ flowchart TB
 | `ServerPollService` | localhost:3000；Bearer token（Inspector→`DESKTOP_TOKEN`→fallback）；考试提醒：前 3 天 19:00 + 考前 2h |
 | `ActivityTracker` | 2s 轮询；8 类关键词匹配（coding/gaming/studying/browsing/entertainment/communication/idle/other）；30 天留存 `activity_log.json` |
 | `TimeWeatherController` | **默认天气源 wttr.in（cityCode="Nanjing"）**，QWeather 可选；DeepSeek 生成 6 行天气文案；天气→表情联动在 `Live2DRenderer.Update()` 消费 |
-| `PetMemory` | 存储 3 层（entries+coreFacts+conversationSummary），但 `GetFormattedMemories()` **输出 4 层**（核心事实→【近日印象】→Top5重要→最近3条） |
+| `PetMemory` | 存储 `entries+coreFacts+conversationSummary`；entries 按 durable/episodic/tool/reflection 四层配额治理，当前问题必须命中相关词元后最多注入 3 条，忆境段上限 1400 字符；核心事实最多注入 3 条 |
 | `KnowledgeBaseManager` | 真实 RAG：Ollama `/api/embed` + nomic-embed-text + 余弦 TopK；存 `knowledge_base.json` |
 | `VisualHeartbeat` | GDI `StretchBlt` 8×6 网格 |
 | `AutoChat` | 监听 `DragHandler.OnPetClicked/OnDragEnded` → `*戳额头*`；混淆关键词 → `ForceAction("confuse")` |

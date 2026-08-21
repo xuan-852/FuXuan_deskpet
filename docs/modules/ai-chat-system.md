@@ -48,7 +48,7 @@
 ### 2.3 系统 Prompt 注入链（BuildSystemPrompt 真实顺序）
 
 1. 基础人格模板（`Resources/SystemPrompt.txt`，兜底"你是符玄…"）
-2. `PetMemory.GetFormattedMemories()` 长期记忆
+2. `PetMemory.GetFormattedMemories(currentUserQuery)` 长期记忆（相关命中最多 3 条，忆境段最多 1400 字符；核心事实最多 3 条）
 3. `PersonalityManager.FormatForPrompt()` 人格特质与关系
 4. `PreferencesManager.FormatForPrompt()` 主人偏好【本座谨记】（P4.2）
 5. `TaskTrajectoryManager.FormatForPrompt()` 任务轨迹【太卜手札】（P5.2，空库返回空串）
@@ -82,7 +82,7 @@
 | 意图/情绪分类 | `ClassifyIntent` | 异步非阻塞，写 `_lastIntent` 供工具过滤 |
 | 兜底回复 | `GenerateFallbackReply` | API 挂时的兜底 |
 | 对话摘要 | `SummarizeConversation` | T5 旧史压缩【旧事纪要】 |
-| 记忆提取 | `ExtractMemory` | 记忆提炼 |
+| 记忆提取 | `ExtractMemory` | 仅对明确长期信号做结构化筛选；importance/confidence/type/原话交叉闸门 |
 
 模型路由：`LocalLLMClient.ModelName` 默认用于动作、意图分类、摘要和记忆提取（`qwen2.5:3b`）；`LocalLLMClient.ChatModelName` 只用于聊天回退（`qwen3:8b`）。这样把质量模型的耗时限制在用户真正等待的聊天请求中，不拖慢动作循环。`FU_XUAN_LOCAL_CHAT_MODEL` 可单独覆盖聊天模型，`FU_XUAN_LOCAL_MODEL` 可同时覆盖两类模型。
 

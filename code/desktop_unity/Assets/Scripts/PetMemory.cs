@@ -5,12 +5,12 @@ using System.Linq;
 using UnityEngine;
 
 /// <summary>
-/// 符玄「忆境」— 分层长期记忆系统 + 反思反射 (Phase 2)
+/// 符玄「忆境」— 分层长期记忆系统 + 反思反射 (Phase 3)
 /// 
 /// 改进对比旧版:
-///   ✅ 分层注入: 核心事实始终保留 + Top-N 重要记忆 + 近期琐事
-///   ✅ 重要性评分: 每条记忆 1-10 分，自动根据话题/内容计算
-///   ✅ 重要性裁剪: 超出上限时丢弃最不重要的，而非最早加入的
+///   ✅ 写入闸门: 候选、稳定性、来源、置信度分开判断
+///   ✅ 分层容量: 稳定事实、短期事件、工具轨迹、反思各有配额
+///   ✅ 查询注入: 只注入与当前问题有明确关系的少量记忆
 ///   ✅ 对话记录: 不只记工具调用，也记日常对话内容
 ///   ✅ 对话摘要: 持续更新的近日印象
 ///   ✅ 话题冷却: 每个话题独立冷却，冷却中跳过
@@ -19,17 +19,29 @@ using UnityEngine;
 public class PetMemory : MonoBehaviour
 {
     [Header("记忆配置")]
-    [Tooltip("最多保留多少条普通记忆")]
+    [Tooltip("所有长期记忆的硬上限；各层还会有独立配额")]
     public int maxMemories = 30;
+
+    [Tooltip("稳定事实/偏好层上限")]
+    public int maxDurableMemories = 12;
+
+    [Tooltip("短期事件层上限")]
+    public int maxEpisodicMemories = 8;
+
+    [Tooltip("工具轨迹层上限")]
+    public int maxToolMemories = 4;
+
+    [Tooltip("反思洞察层上限")]
+    public int maxReflectionMemories = 6;
+
+    [Tooltip("核心事实上限；核心事实不再无限常驻")]
+    public int maxCoreFacts = 12;
 
     [Tooltip("同一话题冷却（秒），防止短时间内反复记录")]
     public float memoryCooldown = 120f;
 
-    [Tooltip("注入 prompt 时保留的高重要性记忆条数")]
-    public int topImportantCount = 5;
-
-    [Tooltip("注入 prompt 时保留的最近记忆条数")]
-    public int topRecentCount = 3;
+    [Tooltip("一次对话最多注入的相关长期记忆条数")]
+    public int injectionCount = 3;
 
     [Header("反思反射")]
     [Tooltip("重要性积分累计达到此值时触发反思")]
@@ -65,6 +77,12 @@ public class PetMemory : MonoBehaviour
         public int accessCount = 0;
         /// <summary>可选过期时间；空值表示不过期。</summary>
         public string expiresAt = "";
+        /// <summary>存储层级：durable / episodic / tool / reflection。</summary>
+        public string tier = "episodic";
+        /// <summary>被不同证据确认的次数；用于容量淘汰。</summary>
+        public int evidenceCount = 1;
+        /// <summary>最近一次被新证据确认的时间。</summary>
+        public string lastConfirmedAt = "";
     }
 
     [System.Serializable]
@@ -75,8 +93,13 @@ public class PetMemory : MonoBehaviour
         public List<string> coreFacts = new List<string>();
         /// <summary>近日对话摘要（始终注入）</summary>
         public string conversationSummary = "";
+        /// <summary>近日摘要的时间；旧数据为空时按普通摘要处理。</summary>
+        public string conversationSummaryAt = "";
         /// <summary>上次反思时已处理的记忆索引</summary>
         public int lastReflectionIndex = 0;
+        /// <summary>新版反思游标：避免容量淘汰后索引漂移。</summary>
+        public string lastReflectionAt = "";
+        public string lastReflectionId = "";
     }
 
     private MemoryData _data = new MemoryData();
@@ -109,11 +132,32 @@ public class PetMemory : MonoBehaviour
     private void RebuildReflectionAccum()
     {
         _reflectionAccum = 0;
-        for (int i = _data.lastReflectionIndex; i < _data.entries.Count; i++)
+        IEnumerable<MemoryEntry> pending = GetPendingReflectionEntries();
+        foreach (MemoryEntry entry in pending)
         {
-            if (_data.entries[i].category != "reflection")
-                _reflectionAccum += _data.entries[i].importance;
+            if (entry.category != "reflection")
+                _reflectionAccum += entry.importance;
         }
+    }
+
+    private IEnumerable<MemoryEntry> GetPendingReflectionEntries()
+    {
+        if (!string.IsNullOrEmpty(_data.lastReflectionId))
+        {
+            int markerIndex = _data.entries.FindIndex(e => e.id == _data.lastReflectionId);
+            if (markerIndex >= 0)
+                return _data.entries.Skip(markerIndex + 1);
+        }
+
+        if (MemoryGovernance.TryParseTimestamp(_data.lastReflectionAt, out DateTime markerTime))
+        {
+            return _data.entries.Where(e =>
+                MemoryGovernance.TryParseTimestamp(e.timestamp, out DateTime entryTime)
+                && entryTime >= markerTime);
+        }
+
+        int start = Mathf.Clamp(_data.lastReflectionIndex, 0, _data.entries.Count);
+        return _data.entries.Skip(start);
     }
 
     // ==================================================================
@@ -127,7 +171,8 @@ public class PetMemory : MonoBehaviour
     public void AddMemory(string summary, string topic = "", string category = "conversation")
     {
         int importance = CalculateImportance(summary, topic, category);
-        AddMemoryWithMetadata(summary, topic, category, importance, "system", MemoryGovernance.DefaultConfidence);
+        string source = string.Equals(category, "tool", StringComparison.OrdinalIgnoreCase) ? "tool" : "system";
+        AddMemoryWithMetadata(summary, topic, category, importance, source, MemoryGovernance.DefaultConfidence);
     }
 
     /// <summary>添加记忆（指定重要性）</summary>
@@ -149,9 +194,9 @@ public class PetMemory : MonoBehaviour
         float confidence,
         int expiresAfterDays = 0)
     {
-        if (!MemoryGovernance.IsValidSummary(summary))
+        if (!MemoryGovernance.ShouldPersist(summary, category, source, importance, confidence, out string rejectReason))
         {
-            Debug.Log("[PetMemory] ⏭️ 忽略过短或空白记忆");
+            Debug.Log($"[PetMemory] ⏭️ 写入闸门拒绝: {rejectReason}");
             return false;
         }
 
@@ -164,6 +209,7 @@ public class PetMemory : MonoBehaviour
         topic = topic ?? "";
         category = string.IsNullOrEmpty(category) ? "conversation" : category;
         source = string.IsNullOrEmpty(source) ? "system" : source;
+        string tier = MemoryGovernance.GetTier(category, source, importance, expiresAfterDays);
         DateTime now = DateTime.Now;
 
         // 先合并同类近似记忆，避免“主人喜欢音乐”被重复写入几十次。
@@ -185,6 +231,10 @@ public class PetMemory : MonoBehaviour
                 duplicate.confidence = confidence;
                 changed = true;
             }
+            duplicate.evidenceCount = Mathf.Max(1, duplicate.evidenceCount) + 1;
+            duplicate.lastConfirmedAt = MemoryGovernance.Timestamp(now);
+            duplicate.tier = tier;
+            changed = true;
             if (cleanSummary.Length > (duplicate.summary ?? "").Length && confidence >= duplicate.confidence)
             {
                 duplicate.summary = cleanSummary;
@@ -192,6 +242,7 @@ public class PetMemory : MonoBehaviour
             }
             duplicate.lastAccessAt = MemoryGovernance.Timestamp(now);
             duplicate.accessCount++;
+            TrimCapacity();
             if (changed) Save();
             return false;
         }
@@ -215,17 +266,16 @@ public class PetMemory : MonoBehaviour
             confidence = confidence,
             lastAccessAt = MemoryGovernance.Timestamp(now),
             accessCount = 0,
+            tier = tier,
+            evidenceCount = 1,
+            lastConfirmedAt = MemoryGovernance.Timestamp(now),
             expiresAt = expiresAfterDays > 0
                 ? MemoryGovernance.Timestamp(now.AddDays(expiresAfterDays))
                 : ""
         });
 
-        // 超出上限时，丢弃重要性最低的（而非最早的）
-        while (_data.entries.Count > maxMemories)
-        {
-            var lowest = _data.entries.OrderBy(e => e.importance).ThenBy(e => e.timestamp).First();
-            _data.entries.Remove(lowest);
-        }
+        // 先清理过期项，再按层级配额和保留分淘汰。
+        TrimCapacity();
 
         // 更新冷却
         if (!string.IsNullOrEmpty(topic))
@@ -266,12 +316,56 @@ public class PetMemory : MonoBehaviour
         return 3; // 一般闲聊
     }
 
+    /// <summary>按层级配额和总容量淘汰最弱条目。</summary>
+    private void TrimCapacity()
+    {
+        DateTime now = DateTime.Now;
+        _data.entries.RemoveAll(e => MemoryGovernance.IsExpired(e, now));
+
+        TrimTier(MemoryGovernance.DurableTier, maxDurableMemories, now);
+        TrimTier(MemoryGovernance.EpisodicTier, maxEpisodicMemories, now);
+        TrimTier(MemoryGovernance.ToolTier, maxToolMemories, now);
+        TrimTier(MemoryGovernance.ReflectionTier, maxReflectionMemories, now);
+
+        while (_data.entries.Count > Math.Max(1, maxMemories))
+        {
+            MemoryEntry victim = _data.entries
+                .OrderBy(e => MemoryGovernance.RetentionScore(e, now))
+                .ThenBy(e => e.timestamp)
+                .FirstOrDefault();
+            if (victim == null) break;
+            _data.entries.Remove(victim);
+        }
+    }
+
+    private void TrimTier(string tier, int limit, DateTime now)
+    {
+        if (limit < 0) limit = 0;
+        var tierEntries = _data.entries.Where(e => string.Equals(e.tier, tier, StringComparison.OrdinalIgnoreCase)).ToList();
+        while (tierEntries.Count > limit)
+        {
+            MemoryEntry victim = tierEntries
+                .OrderBy(e => MemoryGovernance.RetentionScore(e, now))
+                .ThenBy(e => e.timestamp)
+                .First();
+            _data.entries.Remove(victim);
+            tierEntries.Remove(victim);
+        }
+    }
+
     /// <summary>添加核心事实（始终注入，不会被裁剪）</summary>
     public void AddCoreFact(string fact)
     {
-        if (!_data.coreFacts.Contains(fact))
+        if (!MemoryGovernance.IsValidSummary(fact)) return;
+        fact = fact.Trim();
+        if (fact.Length > 120) fact = fact.Substring(0, 120) + "…";
+        bool duplicate = _data.coreFacts.Any(existing =>
+            MemoryGovernance.IsNearDuplicate(existing, fact));
+        if (!duplicate)
         {
             _data.coreFacts.Add(fact);
+            while (_data.coreFacts.Count > Math.Max(1, maxCoreFacts))
+                _data.coreFacts.RemoveAt(0);
             Save();
         }
     }
@@ -286,7 +380,11 @@ public class PetMemory : MonoBehaviour
     /// <summary>更新近日对话摘要</summary>
     public void UpdateConversationSummary(string summary)
     {
+        if (string.IsNullOrWhiteSpace(summary)) return;
+        summary = summary.Trim();
+        if (summary.Length > 180) summary = summary.Substring(0, 180) + "…";
         _data.conversationSummary = summary;
+        _data.conversationSummaryAt = MemoryGovernance.Timestamp(DateTime.Now);
         Save();
     }
 
@@ -306,13 +404,12 @@ public class PetMemory : MonoBehaviour
         if (_reflectionAccum < reflectionThreshold) return null;
         if (Time.time - _lastReflectionTime < reflectionCooldown) return null;
 
-        // 取出从上次反思到现在的非 reflection 记忆
-        var candidates = new List<MemoryEntry>();
-        for (int i = _data.lastReflectionIndex; i < _data.entries.Count; i++)
-        {
-            if (_data.entries[i].category != "reflection")
-                candidates.Add(_data.entries[i]);
-        }
+        // 取出从上次反思到现在的非 reflection 记忆；游标不会因容量淘汰而失真。
+        var candidates = GetPendingReflectionEntries()
+            .Where(e => e.category != "reflection" && !MemoryGovernance.IsExpired(e, DateTime.Now))
+            .OrderByDescending(e => MemoryGovernance.RetentionScore(e, DateTime.Now))
+            .Take(6)
+            .ToList();
 
         if (candidates.Count < 2) return null; // 太少，没意义
         return candidates;
@@ -326,22 +423,20 @@ public class PetMemory : MonoBehaviour
     {
         if (!MemoryGovernance.IsValidSummary(reflectionText)) return;
 
-        // 写入作为高重要性 reflection 记忆
-        _data.entries.Add(new MemoryEntry
-        {
-            id = Guid.NewGuid().ToString("N"),
-            summary = reflectionText,
-            timestamp = MemoryGovernance.Timestamp(DateTime.Now),
-            topic = "反思",
-            importance = 8,
-            category = "reflection",
-            source = "reflection",
-            confidence = 0.75f,
-            lastAccessAt = MemoryGovernance.Timestamp(DateTime.Now)
-        });
+        // 反思也必须走统一写入/容量治理，避免洞察无限挤占稳定事实。
+        bool added = AddMemoryWithMetadata(
+            reflectionText, "反思", "reflection", 8, "reflection", 0.75f, 30);
+        if (!added) return;
 
-        // 更新索引和积分
-        _data.lastReflectionIndex = _data.entries.Count - 1;
+        // 更新游标和积分
+        DateTime reflectionAt = DateTime.Now;
+        _data.lastReflectionAt = MemoryGovernance.Timestamp(reflectionAt);
+        MemoryEntry reflectionEntry = _data.entries
+            .Where(e => e.category == "reflection" && e.summary == reflectionText)
+            .OrderByDescending(e => e.timestamp)
+            .FirstOrDefault();
+        _data.lastReflectionId = reflectionEntry?.id ?? "";
+        _data.lastReflectionIndex = _data.entries.Count;
         _reflectionAccum = 0;
         _lastReflectionTime = Time.time;
 
@@ -357,10 +452,12 @@ public class PetMemory : MonoBehaviour
         sb.AppendLine("以下是你的忆境中最近积累的一些观察和记忆碎片：");
         sb.AppendLine();
 
-        for (int i = 0; i < candidates.Count; i++)
+        foreach (MemoryEntry e in candidates
+            .Where(e => e != null && !MemoryGovernance.IsExpired(e, DateTime.Now))
+            .OrderByDescending(e => MemoryGovernance.RetentionScore(e, DateTime.Now))
+            .Take(6))
         {
-            var e = candidates[i];
-            sb.AppendLine($"{i + 1}. ({e.timestamp}) [{e.topic}] {e.summary}");
+            sb.AppendLine($"- [{e.topic}] {e.summary}");
         }
 
         sb.AppendLine();
@@ -378,11 +475,9 @@ public class PetMemory : MonoBehaviour
     // ==================================================================
 
     /// <summary>
-    /// 获取格式化的记忆文本（分层注入）
-    /// 第一层: 核心事实（始终保留）
-    /// 第二层: 近日对话摘要
-    /// 第三层: Top-N 高重要性记忆
-    /// 第四层: 最近几条记忆（补充）
+    /// 获取格式化的记忆文本。
+    /// 非空 query 只返回直接相关的少量线索；空 query 仅供闲聊取少量稳定记忆。
+    /// 记忆正文不再携带时间戳/重要度等管理元数据，减少 token 和模型误读。
     /// </summary>
     public string GetFormattedMemories()
     {
@@ -390,7 +485,7 @@ public class PetMemory : MonoBehaviour
     }
 
     /// <summary>
-    /// 按当前问题选择记忆。空 query 保留旧版全局摘要行为，非空 query 启用相关性排序。
+    /// 按当前问题选择记忆。普通记忆没有关键词命中时不再因为“重要度高”而强行注入。
     /// </summary>
     public string GetFormattedMemories(string query)
     {
@@ -398,65 +493,50 @@ public class PetMemory : MonoBehaviour
             && string.IsNullOrEmpty(_data.conversationSummary))
             return "";
 
+        DateTime now = DateTime.Now;
+        bool hasQuery = !string.IsNullOrWhiteSpace(query);
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("\n【本座的忆境残象】");
+        sb.AppendLine("\n【本座的忆境线索】");
+        sb.AppendLine("（仅作相关背景；若与主人当前话题无关，不得主动提及。）");
 
-        // ——— 第一层：核心事实 ———
-        if (_data.coreFacts.Count > 0)
+        int factCount = 0;
+        foreach (string fact in _data.coreFacts)
         {
-            sb.AppendLine("┌─ 本座确定知晓之事 ─┐");
-            foreach (var fact in _data.coreFacts)
-                sb.AppendLine($"  ✦ {fact}");
-            sb.AppendLine("└────────────────────┘");
+            // 核心事实是极小的身份/称呼层，最多 3 条常驻；普通事件仍必须相关。
+            sb.AppendLine($"- {fact}");
+            if (++factCount >= 3) break;
         }
 
-        // ——— 第二层：对话摘要 ———
+        bool summaryIncluded = false;
         if (!string.IsNullOrEmpty(_data.conversationSummary))
         {
-            sb.AppendLine("【近日印象】" + _data.conversationSummary);
-        }
-
-        List<MemoryEntry> candidates = GetRelevantMemories(query, Math.Max(8, topImportantCount + topRecentCount));
-
-        // ——— 第三层：高重要性记忆（Top-N）———
-        var important = candidates
-            .OrderByDescending(e => e.importance * Math.Max(e.confidence, MemoryGovernance.DefaultConfidence))
-            .ThenByDescending(e => e.timestamp)
-            .Take(topImportantCount)
-            .ToList();
-
-        if (important.Count > 0)
-        {
-            sb.AppendLine("【印象深刻之事】");
-            for (int i = 0; i < important.Count; i++)
+            float summaryOverlap = hasQuery
+                ? MemoryGovernance.TermOverlap(query, _data.conversationSummary)
+                : 1f;
+            if (!hasQuery || summaryOverlap >= 0.20f)
             {
-                var e = important[i];
-                string imp = new string('✦', Mathf.Clamp(e.importance / 2, 1, 5));
-                sb.AppendLine($"  ({e.timestamp}) [{imp}] {e.summary}");
+                sb.AppendLine($"- 近日印象：{_data.conversationSummary}");
+                summaryIncluded = true;
             }
         }
 
-        // ——— 第四层：最近记忆（去重后补充）———
-        var recent = candidates
-            .OrderByDescending(e => MemoryGovernance.Relevance(e, query, DateTime.Now))
-            .Where(r => !important.Contains(r))
-            .Take(topRecentCount)
-            .ToList();
+        List<MemoryEntry> candidates = GetRelevantMemories(query, Math.Max(1, injectionCount));
+        foreach (MemoryEntry entry in candidates)
+            sb.AppendLine($"- {entry.summary}");
 
-        if (recent.Count > 0)
-        {
-            sb.AppendLine("【近日琐事】");
-            foreach (var e in recent)
-                sb.AppendLine($"  ({e.timestamp}) {e.summary}");
-        }
+        if (factCount == 0 && !summaryIncluded && candidates.Count == 0)
+            return "";
 
-        sb.AppendLine("（忆境残象或有模糊，若主人提及相关之事，本座自可据此推演。）");
+        // 固定的小预算是第二道保险，ChatManager 还会按全局段落预算再裁一次。
+        const int maxInjectionChars = 1400;
+        if (sb.Length > maxInjectionChars)
+            return sb.ToString(0, maxInjectionChars) + "\n…【忆境线索已收束】…";
         return sb.ToString();
     }
 
     /// <summary>
     /// 返回与当前问题最相关的记忆，并在内存中记录访问，不在每次请求时落盘。
-    /// 重要度很高的记忆即使没有关键词命中也保留少量，避免核心近况完全消失。
+    /// 非空 query 必须有明确词元重叠；空 query 才允许返回少量稳定层记忆。
     /// </summary>
     public List<MemoryEntry> GetRelevantMemories(string query, int maxCount = 8)
     {
@@ -474,7 +554,10 @@ public class PetMemory : MonoBehaviour
                     ? MemoryGovernance.TermOverlap(query, (e.topic ?? "") + " " + (e.summary ?? ""))
                     : 0f
             })
-            .Where(x => !hasQuery || x.Overlap > 0f || x.Entry.importance >= 8)
+            .Where(x => !hasQuery
+                ? x.Entry.tier == MemoryGovernance.DurableTier
+                    || x.Entry.tier == MemoryGovernance.ReflectionTier
+                : x.Overlap >= 0.20f)
             .OrderByDescending(x => x.Score)
             .ThenByDescending(x => x.Entry.importance)
             .ThenByDescending(x => x.Entry.timestamp)
@@ -536,7 +619,10 @@ public class PetMemory : MonoBehaviour
         _data.entries.Clear();
         _data.coreFacts.Clear();
         _data.conversationSummary = "";
+        _data.conversationSummaryAt = "";
         _data.lastReflectionIndex = 0;
+        _data.lastReflectionAt = "";
+        _data.lastReflectionId = "";
         _reflectionAccum = 0;
         _topicCooldowns.Clear();
         Save();
@@ -582,6 +668,8 @@ public class PetMemory : MonoBehaviour
                 if (_data.entries == null) _data.entries = new List<MemoryEntry>();
                 if (_data.coreFacts == null) _data.coreFacts = new List<string>();
                 bool migrated = false;
+                int removedLegacyLowValue = 0;
+                var legacyLowValueEntries = new List<MemoryEntry>();
                 // 兼容旧格式：旧记录没有 importance，默认 5
                 foreach (var e in _data.entries)
                 {
@@ -607,7 +695,40 @@ public class PetMemory : MonoBehaviour
                         e.lastAccessAt = e.timestamp;
                         migrated = true;
                     }
+                    if (string.IsNullOrEmpty(e.tier))
+                    {
+                        e.tier = MemoryGovernance.GetTier(e.category, e.source, e.importance, 0);
+                        migrated = true;
+                    }
+                    if (e.evidenceCount <= 0)
+                    {
+                        e.evidenceCount = 1;
+                        migrated = true;
+                    }
+                    if (string.IsNullOrEmpty(e.lastConfirmedAt))
+                    {
+                        e.lastConfirmedAt = e.timestamp;
+                        migrated = true;
+                    }
+
+                    // 旧版随机闲聊/低分系统对话不再占用新架构的容量。
+                    if (e.category == "conversation" && e.source == "system" && e.importance <= 3)
+                    {
+                        legacyLowValueEntries.Add(e);
+                        removedLegacyLowValue++;
+                    }
                 }
+                foreach (MemoryEntry legacyEntry in legacyLowValueEntries)
+                    _data.entries.Remove(legacyEntry);
+                if (_data.coreFacts.Count > Math.Max(1, maxCoreFacts))
+                {
+                    _data.coreFacts = _data.coreFacts
+                        .Skip(Math.Max(0, _data.coreFacts.Count - Math.Max(1, maxCoreFacts)))
+                        .ToList();
+                    migrated = true;
+                }
+                TrimCapacity();
+                if (removedLegacyLowValue > 0) migrated = true;
                 if (migrated) Save();
                 Debug.Log($"[PetMemory] ✅ 忆境已载入，共 {_data.entries.Count} 条记忆");
             }

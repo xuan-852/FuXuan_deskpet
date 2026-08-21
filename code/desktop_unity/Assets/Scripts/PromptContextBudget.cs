@@ -8,7 +8,8 @@
 /// </summary>
 public static class PromptContextBudget
 {
-    public const int MemoryChars = 3500;
+    // 忆境已经在 PetMemory 内部按相关性收束，这里只留第二道总预算保险。
+    public const int MemoryChars = 1400;
     public const int PersonalityChars = 1400;
     public const int PreferenceChars = 1600;
     public const int KnowledgeChars = 5000;

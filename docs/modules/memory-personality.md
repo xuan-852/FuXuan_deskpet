@@ -1,7 +1,7 @@
 # 记忆与人格系统 — PetMemory、人格演化与知识库
 
 > **文档作用**: 本模块文档描述桌宠「记忆与人格」子系统的**代码真相**——PetMemory 三层记忆、PersonalityManager 五维人格演化、KnowledgeBaseManager 本地 RAG 知识库，以及数据持久化文件地图。改记忆读写/人格演化/知识库相关代码前必读。
-> **基本架构**: `PetMemory`（entries + coreFacts + conversationSummary 三层，输出 4 层格式化）；`PersonalityManager`（五维人格 × 三维关系 × 情绪联动，`pet_personality.json`）；`KnowledgeBaseManager`（Ollama nomic-embed-text 嵌入 + 余弦 TopK 检索，`knowledge_base.json`）；反思链路（CheckReflection → DoReflection → CommitReflection）。数据根目录硬编码 `D:\DesktopPetData\`（`DataPathConfig.cs`）。
+> **基本架构**: `PetMemory`（entries + coreFacts + conversationSummary 三层存储；entries 按四层配额治理，按当前问题相关性收束注入）；`PersonalityManager`（五维人格 × 三维关系 × 情绪联动，`pet_personality.json`）；`KnowledgeBaseManager`（Ollama nomic-embed-text 嵌入 + 余弦 TopK 检索，`knowledge_base.json`）；反思链路（CheckReflection → DoReflection → CommitReflection）。数据根目录硬编码 `D:\DesktopPetData\`（`DataPathConfig.cs`）。
 > **开发历史迭代**: N39 修复两大缺口——反思链路实际接线（死回调 OnReflectRequest 删除）、知识库上下文实际注入（GetFormattedContext 返回 LastFormattedContext 缓存）；测试模式 IsTestMode 防污染（.test_mode 标记文件）；2026-08-12 P4 新增 PreferencesManager 偏好结构化存储（`pet_preferences.json` + set/query/remove 三工具）。
 > **编写注意事项**: ①测试必须开 `.test_mode`（防污染 pet_memory.json 忆境 + pet_personality.json 人格计数），测后清理用 `scripts/openclaw/clean_test_pollution.cjs`；②人格触发词注意区分正负触发（"我的"/"我在"等 importantMarkers）；③`DriftTowardNeutral()` 存在但 ActionAgent 内无调用者（潜在死代码）；④知识库检索是协程异步填充缓存，同步 API 返回最近结果（可能有 1 帧延迟）。
 
@@ -93,9 +93,9 @@ SendRequestCoroutine → CheckReflection (L518)
 - **工具**：`set_preference`（记/改）/ `query_preferences`（查）/ `remove_preference`（删），均为同步工具，自动注册（ToolRegistry 反射）
 - **测试注意**：EditMode 下 `AddComponent` 不触发 Awake，测试需手动反射注册单例 + 调用 Load()；测试键用 `test_` 前缀并在 TearDown 清理
 
-### 2.8 记忆治理层（2026-08-21，第一阶段）
+### 2.8 记忆治理层（2026-08-21，Phase 3）
 
-`MemoryGovernance` 是不访问 Unity 生命周期和文件的纯逻辑层，`PetMemory` 负责持久化和生命周期。第一阶段保持旧 `pet_memory.json` 字段兼容，并为新旧记忆补齐以下元数据：
+`MemoryGovernance` 是不访问 Unity 生命周期和文件的纯逻辑层，`PetMemory` 负责持久化、分层容量和生命周期。新版保持旧 `pet_memory.json` 字段兼容，并为新旧记忆补齐以下元数据：
 
 | 字段 | 作用 |
 |---|---|
@@ -104,19 +104,24 @@ SendRequestCoroutine → CheckReflection (L518)
 | `confidence` | 记忆可信度 0-1 |
 | `lastAccessAt` / `accessCount` | 记录被检索情况，暂不因每次访问落盘 |
 | `expiresAt` | 可选过期时间 |
+| `tier` | `durable` / `episodic` / `tool` / `reflection` |
+| `evidenceCount` / `lastConfirmedAt` | 被新证据确认的次数和时间，用于淘汰排序 |
 
 当前治理流程为：
 
 ```text
-AddMemory → 长度过滤 → 规范化 → 同类近似去重/合并 → 重要度与可信度更新 → 持久化
-当前用户问题 → 关键词/中文词元重叠 + 重要度 + 可信度 + 时间衰减 → 选择有限记忆 → PromptContextBudget
+候选消息 → 明确记忆信号预筛 → 本地结构化提取 → 来源/置信度/稳定性闸门
+         → 近似去重并累加证据 → 分层容量淘汰 → 持久化
+当前用户问题 → 中文词元相关性（必须命中） → 最多 3 条 → 1400 字符双预算 → PromptContextBudget
 ```
 
 具体行为：
 
-- 空白或过短内容不写入；摘要最长 240 字；
-- 同类、同话题的近似记忆合并，不重复占用条目；新证据可提升已有记忆的可信度和重要度；
-- `ChatManager.BuildSystemPrompt()` 使用当前用户问题检索记忆，不再每轮固定注入同一批普通 Top-N；核心事实仍保留；
+- 普通寒暄、感谢、确认、一次性天气/搜索/截图/查询，以及随机闲聊不写入；摘要最长 180 字；
+- 只有“我喜欢/我叫/称呼我/请记住”等明确长期信号才启动本地提取；本地结果必须 `importance >= 7`、`confidence >= 0.72`、类型不是 episodic，并与用户原话有词元交集；
+- 分层配额默认是：稳定事实 12、短期事件 8、工具轨迹 4、反思洞察 6，总上限 30；超额按重要度、可信度、证据次数、访问/新鲜度淘汰；核心事实另限 12 条；
+- 同类、同话题的近似记忆合并并累加 `evidenceCount`；反思使用 ID+时间双游标，不因容量淘汰造成重复反思或漏反思；
+- `ChatManager.BuildSystemPrompt()` 使用当前用户问题检索记忆；普通记忆无关键词命中时不注入，核心事实最多 3 条，整体忆境段最多 1400 字符；不再固定注入 Top-N + 最近 N；
 - 过期记忆不参与检索；访问次数只在内存中更新，避免每轮对话产生磁盘写入；
 - `.test_mode` 下允许内存态测试，但 `PetMemory.Save()` 直接阻断，防止污染生产记忆。
 
@@ -139,12 +144,13 @@ AddMemory → 长度过滤 → 规范化 → 同类近似去重/合并 → 重�
 | P5.2 | 2026-08-12 | 新增 TaskTrajectoryManager 任务执行轨迹库（`task_trajectories.json`，30 条上限淘汰最少引用/最旧，bigram Jaccard 相似检索，参考文本附加 referenceCount 计数）+ prompt 注入；P5TrajectoryTests 21 用例 |
 | P5.3 | 2026-08-12 | 新增 TaskTemplateManager 任务模板库（`task_templates.json`，30 条上限，5 预置模板）+ query/save/remove 三工具 + openclaw_task 模板参数 |
 | Memory Governance P1 | 2026-08-21 | 新增 `MemoryGovernance`；PetMemory 元数据、写入过滤、近似去重、相关性检索、时间衰减、测试模式落盘保护；ChatManager 按当前问题选择记忆 |
+| Memory Governance P2 | 2026-08-21 | 移除随机闲聊和低价值工具写入；加入明确信号/置信度/原话交叉验证、durable/episodic/tool/reflection 四层容量、1400 字符注入预算、反思 ID+时间游标 |
 | Memory UI P1 | 2026-08-21 | RightPanel 新增「忆境」页：核心事实/长期记忆只读浏览、过期清理、二次确认清空、`@@view:memory` 隔离测试入口 |
 
 ## 四、编写注意事项
 
 1. **测试必须开测试模式**：建空文件 `D:\DesktopPetData\.test_mode`（防污染 pet_memory/pet_personality），测后删 + `node scripts/openclaw/clean_test_pollution.cjs`（备份→删测试记忆→回退 totalInteractions→重算 familiarity）
-2. **人格触发词敏感**：importantMarkers 触发词（"我的""我在"等）会推高人格计数——测试消息会永久改变人格，务必测试模式隔离
+2. **人格触发词敏感**：测试消息仍可能推高 PersonalityManager 计数，务必使用测试模式隔离；记忆写入本身已不再使用宽泛的“我的/工作”关键词直接落盘
 3. **知识库异步缓存**：`GetFormattedContext()` 是同步 API 返回协程填充的缓存（可能有 1 帧延迟），不要改成同步阻塞检索
 4. **数据根目录硬编码**：所有持久化文件根在 `D:\DesktopPetData\`（`DataPathConfig.cs`），不要散落新路径；新增文件先查数据地图表
 5. **反思链路不要回退**：历史曾有死回调（OnReflectRequest 恒 null），现在已接线——改 ChatManager 时保持 SendRequestCoroutine → CheckReflection → DoReflection → CommitReflection 链路
@@ -157,4 +163,4 @@ AddMemory → 长度过滤 → 规范化 → 同类近似去重/合并 → 重�
 - `build.ps1`：完整构建成功，生成最新 `Build/DesktopPet.exe`；
 - `node scripts/test/runtime_smoke.cjs --verbose`：通过全部 UI/外置窗口链路，零 `NullReferenceException`，生产记忆 mtime 未变化；
 - `@@view:memory` 已纳入隔离运行时冒烟链路，实际打开/返回记忆页通过；
-- `MemoryGovernanceTests.cs` 已导入并参与 Editor 测试程序集编译；Tuanjie 本次仍未刷新 `test_results.xml`，因此不把旧的 114/114 计作本轮单元测试结果。
+- `MemoryGovernanceTests.cs` 已导入并参与 Editor 测试程序集编译；本轮 `build.ps1 -Quick` 与完整构建通过，Tuanjie 的命令行测试报告仍可能复用旧 `test_results.xml`，因此不把旧的 114/114 计作本轮新增用例结果；运行时隔离冒烟已通过且生产记忆零污染。

@@ -234,8 +234,11 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
     public struct MemoryExtractResult
     {
         public int importance;       // 1-10（0 表示不需要记）
+        public float confidence;     // 0-1，模型对“确实来自用户”的把握
         public string topic;         // 话题分类
-        public string summary;       // 记忆摘要（20字以内）
+        public string memoryType;    // durable / episodic / preference / constraint / none
+        public string summary;       // 记忆摘要（60字以内）
+        public int expiresAfterDays; // 0 表示稳定信息
         public bool shouldRemember;  // 是否需要记入忆境
     }
 
@@ -244,26 +247,33 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
     /// </summary>
     public void ExtractMemory(string userMessage, Action<MemoryExtractResult> onResult)
     {
-        string systemPrompt = @"判断以下用户输入是否值得记住。如果是重要信息，返回 JSON 格式：
+        string systemPrompt = @"你是桌宠的记忆筛选器，不是聊天助手。只从“用户原话”提取稳定、未来仍有用的信息。
+必须严格返回 JSON，不要解释：
+{""shouldRemember"":true/false,""importance"":0-10,""confidence"":0-1,""memoryType"":""durable/preference/constraint/episodic/none"",""topic"":""简短分类"",""summary"":""第三人称、60字以内"",""expiresAfterDays"":0-30}
 
-{""importance"": 1-10的数字, ""topic"": ""话题分类"", ""summary"": ""记忆摘要（20字以内）""}
+写入标准（必须同时满足）：
+1. 用户明确说出自己的事实、稳定偏好、称呼、禁忌、长期目标或明确要求本座记住；
+2. 未来对话能复用，而非今天发生的一次性事件；
+3. 摘要只能改写用户原话，不能推测、补全或把本座的话当成用户事实。
 
-重要性标准：
-1-3：日常闲聊，不值得记住
-4-6：一般信息，可记住
-7-8：重要个人信息
-9-10：极其重要的关键信息
-
-如果完全不需要记住（如问候、简单指令），返回：{""importance"": 0}
-
-话题分类：天气/学习/工作/兴趣/日常/情感/健康/日程/其他";
+问候、感谢、确认、瞬间情绪、天气/搜索/截图/查询结果、一次性安排、泛泛的“我今天很累”、普通指令，一律 shouldRemember=false、importance=0、memoryType=none。
+只有 importance>=7 且 confidence>=0.72 才允许 shouldRemember=true；稳定事实/偏好/约束 expiresAfterDays=0。";
 
         EnqueueTask(() => ExtractMemoryCoroutine(userMessage, systemPrompt, onResult));
     }
 
     private IEnumerator ExtractMemoryCoroutine(string userMsg, string systemPrompt, Action<MemoryExtractResult> onResult)
     {
-        MemoryExtractResult result = new MemoryExtractResult { shouldRemember = false };
+        MemoryExtractResult result = new MemoryExtractResult
+        {
+            shouldRemember = false,
+            importance = 0,
+            confidence = 0f,
+            memoryType = "none",
+            topic = "",
+            summary = "",
+            expiresAfterDays = 0
+        };
 
         yield return LocalLLMClient.PromptAsync(systemPrompt, userMsg, (ok, content) =>
         {
@@ -281,9 +291,20 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
                         if (obj["importance"] != null)
                             int.TryParse(obj["importance"].ToString(), out imp);
                         result.importance = Mathf.Clamp(imp, 0, 10);
+                        float confidence = 0f;
+                        if (obj["confidence"] != null)
+                            float.TryParse(obj["confidence"].ToString(), out confidence);
+                        result.confidence = Mathf.Clamp01(confidence);
                         result.topic = obj["topic"]?.ToString() ?? "日常";
+                        result.memoryType = obj["memoryType"]?.ToString() ?? "none";
                         result.summary = obj["summary"]?.ToString() ?? "";
-                        result.shouldRemember = imp >= 4; // 4+ 才记入忆境
+                        int days = 0;
+                        if (obj["expiresAfterDays"] != null)
+                            int.TryParse(obj["expiresAfterDays"].ToString(), out days);
+                        result.expiresAfterDays = Mathf.Clamp(days, 0, 30);
+                        result.shouldRemember = obj["shouldRemember"] != null
+                            ? obj["shouldRemember"].ToObject<bool>()
+                            : (imp >= 7 && result.confidence >= MemoryGovernance.DurableConfidenceThreshold);
                     }
                 }
                 catch { }

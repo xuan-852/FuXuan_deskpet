@@ -64,6 +64,16 @@ public class MemoryGovernanceTests
     }
 
     [Test]
+    public void 普通系统闲聊和低价值工具事件不写入()
+    {
+        Assert.IsFalse(_memory.AddMemoryWithMetadata(
+            "和主人聊到了：最近天气不错", "闲聊", "conversation", 3, "system", 0.65f));
+        Assert.IsFalse(_memory.AddMemoryWithMetadata(
+            "主人查询了天气", "天气", "tool", 4, "tool", 0.9f, 7));
+        Assert.AreEqual(0, _memory.MemoryCount);
+    }
+
+    [Test]
     public void 近似重复记忆合并而不是新增()
     {
         Assert.IsTrue(_memory.AddMemoryWithMetadata(
@@ -88,6 +98,41 @@ public class MemoryGovernanceTests
         Assert.IsTrue(result.Any(e => e.summary.Contains("考试")));
         Assert.IsFalse(result.Any(e => e.summary.Contains("古典音乐")),
             "无关记忆不应因为固定 Top-N 被带入当前问题");
+    }
+
+    [Test]
+    public void 无关高分记忆不会污染当前问题()
+    {
+        _memory.AddMemoryWithMetadata("主人喜欢古典音乐", "音乐", "conversation", 9, "user", 0.95f);
+        _memory.AddMemoryWithMetadata("主人正在准备考试", "考试", "conversation", 8, "user", 0.95f);
+
+        string formatted = _memory.GetFormattedMemories("考试安排");
+
+        Assert.IsTrue(formatted.Contains("考试"));
+        Assert.IsFalse(formatted.Contains("古典音乐"));
+    }
+
+    [Test]
+    public void 本地提取必须有明确证据和稳定类型()
+    {
+        Assert.IsFalse(MemoryGovernance.AcceptExtractedMemory(
+            "我今天吃了面", "主人今天吃了面", 8, 0.95f, "episodic"));
+        Assert.IsTrue(MemoryGovernance.AcceptExtractedMemory(
+            "我喜欢古典音乐", "主人喜欢古典音乐", 8, 0.95f, "preference"));
+    }
+
+    [Test]
+    public void 稳定层超额时按配额淘汰最弱条目()
+    {
+        _memory.maxDurableMemories = 1;
+        Assert.IsTrue(_memory.AddMemoryWithMetadata(
+            "主人偏好古典音乐", "音乐", "conversation", 7, "user", 0.80f));
+        Assert.IsTrue(_memory.AddMemoryWithMetadata(
+            "主人喜欢现代绘画", "绘画", "conversation", 9, "user", 0.98f));
+
+        Assert.AreEqual(1, _memory.GetAllMemories().Count);
+        Assert.IsTrue(_memory.GetAllMemories()[0].summary.Contains("现代绘画"));
+        Assert.AreEqual(MemoryGovernance.DurableTier, _memory.GetAllMemories()[0].tier);
     }
 
     [Test]

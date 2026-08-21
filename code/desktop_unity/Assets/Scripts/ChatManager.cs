@@ -1461,70 +1461,19 @@ public class ChatManager : MonoBehaviour
 
         switch (toolName)
         {
-            case "get_weather":
-                // 截取简短天气信息
-                topic = "天气";
-                if (result.Length > 80) summary = "主人查询了天气: " + result.Substring(0, 80) + "…";
-                else summary = "主人查询了天气: " + result;
-                break;
-
-            case "query_exams":
-                topic = "考试";
-                summary = "主人查询了考试安排";
-                break;
-
-            case "query_scores":
-                topic = "成绩";
-                summary = "主人查询了成绩";
-                break;
-
-            case "query_schedule":
-                topic = "课表";
-                summary = "主人查询了课表";
-                break;
-
-            case "search_files":
-                topic = "文件搜索";
-                // 提取搜索关键词
-                string keyword = ExtractSearchKeyword(args);
-                summary = $"主人搜了文件: 「{keyword}」";
-                break;
-
             case "set_reminder":
                 topic = "提醒";
                 summary = "主人设置了提醒";
                 break;
-
-            case "search":
-            case "open_url":
-                topic = "搜索";
-                string searchQ = ExtractSearchKeyword(args);
-                summary = $"主人查询了: 「{searchQ}」";
-                break;
-
-            case "take_screenshot":
-                topic = "截屏";
-                summary = "本座动用了法眼摄形之术，窥见了主人的屏幕";
-                break;
-
-            case "openclaw_search":
-                topic = "通神算术式";
-                {
-                    string q = ExtractSearchKeyword(args);
-                    summary = $"主人启动了太卜通神算术式，推演了: 「{q}」";
-                }
-                break;
-
             default:
-                // 其他工具只记录名称
-                if (result.Length > 60)
-                    summary = $"使用了 {toolName}";
+                // 天气、搜索、截图、课表查询等都是一次性事件，不进入长期忆境。
                 break;
         }
 
         if (!string.IsNullOrEmpty(summary) && !IsTestMode)
         {
-            PetMemory.Instance.AddMemory(summary, topic, "tool");
+            PetMemory.Instance.AddMemoryWithMetadata(
+                summary, topic, "tool", 7, "tool", 0.90f, 14);
         }
     }
 
@@ -1658,9 +1607,7 @@ public class ChatManager : MonoBehaviour
     // ==================================================================
 
     private int _conversationSinceSummary = 0;
-    private int _conversationSinceLocalExtract = 0;
     private const int SUMMARY_INTERVAL = 15; // 每 15 次对话更新摘要
-    private const int LOCAL_EXTRACT_INTERVAL = 5; // 每 5 次对话尝试本地模型提取记忆
 
     /// <summary>记录纯文字回复到长期记忆（按重要性过滤）</summary>
     private void RecordConversationMemory(string reply)
@@ -1681,25 +1628,39 @@ public class ChatManager : MonoBehaviour
             }
         }
 
-        // ——— 记录用户的重要话题 ———
-        if (!string.IsNullOrEmpty(lastUserMsg))
+        // ——— 只把“明确、稳定、可复用”的用户表达交给提取器 ———
+        // 闲聊不再随机落盘；宽泛关键词也不再直接等同于长期记忆。
+        if (!string.IsNullOrEmpty(lastUserMsg)
+            && MemoryGovernance.HasExplicitMemorySignal(lastUserMsg))
         {
-            string[] importantMarkers = { "我叫", "我是", "喜欢", "讨厌", "我的", "我在",
-                "工作", "考试", "学习", "毕业", "生日" };
-            if (importantMarkers.Any(m => lastUserMsg.Contains(m)))
+            if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
             {
-                string brief = lastUserMsg.Length > 40
-                    ? lastUserMsg.Substring(0, 40) + "…"
-                    : lastUserMsg;
-                PetMemory.Instance.AddMemory($"主人提及: 「{brief}」", "对话", "conversation");
+                LocalLLMAgentService.Instance.ExtractMemory(lastUserMsg, extract =>
+                {
+                    if (extract.shouldRemember && MemoryGovernance.AcceptExtractedMemory(
+                        lastUserMsg, extract.summary, extract.importance,
+                        extract.confidence, extract.memoryType))
+                    {
+                        PetMemory.Instance.AddMemoryWithMetadata(
+                            $"主人明确告知：{extract.summary}",
+                            extract.topic,
+                            "conversation",
+                            extract.importance,
+                            "local_model",
+                            extract.confidence,
+                            extract.expiresAfterDays);
+                        Debug.Log($"[ChatManager] 💾 已确认长期记忆: [{extract.topic}] {extract.summary}");
+                    }
+                    else if (string.IsNullOrWhiteSpace(extract.summary))
+                    {
+                        // 只有本地提取失败/无可解析结果才用原话兜底；模型明确判定“不值得记”时不写入。
+                        PersistExplicitMemoryFallback(lastUserMsg);
+                    }
+                });
             }
-            else if (UnityEngine.Random.value < 0.15f)
+            else
             {
-                // 15% 概率记录日常闲聊，丰富记忆
-                string brief = lastUserMsg.Length > 30
-                    ? lastUserMsg.Substring(0, 30) + "…"
-                    : lastUserMsg;
-                PetMemory.Instance.AddMemory($"和主人聊到了: 「{brief}」", "闲聊", "conversation");
+                PersistExplicitMemoryFallback(lastUserMsg);
             }
         }
 
@@ -1708,14 +1669,21 @@ public class ChatManager : MonoBehaviour
         {
             _conversationSinceSummary = 0;
 
+            var summaryMessages = _history
+                .Where(e => e.role == "user")
+                .Select(e => e.content ?? "")
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .ToList();
+            int summarySkip = Math.Max(0, summaryMessages.Count - 6);
+            string summaryInput = string.Join("\n", summaryMessages.Skip(summarySkip));
+
             // 📝 功能3：对话压缩 — 用本地模型智能摘要（如可用）
             // ★ C2 修复：回退逻辑移入回调内部 —— 原实现里同步回退总会抢先覆盖
             //   异步智能摘要（bool 在回调返回前就读），导致智能摘要永远不生效
             Action fallbackSummary = () =>
             {
-                var userMessages = _history.Where(e => e.role == "user").ToList();
-                int skip = Math.Max(0, userMessages.Count - 10);
-                var recentTopics = userMessages.Skip(skip).Select(e => e.content).ToList();
+                if (!MemoryGovernance.HasExplicitMemorySignal(summaryInput)) return;
+                var recentTopics = summaryMessages.Skip(summarySkip).ToList();
 
                 if (recentTopics.Count > 0)
                 {
@@ -1728,9 +1696,11 @@ public class ChatManager : MonoBehaviour
                 }
             };
 
-            if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess && !string.IsNullOrEmpty(lastUserMsg))
+            if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess
+                && !string.IsNullOrEmpty(summaryInput)
+                && MemoryGovernance.HasExplicitMemorySignal(summaryInput))
             {
-                LocalLLMAgentService.Instance.SummarizeConversation(lastUserMsg, (ok, summary) =>
+                LocalLLMAgentService.Instance.SummarizeConversation(summaryInput, (ok, summary) =>
                 {
                     if (ok && !string.IsNullOrEmpty(summary) && summary.Length > 5)
                     {
@@ -1750,27 +1720,22 @@ public class ChatManager : MonoBehaviour
             }
         }
 
-        // 💾 功能4：本地模型提取记忆（每 5 次对话尝试一次）
-        _conversationSinceLocalExtract++;
-        if (_conversationSinceLocalExtract >= LOCAL_EXTRACT_INTERVAL && !string.IsNullOrEmpty(lastUserMsg))
-        {
-            _conversationSinceLocalExtract = 0;
-            if (LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
-            {
-                LocalLLMAgentService.Instance.ExtractMemory(lastUserMsg, extract =>
-                {
-                    if (extract.shouldRemember && !string.IsNullOrEmpty(extract.summary))
-                    {
-                        PetMemory.Instance.AddMemoryWithImportance(
-                            $"主人提及: 「{extract.summary}」",
-                            extract.topic,
-                            "conversation",
-                            extract.importance);
-                        Debug.Log($"[ChatManager] 💾 本地灵识提取记忆: [{extract.topic}] {extract.summary} (重要度:{extract.importance})");
-                    }
-                });
-            }
-        }
+    }
+
+    /// <summary>本地提取失败时的确定性兜底，只保存带明确记忆信号的用户原话。</summary>
+    private void PersistExplicitMemoryFallback(string userMessage)
+    {
+        if (!MemoryGovernance.HasStrongMemorySignal(userMessage)) return;
+        string brief = userMessage.Trim();
+        if (brief.Length > 120) brief = brief.Substring(0, 120) + "…";
+        PetMemory.Instance.AddMemoryWithMetadata(
+            $"主人明确告知：{brief}",
+            "主人信息",
+            "conversation",
+            7,
+            "user",
+            0.90f,
+            0);
     }
 
     /// <summary>从 tool 参数 JSON 中提取 query/keyword 字段</summary>
