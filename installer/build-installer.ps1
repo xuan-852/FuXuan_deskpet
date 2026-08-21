@@ -17,7 +17,7 @@
 param(
     [switch]$SkipPack,
     [switch]$Test,
-    [string]$Version = "1.0.8"
+    [string]$Version = "1.0.9"
 )
 
 . "$PSScriptRoot\..\scripts\encoding\init-utf8.ps1"

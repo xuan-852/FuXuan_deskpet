@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![版本](https://img.shields.io/badge/版本-v1.0.8-blue)
+![版本](https://img.shields.io/badge/版本-v1.0.9-blue)
 ![引擎](https://img.shields.io/badge/引擎-团结引擎%20Tuanjie%202022.3.62t7-purple)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%2064位-green)
 ![Live2D](https://img.shields.io/badge/Live2D-Cubism%205--r.4-orange)
@@ -23,9 +23,9 @@
 
 [![下载最新版](https://img.shields.io/github/v/release/xuan-852/FuXuan_deskpet?label=%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88&style=for-the-badge)](https://github.com/xuan-852/FuXuan_deskpet/releases/latest)
 
-[下载 Windows 安装包 FuXuanSetup-1.0.8.exe](https://github.com/xuan-852/FuXuan_deskpet/releases/latest/download/FuXuanSetup-1.0.8.exe)
+[下载 Windows 安装包 FuXuanSetup-1.0.9.exe](https://github.com/xuan-852/FuXuan_deskpet/releases/latest/download/FuXuanSetup-1.0.9.exe)
 
-当前版本：`v1.0.8` · SHA256：`49A530FC665A68263F3666DF00EF2C63404D7596215853D56FE90E9ADA17D44B`
+当前版本：`v1.0.9` · SHA256：`F67C7B44CCE47EBAD5741C5F3F9ADD7EF87B8D20108A95F5D7AF1CEE1400BDC8`
 
 也可以打开 [全部版本](https://github.com/xuan-852/FuXuan_deskpet/releases)，在对应版本的 **Assets** 区域下载。
 
@@ -351,7 +351,7 @@ Desktop_per_pro/
 │   │   └── ...（感知/记忆/UI/物理 各子系统）
 │   └── openclaw_bridge.js       # Node.js 桥接服务器（:19876）
 ├── installer/                   # Inno Setup 安装包与组件脚本
-│   └── dist/FuXuanSetup-1.0.8.exe # 当前发布安装包（GitHub Release Assets）
+│   └── dist/FuXuanSetup-1.0.9.exe # 当前发布安装包（GitHub Release Assets）
 ├── scripts/office/              # Python 办公生成器（PPT/Word/Excel）
 ├── docs/                        # 权威文档（架构/规范/模块/路线图）
 │   ├── code-truth-architecture.md   # 代码真相架构审计
@@ -396,11 +396,12 @@ Desktop_per_pro/
 
 ## 📜 版本历史
 
-完整历史见 [`CHANGELOG.md`](CHANGELOG.md)。当前发布版本 **v1.0.8**：
+完整历史见 [`CHANGELOG.md`](CHANGELOG.md)。当前发布版本 **v1.0.9**：
 
 | 版本 | 日期 | 亮点 |
 |------|------|------|
 | **v1.0.8** | 2026-08-21 | 本地优先聊天模型路由与模型设置页；忆境治理与只读管理页；统一 `D:\DesktopPetData` 数据目录；安装/升级/卸载保留与删除逻辑；发布 Windows 安装包 |
+| **v1.0.9** | 2026-08-22 | 本地模型工具规划与安全执行链路；自然语言触发系统信息、文件搜索、文件夹、剪贴板和办公工具；规划 JSON 容错与本地隔离验收 |
 | **2026-08-12** | — | 任务可视化（进度/审批弹窗）+ **exec 审批 E2E 打通** + 多任务并行（per-session 锁）+ 任务模板库/轨迹沉淀（65 工具）+ 办公文档生成 + 偏好系统 |
 | **N41** | 2026-08-09 | 像素表情包（9 种脸部表情帧）+ 颜文字禁绝（SystemPrompt + 代码兜底翻译为表情动作） |
 | N40 | 2026-08-05~08 | 安全加固（危险工具审批/Bridge 鉴权）+ Token 优化 T1-T8（缓存命中率 98.6%、成本降 60%） |
@@ -419,7 +420,7 @@ Desktop_per_pro/
 - ✅ 本地优先聊天：qwen3:8b 质量档与 qwen2.5 系列低占用档位
 - ✅ 模型设置页：按模型展示真实生成样例，不复用其他模型的假样例
 - ✅ 忆境治理：重要度/置信度/相关性闸门、容量控制、按问题选择性注入、忆境只读管理页
-- ✅ v1.0.8 安装与分发：数据目录复用、卸载保留/删除选择、GitHub Release 安装包
+- ✅ v1.0.9 安装与分发：数据目录复用、卸载保留/删除选择、GitHub Release 安装包
 - 🔜 真实运行采样：对话质量、延迟、GPU/CPU 占用、动作状态切换与云端消耗归属
 - 🔜 多屏行走、3D 渲染模式、任务模板可视化画布
 
