@@ -557,7 +557,7 @@ public class PetMemory : MonoBehaviour
             .Where(x => !hasQuery
                 ? x.Entry.tier == MemoryGovernance.DurableTier
                     || x.Entry.tier == MemoryGovernance.ReflectionTier
-                : x.Overlap >= 0.20f)
+                : x.Overlap >= 0.12f)
             .OrderByDescending(x => x.Score)
             .ThenByDescending(x => x.Entry.importance)
             .ThenByDescending(x => x.Entry.timestamp)

@@ -74,4 +74,29 @@ public class LocalRoleplayPromptBuilderTests
         StringAssert.DoesNotContain("【当前相关设定】", prompt);
         StringAssert.Contains("【示例对话】", prompt);
     }
+
+    [Test]
+    public void RelevantMemoryIsInjectedAsBoundedBackground()
+    {
+        string prompt = LocalRoleplayPromptBuilder.Build(
+            "ignored", "", "我最近想听什么音乐？", "qwen3:8b",
+            "【本座的忆境线索】\n- 主人喜欢古典音乐");
+
+        StringAssert.Contains("【相关忆境】", prompt);
+        StringAssert.Contains("主人喜欢古典音乐", prompt);
+        StringAssert.Contains("可能过时的背景线索", prompt);
+        StringAssert.Contains("【用户最新消息】", prompt);
+    }
+
+    [Test]
+    public void BaselineAlsoReceivesMemoryContext()
+    {
+        Environment.SetEnvironmentVariable("FU_XUAN_LOCAL_PROMPT_VARIANT", LocalRoleplayPromptBuilder.BaselineVariant);
+        string prompt = LocalRoleplayPromptBuilder.Build(
+            "符玄角色描述", "", "你还记得我的偏好吗？", "qwen2.5:3b",
+            "【本座的忆境线索】\n- 主人喜欢古典音乐");
+
+        StringAssert.Contains("【相关忆境】", prompt);
+        StringAssert.Contains("主人喜欢古典音乐", prompt);
+    }
 }

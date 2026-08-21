@@ -1,7 +1,7 @@
 # AI 对话系统 — ChatManager 与 Token 优化
 
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
-> **基本架构**: 用户输入 → `ChatManager`（10 轮回环 / 意图过滤 / 600s 看门狗）→ `ApiClient`（DeepSeek SSE 流式，Function Calling）→ `ToolEngine/` 插件调度；`LocalLLMAgentService`（Ollama）提供 4 项离线能力，其中动作/分类/摘要使用轻量 `qwen2.5:3b`，聊天单独使用质量优先的 `qwen3:8b`（均可由环境变量覆盖）；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`（1,595 行）、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
+> **基本架构**: 用户输入 → `ChatManager`（10 轮回环 / 意图过滤 / 600s 看门狗）→ `ApiClient`（DeepSeek SSE 流式，Function Calling）→ `ToolEngine/` 插件调度；`LocalLLMAgentService`（Ollama）提供 4 项离线能力，其中动作/分类/摘要使用轻量 `qwen2.5:3b`，聊天单独使用质量优先的 `qwen3:8b`（均可由环境变量覆盖）；云端与本地聊天都经过同一 `PetMemory` 相关性检索，本地只使用更紧凑的忆境预算；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`（1,595 行）、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
 > **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀；2026-08-12 P5 注入链新增任务轨迹（TaskTrajectoryManager，太卜手札）与任务模板（TaskTemplateManager，太卜阵法图），同样置于【当前时刻】之前；2026-08-18 成本闸门接入全部主要云端直连点，新增 `PromptContextBudget` / `ToolResultBudget` / `QualityTelemetry`，EditMode 99/99 通过。
 > **编写注意事项**: ①测试必须开测试模式（`D:\DesktopPetData\.test_mode`）否则污染 pet_memory/pet_personality；②`{current_time}` 等动态内容**必须放 system prompt 尾部**（放开头会摧毁 DeepSeek 缓存命中，全价 ¥1/M）；③deepseek-v4-flash 是推理模型，必须显式 `"thinking":{"type":"disabled"}` + `max_tokens:1200` 否则 `content=""`；④历史裁剪须按字符预算且向前对齐最近 user 消息，防止切断 tool_calls↔tool 配对导致 API 400。
 
@@ -48,7 +48,7 @@
 ### 2.3 系统 Prompt 注入链（BuildSystemPrompt 真实顺序）
 
 1. 基础人格模板（`Resources/SystemPrompt.txt`，兜底"你是符玄…"）
-2. `PetMemory.GetFormattedMemories(currentUserQuery)` 长期记忆（相关命中最多 3 条，忆境段最多 1400 字符；核心事实最多 3 条）
+2. `PetMemory.GetFormattedMemories(currentUserQuery)` 长期记忆（云端相关命中最多 3 条，忆境段最多 1400 字符；核心事实最多 3 条）
 3. `PersonalityManager.FormatForPrompt()` 人格特质与关系
 4. `PreferencesManager.FormatForPrompt()` 主人偏好【本座谨记】（P4.2）
 5. `TaskTrajectoryManager.FormatForPrompt()` 任务轨迹【太卜手札】（P5.2，空库返回空串）
@@ -101,13 +101,14 @@
 
 ### 2.8 本地聊天质量护栏（2026-08-19～2026-08-21）
 
-本地 Ollama 回退链路不直接复用云端完整 system prompt，而由 `LocalRoleplayPromptBuilder` 生成短角色卡和短句组合约束：
+本地 Ollama 回退链路不直接复用云端完整 system prompt，而由 `LocalRoleplayPromptBuilder` 生成短角色卡和短句组合约束；同时调用同一 `PetMemory.GetFormattedMemories(userMessage)`，以不超过 700 字符的【相关忆境】背景注入本地 system prompt：
 
 1. 聊天模型使用 `qwen3:8b`，保留最近两轮对话（最多 1600 字符）和当前输入（最多 900 字符），增加连贯性；长期信息由上层摘要/记忆系统承担。
 2. 普通回复目标为 3～6 句、90～180 字，详细问题为 5～9 句、180～320 字；每句只表达一个意思，禁止为了凑长度重复。计划类请求必须给具体步骤，明确总时长时各段时间必须加总，详细问题先回答再追问。
 3. `LocalContextAnswer` 直接处理时间、天气和符玄偏好类固定问题：时间读 `DateTime.Now`，天气只读 `TimeWeatherController.weatherFetched` 后的数据，未取得天气时明确返回未知，不让模型猜测。
 4. `LocalReplyPostProcessor` 在回复入历史、显示和复核前执行零 Token 护栏：去除“将军”、限制“主人”重复、将普通自称“我”改为“本座”，但保留“自我”等固定词；用户明确要求“一句/三句”时只做确定性句数裁剪，不进行第二次模型重写。
 5. 质量测试用 `FU_XUAN_LOCAL_PROMPT_VARIANT=micro_v1`，遥测模型名带 `/fu_card_v2` 角色卡版本后缀；`baseline` 和 `card_v1` 保留用于消融对照。
+6. 本地和云端都只接收与当前问题相关的忆境；本地忆境段额外使用 `PromptContextBudget.LocalMemoryChars=700`，并明确提示模型记忆可能过时、无关时忽略。
 
 ### 2.9 分层符玄角色卡（2026-08-19）
 

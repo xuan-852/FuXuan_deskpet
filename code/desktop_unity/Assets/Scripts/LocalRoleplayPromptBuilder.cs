@@ -33,12 +33,17 @@ public static class LocalRoleplayPromptBuilder
         return (model ?? "local") + "/" + Variant + "/" + FuXuanCharacterCard.Version;
     }
 
-    public static string Build(string characterDesc, string recentHistory, string userMessage, string modelName = null)
+    public static string Build(
+        string characterDesc,
+        string recentHistory,
+        string userMessage,
+        string modelName = null,
+        string memoryContext = null)
     {
         LocalChatModelProfile profile = LocalChatModelProfiles.Get(modelName);
         if (Variant == BaselineVariant)
         {
-            return BuildBaseline(characterDesc, recentHistory, userMessage)
+            return BuildBaseline(characterDesc, recentHistory, userMessage, memoryContext)
                 + "\n\n【当前模型适配】\n" + profile.PromptAdjustment;
         }
 
@@ -73,6 +78,7 @@ public static class LocalRoleplayPromptBuilder
 
         prompt.AppendLine("\n【最近对话】")
             .AppendLine(TrimHistory(recentHistory, profile.HistoryChars))
+            .AppendLine(BuildMemorySection(memoryContext))
             .AppendLine("\n【用户最新消息】")
             .AppendLine(Trim(userMessage, 900))
             .AppendLine("\n【历史末尾护栏】")
@@ -92,12 +98,24 @@ public static class LocalRoleplayPromptBuilder
         return prompt.ToString();
     }
 
-    private static string BuildBaseline(string characterDesc, string recentHistory, string userMessage)
+    private static string BuildBaseline(
+        string characterDesc,
+        string recentHistory,
+        string userMessage,
+        string memoryContext)
     {
         string desc = Trim(characterDesc, 200);
         return desc + "\n\n以下是与主人的最近对话：\n" + TrimHistory(recentHistory, 900)
+            + BuildMemorySection(memoryContext)
             + "\n\n请以角色身份回复用户的最新消息：「" + Trim(userMessage, 700) + "」"
             + "\n回复应当简短自然（1-3句话即可），符合角色性格。注意：你只能进行对话回复，没有工具调用能力。";
+    }
+
+    private static string BuildMemorySection(string memoryContext)
+    {
+        if (string.IsNullOrWhiteSpace(memoryContext)) return "";
+        return "\n\n【相关忆境】\n" + memoryContext.Trim()
+            + "\n（忆境只是可能过时的背景线索；仅在与当前问题直接相关时使用，不要主动编造或复述无关记忆。）";
     }
 
     private static string TrimHistory(string history, int maxChars)

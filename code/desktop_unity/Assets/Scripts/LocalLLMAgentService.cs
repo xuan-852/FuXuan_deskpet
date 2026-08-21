@@ -190,7 +190,16 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
     public void GenerateFallbackReply(string characterDesc, string recentHistory, string userMessage, Action<bool, string> onResult)
     {
         LocalChatModelProfile profile = LocalChatModelProfiles.Get(LocalLLMClient.ChatModelName);
-        string prompt = LocalRoleplayPromptBuilder.Build(characterDesc, recentHistory, userMessage, profile.Model);
+        string memoryContext = "";
+        if (PetMemory.Instance != null)
+        {
+            memoryContext = PromptContextBudget.TrimSection(
+                PetMemory.Instance.GetFormattedMemories(userMessage),
+                PromptContextBudget.LocalMemoryChars,
+                "本地忆境");
+        }
+        string prompt = LocalRoleplayPromptBuilder.Build(
+            characterDesc, recentHistory, userMessage, profile.Model, memoryContext);
 
         // 不同聊天模型使用各自的质量预算；动作/摘要仍走轻量模型。
         float temperature = profile.Temperature;

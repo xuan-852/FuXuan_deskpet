@@ -211,6 +211,19 @@ public static class MemoryGovernance
         HashSet<string> queryTerms = ExtractTerms(query);
         HashSet<string> candidateTerms = ExtractTerms(candidate);
         if (queryTerms.Count == 0 || candidateTerms.Count == 0) return 0f;
+
+        // 中文单字重叠很容易被“我/你/的”等泛词误触发；优先用双字词判断主题，
+        // 没有双字词时才退回普通词元比例。
+        HashSet<string> queryBigrams = new HashSet<string>(
+            queryTerms.Where(term => term.Length >= 2), StringComparer.OrdinalIgnoreCase);
+        HashSet<string> candidateBigrams = new HashSet<string>(
+            candidateTerms.Where(term => term.Length >= 2), StringComparer.OrdinalIgnoreCase);
+        if (queryBigrams.Count > 0)
+        {
+            return queryBigrams.Intersect(candidateBigrams, StringComparer.OrdinalIgnoreCase).Count()
+                / (float)queryBigrams.Count;
+        }
+
         return queryTerms.Intersect(candidateTerms, StringComparer.OrdinalIgnoreCase).Count()
             / (float)queryTerms.Count;
     }

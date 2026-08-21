@@ -113,6 +113,16 @@ public class MemoryGovernanceTests
     }
 
     [Test]
+    public void 长句提问仍能命中主题记忆()
+    {
+        _memory.AddMemoryWithMetadata("主人喜欢古典音乐", "音乐", "conversation", 9, "user", 0.95f);
+
+        var result = _memory.GetRelevantMemories("我最近想听什么音乐", 3);
+
+        Assert.IsTrue(result.Any(e => e.summary.Contains("古典音乐")));
+    }
+
+    [Test]
     public void 本地提取必须有明确证据和稳定类型()
     {
         Assert.IsFalse(MemoryGovernance.AcceptExtractedMemory(

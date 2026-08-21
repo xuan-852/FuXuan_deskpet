@@ -121,7 +121,7 @@ SendRequestCoroutine → CheckReflection (L518)
 - 只有“我喜欢/我叫/称呼我/请记住”等明确长期信号才启动本地提取；本地结果必须 `importance >= 7`、`confidence >= 0.72`、类型不是 episodic，并与用户原话有词元交集；
 - 分层配额默认是：稳定事实 12、短期事件 8、工具轨迹 4、反思洞察 6，总上限 30；超额按重要度、可信度、证据次数、访问/新鲜度淘汰；核心事实另限 12 条；
 - 同类、同话题的近似记忆合并并累加 `evidenceCount`；反思使用 ID+时间双游标，不因容量淘汰造成重复反思或漏反思；
-- `ChatManager.BuildSystemPrompt()` 使用当前用户问题检索记忆；普通记忆无关键词命中时不注入，核心事实最多 3 条，整体忆境段最多 1400 字符；不再固定注入 Top-N + 最近 N；
+- `ChatManager.BuildSystemPrompt()`（云端）和 `LocalLLMAgentService.GenerateFallbackReply()`（本地）共同使用当前用户问题检索记忆；普通记忆无关键词命中时不注入，核心事实最多 3 条，云端忆境段最多 1400 字符，本地最多 700 字符；不再固定注入 Top-N + 最近 N；
 - 过期记忆不参与检索；访问次数只在内存中更新，避免每轮对话产生磁盘写入；
 - `.test_mode` 下允许内存态测试，但 `PetMemory.Save()` 直接阻断，防止污染生产记忆。
 
