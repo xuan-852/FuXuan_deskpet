@@ -336,3 +336,9 @@
 - 输入文字栏：继续保留 Windows 原生 IME 候选栏，使用 Unity 实际光标矩形和 `CFS_EXCLUDE` 定位到渲染字层下方。
 - Win32 原生字层：隐藏 EDIT 绘制，并在 `WM_IME_SETCONTEXT` 关闭默认组合窗口；`WM_IME_START/COMPOSITION/ENDCOMPOSITION` 由 `EditProc` 接管，提交结果手动写入 EDIT，组合文本交给 Unity 绘制。
 - 外置窗口的 EditMode 构建测试已生成 128/128 通过结果；完整构建已生成 `Build/DesktopPet.exe`。`runtime_smoke.cjs --verbose` 仍有既有窗口尺寸日志缺失项，未将其误记为通过。
+
+### 发送后输入冻结回归修复（2026-08-22）
+
+- 原因：Win32 `EDIT` 已在 `DoSend()` 中清空，但 `RightPanel.OnExternalSend()` 又把刚发送的原句写回 Unity 渲染字层；当 `MainThreadDispatcher` 与 `RightPanel.Update()` 的执行顺序交错时，旧句子会永久残留，后续输入表现为冻结。
+- 修复：发送回调只提交消息，不回写旧文本；同时同步输入版本、清空组合文本并标记外置 RenderTexture 立即刷新。
+- 验证：`build.ps1 -Quick` 通过；隔离 `runtime_smoke.cjs --verbose` 通过，生产记忆目录零污染。

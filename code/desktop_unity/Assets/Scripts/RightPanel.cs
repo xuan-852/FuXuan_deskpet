@@ -2339,9 +2339,19 @@ public partial class RightPanel : MonoBehaviour
     private void OnExternalSend(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
-        Debug.Log($"[RightPanel] 外部窗口发送: {text.Trim()}");
-        _inputText = text.Trim(); // 让面板内输入框视觉同步（外置模式显示文本）
-        if (_chat != null) _chat.SendMessage(text.Trim(), null);
+        string message = text.Trim();
+        Debug.Log($"[RightPanel] 外部窗口发送: {message}");
+
+        // DoSend() 已经在窗口线程清空了 Win32 EDIT。这里不能再把已发送文本写回
+        // Unity 渲染字层，否则当 MainThreadDispatcher 与 RightPanel.Update 的执行
+        // 顺序交错时，旧句子会永久残留在输入栏，后续输入看起来像被冻结。
+        _inputText = string.Empty;
+        _lastExternalInputVersion = ExternalChatWindow.GetInputTextVersion();
+        _lastExternalComposition = string.Empty;
+        _externalInputDirty = true;
+        GUI.changed = true;
+
+        if (_chat != null) _chat.SendMessage(message, null);
         else Debug.LogWarning("[RightPanel] 外部窗口发送时 ChatManager 未就绪");
     }
 
