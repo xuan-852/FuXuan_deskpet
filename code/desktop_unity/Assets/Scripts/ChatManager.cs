@@ -106,11 +106,23 @@ public class ChatManager : MonoBehaviour
     {
         string prompt = _systemPromptTemplate;
 
+        // 记忆治理：当前用户问题已在 BuildRequestBody 前写入历史，作为检索 query。
+        // 这样长期记忆按问题相关性选择，而不是每轮固定注入同一批 Top-N。
+        string memoryQuery = "";
+        for (int i = _history.Count - 1; i >= 0; i--)
+        {
+            if (_history[i].role == "user")
+            {
+                memoryQuery = _history[i].content ?? "";
+                break;
+            }
+        }
+
         // 注入长期记忆
         if (PetMemory.Instance != null)
         {
             string memories = PromptContextBudget.TrimSection(
-                PetMemory.Instance.GetFormattedMemories(), PromptContextBudget.MemoryChars, "长期记忆");
+                PetMemory.Instance.GetFormattedMemories(memoryQuery), PromptContextBudget.MemoryChars, "长期记忆");
             if (!string.IsNullOrEmpty(memories))
                 prompt += "\n" + memories;
         }
