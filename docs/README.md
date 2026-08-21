@@ -45,6 +45,7 @@
 | 记忆人格 | [`modules/memory-personality.md`](modules/memory-personality.md) | PetMemory、人格演化、知识库 |
 | 编码协议 | [`modules/encoding-protocol.md`](modules/encoding-protocol.md) | .editorconfig、BOM、乱码排查历史 |
 | 办公工具 | [`modules/office-tools.md`](modules/office-tools.md) | PPT/Word/Excel 生成器、/generate_office 端点 |
+| 运行时状态 | [`modules/runtime-readiness.md`](modules/runtime-readiness.md) | 启动自检、请求状态、停止恢复、云端保护 |
 
 ### 1.3 构建产物（勿手改）
 

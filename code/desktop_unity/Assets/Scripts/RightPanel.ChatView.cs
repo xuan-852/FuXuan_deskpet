@@ -18,6 +18,15 @@ public partial class RightPanel
     private bool _inputCaretFocusSnapshot;
     private const float INPUT_CARET_BLINK_PERIOD = 1.0f;
 
+    private float GetInputTextEndX(Rect inputRect, string text)
+    {
+        text = text ?? string.Empty;
+        Vector2 measured = _termInputStyle.CalcSize(new GUIContent(text));
+        float textWidth = Mathf.Max(0f,
+            measured.x - _termInputStyle.padding.left - _termInputStyle.padding.right);
+        return inputRect.x + _termInputStyle.padding.left + textWidth;
+    }
+
     /// <summary>会话条目（QQ 式会话列表项）</summary>
     private class ChatSession
     {
@@ -78,6 +87,11 @@ public partial class RightPanel
             statusText = "● 就绪";
             statusC = new Color(0.45f, 0.85f, 0.55f, 1f);  // 就绪 → 绿
         }
+
+        if (waiting && _chat != null && !string.IsNullOrEmpty(_chat.RequestStatusText))
+            statusText = "● " + _chat.RequestStatusText;
+        else if (!waiting && RuntimeReadinessService.Instance != null)
+            statusText = "● " + RuntimeReadinessService.Instance.ShortStatus;
 
         GUI.color = statusC;
         GUI.DrawTexture(new Rect(px + fxHeadSize + 16f, py + titleH / 2f - 4f, 9f, 9f), _statusDotTex);
@@ -438,7 +452,7 @@ public partial class RightPanel
         float tfW = inputW - fxSize - 10f - sendBtnSize - 10f;
         inputBgRect = new Rect(tfX, tfY, tfW, tfH);
 
-        // 外置窗口使用屏外原生 EDIT 接收真实键盘/中文输入；可见文字、光标和背景统一由 Unity 绘制。
+        // 外置窗口使用透明原生 EDIT 作为 IME 宿主接收真实键盘/中文输入；可见文字、光标和背景统一由 Unity 绘制。
         // 仍每帧同步逻辑矩形，防止面板尺寸/DPI/视图切换后输入命中状态漂移。
         if (_externalRender)
         {
@@ -476,7 +490,7 @@ public partial class RightPanel
         }
         else
         {
-            // 外置模式：屏外原生 EDIT 只负责输入桥，Unity 负责绘制可见文本。
+            // 外置模式：透明原生 EDIT 只负责输入法桥接，Unity 负责绘制可见文本。
             // 外置模式：原生 EDIT 仅作为输入法/键盘桥接；已提交文字和正在组词的文字均由 Unity 绘制。
             // 这样原生控件可以保持无黑框，同时用户不会丢失中文输入法的组词反馈。
             GUI.Label(inputBgRect, _inputText, _termInputStyle);
@@ -485,14 +499,21 @@ public partial class RightPanel
             {
                 Vector2 compositionStart = _termInputStyle.GetCursorPixelPosition(
                     inputBgRect, new GUIContent(_inputText ?? string.Empty), (_inputText ?? string.Empty).Length);
-                float compositionX = Mathf.Clamp(compositionStart.x + 1f,
+                Vector2 compositionSize = _termInputStyle.CalcSize(new GUIContent(composition));
+                float compositionTextX = Mathf.Clamp(GetInputTextEndX(inputBgRect, _inputText),
                     inputBgRect.x + _termInputStyle.padding.left,
                     inputBgRect.xMax - _termInputStyle.padding.right - 3f);
-                GUI.Label(new Rect(compositionX, inputBgRect.y, inputBgRect.width - (compositionX - inputBgRect.x), inputBgRect.height),
+                float compositionRectX = compositionTextX - _termInputStyle.padding.left;
+                GUI.Label(new Rect(compositionRectX, inputBgRect.y, inputBgRect.xMax - compositionRectX, inputBgRect.height),
                     composition, _termInputStyle);
+                float compositionUnderlineY = Mathf.Clamp(
+                    compositionStart.y + compositionSize.y - 2f,
+                    inputBgRect.y + 4f, inputBgRect.yMax - 4f);
+                float compositionWidth = Mathf.Max(18f,
+                    compositionSize.x - _termInputStyle.padding.left - _termInputStyle.padding.right);
                 UiTextureFactory.DrawPixelRect(
-                    new Rect(compositionX, inputBgRect.yMax - 7f,
-                        Mathf.Min(140f, Mathf.Max(18f, _termInputStyle.CalcSize(new GUIContent(composition)).x)), 2f),
+                    new Rect(compositionTextX, compositionUnderlineY,
+                        Mathf.Min(140f, compositionWidth), 2f),
                     new Color(0.86f, 0.76f, 1f, 0.9f));
             }
         }
@@ -517,17 +538,21 @@ public partial class RightPanel
             ? Mathf.Repeat(Time.unscaledTime - _inputCaretBlinkStart, INPUT_CARET_BLINK_PERIOD)
             : 1f;
         bool inputCaretVisible = inputCaretFocused && caretBlinkPhase < INPUT_CARET_BLINK_PERIOD * 0.5f;
+        float caretH = Mathf.Min(26f, inputBgRect.height - 12f);
+        float caretY = inputBgRect.y + (inputBgRect.height - caretH) * 0.5f;
+        float caretX = Mathf.Clamp(GetInputTextEndX(inputBgRect, caretText) + 1f,
+            inputBgRect.x + _termInputStyle.padding.left,
+            inputBgRect.xMax - _termInputStyle.padding.right - 3f);
+        if (_externalRender)
+        {
+            ExternalChatWindow.SetInputCaretRect(
+                Mathf.RoundToInt(caretX), Mathf.RoundToInt(caretY), 2, Mathf.RoundToInt(caretH));
+        }
         if (inputCaretVisible)
         {
             // 使用 Unity 的实际光标测量结果，避免 CalcSize 后再次叠加 padding 造成“字与光标之间多一个空格”。
-            Vector2 caretPos = _termInputStyle.GetCursorPixelPosition(
-                inputBgRect, new GUIContent(caretText), caretText.Length);
-            float caretX = Mathf.Clamp(caretPos.x + 1f,
-                inputBgRect.x + _termInputStyle.padding.left,
-                inputBgRect.xMax - _termInputStyle.padding.right - 3f);
-            float caretH = Mathf.Min(26f, inputBgRect.height - 12f);
             UiTextureFactory.DrawPixelRect(
-                new Rect(caretX, inputBgRect.y + (inputBgRect.height - caretH) * 0.5f, 2f, caretH),
+                new Rect(caretX, caretY, 2f, caretH),
                 new Color(0.86f, 0.76f, 1f, 0.96f));
         }
 
@@ -537,9 +562,15 @@ public partial class RightPanel
         // 单一圆形按钮和箭头，避免太极图与输入框描边抢视觉焦点。
         GUIStyle sendVisualStyle = sendHover ? _sendBtnHoverStyle : _sendBtnStyle;
         if (_externalRender)
-            GUI.Label(sendBtnRect, "→", sendVisualStyle);
-        if (!_externalRender && GUI.Button(sendBtnRect, new GUIContent("→", "发送 (Enter)"), _sendBtnStyle))
+            GUI.Label(sendBtnRect, waiting ? "■" : "→", sendVisualStyle);
+        if (!_externalRender && GUI.Button(sendBtnRect,
+            new GUIContent(waiting ? "■" : "→", waiting ? "停止本次回复" : "发送 (Enter)"), _sendBtnStyle))
         {
+            if (waiting)
+            {
+                _chat?.CancelCurrentRequest();
+                return;
+            }
             string sendMsg = _inputText.Trim();
             if (sendMsg.Length > 0)
             {
@@ -552,6 +583,11 @@ public partial class RightPanel
         // 外部命中：发送按钮（文本取 _inputText，Phase A3 输入框对接后生效）
         RegisterExtHit(sendBtnRect, () =>
         {
+            if (_chat != null && _chat.IsWaiting)
+            {
+                _chat.CancelCurrentRequest();
+                return;
+            }
             string sendMsg = _inputText.Trim();
             if (sendMsg.Length > 0)
             {

@@ -129,6 +129,12 @@ public partial class RightPanel : MonoBehaviour
     private RenderTexture _chatRT;   // 面板渲染目标（独立窗口显示用，尺寸跟随当前视图）
     private float _lastExtCapture;   // 渲染/推送节流计时
     private float _lastExtReadStart; // 异步读回开始时间（超时兜底防冻结）
+    // 输入变化时立即触发一次外置 RT 推送，避免固定 30 FPS 节流带来的字符滞后。
+    // 非输入变化仍按普通动画频率推送，避免为降低输入延迟而长期增加 GPU/CPU 负载。
+    private bool _externalInputDirty;
+    private string _lastExternalComposition = string.Empty;
+    private int _lastExternalInputVersion = -1;
+    private float _externalInputFastUntil;
     // ★ 异步读回（AsyncGPUReadback）：渲染保持 60fps 动画流畅，读回不阻塞主线程
     private Unity.Collections.NativeArray<byte> _extReadBack;
     private bool _extReadPending;    // 上一帧读回未完成（防止堆积）
@@ -449,6 +455,7 @@ public partial class RightPanel : MonoBehaviour
 
     void Start()
     {
+        RuntimeReadinessService.EnsureExists();
         RefreshRefs();
         DisableLegacyBallPanels();
         // 恢复字体档位（默认 1=A2 1.2×）
@@ -529,10 +536,20 @@ public partial class RightPanel : MonoBehaviour
         // 不再让原生 EDIT 覆盖 IMGUI 输入框，避免黑框与真实输入框交替闪烁。
         if (_externalMode)
         {
-            string nativeInput = ExternalChatWindow.GetInputText();
-            if (nativeInput != _inputText)
+            int inputVersion = ExternalChatWindow.GetInputTextVersion();
+            string nativeComposition = ExternalChatWindow.GetInputComposition();
+            if (inputVersion != _lastExternalInputVersion || nativeComposition != _lastExternalComposition)
             {
-                _inputText = nativeInput;
+                if (inputVersion != _lastExternalInputVersion)
+                {
+                    _lastExternalInputVersion = inputVersion;
+                    _inputText = ExternalChatWindow.GetInputText();
+                }
+                _lastExternalComposition = nativeComposition;
+                _externalInputDirty = true;
+                // 每次按键后给一个短暂的 60fps 推送窗口。持续输入时会自动续期，
+                // 停止输入后回到 30fps，避免为降低键入延迟而长期增加 GPU/CPU 负载。
+                _externalInputFastUntil = Time.unscaledTime + 0.25f;
                 GUI.changed = true;
             }
         }
@@ -833,6 +850,57 @@ public partial class RightPanel : MonoBehaviour
             else
             {
                 Debug.LogWarning("[QualityTest] 动作案例失败：MotionAgent 未就绪或描述为空");
+            }
+            return;
+        }
+
+        // Test-only action injection: @@idle:1..9 bypasses the LLM so the
+        // existing idle/hardcoded action implementations can be inspected.
+        if (content.StartsWith("@@idle:"))
+        {
+            if (!ChatManager.IsTestMode) return;
+            string rawId = content.Substring("@@idle:".Length).Trim();
+            if (int.TryParse(rawId, out int actionId) && actionId >= 1 && actionId <= 9)
+            {
+                var renderer = GameObject.FindObjectOfType<Live2DRenderer>();
+                if (renderer != null)
+                {
+                    renderer.ForceIdleAction(actionId);
+                    Debug.Log($"[TestInbox] idle action triggered: #{actionId}");
+                }
+                else
+                {
+                    Debug.LogWarning("[TestInbox] @@idle could not find Live2DRenderer");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[TestInbox] invalid @@idle argument: {rawId} (expected 1-9)");
+            }
+            return;
+        }
+
+        // Test-only model capture: save the actual Live2D render, excluding
+        // the external window/background, for frame-by-frame action review.
+        if (content.StartsWith("@@shot:"))
+        {
+            if (!ChatManager.IsTestMode) return;
+            string rawName = content.Substring("@@shot:".Length).Trim();
+            string safeName = rawName.Replace("..", "_").Replace("\\", "_").Replace("/", "_");
+            if (string.IsNullOrEmpty(safeName)) safeName = "capture";
+            var renderer = GameObject.FindObjectOfType<Live2DRenderer>();
+            byte[] png = renderer?.CaptureModelSnapshot();
+            if (png == null || png.Length == 0)
+            {
+                Debug.LogWarning("[TestInbox] @@shot failed: empty model snapshot");
+            }
+            else
+            {
+                string dir = System.IO.Path.Combine(DataPathConfig.DataRoot, "action_captures");
+                System.IO.Directory.CreateDirectory(dir);
+                string path = System.IO.Path.Combine(dir, safeName + ".png");
+                System.IO.File.WriteAllBytes(path, png);
+                Debug.Log($"[TestInbox] model snapshot saved: {path} ({png.Length} bytes)");
             }
             return;
         }
@@ -2188,6 +2256,10 @@ public partial class RightPanel : MonoBehaviour
         ExternalChatWindow.OnClosed += OnExternalClosed;
         ExternalChatWindow.OnPanelClick += OnExternalPanelClick;
         ExternalChatWindow.OnPanelMouseMove += OnExternalPanelMouseMove;
+        _externalInputDirty = true;
+        _lastExternalComposition = string.Empty;
+        _lastExternalInputVersion = ExternalChatWindow.GetInputTextVersion();
+        _externalInputFastUntil = 0f;
         // 整面板外置：窗口尺寸 = 面板视图 + 自绘标题栏（客户区与 RT 1:1）
         int w = Mathf.Max(320, Mathf.RoundToInt(_panelRect.width));
         int h = Mathf.Max(200, Mathf.RoundToInt(_panelRect.height));
@@ -2200,6 +2272,10 @@ public partial class RightPanel : MonoBehaviour
     {
         if (!_externalMode) return;
         _externalMode = false;
+        _externalInputDirty = false;
+        _lastExternalComposition = string.Empty;
+        _lastExternalInputVersion = -1;
+        _externalInputFastUntil = 0f;
         ExternalChatWindow.OnSendText -= OnExternalSend;
         ExternalChatWindow.OnClosed -= OnExternalClosed;
         ExternalChatWindow.OnPanelClick -= OnExternalPanelClick;
@@ -2308,9 +2384,15 @@ public partial class RightPanel : MonoBehaviour
             Debug.LogWarning("[RightPanel] 异步读回超时，重置 pending（防冻结）");
             _extReadPending = false;
         }
-        if (Time.time - _lastExtCapture >= 1f / 30f && !_extReadPending && _extReadBack.IsCreated)
+        // 输入变化走即时通道：只在 dirty 时临时提升到 60 FPS，并在成功发起读回后清除。
+        // 这样字符/组词反馈最多等待一个 Unity 帧；星空等无输入状态仍保持 30 FPS 推送。
+        bool inputFastPath = _externalInputDirty || Time.unscaledTime < _externalInputFastUntil;
+        float captureInterval = inputFastPath ? 1f / 60f : 1f / 30f;
+        if ((_externalInputDirty || Time.time - _lastExtCapture >= captureInterval)
+            && !_extReadPending && _extReadBack.IsCreated)
         {
             _lastExtCapture = Time.time;
+            _externalInputDirty = false;
             _lastExtReadStart = Time.time;
             _extReadPending = true;
             int gen = _extReadGen; // ★ 捕获当前代际：RT/NativeArray 重建后此回调作废

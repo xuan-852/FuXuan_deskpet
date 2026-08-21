@@ -90,6 +90,31 @@ if ($ActiveUnityProc) {
     Write-Host "[ERROR] Tuanjie 正在运行 (PID: $ActivePids)，请先关闭后再构建"
     exit 1
 }
+
+# Tuanjie can leave its licensing helper alive after a batchmode timeout.  A
+# stale helper may block the next editor during the licensing handshake before
+# -logFile is opened, which looks like a compiler hang.  Keep the editor check
+# above conservative (never terminate an interactive editor), but reset only
+# the helper/crash-handler processes that are safe to restart before a build.
+$BuildHelperProcs = @(
+    (Get-Process -Name "Tuanjie.Licensing.Client" -ErrorAction SilentlyContinue),
+    (Get-Process -Name "TuanjieCrashHandler32" -ErrorAction SilentlyContinue)
+) | Where-Object { $null -ne $_ }
+if ($BuildHelperProcs) {
+    $BuildHelperPids = ($BuildHelperProcs | ForEach-Object { $_.Id }) -join ", "
+    if ($NoKill) {
+        $Host.UI.RawUI.ForegroundColor = "Red"
+        Write-Host "[ERROR] 检测到 Tuanjie 构建辅助进程 (PID: $BuildHelperPids)，已加 -NoKill，请先关闭后再构建"
+        exit 1
+    }
+
+    $Host.UI.RawUI.ForegroundColor = "Yellow"
+    Write-Host "[WARN] 检测到上次构建遗留的 Tuanjie 辅助进程 (PID: $BuildHelperPids)"
+    Write-Host "[BUILD] 终止 Licensing/CrashHandler 辅助进程，避免授权握手阻塞..."
+    $BuildHelperProcs | Stop-Process -Force
+    Write-Host "[OK] Tuanjie 构建辅助进程已清理"
+}
+
 $UnityLockPaths = @(
     (Join-Path $ProjectDir "Library\ArtifactDB-lock"),
     (Join-Path $ProjectDir "Library\SourceAssetDB-lock")
@@ -144,6 +169,7 @@ if ($RunTests -or $Quick) {
     $unityArgs = @(
         "-batchmode"
         "-nographics"
+        "-quit"
         "-projectPath", "."
         "-logFile", $LogFile
         "-runTests"

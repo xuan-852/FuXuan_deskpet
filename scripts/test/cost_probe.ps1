@@ -10,7 +10,7 @@
     设计要点：
     - 用 FU_XUAN_DATA 指向隔离临时目录（生产记忆零污染）
     - 【不建 .test_mode】→ 云端不被拦截，预算闸门真实放行/拒绝
-    - 【不传 --ollama】→ 云端模式（否则 UseOllamaMode 会拦截全部云端）
+    - 【显式传 --cloud】→ 云端模式（日常 DesktopPet.exe 默认本地，避免误烧额度）
     - 注入用户活动（inbox 文本消息走 chat；@@emote 触发互动）驱动真实调用
     - 定时采样 usage_log + Player.log 的成本闸门拦截留痕
     - 结束自动 kill + 清理隔离目录
@@ -48,7 +48,7 @@ Write-Host "  Token 成本探针（云端模式 $($DurationMin) 分钟）"
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "exe      : $Exe"
 Write-Host "数据目录 : $TestData（隔离，生产记忆零污染）"
-Write-Host "模式     : 云端（无 .test_mode / 无 --ollama）"
+Write-Host "模式     : 云端（无 .test_mode / --cloud）"
 Write-Host ""
 
 if (-not (Test-Path $Exe)) { Write-Host "[FAIL] 未找到 exe: $Exe" -ForegroundColor Red; exit 1 }
@@ -63,7 +63,7 @@ $env:FU_XUAN_DATA = $TestData
 $env:DEEPSEEK_API_KEY = [Environment]::GetEnvironmentVariable("DEEPSEEK_API_KEY", "User")
 $env:GLM_API_KEY = [Environment]::GetEnvironmentVariable("GLM_API_KEY", "User")
 Write-Host "[start] 启动桌宠（DEEPSEEK key 配置=$([bool]$env:DEEPSEEK_API_KEY)）..."
-Start-Process -FilePath $Exe -WorkingDirectory (Split-Path $Exe -Parent)
+Start-Process -FilePath $Exe -ArgumentList '--cloud' -WorkingDirectory (Split-Path $Exe -Parent)
 Start-Sleep -Seconds 20
 if (-not (Get-Process -Name DesktopPet -ErrorAction SilentlyContinue)) {
     Write-Host "[FAIL] 桌宠启动失败" -ForegroundColor Red

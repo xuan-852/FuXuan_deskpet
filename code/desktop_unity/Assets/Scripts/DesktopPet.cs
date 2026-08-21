@@ -91,6 +91,10 @@ public class DesktopPet : MonoBehaviour
     [System.NonSerialized]
     public bool isDragging = false;
 
+    // 强制动作的物理移动锁。它独立于 isPaused，防止其他模块调用 Resume()
+    // 后绕过 Live2DRenderer 的动作锁，重新启动地面行走任务。
+    private bool _actionMovementLocked = false;
+
     // 屏幕尺寸（动态获取，不缓存）
     private int _screenWidth => Screen.width;
     private int _screenHeight => Screen.height;
@@ -866,11 +870,19 @@ public class DesktopPet : MonoBehaviour
         }
 #endif
 
+        // 强制动作期间即使某个外部路径误调用 Resume()，也不能恢复水平移动或地面任务。
+        if (_actionMovementLocked)
+        {
+            petVx = 0;
+            currentTask = GroundTask.StopTime;
+            _taskEndTime = 0f;
+        }
+
         // 物理步进
         StepPet();
 
         // 地面状态机更新
-        if (onGround && !isPaused)
+        if (onGround && !isPaused && !_actionMovementLocked)
         {
             UpdateGroundTask();
         }
@@ -1047,6 +1059,14 @@ public class DesktopPet : MonoBehaviour
     /// </summary>
     public void StartGroundTask(GroundTask task)
     {
+        if (_actionMovementLocked)
+        {
+            petVx = 0;
+            currentTask = GroundTask.StopTime;
+            _taskEndTime = 0f;
+            return;
+        }
+
         currentTask = task;
         lastTask = task;
         _taskEndTime = 0f;
@@ -1086,6 +1106,13 @@ public class DesktopPet : MonoBehaviour
 
     public void StartNextGroundTask()
     {
+        if (_actionMovementLocked)
+        {
+            petVx = 0;
+            currentTask = GroundTask.StopTime;
+            _taskEndTime = 0f;
+            return;
+        }
         StartGroundTask(PickNextGroundTask());
     }
 
@@ -1294,6 +1321,22 @@ public class DesktopPet : MonoBehaviour
             }
         }
     }
+
+    /// <summary>
+    /// 锁定/解除强制动作的物理移动。与 isPaused 分离，避免普通 Resume 路径绕过动作锁。
+    /// </summary>
+    public void SetActionMovementLock(bool locked)
+    {
+        _actionMovementLocked = locked;
+        if (locked)
+        {
+            petVx = 0;
+            currentTask = GroundTask.StopTime;
+            _taskEndTime = 0f;
+        }
+    }
+
+    public bool IsActionMovementLocked => _actionMovementLocked;
 
     /// <summary>
     /// 重置宠物位置

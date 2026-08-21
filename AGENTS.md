@@ -33,6 +33,7 @@ Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣
 | 记忆人格 | [`docs/modules/memory-personality.md`](docs/modules/memory-personality.md) | 三层记忆、五维人格、知识库 |
 | 编码协议 | [`docs/modules/encoding-protocol.md`](docs/modules/encoding-protocol.md) | 全仓 UTF-8、BOM 坑、乱码排查 |
 | 办公工具 | [`docs/modules/office-tools.md`](docs/modules/office-tools.md) | PPT/Word/Excel 生成链路 |
+| 运行时状态 | [`docs/modules/runtime-readiness.md`](docs/modules/runtime-readiness.md) | 启动自检、请求状态、停止恢复、云端保护 |
 
 ## 构建 / 验证命令（改完必跑）
 

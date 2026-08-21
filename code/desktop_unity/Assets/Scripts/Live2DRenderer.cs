@@ -280,6 +280,9 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     private float _idleActionTime = 0f;
     // 向后兼容：冷却计时（scheduler 内部自己管理，此字段保留仅用于特殊动作冷却）
     private float _idleActionCooldown = 0f;
+    // Track whether a forced idle action paused the pet so completion can
+    // restore only the state changed by that action.
+    private bool _idleActionPausedPet = false;
 
     // 法阵斜飞物理飘动 — Spring-Damper 状态
     private float _magicFloatPhase = 0f;       // Perlin 噪声相位
@@ -308,6 +311,8 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     // 强制动作锁定（右键菜单触发，播放期间不被走路覆盖）
     private bool _actionLocked = false;
+    // 自动空闲动作也要锁住物理移动，否则地面任务到期会在动作中途启动走路。
+    private bool _idleActionMovementLockedPet = false;
     public event System.Action OnForcedActionFinished;
 
     // ===== AI 控制锁：AI 工具控制参数时空闲动画不覆盖 =====
@@ -828,7 +833,8 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         // ★ 体态提前给物理用：Physics 在 CubismUpdateController.LateUpdate(0)
         //   中读取 ParamBodyAngleX/Y/Z 来驱动衣服。我们在 Update() 中先设好
         //   走路的转体/前倾/低头，确保物理拿到正确的体态输入。
-        bool isWalking = (_pet != null && _pet.onGround && _pet.petVx != 0 && !_pet.isPaused && !_actionLocked);
+        bool isWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
+            && !_pet.isPaused && !_actionLocked && !_aiControlLocked);
         if (isWalking)
         {
             float bodyWeight = 1f;
@@ -905,7 +911,7 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             _aiControlTimer -= Time.deltaTime;
             if (_aiControlTimer <= 0f)
             {
-                _aiControlLocked = false;
+                ReleaseAiControlLock();
                 Debug.Log("[Live2DRenderer] 🤖 AI 控制锁过期，空闲动画恢复");
             }
         }
@@ -931,7 +937,15 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         // ★ 走路/空闲统一在 LateUpdate 中设置参数
         // 此时 _walkPhase 已在 Update() 中更新完毕，相位准确
-        bool isWalking = (_pet != null && _pet.onGround && _pet.petVx != 0 && !_pet.isPaused && !_actionLocked);
+        bool isWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
+            && !_pet.isPaused && !_actionLocked && !_aiControlLocked);
+
+        // Locomotion takes priority over an automatic idle action. Forced
+        // actions are protected by _actionLocked and are physically paused.
+        if (isWalking && _currentIdleAction > 0 && !_actionLocked && !_aiControlLocked)
+        {
+            ResetIdleAction(true);
+        }
 
         if (isWalking)
         {
@@ -1060,7 +1074,10 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         // ★ 2026-08-20 卡顿修复：法阵(#7)/星辰(#4)分支内部已有自己的 ForceUpdateNow
         //   （法阵 L1169/L1199 两次、星辰分支内一次），此处跳过可省 1 次全量模型更新，
         //   缓解"法阵期每帧 4+ 次 ForceUpdateNow → 帧率暴跌 → deltaTime 膨胀 → 动作拉长"恶性循环。
-        if (_currentIdleAction != 7 && _currentIdleAction != 4)
+        // ★ 2026-08-20 二次修复：基础渲染每帧 1 次 ForceUpdateNow + 57 次 SetParameter 也占满 CPU
+        //   （实测空闲 5s 增 7s ≈ 1.4 核）→ 隔帧执行 ForceUpdateNow（帧计数 & 1），
+        //   模型网格刷新率减半，动画参数仍每帧设置，视觉几乎无感知，CPU 显著下降。
+        if (_currentIdleAction != 7 && _currentIdleAction != 4 && (Time.frameCount & 1) == 0)
             _cubismModel.ForceUpdateNow();
 
         // ============================================================
@@ -1103,7 +1120,9 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
                 _paramStore.SaveParameters();
             }
 
-            _cubismModel.ForceUpdateNow();
+            // ★ 2026-08-20 性能：左臂拦截的二次 ForceUpdate 也隔帧
+            if ((Time.frameCount & 1) == 0)
+                _cubismModel.ForceUpdateNow();
         }
         else
         {
@@ -1200,7 +1219,9 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             SetParameter("Param57", _magicClothV);  SetParameter("Param60", _magicClothV);
             // 先保存参数再 ForceUpdate，让 RestoreParameters 恢复我们的值而非 Physics 覆盖值
             if (_paramStore != null) _paramStore.SaveParameters();
-            _cubismModel.ForceUpdateNow();
+            // ★ 2026-08-20 性能：法阵期也隔帧 ForceUpdate（每帧 3 次全量更新 → 减半）
+            if ((Time.frameCount & 1) == 0)
+                _cubismModel.ForceUpdateNow();
 
             // ★ ForceUpdateNow 触发了 Cubism 物理管线，Physics 重新计算了
             //   ParamBodyAngleX/ParamAngleX，覆盖了 UpdateMagicCircle() 中设置的
@@ -1496,6 +1517,9 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// </summary>
     private void UpdateIdleAnimation()
     {
+        bool isWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
+            && !_pet.isPaused && !_actionLocked && !_aiControlLocked);
+
         // === 呼吸（为物理提供驱动信号，使衣服手臂自然摆动）===
         float breath = (Mathf.PerlinNoise(_breathPhase, 0f) - 0.5f) * BREATH_AMPLITUDE;
         SetParameter("ParamBreath", breath);
@@ -1593,16 +1617,32 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (_idleActionCooldown > 0f) _idleActionCooldown -= Time.deltaTime;
 
         // 空闲且可播新动作
-        if (_currentIdleAction == 0 && !isPaused && !_actionLocked && !_aiControlLocked)
+        // Idle actions may only start while locomotion is stopped. Without
+        // this guard the same frame can write walk parameters and action
+        // parameters, producing a visible blended pose.
+        if (_currentIdleAction == 0 && !isWalking && !isPaused && !_actionLocked && !_aiControlLocked)
         {
             int picked = PickNextIdleAction();
             if (picked > 0)
             {
+                // 自动动作与强制动作一样，必须阻止地面任务在动作中途切换到走路。
+                if (_pet != null && !_pet.isPaused)
+                {
+                    _pet.SetActionMovementLock(true);
+                    _idleActionMovementLockedPet = true;
+                }
                 _currentIdleAction = picked;
                 _idleActionTime = 0f;
                 _complexActionPhase = 0f;
                 Debug.Log($"[Live2DRenderer] ▶ 动作 #{_currentIdleAction}");
             }
+        }
+
+        // If locomotion resumes while an automatic idle action is active,
+        // stop the action before it writes another frame of parameters.
+        if (_currentIdleAction > 0 && isWalking && !_actionLocked && !_aiControlLocked)
+        {
+            ResetIdleAction(true);
         }
 
         if (_currentIdleAction > 0)
@@ -2378,7 +2418,19 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         int prevAction = _currentIdleAction;
 
         bool wasLocked = _actionLocked;
+        bool wasMovementLocked = _idleActionMovementLockedPet;
+        bool shouldResumePet = wasMovementLocked || _idleActionPausedPet;
         _actionLocked = false;
+
+        if (wasLocked || wasMovementLocked)
+        {
+            if (_pet != null)
+                _pet.SetActionMovementLock(false);
+            _idleActionMovementLockedPet = false;
+            _idleActionPausedPet = false;
+            if (_pet != null && shouldResumePet)
+                _pet.Resume();
+        }
 
         _currentIdleAction = 0;
         _idleActionTime = 0f;
@@ -2504,7 +2556,9 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         Debug.Log($"[Live2DRenderer] 🤖 AI 控制锁激活，持续 {_aiControlTimer:F1}s");
 
         // ★ 清空闲动作残留，防止 AI 设置时旧空闲动作还在写参数
-        if (_currentIdleAction != 0)
+        // 强制动作（如法阵）拥有更高优先级，AI 参数锁不能中途清理它，
+        // 否则 ResetIdleAction(true) 会提前恢复宠物移动。
+        if (_currentIdleAction != 0 && !_actionLocked)
         {
             ResetIdleAction(true);
         }
@@ -2516,14 +2570,62 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (!_aiControlLocked) return;
         _aiControlLocked = false;
         _aiControlTimer = 0f;
+        ResetAiLocomotionPose();
+        Debug.Log("[Live2DRenderer] AI control lock released; locomotion pose reset");
         Debug.Log("[Live2DRenderer] 🤖 AI 控制锁提前释放");
     }
 
     /// <summary>强制播放指定空闲动作（被右键菜单调用）</summary>
+    /// <summary>
+    /// Clears locomotion parameters that an AI exploration motion can leave
+    /// behind. MotionGenerator restores the normal completion path; this is
+    /// the timeout/interruption safety net.
+    /// </summary>
+    private void ResetAiLocomotionPose()
+    {
+        SetParameter("ParamBodyAngleX", 0f);
+        SetParameter("ParamBodyAngleY", 0f);
+        SetParameter("ParamBodyAngleZ", 0f);
+        SetParameter("ParamAngleX", 0f);
+        SetParameter("ParamAngleY", 0f);
+        SetParameter("ParamAngleZ", 0f);
+        SetParameter("ParamBreath", 0f);
+
+        SetParameter("Param94", 0f);
+        SetParameter("Param31", 0f);
+        SetParameter("Param32", 0f);
+        SetParameter("Param33", 0f);
+        SetParameter("Param34", 0f);
+        SetParameter("Param36", 0f);
+        SetParameter("Param37", 0f);
+        SetParameter("Param126", 0f);
+        SetParameter("Param127", 0f);
+        SetParameter("Param129", 0f);
+        SetParameter("Param131", 0f);
+        SetParameter("Param164", 0f);
+        SetParameter("Param165", 0f);
+        SetParameter("Param153", 0f);
+
+        _walkBlendRemaining = 0f;
+        _walkFadeInRemaining = 0f;
+        _wasWalkingLastFrame = false;
+    }
+
     public void ForceIdleAction(int actionId)
     {
         if (!_loaded || _cubismModel == null) return;
+
+        // Keep forced legacy actions consistent with PlayAction: stop the
+        // pet's physical locomotion as well as the renderer's walk overlay.
+        if (!_actionLocked && _pet != null && !_pet.isPaused)
+        {
+            _pet.Pause(0f);
+            _idleActionPausedPet = true;
+        }
+
         _actionLocked = true;
+        if (_pet != null)
+            _pet.SetActionMovementLock(true);
         _currentIdleAction = actionId;
         _idleActionTime = 0f;
         _complexActionPhase = 0f;
@@ -3042,7 +3144,10 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         // ★ 暂停宠物物理（停走 + 冻结状态机），避免"边走边做动作"
         if (_pet != null)
+        {
+            _pet.SetActionMovementLock(true);
             _pet.Pause(0f);
+        }
 
         _actionLocked = true; // 锁定不被走路覆盖
 
@@ -3067,7 +3172,11 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             //   导致表情/预设再也无法控制 MultiplyColor，眼睛发白。
             if (_cubismModel != null) _cubismModel.ForceUpdateNow();
             // ★ 恢复宠物物理
-            if (_pet != null) _pet.Resume();
+            if (_pet != null)
+            {
+                _pet.SetActionMovementLock(false);
+                _pet.Resume();
+            }
             OnForcedActionFinished?.Invoke();
             onComplete?.Invoke();
         });
@@ -3100,8 +3209,12 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (_cubismModel != null) _cubismModel.ForceUpdateNow();
         // ★ 注意：不要调 ForceRefreshModelAfterFade()，它会把 OverrideFlag=true 固化，
         //   导致表情系统再也无法控制 ArtMesh 颜色 → 眼睛发白。
-        if (_pet != null && _pet.isPaused)
-            _pet.Resume();
+        if (_pet != null)
+        {
+            _pet.SetActionMovementLock(false);
+            if (_pet.isPaused)
+                _pet.Resume();
+        }
         // 通知调用方（ContextMenu 恢复宠物状态）
         OnForcedActionFinished?.Invoke();
     }

@@ -307,6 +307,19 @@ public class ChatManager : MonoBehaviour
     //  事件
     // ==================================================================
 
+    public enum RequestStage
+    {
+        Idle,
+        Thinking,
+        LocalGenerating,
+        Connecting,
+        Generating,
+        RunningTool,
+        Retrying,
+        Error,
+        Cancelled
+    }
+
     /// <summary>AI 开始处理请求时触发（用于显示"思考中…"状态）</summary>
     public System.Action OnRequestStarted;
     /// <summary>收到 AI 文字回复时触发</summary>
@@ -321,6 +334,7 @@ public class ChatManager : MonoBehaviour
     public System.Action<string, int, int> OnSentenceChanged;
     /// <summary>API 请求出错时触发（用于显示错误提示）</summary>
     public System.Action<string> OnRequestError;
+    public System.Action<string> OnRequestStatusChanged;
 
     // ==================================================================
     //  状态
@@ -328,6 +342,8 @@ public class ChatManager : MonoBehaviour
 
     private List<Entry> _history = new List<Entry>();
     private bool _isWaiting = false;
+    private RequestStage _requestStage = RequestStage.Idle;
+    private string _requestStatusText = "就绪";
     private string _lastReply = "";
     private string _lastError = "";
     private System.Action _onUpdate;
@@ -422,6 +438,9 @@ public class ChatManager : MonoBehaviour
     public float sentenceInterval = 2.5f;
 
     public bool IsWaiting => _isWaiting;
+    public RequestStage Stage => _requestStage;
+    public string RequestStatusText => _requestStatusText;
+    public int QueuedMessageCount => _messageQueue.Count;
     public List<Entry> History => _history;
     public string LastReply => _lastReply;
     public string LastError => _lastError;
@@ -462,6 +481,35 @@ public class ChatManager : MonoBehaviour
         SendMessageInternal(text, onUpdate, QualityTelemetry.CurrentCaseId);
     }
 
+    public bool CancelCurrentRequest()
+    {
+        if (!_isWaiting) return false;
+        _abortRequested = true;
+        _requestGeneration++;
+        _isWaiting = false;
+        _requestStartTime = 0f;
+        _messageQueue.Clear();
+        if (_activeRequestCoroutine != null)
+        {
+            StopCoroutine(_activeRequestCoroutine);
+            _activeRequestCoroutine = null;
+        }
+        _lastError = "本次回复已停止";
+        SetRequestStatus("已停止", RequestStage.Cancelled);
+        OnRequestError?.Invoke("⏹ 已停止本次回复");
+        _onUpdate?.Invoke();
+        return true;
+    }
+
+    private void SetRequestStatus(string text, RequestStage stage)
+    {
+        if (string.IsNullOrEmpty(text)) text = "就绪";
+        bool changed = _requestStage != stage || !string.Equals(_requestStatusText, text, StringComparison.Ordinal);
+        _requestStage = stage;
+        _requestStatusText = text;
+        if (changed) OnRequestStatusChanged?.Invoke(text);
+    }
+
     private void SendMessageInternal(string text, System.Action onUpdate, string caseId)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
@@ -490,6 +538,7 @@ public class ChatManager : MonoBehaviour
         _toolRound = 0; // 重置工具轮次
         _requestStartTime = Time.time; // 启动看门狗计时
         _onUpdate = onUpdate;
+        SetRequestStatus("思考中…", RequestStage.Thinking);
 
         // ★ T4 修复：重置意图状态，首轮请求必须等待本次分类结果（杜绝残留）
         _lastIntent = "";
@@ -625,6 +674,7 @@ public class ChatManager : MonoBehaviour
 
         _isWaiting = false;
         _requestStartTime = 0f; // 请求完成，停止看门狗
+        SetRequestStatus("就绪", RequestStage.Idle);
         _onUpdate?.Invoke();
 
         // 只在带 case_id 的质量测试中启动裁判；日常运行零额外评分开销。
@@ -685,6 +735,7 @@ public class ChatManager : MonoBehaviour
 
     private IEnumerator DoOllamaOnlyReply()
     {
+        SetRequestStatus("检查本地模型…", RequestStage.Thinking);
         float deadline = Time.time + 20f;
         while ((LocalLLMAgentService.Instance == null || !LocalLLMAgentService.Instance.CanProcess)
             && Time.time < deadline)
@@ -692,11 +743,13 @@ public class ChatManager : MonoBehaviour
             yield return null;
         }
 
+        SetRequestStatus("本地模型生成中…", RequestStage.LocalGenerating);
         bool handled = false;
         yield return StartCoroutine(OfflineFallbackCoroutine(ok => handled = ok, "ollama_mode"));
         if (!handled)
         {
             _lastError = "Ollama 未就绪或本地模型生成失败";
+            SetRequestStatus("请求失败", RequestStage.Error);
             OnRequestError?.Invoke($"⚠ 本地 Ollama 未就绪，请确认 Ollama 已启动且已安装 {LocalLLMClient.ModelName}");
         }
     }
@@ -741,6 +794,7 @@ public class ChatManager : MonoBehaviour
             _fullReplyText = "";
 
             bool finished = false;
+            SetRequestStatus(round == 0 ? "连接云端…" : "整理下一轮…", RequestStage.Connecting);
             float cloudStartedAt = Time.realtimeSinceStartup;
 
             // ——— 流式发送 ———
@@ -750,6 +804,7 @@ public class ChatManager : MonoBehaviour
                     // onContentDelta: 每个 token 到达
                     delta =>
                     {
+                        SetRequestStatus("生成回复…", RequestStage.Generating);
                         ProcessStreamContent(delta);
                     },
 
@@ -789,6 +844,7 @@ public class ChatManager : MonoBehaviour
                 {
                     string retryDelayStr = attempt <= 3 ? "2" : "5";
                     Debug.Log($"[ChatManager] 🔄 {attempt}/3 自动重试 ({retryDelayStr}s 后)...");
+                    SetRequestStatus($"网络不稳，正在重试 {attempt}/3…", RequestStage.Retrying);
                     yield return new WaitForSeconds(attempt <= 3 ? 2f : 5f);
                     continue; // 重新执行当前 round
                 }
@@ -805,6 +861,7 @@ public class ChatManager : MonoBehaviour
                     }
                 }
 
+                SetRequestStatus("请求失败", RequestStage.Error);
                 OnRequestError?.Invoke($"❌ 法阵术式失败: {_lastError}");
                 yield break;
             }
@@ -846,6 +903,7 @@ public class ChatManager : MonoBehaviour
 
             foreach (var call in calls)
             {
+                SetRequestStatus($"执行：{call.name}", RequestStage.RunningTool);
                 OnToolCalled?.Invoke(call.name);
                 Debug.Log($"[ChatManager] ⚡ 施法: {call.name}({call.arguments})");
 
@@ -972,6 +1030,7 @@ public class ChatManager : MonoBehaviour
             Debug.LogWarning($"[ChatManager] ⏰ 请求总超时 ({REQUEST_TIMEOUT}s)，强制释放 _isWaiting");
             string errMsg = $"⏰ 术式施放过久（>{REQUEST_TIMEOUT}秒），本座已收阵。请检查网络或 API 状态";
             _lastError = errMsg;
+            SetRequestStatus("请求失败", RequestStage.Error);
             OnRequestError?.Invoke(errMsg);
             // ★ 设置中止标志，通知正在执行协程工具的 DoToolLoop 立即退出
             _abortRequested = true;

@@ -102,7 +102,10 @@ public class PerformanceMonitor : MonoBehaviour
 
     void Start()
     {
-        SetTier(PerformanceTier.High);
+        // currentTier defaults to High, so SetTier(High) would otherwise
+        // return before applying the frame cap. With VSync disabled that
+        // leaves the desktop pet running uncapped while idle.
+        ApplyTierSettings();
     }
 
     void OnDestroy()
@@ -283,19 +286,33 @@ public class PerformanceMonitor : MonoBehaviour
 
     private void SetTier(PerformanceTier newTier)
     {
-        if (newTier == currentTier) return;
+        if (newTier == currentTier)
+        {
+            ApplyTierSettings();
+            return;
+        }
         currentTier = newTier;
         _timeSinceLastChange = 0f;
         _lowFpsTimer = 0f;
         _stableTimer = 0f;
         _emergencyTimer = 0f;
 
-        targetFPS = GetTargetFPS(newTier);
-        rtResolutionScale = GetResolutionScale(newTier);
-        Application.targetFrameRate = (int)targetFPS;
+        ApplyTierSettings(newTier);
 
         Debug.Log($"[PerformanceMonitor] ⚡ {newTier}: {targetFPS}fps, RT {rtResolutionScale*100:F0}%");
         OnTierChanged?.Invoke(currentTier);
+    }
+
+    private void ApplyTierSettings(PerformanceTier tier)
+    {
+        targetFPS = GetTargetFPS(tier);
+        rtResolutionScale = GetResolutionScale(tier);
+        Application.targetFrameRate = (int)targetFPS;
+    }
+
+    private void ApplyTierSettings()
+    {
+        ApplyTierSettings(currentTier);
     }
 
     /// <summary>

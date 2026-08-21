@@ -58,10 +58,14 @@ public static class ExternalChatWindow
     private const uint ES_AUTOHSCROLL = 0x0080;
     private const uint WS_EX_CLIENTEDGE = 0x00000200;
     private const uint WS_EX_TOOLWINDOW = 0x00000080; // 无任务栏按钮（面板非主窗口）
+    private const uint WS_EX_LAYERED = 0x00080000;
+    private const uint LWA_ALPHA = 0x00000002;
     private const uint CS_DBLCLKS = 0x0008; // 窗口类接收 WM_*BUTTONDBLCLK
     private const int WM_DESTROY = 0x0002;
+    private const int WM_SETFOCUS = 0x0007;
     private const int WM_PAINT = 0x000F;
     private const int WM_ERASEBKGND = 0x0014;
+    private const int WM_SETREDRAW = 0x000B;
     private const int WM_SIZE = 0x0005;
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_KILLFOCUS = 0x0008;
@@ -79,6 +83,7 @@ public static class ExternalChatWindow
     private const int WM_IME_STARTCOMPOSITION = 0x010D;
     private const int WM_IME_COMPOSITION = 0x010F;
     private const int WM_IME_ENDCOMPOSITION = 0x010E;
+    private const int WM_IME_SETCONTEXT = 0x0281;
     private const int WM_IME_NOTIFY = 0x0282;
     private const int WM_CHAR = 0x0102;
     private const int WM_PASTE = 0x0302;
@@ -93,6 +98,8 @@ public static class ExternalChatWindow
     private const int HTBOTTOMRIGHT = 17;
     private const int HTNOWHERE = 0;
     private const int VK_RETURN = 0x0D;
+    private const int VK_BACK = 0x08;
+    private const int VK_DELETE = 0x2E;
     private const int BN_CLICKED = 0;
     private const int IDC_EDIT = 101;
     private const int IDC_SEND = 102;
@@ -104,8 +111,15 @@ public static class ExternalChatWindow
     private static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
     private const uint SWP_SHOWWINDOW = 0x0040;
     private const uint GCS_COMPSTR = 0x0008;
+    private const uint GCS_RESULTSTR = 0x0800;
+    private const int EM_REPLACESEL = 0x00C2;
     private const int CFS_POINT = 0x0002;
+    private const int CFS_FORCE_POSITION = 0x0020;
     private const int CFS_CANDIDATEPOS = 0x0040;
+    private const int CFS_EXCLUDE = 0x0080;
+    // WM_IME_SETCONTEXT 的 lParam 标志：默认组合窗口由输入法绘制。
+    // 本项目已经在 Unity 输入栏内绘制组合文本，因此只关闭这一项，保留候选窗口。
+    private const long ISC_SHOWUICOMPOSITIONWINDOW = unchecked((long)0x80000000L);
 
     // ★ 无边框窗口：使用面板自身标题行作为拖动带，不再额外绘制“独立面板”标题栏。
     public const int TITLE_BAR_H = 54;
@@ -118,10 +132,15 @@ public static class ExternalChatWindow
     private static IntPtr _arrowCursor, _ibeamCursor;
     private static volatile bool _inputFocusActive;
     private static volatile string _imeCompositionText = string.Empty;
+    // 原生 EDIT 只作为持久的 IME 宿主。显示状态只在输入栏生命周期切换时改变，
+    // 不在每个字符到达时反复 ShowWindow，避免 DWM/IME 产生可见闪帧。
+    private static bool _editHostShown;
     private static int _imePositionPending;
     // Unity 主线程不能每帧对另一个线程创建的 EDIT 调用 GetWindowTextW。
     // 文本在 EDIT 所属线程中更新，主线程只读取这个快照，避免点击/输入时被 Win32 同步调用卡住。
     private static volatile string _inputTextCache = string.Empty;
+    // EDIT 线程写入、Unity 主线程读取的输入快照版本。只有版本变化时 Unity 才复制字符串和触发重绘。
+    private static int _inputTextVersion;
     private static bool _closeNotificationSent;
     private static WndProcDelegate _wndProcDelegate; // 防止被 GC
     private static EditWndProcDelegate _editWndProcDelegate; // 防止被 GC（EDIT 子类化）
@@ -176,6 +195,17 @@ public static class ExternalChatWindow
         public IntPtr hwndTrack;
         public uint dwHoverTime;
     }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PAINTSTRUCT
+    {
+        public IntPtr hdc;
+        public int fErase;
+        public RECT rcPaint;
+        public int fRestore;
+        public int fIncUpdate;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+        public byte[] rgbReserved;
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern ushort RegisterClassW(ref WNDCLASS wc);
@@ -190,6 +220,9 @@ public static class ExternalChatWindow
     private static extern bool PostMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessageW(IntPtr hWnd, uint msg, IntPtr wParam,
+        [MarshalAs(UnmanagedType.LPWStr)] string lParam);
     [DllImport("user32.dll")]
     private static extern int GetMessageW(ref MSG msg, IntPtr hWnd, uint min, uint max);
     [DllImport("user32.dll")]
@@ -223,11 +256,9 @@ public static class ExternalChatWindow
     [DllImport("user32.dll")]
     private static extern bool BringWindowToTop(IntPtr hWnd);
     [DllImport("user32.dll")]
-    private static extern IntPtr GetDC(IntPtr hWnd);
+    private static extern IntPtr BeginPaint(IntPtr hWnd, out PAINTSTRUCT paint);
     [DllImport("user32.dll")]
-    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
-    [DllImport("user32.dll")]
-    private static extern bool ValidateRect(IntPtr hWnd, IntPtr rect);
+    private static extern bool EndPaint(IntPtr hWnd, ref PAINTSTRUCT paint);
     [DllImport("gdi32.dll")]
     private static extern int SetDIBitsToDevice(IntPtr hdc, int xDest, int yDest, int w, int h,
         int xSrc, int ySrc, int startScan, int scanLines, byte[] bits, ref BITMAPINFO bmi, uint colorUse);
@@ -243,8 +274,6 @@ public static class ExternalChatWindow
     private static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
     [DllImport("imm32.dll")]
     private static extern int ImmGetCompositionStringW(IntPtr hIMC, uint dwIndex, IntPtr lpBuf, int dwBufLen);
-    [DllImport("imm32.dll", CharSet = CharSet.Unicode)]
-    private static extern int ImmGetCompositionStringW(IntPtr hIMC, uint dwIndex, [Out] System.Text.StringBuilder lpBuf, int dwBufLen);
     [DllImport("imm32.dll")]
     private static extern bool ImmSetCompositionWindow(IntPtr hIMC, ref COMPOSITIONFORM lpCompForm);
     [DllImport("imm32.dll")]
@@ -568,7 +597,7 @@ public static class ExternalChatWindow
 
             // 原生输入控件 — 透明无边框，仅作为屏外键盘/中文输入法桥接。
             // 可见背景、文字和光标均由 Unity 绘制，避免 Win32 EDIT 客户区留下黑色矩形。
-            _edit = CreateWindowExW(0x00000020 /* WS_EX_TRANSPARENT */, "EDIT", "",
+            _edit = CreateWindowExW(0x00000020 /* WS_EX_TRANSPARENT */ | WS_EX_LAYERED, "EDIT", "",
                 WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
                 8, 0, 100, 30, _hwnd, (IntPtr)IDC_EDIT, _hInst, IntPtr.Zero);
             _sendBtn = CreateWindowExW(0, "BUTTON", "发送", WS_CHILD | WS_TABSTOP,
@@ -585,6 +614,8 @@ public static class ExternalChatWindow
                 Debug.Log($"[ExternalChat] EDIT 子类化成功 原过程=0x{_origEditProc.ToInt64():X}");
             // EDIT 只作为键盘/中文输入法桥接，始终不参与可见界面绘制。
             ShowWindow(_edit, 0);
+            SendMessageW(_edit, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+            MakeEditVisuallyHidden();
             HideNativeSendButton();
 
             IsCreated = true;
@@ -646,16 +677,21 @@ public static class ExternalChatWindow
                 // 输入聚焦状态机（2026-08-17 验收 P1 修复，codex 建议 5.2）：
                 //   hit(Unity 命中) → shown(控件显示) → focused(SetFocus) → send(回车/按钮)
                 //   每步留痕，144 DPI 验收可直接看日志定位断点。
-                ShowWindow(_edit, 5);
+                // EDIT 仅作为输入法宿主，真正隐藏；Unity 负责绘制可见文字和光标。
+                EnsureEditHostShown();
+                MakeEditVisuallyHidden();
+                // 仅在获得焦点时同步一次 IME 宿主矩形；后续字符输入不再重复布局。
+                PositionEditImeHost();
                 // 发送按钮由 Unity 位图和外置命中表绘制/处理；不要显示原生 BUTTON，
                 // 否则它会以黑色控件覆盖输入栏右侧。
                 HideNativeSendButton();
-                LayoutChildren();
-                MoveEditOffscreen();
                 SetFocus(_edit);
                 _imeCompositionText = string.Empty;
                 _inputFocusActive = true;
                 LogInputState("focused");
+                // 焦点消息返回后再定位一次候选框。不能在这里直接调用 IMM，
+                // 但也不能等到第一字符后才定位，否则候选栏会先出现在屏幕左上角。
+                RequestImePosition();
                 return IntPtr.Zero;
             }
             case WM_APP_POSITION_IME:
@@ -718,6 +754,16 @@ public static class ExternalChatWindow
             case WM_COMMAND:
                 if (wParam.ToInt32() == IDC_SEND) { DoSend(); return IntPtr.Zero; }
                 break;
+            case WM_IME_SETCONTEXT:
+            {
+                // 父窗口也可能收到 WM_IME_SETCONTEXT（取决于当前 IME/Windows 版本）。
+                // 关闭默认组合窗口，组合文字由 Unity 输入栏绘制；候选窗口仍保留。
+                long contextFlags = lParam.ToInt64() & ~ISC_SHOWUICOMPOSITIONWINDOW;
+                // 不把默认组合窗口交给 DefWindowProc；否则部分 Windows 中文输入法即使清掉
+                // ISC_SHOWUICOMPOSITIONWINDOW 仍会在屏幕左上角创建白色组词框。
+                DefWindowProcW(hWnd, msg, wParam, new IntPtr(contextFlags));
+                return IntPtr.Zero;
+            }
             case WM_KEYDOWN:
                 // ★ 2026-08-17 修复：回车的实际处理在 EDIT 子类化过程（EditProc）里拦截——
                 //   真实用户按键焦点在 edit，WM_KEYDOWN 发给 edit 不会冒泡到父窗口 WndProc。
@@ -791,8 +837,10 @@ public static class ExternalChatWindow
                 return IntPtr.Zero;
             case WM_PAINT:
             {
-                // 渲染最新像素流（GetDC 方式，避免 PAINTSTRUCT 封送）
-                IntPtr hdc = GetDC(hWnd);
+                // 使用标准 BeginPaint/EndPaint 清除无效区域；GetDC + ValidateRect
+                // 会让焦点切换后的 WM_PAINT 反复重入，最终拖死外置窗口线程。
+                PAINTSTRUCT paint;
+                IntPtr hdc = BeginPaint(hWnd, out paint);
                 lock (_bufLock)
                 {
                     if (_buffer != null && _bufW > 0 && _bufH > 0)
@@ -807,8 +855,7 @@ public static class ExternalChatWindow
                         SetDIBitsToDevice(hdc, 0, 0, _bufW, _bufH, 0, 0, 0, _bufH, _buffer, ref bmi, 0);
                     }
                 }
-                ReleaseDC(hWnd, hdc);
-                ValidateRect(hWnd, IntPtr.Zero); // 标记已绘制，避免 WM_PAINT 风暴
+                EndPaint(hWnd, ref paint);
                 return IntPtr.Zero;
             }
             case WM_DESTROY:
@@ -830,12 +877,59 @@ public static class ExternalChatWindow
         // 否则透明控件会在圆角输入框内部留下黑色矩形。
         if (msg == WM_ERASEBKGND)
             return new IntPtr(1);
+        if (msg == WM_PAINT)
+        {
+            // EDIT 只作为键盘/IME 桥接，禁止原生控件绘制白底、文字和系统光标。
+            // 可见内容和光标由 Unity RT 绘制，但 EDIT 保留真实输入栏坐标供 IME 使用。
+            PAINTSTRUCT paint;
+            BeginPaint(hWnd, out paint);
+            EndPaint(hWnd, ref paint);
+            return IntPtr.Zero;
+        }
+        if (msg == WM_SETREDRAW)
+        {
+            // EDIT 只作为输入法宿主，禁止原生文本、背景和光标绘制。
+            return CallWindowProcW(_origEditProc, hWnd, msg, wParam, lParam);
+        }
+        if (msg == WM_IME_SETCONTEXT)
+        {
+            // 原生 EDIT 仅负责接收键盘/IME 消息；组合文字由 Unity 绘制。
+            // 保留候选窗口，避免输入法失去候选选择能力。
+            long contextFlags = lParam.ToInt64() & ~ISC_SHOWUICOMPOSITIONWINDOW;
+            CallWindowProcW(_origEditProc, hWnd, msg, wParam, new IntPtr(contextFlags));
+            return IntPtr.Zero;
+        }
+        if (msg == WM_SETFOCUS)
+        {
+            _inputFocusActive = true;
+            RequestImePosition();
+        }
         if (msg == WM_KILLFOCUS)
         {
             _inputFocusActive = false;
             _imeCompositionText = string.Empty;
         }
-        if (msg == WM_IME_STARTCOMPOSITION || msg == WM_IME_COMPOSITION || msg == WM_IME_NOTIFY)
+        // WM_IME_NOTIFY 可能在刚获得焦点时被输入法发送；它不包含组词文本，
+        // 不应因为一次点击就触发 IMM 查询。开始组词和组词变化则需要异步定位。
+        // 只拦截 Win32 默认的组合字层；候选栏仍由 Windows 原生 IME 绘制。
+        if (msg == WM_IME_STARTCOMPOSITION)
+        {
+            _imeCompositionText = string.Empty;
+            RequestImePosition();
+            return IntPtr.Zero;
+        }
+        if (msg == WM_IME_COMPOSITION)
+        {
+            HandleImeCompositionMessage(hWnd, lParam);
+            return IntPtr.Zero;
+        }
+        if (msg == WM_IME_ENDCOMPOSITION)
+        {
+            _imeCompositionText = string.Empty;
+            RequestImePosition();
+            return IntPtr.Zero;
+        }
+        if (msg == WM_IME_STARTCOMPOSITION || msg == WM_IME_COMPOSITION)
         {
             // 输入法回调期间不调用任何 IMM 查询/定位 API。
             // 某些中文输入法在焦点切换阶段会同步等待 IME 窗口，
@@ -854,18 +948,74 @@ public static class ExternalChatWindow
             return IntPtr.Zero;
         }
         IntPtr result = CallWindowProcW(_origEditProc, hWnd, msg, wParam, lParam);
-        if (msg == WM_CHAR || msg == WM_PASTE || msg == WM_CUT || msg == WM_CLEAR || msg == WM_SETTEXT)
+        // 字符输入走 WM_CHAR，但退格/删除只会走 WM_KEYDOWN；漏掉后两者会让 Unity 字层
+        // 等到下一次字符输入才同步，表现为“输入有延迟/删除不及时”。必须在默认 EDIT
+        // 过程完成后再读取，确保拿到已经修改后的文本。
+        int vk = wParam.ToInt32();
+        if (msg == WM_CHAR || msg == WM_PASTE || msg == WM_CUT || msg == WM_CLEAR || msg == WM_SETTEXT
+            || (msg == WM_KEYDOWN && (vk == VK_BACK || vk == VK_DELETE)))
             UpdateInputTextCache();
         return result;
     }
 
     // 只在 EDIT 所属窗口线程中调用。不要从 Unity 主线程调用 GetWindowTextW。
+    private static void HandleImeCompositionMessage(IntPtr hWnd, IntPtr lParam)
+    {
+        long flags = lParam.ToInt64();
+        if ((flags & GCS_RESULTSTR) != 0)
+        {
+            string resultText = ReadImeString(GCS_RESULTSTR);
+            if (!string.IsNullOrEmpty(resultText))
+            {
+                // EDIT 不再接收 WM_IME_COMPOSITION 默认处理，因此由我们把已提交文本插入当前光标处。
+                SendMessageW(hWnd, EM_REPLACESEL, new IntPtr(1), resultText);
+                UpdateInputTextCache();
+            }
+        }
+
+        // 只读取 IME 状态，不调用 ImmSet*；候选栏位置通过消息队列异步更新，避免回调重入卡死。
+        UpdateImeCompositionText();
+        RequestImePosition();
+    }
+
+    private static string ReadImeString(uint index)
+    {
+        if (_edit == IntPtr.Zero) return string.Empty;
+        IntPtr imc = ImmGetContext(_edit);
+        if (imc == IntPtr.Zero) return string.Empty;
+        try
+        {
+            int bytes = ImmGetCompositionStringW(imc, index, IntPtr.Zero, 0);
+            if (bytes <= 0) return string.Empty;
+            IntPtr buffer = Marshal.AllocHGlobal(bytes + sizeof(char));
+            try
+            {
+                int actualBytes = ImmGetCompositionStringW(imc, index, buffer, bytes);
+                if (actualBytes <= 0) return string.Empty;
+                return Marshal.PtrToStringUni(buffer, actualBytes / sizeof(char)) ?? string.Empty;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+        finally
+        {
+            ImmReleaseContext(_edit, imc);
+        }
+    }
+
     private static void UpdateInputTextCache()
     {
         if (_edit == IntPtr.Zero) return;
         var sb = new System.Text.StringBuilder(1024);
         GetWindowTextW(_edit, sb, sb.Capacity);
-        _inputTextCache = sb.ToString();
+        string next = sb.ToString();
+        if (!string.Equals(_inputTextCache, next, StringComparison.Ordinal))
+        {
+            _inputTextCache = next;
+            Interlocked.Increment(ref _inputTextVersion);
+        }
     }
 
     /// <summary>
@@ -916,17 +1066,25 @@ public static class ExternalChatWindow
     {
         if (_edit == IntPtr.Zero || !_inputRectSet) return;
         IntPtr imc = ImmGetContext(_edit);
-        if (imc == IntPtr.Zero) return;
+        if (imc == IntPtr.Zero)
+        {
+            Debug.LogWarning("[ExternalChat] IMM context unavailable for hidden EDIT");
+            return;
+        }
         try
         {
             // IMM 的坐标是「关联窗口 _edit 的客户区坐标」，不是父窗口坐标。
             // _edit 为避免覆盖 Unity 输入栏而位于 (-4,-4)，必须经过：
             // 父窗口客户区 → 屏幕 → 隐藏 EDIT 客户区，才能得到正确的屏幕锚点。
-            POINT areaTopLeft = new POINT { X = _inputX, Y = _inputY };
+            int anchorX = _caretRectSet ? _caretX : _inputX + 8;
+            int anchorY = _caretRectSet ? _caretY : _inputY + _inputH - 4;
+            int anchorW = _caretRectSet ? Math.Max(1, _caretW) : Math.Max(1, _inputW);
+            int anchorH = _caretRectSet ? Math.Max(1, _caretH) : Math.Max(1, _inputH);
+            POINT areaTopLeft = new POINT { X = anchorX, Y = anchorY };
             POINT areaBottomRight = new POINT
             {
-                X = _inputX + Math.Max(1, _inputW),
-                Y = _inputY + Math.Max(1, _inputH)
+                X = anchorX + anchorW,
+                Y = anchorY + anchorH
             };
             if (!ClientToScreen(_hwnd, ref areaTopLeft)
                 || !ClientToScreen(_hwnd, ref areaBottomRight)
@@ -936,8 +1094,8 @@ public static class ExternalChatWindow
 
             POINT anchor = new POINT
             {
-                X = areaTopLeft.X + 8,
-                Y = areaBottomRight.Y - 4
+                X = areaTopLeft.X,
+                Y = areaBottomRight.Y
             };
             RECT area = new RECT
             {
@@ -948,7 +1106,7 @@ public static class ExternalChatWindow
             };
             COMPOSITIONFORM composition = new COMPOSITIONFORM
             {
-                dwStyle = CFS_POINT,
+                dwStyle = CFS_POINT | CFS_FORCE_POSITION,
                 ptCurrentPos = anchor,
                 rcArea = area
             };
@@ -956,7 +1114,8 @@ public static class ExternalChatWindow
             CANDIDATEFORM candidate = new CANDIDATEFORM
             {
                 dwIndex = 0,
-                dwStyle = CFS_CANDIDATEPOS,
+                // CFS_EXCLUDE 让原生候选栏从 Unity 光标矩形下方展开，而不是覆盖输入文字。
+                dwStyle = CFS_EXCLUDE,
                 ptCurrentPos = anchor,
                 rcArea = area
             };
@@ -981,9 +1140,30 @@ public static class ExternalChatWindow
                 _imeCompositionText = string.Empty;
                 return;
             }
-            var sb = new System.Text.StringBuilder(Math.Max(2, bytes / 2 + 1));
-            ImmGetCompositionStringW(imc, GCS_COMPSTR, sb, bytes);
-            _imeCompositionText = sb.ToString();
+
+            // ImmGetCompositionStringW 的 dwBufLen/返回值单位是“字节”，而不是字符。
+            // 不能把这个长度直接交给 StringBuilder，否则 UTF-16 缓冲区会出现长度
+            // 不匹配，组合文本末尾可能泄漏出类似 A/Ä 的伪字符。
+            IntPtr buffer = Marshal.AllocHGlobal(bytes + sizeof(char));
+            try
+            {
+                int actualBytes = ImmGetCompositionStringW(imc, GCS_COMPSTR, buffer, bytes);
+                if (actualBytes <= 0)
+                {
+                    _imeCompositionText = string.Empty;
+                    return;
+                }
+
+                // 返回值仍是 UTF-16 字节数；PtrToStringUni 的长度单位是字符数。
+                int charCount = actualBytes / sizeof(char);
+                _imeCompositionText = charCount > 0
+                    ? Marshal.PtrToStringUni(buffer, charCount)
+                    : string.Empty;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
         }
         finally
         {
@@ -1003,7 +1183,8 @@ public static class ExternalChatWindow
         string text = sb.ToString().Trim();
         if (text.Length == 0) return;
         SetWindowTextW(_edit, "");
-        _inputTextCache = string.Empty;
+        // 清空后立即发布新版本，否则 Unity 字层可能残留上一条消息直到下一次按键。
+        UpdateInputTextCache();
         // 发送留痕（不记录真实内容，防敏感信息入日志——codex 建议 5.2）
         LogInputState($"send length={text.Length}");
         MainThreadDispatcher.Run(() => OnSendText?.Invoke(text));
@@ -1014,15 +1195,23 @@ public static class ExternalChatWindow
     public static void ShowInputBar(bool show)
     {
         if (!IsCreated) return;
-        if (!show) _inputFocusActive = false;
-        ShowWindow(_edit, show ? 5 : 0);
+        if (!show)
+        {
+            _inputFocusActive = false;
+            if (_editHostShown)
+            {
+                ShowWindow(_edit, 0 /* SW_HIDE */);
+                _editHostShown = false;
+            }
+        }
+        else
+        {
+            EnsureEditHostShown();
+            MakeEditVisuallyHidden();
+        }
+
         // 原生发送按钮不参与外置模式交互，始终隐藏，避免黑色控件覆盖 Unity 发送图标。
         HideNativeSendButton();
-        if (show)
-        {
-            LayoutChildren();
-            MoveEditOffscreen();
-        }
     }
 
     /// <summary>设置原生输入框位置（Unity 主线程调用，坐标为面板逻辑像素）
@@ -1051,15 +1240,41 @@ public static class ExternalChatWindow
 
         // SetInputRect 由 Unity 的 IMGUI 每帧调用。原先这里每帧跨线程
         // SetWindowPos + Debug.Log，会让窗口线程和日志镜像持续争用，点击后逐渐卡死。
-        // EDIT 已在创建/显示/聚焦阶段移到屏外，这里只缓存坐标；变化时留一条诊断记录即可。
+        // EDIT 作为持久 IME 宿主，只在输入栏矩形变化时由 WM_SIZE/聚焦阶段重新布局；
+        // 这里仅缓存坐标，避免每个字符都触发原生窗口布局。
         if (changed)
             Debug.Log($"[ExternalChat] input rect changed ({px},{py},{pw},{ph})");
     }
 
     /// <summary>读取隐形原生输入通道的当前文字，由 Unity 主线程同步到 IMGUI。</summary>
+    /// <summary>
+    /// 同步 Unity 实际渲染光标矩形。原生候选栏只使用这个小矩形定位，避免跟随整个输入框左上角。
+    /// 坐标与 SetInputRect 相同，均为外置窗口客户区逻辑像素。
+    /// </summary>
+    public static void SetInputCaretRect(int x, int y, int w, int h)
+    {
+        if (!IsCreated) return;
+        int px, py, pw, ph;
+        LogicalToClient(x, y, out px, out py);
+        LogicalToClientSize(w, h, out pw, out ph);
+
+        bool changed = !_caretRectSet
+            || _caretX != px || _caretY != py || _caretW != pw || _caretH != ph;
+        _caretRectSet = true;
+        _caretX = px; _caretY = py; _caretW = pw; _caretH = ph;
+        if (changed && _inputFocusActive)
+            RequestImePosition();
+    }
+
     public static string GetInputText()
     {
         return _inputTextCache ?? string.Empty;
+    }
+
+    /// <summary>输入文本快照版本。用于替代 Unity 每帧字符串轮询。</summary>
+    public static int GetInputTextVersion()
+    {
+        return Volatile.Read(ref _inputTextVersion);
     }
 
     /// <summary>外置窗口输入通道是否聚焦，用于 RT 中绘制可见插入光标。</summary>
@@ -1105,13 +1320,15 @@ public static class ExternalChatWindow
         // 输入框位置由 Unity 侧 SetInputRect 同步（已统一 DPI 转换）；按钮仅作参考（透明样式下隐藏）
         RECT rc; GetClientRect(_hwnd, out rc);
         int barH = 44;
-        // 可见输入框完全由 Unity 绘制；EDIT 只保留为屏外输入桥。
-        MoveEditOffscreen();
+        // 可见输入框、组合文字和光标完全由 Unity 绘制；EDIT 始终是透明 IME 宿主。
+        PositionEditImeHost();
         SetWindowPos_Button(rc.Right - 76, rc.Bottom - barH + 6, 68, 30);
     }
 
     private static bool _inputRectSet;
     private static int _inputX, _inputY, _inputW, _inputH;
+    private static bool _caretRectSet;
+    private static int _caretX, _caretY, _caretW, _caretH;
     private static bool _logicalInputRectSet;
     private static int _logicalInputX, _logicalInputY, _logicalInputW, _logicalInputH;
     private static void SetWindowPos_Edit(int x, int y, int w, int h)
@@ -1120,15 +1337,57 @@ public static class ExternalChatWindow
         SetWindowPos(_edit, IntPtr.Zero, x, y, w, h, 0x0004 /*SWP_NOZORDER*/);
     }
 
-    private static void MoveEditOffscreen()
+    private static void EnsureEditHostShown()
     {
         if (_edit == IntPtr.Zero) return;
-        SetWindowPos(_edit, IntPtr.Zero, -4, -4, 1, 1,
+        if (!_editHostShown)
+        {
+            // 只在输入宿主从隐藏状态进入输入生命周期时显示一次；字符输入期间不再切换
+            // 原生窗口可见性，避免 IME/DWM 在每个组合事件上产生闪动。
+            ShowWindow(_edit, 5 /* SW_SHOW */);
+            _editHostShown = true;
+        }
+
+        // WM_SETREDRAW(FALSE) 在创建阶段关闭过，这里只重复声明状态，不触发重绘。
+        SendMessageW(_edit, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    private static void PositionEditImeHost()
+    {
+        if (_edit == IntPtr.Zero) return;
+        // EDIT 保留在 Unity 输入栏真实矩形内作为 IME 宿主；原生绘制已由 EditProc
+        // 拦截并设为透明，用户看到的文字/光标全部来自 Unity。保留真实尺寸可让
+        // Windows 中文输入法正确计算候选栏坐标。
+        int hostX = _inputRectSet ? _inputX : 0;
+        int hostY = _inputRectSet ? _inputY : 0;
+        int hostW = _inputRectSet ? Math.Max(1, _inputW) : 1;
+        int hostH = _inputRectSet ? Math.Max(1, _inputH) : 1;
+        SetWindowPos(_edit, IntPtr.Zero, hostX, hostY, hostW, hostH,
             0x0004 /*SWP_NOZORDER*/ | 0x0010 /*SWP_NOACTIVATE*/);
+    }
+
+    /// <summary>
+    /// 微软中文输入法会额外创建 CiceroUIWndFrame 组合窗口，即使应用清除了
+    /// ISC_SHOWUICOMPOSITIONWINDOW，部分版本仍会显示它。该窗口只承载原生组词预览，
+    /// 候选窗口是另一套 UI，不能一起隐藏；Unity 已经绘制了组词文本，因此这里只隐藏前者。
+    /// </summary>
+    /// <summary>
+    /// 将 Win32 EDIT 设为完全透明，但不隐藏窗口本身。
+    /// 它必须继续存在并保持焦点，中文输入法才能正常附着；可见文字、组合下划线和光标统一由 Unity 绘制。
+    /// </summary>
+    private static void MakeEditVisuallyHidden()
+    {
+        if (_edit == IntPtr.Zero) return;
+        int exStyle = GetWindowLong(_edit, GWL_EXSTYLE);
+        if ((exStyle & (int)WS_EX_LAYERED) == 0)
+            SetWindowLong(_edit, GWL_EXSTYLE, new IntPtr(exStyle | (int)WS_EX_LAYERED));
+        SetLayeredWindowAttributes(_edit, 0, 0, LWA_ALPHA);
     }
 
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")]
+    private static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint colorKey, byte alpha, uint flags);
     private static void SetWindowPos_Button(int x, int y, int w, int h) => SetWindowPos(_sendBtn, IntPtr.Zero, x, y, w, h, 0x0004);
 
     private static void HideNativeSendButton()

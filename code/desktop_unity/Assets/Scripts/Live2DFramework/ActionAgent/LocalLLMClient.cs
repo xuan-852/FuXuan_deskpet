@@ -105,10 +105,12 @@ public static class LocalLLMClient
 
             if (req.result == UnityWebRequest.Result.Success)
             {
-                IsReady = true;
+                // Ollama service availability is not model availability.
+                // The exact configured model must be present before requests are allowed.
                 string body = req.downloadHandler.text;
                 // 检查模型是否存在
                 bool modelFound = body.Contains(ModelName) || body.Contains(ModelName.Replace(":latest", ""));
+                IsReady = modelFound;
                 string msg = modelFound
                     ? $"✅ 本地 LLM 就绪（{ModelName}）"
                     : $"⚠️ Ollama 在线，但模型「{ModelName}」未找到，需运行: ollama pull {ModelName}";

@@ -29,7 +29,8 @@ public static class ApiClient
     public static bool BlockCloudInTestMode { get; set; } = true;
 
     /// <summary>当前是否应短路云端调用（测试模式 + 开关打开）；供非 ApiClient 的直接 UnityWebRequest 调用方检查</summary>
-    public static bool ShouldBlockCloudPublic() => ChatConfig.UseOllamaMode
+    public static bool ShouldBlockCloudPublic() => !ChatConfig.CloudRequestsEnabled
+        || ChatConfig.UseOllamaMode
         || (ChatManager.IsTestMode && BlockCloudInTestMode);
 
     /// <summary>内部短路判断</summary>
@@ -52,8 +53,11 @@ public static class ApiClient
         // ★ 测试模式禁云端：直接短路，不烧 token
         if (ShouldBlockCloud())
         {
-            UnityEngine.Debug.Log($"[ApiClient] 🛡 测试模式：已拦截云端调用（{source}），不消耗 token");
-            onError?.Invoke("测试模式已拦截云端调用");
+            string reason = !ChatConfig.CloudRequestsEnabled
+                ? "云端调用已关闭（--no-cloud / FU_XUAN_NO_CLOUD）"
+                : (ChatConfig.UseOllamaMode ? "本地模式已锁定云端调用" : "测试模式已拦截云端调用");
+            UnityEngine.Debug.Log($"[ApiClient] cloud blocked ({source}): {reason}");
+            onError?.Invoke(reason);
             yield break;
         }
 
@@ -227,8 +231,11 @@ public static class ApiClient
         // ★ 测试模式禁云端：直接短路，不烧 token
         if (ShouldBlockCloud())
         {
-            UnityEngine.Debug.Log($"[ApiClient] 🛡 测试模式：已拦截云端流式调用（{source}），不消耗 token");
-            onError?.Invoke("测试模式已拦截云端调用");
+            string reason = !ChatConfig.CloudRequestsEnabled
+                ? "云端调用已关闭（--no-cloud / FU_XUAN_NO_CLOUD）"
+                : (ChatConfig.UseOllamaMode ? "本地模式已锁定云端调用" : "测试模式已拦截云端调用");
+            UnityEngine.Debug.Log($"[ApiClient] cloud blocked streaming ({source}): {reason}");
+            onError?.Invoke(reason);
             yield break;
         }
 

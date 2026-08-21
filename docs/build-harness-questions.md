@@ -447,3 +447,42 @@ G. 杀毒软件名称与实时保护状态
 ```
 
 **A/B 是最关键**：若 codex 以**服务会话/不同用户**运行，Tuanjie 的授权握手（依赖用户桌面会话的 Licensing Client）会挂起——这与 harness（交互用户 25295）的根本差异。**建议 codex 用与用户相同的交互 PowerShell 运行 build.ps1，不要从后台服务/代理 shell 启动。**
+
+### Codex 对 A/B 的实测回答（2026-08-21）
+
+已在实际执行构建的工具 shell 中检查身份：
+
+```text
+whoami:       fu\\codexsandboxoffline
+SID:          S-1-5-21-2988636680-1270864276-3946597529-1005
+USERNAME:     25295
+SESSIONNAME:  Console
+SessionId:    1
+UserInteractive: True
+```
+
+这里的关键是：环境变量显示的 `USERNAME=25295` 不能代表 Windows 访问令牌的真实用户；`whoami` 和 SID 表明 Codex 实际运行在 `fu\\codexsandboxoffline` 账户下，而不是 harness 报告的用户 `25295`。因此两边并非同一用户身份，即使工作目录、命令行和 Tuanjie 版本完全相同，用户级 Licensing Client、授权凭据、桌面会话和缓存仍可能不同。
+
+这解释了当前现象：harness 可以进入 `Assembly-CSharp` 编译，而 Codex 启动的 Tuanjie 在生成项目日志前低 CPU 等待。后续若要让 Codex 本机复测，必须使用用户 `25295` 的真实交互式 PowerShell/桌面会话，或让 harness 在该用户会话中代为执行构建；继续在 `fu\\codexsandboxoffline` shell 内重复构建，不能作为同环境对照。
+
+### 宿主权限复测（2026-08-21 14:34）
+
+已申请并使用宿主 Windows 会话重新执行：
+
+```text
+whoami:       fu\\25295
+Windows 用户: FU\\25295
+SESSIONNAME:  Console
+.\\build.ps1 -Quick
+```
+
+结果：**成功**。
+
+- 总耗时：18 秒；
+- 进程退出码：0；
+- `logs/build/build_log.txt` 更新至 14:34:38；
+- 日志包含成功连接 Licensing Client、正常握手和 `return code 0`；
+- 构建结束后无残留 Tuanjie、Licensing Client 或 CrashHandler 进程；
+- `test_results.xml` 未更新，说明本次确认的是编译/批处理成功，不代表本次 EditMode 测试重新执行。
+
+最终结论：此前 Codex sandbox 中的 `fu\\codexsandboxoffline` 身份确实会导致 Tuanjie 启动阶段行为不同；使用真实用户 `FU\\25295` 的宿主交互会话后，当前项目可以正常通过 `-Quick` 编译。原先加入的 Licensing/CrashHandler 清理仍保留，作为异常中止后的构建防护，但不是本次卡死的唯一根因。

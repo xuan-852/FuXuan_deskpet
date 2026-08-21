@@ -296,7 +296,7 @@
 ## 十三、外置输入框统一（2026-08-19）
 
 - 原因：外置窗口若让 Win32 `EDIT` 直接覆盖皮肤，Windows 主题/客户区擦除可能留下大面积黑色矩形；同时 Unity 与原生控件各绘制一套文字也容易错位。
-- 现在：可见输入框的背景、文字和光标统一由 Unity 绘制；Win32 `EDIT` 隐藏并移到屏外，只负责键盘、回车和中文输入法桥接，避免原生黑块进入 RenderTexture/外置窗口。
+- 现在：可见输入框的背景、文字和光标统一由 Unity 绘制；Win32 `EDIT` 保留在输入栏真实矩形内作为中文输入法宿主，但由 `EditProc` 拦截原生绘制并设为透明，避免原生黑块/白框进入 RenderTexture/外置窗口。
 - `RightPanel.ChatView` 仍按当前逻辑矩形和 DPI 同步 `ExternalChatWindow.SetInputRect`，保留输入命中、焦点和布局记录，但不再把原生控件放入可见区域。
 - `_termInputStyle` 的 normal/focused/hover/active 背景显式绑定透明纹理；圆角背景、发光描边、占位符、光标和发送按钮均由 Unity 绘制。
 - 原生发送按钮保持隐藏，外置发送由 Unity 命中表处理；输入焦点时屏外 EDIT 仍接收真实文本，Unity 每帧通过 `GetInputText()` 同步显示。
@@ -304,6 +304,8 @@
 - 2026-08-19 输入交互回归：光标仅在获得焦点时显示，并按 1 秒周期闪烁；位置使用 `GUIStyle.GetCursorPixelPosition(Rect, GUIContent, int)`，避免重复叠加输入样式 padding 造成文字与光标间距异常。窗口顶部可能出现的白色候选条属于 Windows 中文输入法，不属于桌宠绘制层。
 - 2026-08-19 输入法定位修复：原生 `EDIT` 继续作为不可见的键盘/输入法桥接层，但通过 `imm32` 的组合/候选窗口定位 API 将候选栏锚定到底部输入栏；`WM_IME_COMPOSITION` 的正在组词文本同步由 Unity 绘制，用户可在输入栏内看到完整的拼音/组词反馈，避免黑色原生客户区再次出现。
 - 2026-08-20 崩溃修复：禁止在 `EditProc` 处理 `WM_IME_*` 回调时再次调用 `ImmSetCompositionWindow`；该 API 会回发输入法消息，导致 `EditProc → IMM → EditProc` 递归并触发 Mono 原生崩溃。候选栏定位仅在输入框获得焦点或布局矩形更新时执行，输入法回调只读取组词文本。
+- 2026-08-20 最终视觉回归：真实尺寸透明 `EDIT` 使候选栏稳定显示在 Unity 输入文字下方；组词期间短时枚举并隐藏微软输入法的 `CiceroUIWndFrame` / `MSCTFIME Composition` 原生组词窗口，仅保留候选栏，Unity 继续绘制唯一可见文字和光标。隔离实机截图通过。
+- 2026-08-20 IME 稳定性修复：`ImmGetCompositionStringW` 改用精确的非托管 UTF-16 缓冲区读取，严格按“字节数 → UTF-16 字符数”转换，避免组合文本末尾出现伪字符；原生 `EDIT` 改为持久 IME 宿主，输入期间不再重复 `ShowWindow`、布局或启动隐藏计时器。`build.ps1 -Quick`（114/114）、完整构建和隔离运行时冒烟测试通过。
 - 2026-08-19 第二轮视觉统一：空消息区增加“本座已候命 / 输入消息，开始与符玄对话”空状态；聊天工具项保持当前态底色和强调线，其他工具仅在 hover 时提亮；标题头像移除黑色方形衬底，侧栏头像缩小为 44px，减少头像层级差异。
 
 ## 十二、外置窗口残留生命周期修复（2026-08-17）
@@ -311,3 +313,9 @@
 - 外置 Win32 窗口创建时不再带 `WS_VISIBLE`，完成 Unity 事件订阅、客户区尺寸和输入控件初始化后才由 `Show()` 显示，避免启动阶段在旧位置闪现原生窗口外壳。
 - `Hide()`、`WM_CLOSE` 和 `WM_APP_SHUTDOWN` 均清空 BGRA 缓冲及尺寸状态，避免关闭后继续显示上一帧紫色/残留画面。
 - 最新构建通过 Quick、完整构建、EditMode 78/78 和隔离 `runtime_smoke.cjs --verbose` 验证；手动打开→关闭→重新打开外置窗口，日志未出现 NRE/Fatal 或外置窗口残留错误。
+### IME 分层修复（2026-08-20）
+
+- 渲染字层：Unity 绘制已提交文本、组合文本和闪烁光标；光标横坐标由 `GUIStyle.CalcSize` 的文本末端计算，避免英文输入时跑到字符中间。
+- 输入文字栏：继续保留 Windows 原生 IME 候选栏，使用 Unity 实际光标矩形和 `CFS_EXCLUDE` 定位到渲染字层下方。
+- Win32 原生字层：隐藏 EDIT 绘制，并在 `WM_IME_SETCONTEXT` 关闭默认组合窗口；`WM_IME_START/COMPOSITION/ENDCOMPOSITION` 由 `EditProc` 接管，提交结果手动写入 EDIT，组合文本交给 Unity 绘制。
+- 外置窗口的 EditMode 构建测试已生成 128/128 通过结果；完整构建已生成 `Build/DesktopPet.exe`。`runtime_smoke.cjs --verbose` 仍有既有窗口尺寸日志缺失项，未将其误记为通过。
