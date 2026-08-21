@@ -1,7 +1,7 @@
 # 工具系统 ToolEngine — 65 工具插件架构与稳定性报告
 
 > **文档作用**: 本模块文档描述桌宠「工具系统」的**代码真相**——IPetTool 插件架构、ToolRegistry 反射自动发现、AsyncToolBase 异步基类、危险工具审批、12 个工具文件 65 个已注册工具的分类清单，以及 2026-08-08 全量稳定性测试报告（57 用例 0 真实 bug）。新增/修改/删除任何 AI 工具前必读。
-> **基本架构**: `IPetTool`（接口）+ `ToolSchema`（参数 Schema）→ 实现类（12 个工具文件 + 7 个基础设施 .cs）→ `ToolRegistry`（AppDomain 反射自动发现 + 调度）→ `AsyncToolBase`（异步/协程基类）→ `ChatManager` 调用。危险工具清单 `DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}`，经 `ToolConfirmManager` 审批。关键文件：`Assets/Scripts/ToolEngine/`（20 个 .cs，含测试器 ToolBenchmarkRunner）。
+> **基本架构**: `IPetTool`（接口）+ `ToolSchema`（参数 Schema）→ 实现类（12 个工具文件 + 7 个基础设施 .cs）→ `ToolRegistry`（AppDomain 反射自动发现 + 调度）→ `AsyncToolBase`（异步/协程基类）→ `ChatManager` 调用。云端通过 Function Calling 进入该链路；本地通过 `LocalToolRouter` 输出 JSON 计划后进入同一 `ToolCallInvoker`，不复制第二套工具实现。危险工具清单 `DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}`，经 `ToolConfirmManager` 审批。关键文件：`Assets/Scripts/ToolEngine/`（20 个 .cs，含测试器 ToolBenchmarkRunner）。
 > **开发历史迭代**: N40 起工具数 40+→52→55（新增 Pogget/LaTeX 等）；2026-08-08 `9b94c09` 修复 4 类 benchmark 问题（emoji 误判、DANGER_GUARD 真执行、run_command GBK 崩溃、file_move 链式失败）；55 工具全量测试 44 OK / 6 DANGER_GUARD / 5 SKIP / 2 ERROR（均预期）；2026-08-12 P1 收尾 55→**59**（+OfficeTools 3 个补录 + openclaw_task 补录，任务外包 /task 端点落地）；2026-08-12 P4 新增 3 个偏好工具 → **62**（set_preference / query_preferences / remove_preference，PreferencesManager 配套）；2026-08-12 P5 新增 3 个任务模板工具 → **65**（query_task_templates / save_task_template / remove_task_template，TaskTemplateManager 配套）+ openclaw_task 支持 template/template_args + 轨迹记录（TaskTrajectoryManager，太卜手札）。
 > **编写注意事项**: ①测试**禁止空参数遍历调用所有工具**（lock_screen 真锁屏、file_delete 真删文件、set_volume 真改音量），空参测试只限只读白名单（get_system_info/get_mouse_pos/get_clipboard）；②新增工具自动被反射发现，无需手动注册；③工具执行须返回中文 ✅/❌ 前缀消息；④危险工具须入 DangerousTools 清单并走 ToolConfirmManager 审批；⑤run_command 输出必须 UTF-8 解码（`chcp 65001`），Unity Mono 无 I18N.CJK 会抛异常。
 
@@ -27,10 +27,25 @@ IPetTool (接口: ToolName / ToolDescription / ToolParametersJson / IsAsync / Ex
 ToolRegistry (AppDomain.GetAssemblies 反射自动发现 + 调度)
   ↑ 委托
 AsyncToolBase (异步/协程工具基类, ToolName 虚属性)
-  ↑ ChatManager 调用 (DoToolLoop, 最多 10 轮)
+  ↑ ChatManager 调用 (云端 DoToolLoop / 本地 LocalToolRouter, 最多 10 轮云端回环)
 ```
 
-### 2.2 文件清单与工具分类（真实注册名，65 个）
+### 2.2.1 本地工具调用入口
+
+本地模式不依赖 Ollama 的原生 `tools`/`tool_calls` 支持，而使用受控的文本规划协议：
+
+```text
+qwen2.5:3b → {action, tool, arguments, reason}
+           → LocalToolRouter 白名单
+           → ToolConfirmManager（危险工具）
+           → ToolCallInvoker → ToolRegistry → IPetTool
+           → 压缩结果 → qwen3:8b 最终回复
+```
+
+`LocalToolRouter` 按意图只暴露常用小目录，拒绝未知工具和当前意图之外的工具；
+因此本地模型获得“能执行”的能力，但不会获得绕过 Unity 安全层的权限。
+
+### 2.3 文件清单与工具分类（真实注册名，65 个）
 
 | 文件 | 工具数 | 工具列表 | 类别 |
 |------|--------|----------|------|
@@ -49,7 +64,7 @@ AsyncToolBase (异步/协程工具基类, ToolName 虚属性)
 
 > 📚 **knowledge_index 支持 PDF（2026-08-15）**：`indexExtensions` 已含 `.pdf`。PDF 索引链路：`KnowledgeBaseManager.IndexFile` 检测到 `.pdf` → `OpenClawBridge.ExtractPdfTextAsync`（桥接 `/extract_pdf` 端点）→ 本地 Python `scripts/knowledge/pdf_extract.py`（PyMuPDF 优先，中文 CMap 解码最佳；pypdf 兜底）提取文本层 → 走标准分块/嵌入/存储流程。实测：控制理论.pdf（159 页/17.2 万字符）→ 170 个分块入库，`knowledge_search` 可检索到「PID 控制器」「串级 PID」等原文。⚠️ 扫描版图片 PDF（无文本层）返回 `is_scanned:true`，提示需先 OCR 转文字。依赖：桥接服务器运行中 + Python 已装 PyMuPDF（`py -3.12 -m pip install pymupdf`）。
 
-### 2.3 基础设施（7 个 .cs）
+### 2.4 基础设施（7 个 .cs）
 
 | 文件 | 职责 |
 |------|------|
@@ -63,14 +78,14 @@ AsyncToolBase (异步/协程工具基类, ToolName 虚属性)
 
 > ⚠️ **代码中不存在的旧文档工具**：`get_time`、`get_pet_status`、`get_system_status`、`show_reminder`、`send_notification`、`write_note`、`messenger`、`write_memory`、`get_memories`、`start_conversation`、`open_web`、`capture_screen`、`reminder_*`（旧文件 MemoryTools/ReminderTools/AcademicTools/KnowledgeTools/BodyTools 均已不存在）。以本表为准。
 
-### 2.4 意图 → 工具白名单映射（ChatManager 侧）
+### 2.5 意图 → 工具白名单映射（ChatManager 侧）
 
 - **chat** / **emotion** → 不发任何 tools
 - **command** → launch_pogget、pogget_agent、open_app、open_url、open_folder、search、search_web、openclaw_search、openclaw_task、lock_screen、set_volume、mute、power、get_system_info、get_mouse_pos、list_files、run_command、notify、get_clipboard、set_clipboard、file_*、take_screenshot
 - **knowledge** → search_web、search、openclaw_search、openclaw_task、knowledge_search、compile_latex、get_weather、generate_ppt、generate_docx、generate_xlsx、query_*、inspect_*、explore_body*
 - **operation** → set_expression、play_action、stop_action、generate_motion、inspect_*、explore_body*、take_screenshot、knowledge_index
 
-### 2.5 危险工具审批流程
+### 2.6 危险工具审批流程
 
 `DangerousTools`（7 个：file_delete / power / lock_screen / run_command / set_volume / mute / openclaw_task）→ `ToolConfirmManager` 弹确认 → 用户同意才执行。测试器验证时**只验证 IsDangerous/HasTool 标记，绝不执行**。
 

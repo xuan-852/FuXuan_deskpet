@@ -4,12 +4,13 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 本地 LLM 智能服务 — 为 ChatManager 提供 4 项离线能力：
+/// 本地 LLM 智能服务 — 为 ChatManager 提供本地能力：
 ///
 /// 1. 🧠 意图/情绪分类 — 用户输入实时分类（闲聊/指令/知识/情感/操作）
-/// 2. 🔄 离线回退回复 — DeepSeek API 不可用时本地模型替代
-/// 3. 📝 对话压缩摘要 — 历史过长时智能压缩，替代简单截断
-/// 4. 💾 记忆提取 — 从对话中提取重要信息存入忆境
+/// 2. 🧭 本地工具规划 — 输出受白名单约束的工具 JSON 计划
+/// 3. 🔄 本地角色回复 — 结合忆境和工具结果生成最终回复
+/// 4. 📝 对话压缩摘要 — 历史过长时智能压缩，替代简单截断
+/// 5. 💾 记忆提取 — 从对话中提取重要信息存入忆境
 ///
 /// 使用协程队列串行处理任务，避免并发冲突。
 /// 依赖 LocalLLMClient 连接 Ollama；动作/摘要使用轻量模型，聊天使用独立的质量模型。
@@ -177,17 +178,75 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
     }
 
     // ──────────────────────────────────────────────────────────────────
-    //  功能 2：离线回退回复
+    //  功能 2：本地工具规划
     // ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// 在 DeepSeek API 不可用时，用本地模型生成回复
+    /// 让轻量本地模型从给定目录中选择一个工具，返回严格 JSON 计划。
+    /// 该方法只负责规划，不直接执行任何工具；执行和危险确认由 ChatManager 完成。
+    /// </summary>
+    public void PlanLocalTool(string userMessage, string compactCatalog, Action<LocalToolPlan> onResult)
+    {
+        if (string.IsNullOrWhiteSpace(userMessage) || onResult == null) return;
+
+        string systemPrompt = @"你是符玄桌宠的本地术式规划器，不是聊天助手。
+请根据用户请求和可用术式目录，判断是否需要执行一个工具。
+只能从目录中选择一个 tool；不需要执行时返回 action=none。
+必须只返回一个 JSON 对象，不要 Markdown，不要解释，不要输出第二个 JSON：
+{""action"":""call""或""none"",""tool"":""工具名或空字符串"",""arguments"":{},""reason"":""不超过20字""}
+
+规则：
+1. 用户只是闲聊、询问建议、表达情绪时，返回 action=none。
+2. 用户明确要求打开、搜索、读取、生成、运行、设置、播放或查询时，才选择工具。
+3. arguments 必须严格符合目录中的参数 schema；没有参数时使用 {}。
+4. 不得伪造工具名、参数或执行结果；不要把最终回复写进 JSON。
+5. 危险工具可以提出计划，但执行前由桌宠单独请求用户确认，不能绕过确认。
+
+可用术式目录：
+" + (compactCatalog ?? "[]");
+
+        EnqueueTask(() => PlanLocalToolCoroutine(userMessage, systemPrompt, onResult), LocalLLMClient.ModelName);
+    }
+
+    private IEnumerator PlanLocalToolCoroutine(string userMessage, string systemPrompt, Action<LocalToolPlan> onResult)
+    {
+        LocalToolPlan plan = new LocalToolPlan
+        {
+            Success = false,
+            ShouldExecute = false,
+            ToolName = "",
+            ArgumentsJson = "{}",
+            Reason = "",
+            Error = "本地术式规划未返回"
+        };
+
+        yield return LocalLLMClient.PromptAsync(systemPrompt, userMessage, (ok, content) =>
+        {
+            plan = ok ? LocalToolRouter.ParsePlan(content) : plan;
+            if (!ok && !string.IsNullOrEmpty(content))
+                plan.Error = content;
+        }, temperature: 0.1f, maxTokens: 320, timeout: 30, modelOverride: LocalLLMClient.ModelName);
+
+        onResult?.Invoke(plan);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    //  功能 3：本地角色回复
+    // ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 在本地模式或 DeepSeek API 不可用时，用本地模型生成回复。
     /// </summary>
     /// <param name="characterDesc">角色描述（不含工具定义，仅性格人设）</param>
     /// <param name="recentHistory">最近几轮对话文本</param>
     /// <param name="userMessage">用户最新消息</param>
     /// <param name="onResult">回调 (success, replyText)</param>
-    public void GenerateFallbackReply(string characterDesc, string recentHistory, string userMessage, Action<bool, string> onResult)
+    public void GenerateFallbackReply(
+        string characterDesc,
+        string recentHistory,
+        string userMessage,
+        Action<bool, string> onResult,
+        string toolResultContext = null)
     {
         LocalChatModelProfile profile = LocalChatModelProfiles.Get(LocalLLMClient.ChatModelName);
         string memoryContext = "";
@@ -199,7 +258,7 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
                 "本地忆境");
         }
         string prompt = LocalRoleplayPromptBuilder.Build(
-            characterDesc, recentHistory, userMessage, profile.Model, memoryContext);
+            characterDesc, recentHistory, userMessage, profile.Model, memoryContext, toolResultContext);
 
         // 不同聊天模型使用各自的质量预算；动作/摘要仍走轻量模型。
         float temperature = profile.Temperature;

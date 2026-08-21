@@ -36,6 +36,7 @@
 | 亮点 | 说明 |
 |------|------|
 | 🤖 **本地优先的桌面 AI 伴侣** | Ollama 本地聊天 + 可选 DeepSeek Function Calling + **65 个工具**，不只是聊天 |
+| 🪄 **本地也能执行术式** | qwen2.5:3b 规划 JSON → 本地白名单 → ToolEngine 执行 → qwen3:8b 根据真实结果回复 |
 | 🎭 **Live2D 活灵活现** | Cubism 5-r.4 参数化动画 + 物理模拟（裙/发/法盘惯性跟随）+ DWM 透明窗口融入桌面 |
 | 🧠 **忆境与人格** | 相关性记忆检索、核心事实、对话摘要、五维人格与本地知识库 RAG |
 | 🔍 **感知你的一举一动** | 前台窗口、浏览器标签、时间天气、系统性能、GPU 负载、剪贴板 |
@@ -234,6 +235,7 @@ setx DESKTOP_TOKEN "your-server-token-here"
 - **意图过滤**：本地 Ollama 分类（chat/emotion/command/knowledge/operation），chat/emotion 不发工具，其余按白名单注入子集（首轮 65→约 27）
 - **模型分层**：聊天模型单独保留质量预算；动作/分类/摘要使用轻量模型，避免动作循环拖慢输入响应
 - **本地质量护栏**：短角色卡、相关忆境、最近两轮历史、回复后处理和确定性句数约束共同控制低能力模型的输出
+- **本地工具路由**：普通闲聊不额外规划；明确操作时只注入相关工具目录，危险术式仍走统一确认，不把 65 个 schema 全塞给本地模型
 - **Token 优化（N40 T1-T8）**：时间戳挪尾部（缓存命中率 98.6%）、body schema 裁剪、max_tokens:1200+thinking 禁用、历史 15000 字符预算 + Ollama 摘要、SystemPrompt -41%、Speculative Multi-Action（一次多 tool_call）
 - **危险工具审批**：7 个危险工具（file_delete/power/lock_screen/run_command/set_volume/mute/openclaw_task）走 `ToolConfirmManager` 确认
 - **看门狗**：单次请求总超时 600s；任务外包有心跳熔断（无进展自动取消）+ 成本熔断（不可重试错误禁重复调用）
@@ -342,6 +344,7 @@ Desktop_per_pro/
 │   │   ├── ChatManager.cs       # 本地优先对话核心（意图过滤/记忆/云端回退）
 │   │   ├── ToolEngine/          # 65 工具插件架构（自动发现 + 审批）
 │   │   ├── Live2DFramework/ActionAgent/ # 具身动作闭环
+│   │   ├── LocalToolRouter.cs   # 本地模型 JSON 工具规划/白名单
 │   │   ├── MemoryGovernance.cs  # 忆境写入/容量/相关性治理
 │   │   ├── LocalChatModelProfiles.cs # 聊天模型档位与预算
 │   │   ├── Live2DFramework/     # Live2D 渲染/参数映射

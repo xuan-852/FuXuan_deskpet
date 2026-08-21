@@ -64,7 +64,7 @@ flowchart TB
     subgraph AI[AI 核心层]
         B1[ChatManager<br/>意图过滤+工具循环10轮]
         B2[ApiClient SSE 流式]
-        B3[LocalLLMAgentService<br/>本地4能力]
+        B3[LocalLLMAgentService<br/>本地分类/规划/回复/摘要/记忆]
         B4[IdleChatGenerator 闲谈]
         B5[ProactiveMessageScheduler]
     end
@@ -156,9 +156,10 @@ flowchart TB
 
 ### 3.3 本地 LLM 能力（LocalLLMAgentService）
 
-4 项离线能力（Ollama，`qwen2.5:3b`，`http://127.0.0.1:11434`）：
+本地能力分层运行于 Ollama（动作/规划/摘要/记忆默认 `qwen2.5:3b`，聊天默认 `qwen3:8b`，`http://127.0.0.1:11434`）：
 - `ClassifyIntent` — 本地意图/情绪分类（异步，不阻塞对话流，写入 `_lastIntent` 供工具过滤）
-- `GenerateFallbackReply` — API 挂时的兜底回复
+- `PlanLocalTool` — 按意图小目录输出 JSON 工具计划，由 `ChatManager` 校验后复用 `ToolEngine`
+- `GenerateFallbackReply` — 本地角色回复，结合相关忆境和已执行工具结果
 - `SummarizeConversation` — 对话摘要
 - `ExtractMemory` — 记忆提取
 

@@ -1,7 +1,7 @@
 # AI 对话系统 — ChatManager 与 Token 优化
 
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
-> **基本架构**: 用户输入 → `ChatManager`（10 轮回环 / 意图过滤 / 600s 看门狗）→ `ApiClient`（DeepSeek SSE 流式，Function Calling）→ `ToolEngine/` 插件调度；`LocalLLMAgentService`（Ollama）提供 4 项离线能力，其中动作/分类/摘要使用轻量 `qwen2.5:3b`，聊天单独使用质量优先的 `qwen3:8b`（均可由环境变量覆盖）；云端与本地聊天都经过同一 `PetMemory` 相关性检索，本地只使用更紧凑的忆境预算；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`（1,595 行）、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
+> **基本架构**: 用户输入 → `ChatManager`（本地优先 / 10 轮云端回环 / 意图过滤 / 看门狗）；云端路径使用 `ApiClient`（DeepSeek SSE + Function Calling）→ `ToolEngine/` 插件调度；本地路径使用 `LocalToolRouter`（轻量模型 JSON 规划 + 白名单 + 同一 ToolEngine 执行）→ `LocalLLMAgentService` / `qwen3:8b` 生成最终回复。动作/分类/摘要/工具规划使用轻量 `qwen2.5:3b`，聊天单独使用质量优先的 `qwen3:8b`（均可由环境变量覆盖）；云端与本地聊天都经过同一 `PetMemory` 相关性检索，本地只使用更紧凑的忆境预算；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`、`LocalToolRouter.cs`、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
 > **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀；2026-08-12 P5 注入链新增任务轨迹（TaskTrajectoryManager，太卜手札）与任务模板（TaskTemplateManager，太卜阵法图），同样置于【当前时刻】之前；2026-08-18 成本闸门接入全部主要云端直连点，新增 `PromptContextBudget` / `ToolResultBudget` / `QualityTelemetry`，EditMode 99/99 通过。
 > **编写注意事项**: ①测试必须开测试模式（`D:\DesktopPetData\.test_mode`）否则污染 pet_memory/pet_personality；②`{current_time}` 等动态内容**必须放 system prompt 尾部**（放开头会摧毁 DeepSeek 缓存命中，全价 ¥1/M）；③deepseek-v4-flash 是推理模型，必须显式 `"thinking":{"type":"disabled"}` + `max_tokens:1200` 否则 `content=""`；④历史裁剪须按字符预算且向前对齐最近 user 消息，防止切断 tool_calls↔tool 配对导致 API 400。
 
@@ -26,10 +26,14 @@
 用户输入
   → ChatManager.SendMessage (消息入队 _messageQueue，等待时不丢)
     → SendRequestCoroutine
-      → 意图过滤 (LocalLLMAgentService.ClassifyIntent, 异步非阻塞)
-      → ApiClient 请求 DeepSeek Chat API (SSE 流式 + Function Calling)
-        → 若响应含 tool_calls → DoToolLoop (最多 MAX_TOOL_ROUNDS=10 轮)
-        → 工具执行结果回填历史 → 再请求
+      ├─ 本地模式 → DoOllamaOnlyReply
+      │   → qwen2.5:3b 意图分类 / LocalToolRouter JSON 规划
+      │   → 白名单筛选 + ToolConfirmManager + ToolEngine 执行
+      │   → 工具结果压缩后交给 qwen3:8b 生成角色回复
+      └─ 云端模式 → 意图过滤 (LocalLLMAgentService.ClassifyIntent, 异步非阻塞)
+          → ApiClient 请求 DeepSeek Chat API (SSE 流式 + Function Calling)
+            → 若响应含 tool_calls → DoToolLoop (最多 MAX_TOOL_ROUNDS=10 轮)
+            → 工具执行结果回填历史 → 再请求
       → 逐句队列显示 (2.5s/句, SentenceVersionId 支持重播)
   → CheckReflection → DoReflection (DeepSeek 提炼) → CommitReflection (N39 接线)
 ```
@@ -80,7 +84,8 @@
 | 能力 | 方法 | 作用 |
 |------|------|------|
 | 意图/情绪分类 | `ClassifyIntent` | 异步非阻塞，写 `_lastIntent` 供工具过滤 |
-| 兜底回复 | `GenerateFallbackReply` | API 挂时的兜底 |
+| 本地工具规划 | `PlanLocalTool` | qwen2.5:3b 输出单个 JSON 计划，不直接执行工具 |
+| 本地角色回复 | `GenerateFallbackReply` | qwen3:8b 结合忆境和实际工具结果生成最终回复 |
 | 对话摘要 | `SummarizeConversation` | T5 旧史压缩【旧事纪要】 |
 | 记忆提取 | `ExtractMemory` | 仅对明确长期信号做结构化筛选；importance/confidence/type/原话交叉闸门 |
 
@@ -95,11 +100,34 @@
 - 回环轮 → 已用工具 ∪ 意图候选 ∪ `CoreToolSubset`（play_action/set_expression/stop_action/generate_motion/get_system_info/get_mouse_pos），只保留 `ToolRegistry.HasTool` 存在项
 - 竞态防护：`_intentReady` 标志 + 3s 超时兜底全量（首轮等待分类结果，防上轮 command 意图跨消息残留污染）
 
-### 2.7 测试模式（IsTestMode）
+### 2.7 本地工具路由（2026-08-22）
+
+本地 Ollama 的 OpenAI 兼容接口当前不依赖模型原生 `tools` 字段，而采用两阶段本地链路：
+
+```text
+用户请求
+  → qwen2.5:3b ClassifyIntent
+  → LocalToolRouter 按 command/knowledge/operation 选择小型工具目录
+  → qwen2.5:3b 输出 {action, tool, arguments, reason}
+  → ChatManager 校验工具名、意图白名单和参数 JSON
+  → ToolConfirmManager（危险工具）
+  → ToolCallInvoker / ToolRegistry 执行
+  → ToolResultBudget.Compact
+  → qwen3:8b 根据真实结果生成符玄回复
+```
+
+- 本地规划器每次只看到当前意图的工具目录，不接收全部 65 个工具，控制上下文和误调用概率。
+- `LocalToolRouter` 当前覆盖常用的打开、搜索、读取、查询、办公生成、动作和系统信息工具；
+  `run_command`、`openclaw_task` 等危险/高影响工具仍会进入既有确认流程。
+- 本地模型只能调用当前目录中的工具；未知工具、未授权工具或格式错误计划会被拒绝，不会直接执行。
+- 普通闲聊不会额外调用规划模型；只有意图为 command/knowledge/operation，或消息包含明确操作关键词时才规划。
+- 测试模式下可以执行只读本地工具，但所有记忆、人格和反思持久化仍被阻断。
+
+### 2.8 测试模式（IsTestMode）
 
 存在 `D:\DesktopPetData\.test_mode` 标记文件 → 跳过记忆/人格/反思全部持久化写入。**自动化测试必须开启**，否则污染忆境与人格演化计数。
 
-### 2.8 本地聊天质量护栏（2026-08-19～2026-08-21）
+### 2.9 本地聊天质量护栏（2026-08-19～2026-08-21）
 
 本地 Ollama 回退链路不直接复用云端完整 system prompt，而由 `LocalRoleplayPromptBuilder` 生成短角色卡和短句组合约束；同时调用同一 `PetMemory.GetFormattedMemories(userMessage)`，以不超过 700 字符的【相关忆境】背景注入本地 system prompt：
 
@@ -110,7 +138,7 @@
 5. 质量测试用 `FU_XUAN_LOCAL_PROMPT_VARIANT=micro_v1`，遥测模型名带 `/fu_card_v2` 角色卡版本后缀；`baseline` 和 `card_v1` 保留用于消融对照。
 6. 本地和云端都只接收与当前问题相关的忆境；本地忆境段额外使用 `PromptContextBudget.LocalMemoryChars=700`，并明确提示模型记忆可能过时、无关时忽略。
 
-### 2.9 分层符玄角色卡（2026-08-19）
+### 2.10 分层符玄角色卡（2026-08-19）
 
 `FuXuanCharacterCard.cs` 将角色卡拆成四层，避免把完整世界观重复塞进每次本地请求：
 
@@ -127,7 +155,7 @@
 
 2026-08-21 质量优先路由已落地：聊天请求使用 `qwen3:8b`、`max_tokens=640`、本地等待上限 75s，并显式关闭默认 thinking 预算；动作/分类/摘要仍使用 `qwen2.5:3b`。本机真实请求实测返回 131 个中文字符、8 个短句、约 1.84s（单次冷/热状态会波动），说明更长回复预算和分层模型路由已生效。
 
-### 2.10 Qwen3 模型切换与推理预算（2026-08-19）
+### 2.11 Qwen3 模型切换与推理预算（2026-08-19）
 
 - `FU_XUAN_LOCAL_MODEL`：覆盖动作/分类/摘要等通用本地模型；未设置时保持 `qwen2.5:3b`。
 - `FU_XUAN_LOCAL_CHAT_MODEL`：只覆盖聊天模型；未设置时默认使用已安装的 `qwen3:8b`。聊天请求的质量预算与动作请求分离。
@@ -136,7 +164,7 @@
 - `qwen3:8b` 隔离回归（`FU_XUAN_LOCAL_PROMPT_VARIANT=micro_v1`）：30/30 成功，平均 1141ms，P50 1242ms，P95 1842ms，规则质量 4.80/5；单模型驻留约 5.6GB 显存，测试结束已执行 `ollama stop qwen3:8b` 释放显存。
 - 与 `qwen2.5:3b` 的同批次基线相比：平均延迟增加约 460ms，规则质量由 4.13 提升至 4.80，适合作为聊天模型候选；动作/摘要等实时能力仍应保留轻量模型。
 
-### 2.11 模型设置页与真实本地样例（2026-08-21）
+### 2.12 模型设置页与真实本地样例（2026-08-21）
 
 `RightPanel` 新增独立 `ModelSettings` 子面板：聊天模型可在 `qwen3:8b`、`qwen2.5:3b`、`qwen2.5:1.5b`、`qwen2.5:0.5b` 之间选择，应用后只改变 `LocalLLMClient.ChatModelName`，不改变动作/摘要模型。选择结果写入 `PetConfig.ConfigData.chatLocalModel`，重启后恢复。
 
@@ -198,5 +226,5 @@
 6. **日志验证**：改 Token 相关代码后查 Player.log——`prompt_cache_hit_tokens` 占比高 = T1 生效；`[MotionTranslator] API 请求失败` 不出现 = T2/T3 生效
 7. **构建验证**：`.\build.ps1 -Quick`（C# 编译）；重启带 `DESKTOP_TOKEN` / `BRIDGE_TOKEN` 环境变量
 8. **本地 LLM 客户端**：`LocalLLMClient.cs` 是手写 JSON 构造，改字段时同步检查所有调用点，无强类型保障
-9. **质量遥测**：`QualityTelemetry` 将聊天按 `local/cloud` 记录成功、采用、耗时和回退原因，写入 `DataRoot/quality_log.jsonl`，不包含用户原文。全 Ollama 模式仍是无工具的离线短回复，正式运行建议使用混合模式。统计命令：`node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData`。
+9. **质量遥测**：`QualityTelemetry` 将聊天按 `local/cloud` 记录成功、采用、耗时和回退原因，写入 `DataRoot/quality_log.jsonl`，不包含用户原文。全 Ollama 模式现在支持受白名单约束的本地工具规划与执行；工具规划、执行和最终回复仍分别记录为本地调用。统计命令：`node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData`。
 10. **质量对照**：`--cloud-baseline` 强制纯云端聊天并禁用云端失败后的本地回退；`@@case:<id>` 可在隔离目录给后续遥测标记案例编号。两组日志按 `task + case_id` 配对，使用 `docs/quality-comparison-test-guide.md` 和 `scripts/log-analysis/compare_quality.cjs`，不要用默认混合模式冒充纯云端基线。

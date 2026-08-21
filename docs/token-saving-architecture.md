@@ -32,6 +32,7 @@
               ▼
        Local Request Router
        本地意图与来源分类
+       本地工具规划（仅相关小目录）
               │
               ▼
        Token Budget Manager
@@ -164,6 +165,19 @@
 node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData
 ```
 
+### 3.7 本地工具路由（2026-08-22）
+
+本地聊天新增 `LocalToolRouter`，解决“本地模型只能说、不能做”的架构缺口，同时不把云端的完整工具协议复制到每次本地聊天：
+
+1. `qwen2.5:3b` 先做意图分类；普通闲聊不触发工具规划。
+2. 根据 `command` / `knowledge` / `operation` 只生成当前意图的小型工具目录。
+3. `qwen2.5:3b` 输出单个 `{action, tool, arguments, reason}` JSON 计划。
+4. `ChatManager` 在 Unity 侧校验工具白名单和参数，再复用 `ToolCallInvoker` / `ToolRegistry` 执行。
+5. 危险工具不因本地模式绕过 `ToolConfirmManager`；结果只以压缩副本回填给 `qwen3:8b`。
+
+该链路的 Token 控制点是“少量本地规划 schema + 一次工具结果回注”，而不是将 65 个完整 schema 塞入聊天 Prompt；
+工具原始结果仍由 UI 和本地日志保留，模型只接收 `ToolResultBudget.Compact` 后的结果。
+
 ---
 
 ## 四、后续阶段
@@ -201,6 +215,12 @@ node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData
 - 按 source、模型、命中率、重试次数统计成本。
 - 生产环境连续运行后再调整预算值。
 - 任何预算变更必须有 `usage_log.jsonl` 数据和回归测试支撑。
+
+### v0.7：本地工具执行（已实现，2026-08-22）
+
+- 本地模型可通过 JSON 计划调用常用 ToolEngine 工具，危险操作沿用统一确认流程。
+- 普通闲聊不额外调用规划模型；本地工具规划使用轻量模型，最终措辞使用聊天质量模型。
+- 已完成只读 `get_system_info` 隔离实测，测试数据目录和生产忆境均未污染。
 
 ---
 

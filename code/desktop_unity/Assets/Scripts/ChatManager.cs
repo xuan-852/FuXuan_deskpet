@@ -89,7 +89,7 @@ public class ChatManager : MonoBehaviour
             kbGo.transform.SetParent(transform);
         }
 
-        // ——— 确保 LocalLLMAgentService 单例存在（本地 LLM 四艺：分类/回退/压缩/提取）———
+        // ——— 确保 LocalLLMAgentService 单例存在（分类/工具规划/回复/压缩/提取）———
         if (LocalLLMAgentService.Instance == null)
         {
             var llmGo = new GameObject("LocalLLMAgentService");
@@ -734,7 +734,8 @@ public class ChatManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 修复阶段的本地模式：只走 Ollama，不进入云端工具循环，也不在本地失败时回退云端。
+    /// 本地模式：先由轻量模型判断是否需要工具，再执行本地法阵，最后由聊天模型生成角色回复。
+    /// 不进入云端工具循环，也不在本地失败时回退云端。
     /// </summary>
     private string GetLastUserMessage()
     {
@@ -755,15 +756,154 @@ public class ChatManager : MonoBehaviour
             yield return null;
         }
 
-        SetRequestStatus("本地模型生成中…", RequestStage.LocalGenerating);
+        SetRequestStatus("本地灵识判断中…", RequestStage.LocalGenerating);
+        string userMessage = GetLastUserMessage();
+        string localToolContext = null;
+
+        // 本地模型不直接接收 65 个 Function Calling schema。
+        // 先用轻量模型分类，再按意图注入小型术式目录，减少上下文和误调用。
+        if (toolInvoker != null && LocalLLMAgentService.Instance != null
+            && LocalLLMAgentService.Instance.CanProcess)
+        {
+            LocalLLMAgentService.IntentResult intent = new LocalLLMAgentService.IntentResult
+            {
+                intent = "chat", success = false
+            };
+            bool intentDone = false;
+            LocalLLMAgentService.Instance.ClassifyIntent(userMessage, result =>
+            {
+                intent = result;
+                intentDone = true;
+            });
+
+            float intentDeadline = Time.time + 10f;
+            while (!intentDone && Time.time < intentDeadline)
+                yield return null;
+
+            string intentName = intent.success ? intent.intent : "";
+            if (LocalToolRouter.ShouldAttempt(intentName, userMessage))
+            {
+                string[] allowedTools = LocalToolRouter.GetAllowedTools(intentName);
+                string catalog = LocalToolRouter.BuildCompactCatalog(toolInvoker.GetToolsJson(allowedTools));
+                LocalToolPlan plan = new LocalToolPlan { Success = false, Error = "本地术式规划超时" };
+                bool planDone = false;
+                float plannerStartedAt = Time.realtimeSinceStartup;
+
+                LocalLLMAgentService.Instance.PlanLocalTool(userMessage, catalog, result =>
+                {
+                    plan = result;
+                    planDone = true;
+                });
+
+                float planDeadline = Time.time + 35f;
+                while (!planDone && Time.time < planDeadline)
+                    yield return null;
+
+                QualityTelemetry.RecordChat(
+                    "local", LocalRoleplayPromptBuilder.TelemetryModelName(LocalLLMClient.ModelName),
+                    planDone && plan.Success, planDone && plan.ShouldExecute,
+                    Mathf.RoundToInt((Time.realtimeSinceStartup - plannerStartedAt) * 1000f),
+                    planDone && plan.ShouldExecute ? "local_tool_plan" : "local_tool_none",
+                    0, planDone && plan.ShouldExecute, _activeRequestCaseId);
+
+                if (planDone && plan.Success && plan.ShouldExecute)
+                {
+                    if (!LocalToolRouter.IsAllowed(plan.ToolName, intentName))
+                    {
+                        localToolContext = "❌ 本地安全路由拒绝了未在当前意图白名单中的术式：「"
+                            + plan.ToolName + "」。";
+                        Debug.LogWarning($"[ChatManager] 🛡️ 本地术式不在白名单: {plan.ToolName}");
+                    }
+                    else
+                    {
+                        string localToolResult = null;
+                        yield return StartCoroutine(ExecuteLocalPlannedToolCoroutine(plan,
+                            result => localToolResult = result));
+                        localToolResult = localToolResult ?? "❌ 本地术式没有返回结果";
+                        localToolContext = "术式：「" + plan.ToolName + "」\n"
+                            + ToolResultBudget.Compact(plan.ToolName, localToolResult);
+                    }
+                }
+                else if (planDone && !plan.Success)
+                {
+                    Debug.LogWarning($"[ChatManager] 本地术式规划未采用: {plan.Error}");
+                }
+            }
+        }
+
+        SetRequestStatus(localToolContext == null ? "本地模型生成中…" : "整理术式结果…", RequestStage.LocalGenerating);
         bool handled = false;
-        yield return StartCoroutine(OfflineFallbackCoroutine(ok => handled = ok, "ollama_mode"));
+        yield return StartCoroutine(OfflineFallbackCoroutine(
+            ok => handled = ok, "ollama_mode", localToolContext));
         if (!handled)
         {
             _lastError = "Ollama 未就绪或本地模型生成失败";
             SetRequestStatus("请求失败", RequestStage.Error);
             OnRequestError?.Invoke($"⚠ 本地 Ollama 未就绪，请确认 Ollama 已启动且已安装聊天模型 {LocalLLMClient.ChatModelName}");
         }
+    }
+
+    /// <summary>
+    /// 执行本地模型提出的单个工具计划。危险工具复用云端同一套确认机制。
+    /// </summary>
+    private IEnumerator ExecuteLocalPlannedToolCoroutine(LocalToolPlan plan, System.Action<string> onResult)
+    {
+        string result;
+        if (toolInvoker == null || !toolInvoker.IsCoroutineTool(plan.ToolName))
+        {
+            result = "❌ 本地法阵未找到术式：「" + plan.ToolName + "」";
+            onResult?.Invoke(result);
+            yield break;
+        }
+
+        if (ToolRegistry.IsDangerous(plan.ToolName))
+        {
+            bool confirmed = false;
+            bool resolved = false;
+            string desc = ToolRegistry.GetDangerDescription(plan.ToolName);
+            var confirmBubble = FindObjectOfType<ChatBubble>();
+            if (confirmBubble != null)
+            {
+                confirmBubble.ShowMessage(
+                    $"⚠️ 本地模型欲施「{plan.ToolName}」——{desc}。\n点一下本座 = 允许，按 ESC = 拒绝。",
+                    60f, ChatBubble.MsgPriority.High);
+            }
+
+            ToolConfirmManager.Request(plan.ToolName, plan.ArgumentsJson, desc,
+                ok => { confirmed = ok; resolved = true; });
+
+            float confirmTimeout = Time.time + 60f;
+            while (!resolved)
+            {
+                if (Time.time > confirmTimeout)
+                {
+                    ToolConfirmManager.Resolve(false);
+                    break;
+                }
+                yield return null;
+            }
+
+            if (!confirmed)
+            {
+                result = "❌ 用户拒绝了此操作";
+                Debug.Log($"[ChatManager] 🚫 用户拒绝本地术式: {plan.ToolName}");
+                OnToolResult?.Invoke(plan.ToolName, result);
+                RecordMemoryForTool(plan.ToolName, plan.ArgumentsJson, result);
+                onResult?.Invoke(result);
+                yield break;
+            }
+
+            if (confirmBubble != null)
+                confirmBubble.ShowMessage("✅ 已获准许，施法！", 2.5f, ChatBubble.MsgPriority.Normal);
+        }
+
+        yield return StartCoroutine(toolInvoker.ExecuteCoroutine(plan.ToolName, plan.ArgumentsJson));
+        if (_abortRequested) yield break;
+        result = toolInvoker.GetCoroutineResult() ?? "❌ 本地术式没有返回结果";
+        Debug.Log($"[ChatManager] 🧭 本地术式结果: {plan.ToolName} → {result}");
+        OnToolResult?.Invoke(plan.ToolName, result);
+        RecordMemoryForTool(plan.ToolName, plan.ArgumentsJson, result);
+        onResult?.Invoke(result);
     }
 
     private IEnumerator DoToolLoop()
@@ -1484,7 +1624,10 @@ public class ChatManager : MonoBehaviour
     /// <summary>
     /// 当 DeepSeek API 不可用时，用本地模型生成回复
     /// </summary>
-    private IEnumerator OfflineFallbackCoroutine(Action<bool> onHandled, string telemetryReason)
+    private IEnumerator OfflineFallbackCoroutine(
+        Action<bool> onHandled,
+        string telemetryReason,
+        string toolResultContext = null)
     {
         float localStartedAt = Time.realtimeSinceStartup;
         if (LocalLLMAgentService.Instance == null || !LocalLLMAgentService.Instance.CanProcessChat)
@@ -1554,7 +1697,7 @@ public class ChatManager : MonoBehaviour
                 gotResult = true;
                 fallbackSuccess = ok;
                 fallbackReply = reply;
-            });
+            }, toolResultContext);
 
             // 等待结果或超时
             while (!gotResult)

@@ -6,7 +6,7 @@ using System.Text;
 /// 本地小模型专用角色提示构建器。
 ///
 /// 设计原则：
-/// 1. 固定角色卡保持短小，避免把云端工具说明和长篇世界观塞给本地模型；
+    /// 1. 固定角色卡保持短小，避免把云端工具说明和长篇世界观塞给本地模型；
 /// 2. 用可执行的“短句组合”约束替代抽象的“自然、丰富”；
 /// 3. 通过 FU_XUAN_LOCAL_PROMPT_VARIANT 切换 baseline / micro_v1 / card_v1，
 ///    让同一批 case 可以做可复现的 A/B 测试。
@@ -38,12 +38,14 @@ public static class LocalRoleplayPromptBuilder
         string recentHistory,
         string userMessage,
         string modelName = null,
-        string memoryContext = null)
+        string memoryContext = null,
+        string toolResultContext = null)
     {
         LocalChatModelProfile profile = LocalChatModelProfiles.Get(modelName);
         if (Variant == BaselineVariant)
         {
             return BuildBaseline(characterDesc, recentHistory, userMessage, memoryContext)
+                + BuildToolResultSection(toolResultContext)
                 + "\n\n【当前模型适配】\n" + profile.PromptAdjustment;
         }
 
@@ -79,6 +81,7 @@ public static class LocalRoleplayPromptBuilder
         prompt.AppendLine("\n【最近对话】")
             .AppendLine(TrimHistory(recentHistory, profile.HistoryChars))
             .AppendLine(BuildMemorySection(memoryContext))
+            .AppendLine(BuildToolResultSection(toolResultContext))
             .AppendLine("\n【用户最新消息】")
             .AppendLine(Trim(userMessage, 900))
             .AppendLine("\n【历史末尾护栏】")
@@ -108,7 +111,7 @@ public static class LocalRoleplayPromptBuilder
         return desc + "\n\n以下是与主人的最近对话：\n" + TrimHistory(recentHistory, 900)
             + BuildMemorySection(memoryContext)
             + "\n\n请以角色身份回复用户的最新消息：「" + Trim(userMessage, 700) + "」"
-            + "\n回复应当简短自然（1-3句话即可），符合角色性格。注意：你只能进行对话回复，没有工具调用能力。";
+            + "\n回复应当简短自然（1-3句话即可），符合角色性格。工具由外层本地术式路由执行，你只负责根据实际结果回复。";
     }
 
     private static string BuildMemorySection(string memoryContext)
@@ -116,6 +119,16 @@ public static class LocalRoleplayPromptBuilder
         if (string.IsNullOrWhiteSpace(memoryContext)) return "";
         return "\n\n【相关忆境】\n" + memoryContext.Trim()
             + "\n（忆境只是可能过时的背景线索；仅在与当前问题直接相关时使用，不要主动编造或复述无关记忆。）";
+    }
+
+    private static string BuildToolResultSection(string toolResultContext)
+    {
+        if (string.IsNullOrWhiteSpace(toolResultContext)) return "";
+        string bounded = toolResultContext.Trim();
+        if (bounded.Length > 1600)
+            bounded = bounded.Substring(0, 1600) + "…";
+        return "\n\n【本地术式结果】\n" + bounded
+            + "\n（以上是桌宠刚刚实际执行工具得到的结果。请据此回答，不要声称尚未执行，也不要编造额外结果。）";
     }
 
     private static string TrimHistory(string history, int maxChars)
