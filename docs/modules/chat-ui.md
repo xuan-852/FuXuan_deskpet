@@ -151,7 +151,7 @@
 |------|------|------|
 | 窗口 | `CreateWindowExW` + `RegisterClassW`（**非置顶** `WS_OVERLAPPEDWINDOW`，无 `WS_EX_TOPMOST`） | 可拖动/可遮挡/可最小化/可缩放，标准标题栏，标题「符玄 · 太卜司」 |
 | 线程 | 后台线程 `FuXuanChatWindow`（STA + `GetMessageW` 消息循环） | 不阻塞 Unity 主线程 |
-| 渲染桥 | 整个面板 → `DrawExternalPanelToTexture()`：IMGUI → RenderTexture（尺寸=当前视图）→ `ReadPixels` BGRA → `SetBuffer` → `WM_PAINT` `SetDIBitsToDevice`（15fps 节流） | **所有视图**（会话列表/聊天/设置/便签/报告/消耗）渲染；`ValidateRect` 防风暴 |
+| 渲染桥 | 整个面板 → `DrawExternalPanelToTexture()`：IMGUI → RenderTexture（尺寸=当前视图）→ AsyncGPUReadback BGRA → `SetBuffer` → `WM_PAINT` `SetDIBitsToDevice`；外置性能档位 High/Normal/Low 为 60/45/30 FPS | **所有视图**（会话列表/聊天/设置/便签/报告/消耗/忆境）渲染；`ValidateRect` 防风暴 |
 | 尺寸 | `SetSize`/`ApplyClientSize`：客户区与 RT 1:1（`AdjustWindowRectEx` 边框补偿），随视图切换（486/1290/860 逻辑宽） | 客户区=面板逻辑尺寸 |
 | 位置 | `WM_EXITSIZEMOVE`/关闭时 `PlayerPrefs` 记忆，重开恢复（屏幕外校正） | 重启保持位置 |
 | 交互 | **手动命中表**（IMGUI `Event.current` 无法注入，故 `_extHitZones`：渲染时登记矩形+动作，每帧重建）；`WM_LBUTTONDOWN/DBLCLK` → 物理坐标×DPI 比例 → 逻辑面板坐标 → `MainThreadDispatcher` → `HandleExternalInput` 查表执行 | 会话双击/按钮/滚动条 |
@@ -210,8 +210,9 @@
 | N40 | 2026-08-08 | 17×24 像素化调研完成（`pixel-dialogue-optimization.md`）：开源方案汇总 + P0/P1/P2 落地清单 |
 | 2026-08-12 | **OpenClaw 任务可视化**（方案七）：标题栏状态区步骤显示（金色呼吸，优先级 任务>思考中>就绪）+ 日志区 `[openclaw]` 系统行 + 模态审批弹窗（红边三按钮，60s 自动拒绝，`DrawApprovalDialog`） |
 | 2026-08-13 | **QQ 式两级界面**：热键打开默认「会话列表」窄条（第一级），双击条目展开「左会话栏+右聊天区」（第二级），◀ 返回收窄；尺寸按 QQ 实测 324×846 基准 **1.5 倍放大**（486×1269 / 1290×1269 / SIDEBAR_W=420），字体全量 QQ 化（Microsoft YaHei，标题 19 / 气泡 17 / 输入 18）；**修复第二级拖拽偏移 bug**（`_dragOffset` 改用窗口原点 `_panelRect` 计算，排除 ✕/◀/字体按钮误触，MouseUp 复位 + Update 防吸保险），拖拽跟手验证通过 |
-| 2026-08-15 | **独立聊天窗口（大工程 Phase 1）**：原生 Win32 窗口（非置顶、可被遮挡、QQ 式）+ IMGUI→RenderTexture→BGRA 像素桥（15fps）+ 原生 EDIT 输入 + 发送按钮 → `MainThreadDispatcher` → `ChatManager`；标题栏 ⧉ 切换 + `@@view:external/embed` 终端命令；桌宠主窗保持置顶不变。详见 §2.9 |
+| 2026-08-15 | **独立聊天窗口（大工程 Phase 1）**：原生 Win32 窗口（非置顶、可被遮挡、QQ 式）+ IMGUI→RenderTexture→BGRA 像素桥 + 原生 EDIT 输入 + 发送按钮 → `MainThreadDispatcher` → `ChatManager`；标题栏 ⧉ 切换 + `@@view:external/embed` 终端命令；桌宠主窗保持置顶不变。详见 §2.9 |
 | 2026-08-16 | **面板整体外置（大工程 Phase A1-A5）**：整个 `~` 面板（全部视图）搬入独立普通窗口——渲染桥扩展为整面板（`DrawPanelContent` 双模式共用）、标准窗口行为（非置顶/拖动/缩放/位置记忆）、手动命中表交互（会话双击/按钮/滚动/审批三按钮，DPI 坐标换算 + 模态清空）、原生 EDIT 输入唤起；新增 `@@view:extclick`/`@@approval` 测试链路。详见 §2.9 |
+| 2026-08-21 | **外置 UI 升帧**：打开外置聊天窗口时 `PerformanceMonitor` 临时切换为 High/Normal/Low = 60/45/30 FPS，关闭后恢复后台 30/24/15 FPS；高负载仍允许自动降档，RenderTexture 推送频率跟随当前档位；冒烟测试增加性能模式开关标记断言。 |
 
 ### 像素化落地清单（按成本排序，2026-08-08）
 

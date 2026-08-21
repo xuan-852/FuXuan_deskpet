@@ -102,6 +102,8 @@ const EXT_MARKERS = [
     '打开子面板 → Settings',
     '子面板返回 → Chat',
     '已注入测试审批',
+    '外置聊天 UI 性能模式 开启',
+    '外置聊天 UI 性能模式 关闭',
 ];
 
 async function main() {

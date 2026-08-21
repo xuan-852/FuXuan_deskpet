@@ -25,6 +25,9 @@ public class PerformanceMonitor : MonoBehaviour
     [Tooltip("最近一次采样的 GPU 占用率 0-100，-1 表示不可用")]
     public float gpuUsagePercent = -1f;
 
+    /// <summary>外置聊天 UI 临时性能模式：提高 Unity 主循环帧率，退出外置窗口后恢复后台档位。</summary>
+    public bool externalUiMode { get; private set; }
+
     [Header("FPS 降档参数")]
     [Tooltip("低于目标帧率多少比例算跑不满")]
     public float fpsThresholdRatio = 0.7f;
@@ -316,6 +319,18 @@ public class PerformanceMonitor : MonoBehaviour
     }
 
     /// <summary>
+    /// 外置聊天窗口需要更顺滑的星空/光标刷新，但不应永久提高后台桌宠帧率。
+    /// 仍由本监控器负责降档：High/Normal/Low 对应 60/45/30 FPS。
+    /// </summary>
+    public void SetExternalUiMode(bool enabled)
+    {
+        if (externalUiMode == enabled) return;
+        externalUiMode = enabled;
+        ApplyTierSettings(currentTier);
+        Debug.Log($"[PerformanceMonitor] 外置聊天 UI 性能模式 {(enabled ? "开启" : "关闭")}：目标 {targetFPS:F0}fps");
+    }
+
+    /// <summary>
     /// 外部调用的强制降档（系统内存不足时由 DesktopPet 调用）。
     /// 忽略 MIN_CHANGE_INTERVAL 冷却，直接降到 Low。
     /// </summary>
@@ -329,7 +344,10 @@ public class PerformanceMonitor : MonoBehaviour
     // ★ 2026-08-05: 降低帧率缓解主线程 GPU 同步忙等（nvlddmkm spin）
     //   桌宠 Live2D 动画 30fps 已足够（Live2D 标准动画帧率），
     //   60fps 时全屏 RT(2560x1600) 渲染成为 GPU 瓶颈 → 主线程每帧等待 GPU 满核。
-    private static float GetTargetFPS(PerformanceTier t) => t switch
+    private float GetTargetFPS(PerformanceTier t) => externalUiMode ? t switch
+    {
+        PerformanceTier.High => 60f, PerformanceTier.Normal => 45f, PerformanceTier.Low => 30f, _ => 60f
+    } : t switch
     {
         PerformanceTier.High => 30f, PerformanceTier.Normal => 24f, PerformanceTier.Low => 15f, _ => 30f
     };

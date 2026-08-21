@@ -54,6 +54,7 @@ public partial class RightPanel : MonoBehaviour
         ("签", "便签", BallPanel.PanelType.Reminders),
         ("告", "报告", BallPanel.PanelType.Report),
         ("耗", "消耗", BallPanel.PanelType.Usage),
+        ("忆", "忆境", BallPanel.PanelType.Memory),
         ("收", "收纳", null),                          // 启动 Pogget
     };
 
@@ -70,6 +71,7 @@ public partial class RightPanel : MonoBehaviour
     private ChatManager _chat;
     private BallPanel _ballPanel;
     private DesktopPet _pet;             // 权重设置引用
+    private PerformanceMonitor _performanceMonitor;
     private WindowOverlay _windowOverlay;
     private ReminderManager _reminders;  // 便签引用
     private string _inputText = "";
@@ -134,7 +136,6 @@ public partial class RightPanel : MonoBehaviour
     private bool _externalInputDirty;
     private string _lastExternalComposition = string.Empty;
     private int _lastExternalInputVersion = -1;
-    private float _externalInputFastUntil;
     // ★ 异步读回（AsyncGPUReadback）：渲染保持 60fps 动画流畅，读回不阻塞主线程
     private Unity.Collections.NativeArray<byte> _extReadBack;
     private bool _extReadPending;    // 上一帧读回未完成（防止堆积）
@@ -548,9 +549,6 @@ public partial class RightPanel : MonoBehaviour
                 }
                 _lastExternalComposition = nativeComposition;
                 _externalInputDirty = true;
-                // 每次按键后给一个短暂的 60fps 推送窗口。持续输入时会自动续期，
-                // 停止输入后回到 30fps，避免为降低键入延迟而长期增加 GPU/CPU 负载。
-                _externalInputFastUntil = Time.unscaledTime + 0.25f;
                 GUI.changed = true;
             }
         }
@@ -2262,7 +2260,7 @@ public partial class RightPanel : MonoBehaviour
         _externalInputDirty = true;
         _lastExternalComposition = string.Empty;
         _lastExternalInputVersion = ExternalChatWindow.GetInputTextVersion();
-        _externalInputFastUntil = 0f;
+        SetExternalUiPerformanceMode(true);
         // 整面板外置：窗口尺寸 = 面板视图 + 自绘标题栏（客户区与 RT 1:1）
         int w = Mathf.Max(320, Mathf.RoundToInt(_panelRect.width));
         int h = Mathf.Max(200, Mathf.RoundToInt(_panelRect.height));
@@ -2278,7 +2276,7 @@ public partial class RightPanel : MonoBehaviour
         _externalInputDirty = false;
         _lastExternalComposition = string.Empty;
         _lastExternalInputVersion = -1;
-        _externalInputFastUntil = 0f;
+        SetExternalUiPerformanceMode(false);
         ExternalChatWindow.OnSendText -= OnExternalSend;
         ExternalChatWindow.OnClosed -= OnExternalClosed;
         ExternalChatWindow.OnPanelClick -= OnExternalPanelClick;
@@ -2319,6 +2317,20 @@ public partial class RightPanel : MonoBehaviour
         // 独立窗口 X → 先立即清掉 Unity 内嵌面板，再解除外置状态；两者生命周期互不串联。
         HideEmbeddedPanelImmediately();
         DisableExternalMode();
+    }
+
+    private void SetExternalUiPerformanceMode(bool enabled)
+    {
+        if (_performanceMonitor == null)
+        {
+            _performanceMonitor = _pet != null ? _pet.GetPerformanceMonitor() : null;
+            if (_performanceMonitor == null)
+                _performanceMonitor = FindObjectOfType<PerformanceMonitor>();
+        }
+        if (_performanceMonitor != null)
+            _performanceMonitor.SetExternalUiMode(enabled);
+        else
+            Debug.LogWarning("[RightPanel] 未找到 PerformanceMonitor，外置 UI 无法临时提升帧率");
     }
 
     /// <summary>外置窗口不再额外绘制标题栏，直接使用面板自身标题行。</summary>
@@ -2379,7 +2391,7 @@ public partial class RightPanel : MonoBehaviour
         GUI.matrix = prevMatrix;
         RenderTexture.active = prev;
 
-        // 异步读回 + 推送（30fps 节流；读回不阻塞主线程，动画保持 60fps 渲染）
+        // 异步读回 + 推送（High=60 / Normal=45 / Low=30fps；读回不阻塞主线程）
         // ★ 防卡死：_extReadPending 超时兜底（读回 >0.5s 未完成视为异常，重置继续）——
         //   RT 重建/NativeArray 更换时旧回调可能永不触发，导致 pending 永久 true 画面冻结
         if (_extReadPending && Time.time - _lastExtReadStart > 0.5f)
@@ -2387,10 +2399,10 @@ public partial class RightPanel : MonoBehaviour
             Debug.LogWarning("[RightPanel] 异步读回超时，重置 pending（防冻结）");
             _extReadPending = false;
         }
-        // 输入变化走即时通道：只在 dirty 时临时提升到 60 FPS，并在成功发起读回后清除。
-        // 这样字符/组词反馈最多等待一个 Unity 帧；星空等无输入状态仍保持 30 FPS 推送。
-        bool inputFastPath = _externalInputDirty || Time.unscaledTime < _externalInputFastUntil;
-        float captureInterval = inputFastPath ? 1f / 60f : 1f / 30f;
+        // 外置聊天 UI 按当前性能档位推送：High=60 / Normal=45 / Low=30 FPS。
+        // 输入变化仍走 dirty 即时通道，确保中文组词和光标反馈不等待普通节流。
+        float uiFps = _performanceMonitor != null ? Mathf.Clamp(_performanceMonitor.targetFPS, 15f, 60f) : 60f;
+        float captureInterval = 1f / uiFps;
         if ((_externalInputDirty || Time.time - _lastExtCapture >= captureInterval)
             && !_extReadPending && _extReadBack.IsCreated)
         {
