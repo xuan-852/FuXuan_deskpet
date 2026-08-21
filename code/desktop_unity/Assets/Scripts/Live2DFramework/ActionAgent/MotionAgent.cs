@@ -109,6 +109,8 @@ public class MotionAgent : MonoBehaviour
     private ChatManager _chatManager;
     private ActivityTracker _activityTracker;
     private DualModelValidator _dualValidator;
+    private DesktopPet _aiMotionPet;
+    private bool _aiMotionPausedPet;
 
     /// <summary>动作历史（最近 N 条决策，防止重复）</summary>
     private readonly List<string> _recentActions = new List<string>();
@@ -135,6 +137,41 @@ public class MotionAgent : MonoBehaviour
 
     /// <summary>报告周期（每 N 个决策动作输出一次报告到日志）</summary>
     private const int REPORT_INTERVAL = 30;
+
+    /// <summary>
+    /// AI 参数动作与地面走路的交接：先停止速度并冻结地面状态，
+    /// 让动作第一帧不再和走路参数竞争；结束后由 Live2DRenderer 的淡入恢复走路。
+    /// </summary>
+    private void BeginAiMotionHandoff(float lockDuration)
+    {
+        _aiMotionPet = FindObjectOfType<DesktopPet>();
+        _aiMotionPausedPet = false;
+        if (_aiMotionPet != null)
+        {
+            _aiMotionPet.SetActionMovementLock(true);
+            if (!_aiMotionPet.isPaused)
+            {
+                _aiMotionPet.Pause(0f);
+                _aiMotionPausedPet = true;
+            }
+        }
+        if (_renderer != null)
+            _renderer.SetAiControlLock(lockDuration);
+    }
+
+    private void EndAiMotionHandoff()
+    {
+        if (_renderer != null)
+            _renderer.ReleaseAiControlLock();
+        if (_aiMotionPet != null)
+        {
+            _aiMotionPet.SetActionMovementLock(false);
+            if (_aiMotionPausedPet && _aiMotionPet.isPaused)
+                _aiMotionPet.Resume();
+        }
+        _aiMotionPet = null;
+        _aiMotionPausedPet = false;
+    }
 
     /// <summary>获取全链路运行报告</summary>
     public string GetPipelineReport()
@@ -1057,8 +1094,7 @@ public class MotionAgent : MonoBehaviour
             if (plan != null)
             {
                 // ── 锁定 AI 控制权，防止空闲动画/走路系统争抢参数 ──
-                if (_renderer != null)
-                    _renderer.SetAiControlLock(duration + 0.5f);
+                BeginAiMotionHandoff(duration + 0.5f);
 
                 // ── 多帧截图（20%/40%/60%/80% 进度）──
                 var framePngs = new List<byte[]>();
@@ -1076,8 +1112,7 @@ public class MotionAgent : MonoBehaviour
                 });
 
                 // ★ 播放完毕 → 立即释放 AI 控制锁（让空闲动画恢复）
-                if (_renderer != null)
-                    _renderer.ReleaseAiControlLock();
+                EndAiMotionHandoff();
 
                 // ★ 闭环学习-写入演武心经
                 string snapshot = BuildParamSnapshot(plan);
@@ -1130,8 +1165,7 @@ public class MotionAgent : MonoBehaviour
             if (plan != null)
             {
                 // ── 锁定 AI 控制权（与 ExecuteMotion 一致：播放前加锁，防止空闲动画争抢参数）──
-                if (_renderer != null)
-                    _renderer.SetAiControlLock(duration + 0.5f);
+                BeginAiMotionHandoff(duration + 0.5f);
 
                 // ── 多帧截图（20%/40%/60%/80% 进度）──
                 var framePngs = new List<byte[]>();
@@ -1155,8 +1189,7 @@ public class MotionAgent : MonoBehaviour
                     mm.RecordMotion(description, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
 
                 // 播放完毕 → 立即释放 AI 控制锁
-                if (_renderer != null)
-                    _renderer.ReleaseAiControlLock();
+                EndAiMotionHandoff();
 
                 // ★ GLM 验证移入后台（同 ExecuteMotion）
                 string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);

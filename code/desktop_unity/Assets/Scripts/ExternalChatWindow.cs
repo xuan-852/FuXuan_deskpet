@@ -73,6 +73,7 @@ public static class ExternalChatWindow
     private const int WM_CLOSE = 0x0010;
     private const int WM_EXITSIZEMOVE = 0x0232;
     private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_LBUTTONUP = 0x0202;
     private const int WM_LBUTTONDBLCLK = 0x0203;
     private const int WM_MOUSEMOVE = 0x0200;
     private const int WM_MOUSELEAVE = 0x02A3;
@@ -113,6 +114,7 @@ public static class ExternalChatWindow
     private const uint GCS_COMPSTR = 0x0008;
     private const uint GCS_RESULTSTR = 0x0800;
     private const int EM_REPLACESEL = 0x00C2;
+    private const int EM_GETSEL = 0x00B0;
     private const int CFS_POINT = 0x0002;
     private const int CFS_FORCE_POSITION = 0x0020;
     private const int CFS_CANDIDATEPOS = 0x0040;
@@ -141,6 +143,10 @@ public static class ExternalChatWindow
     private static volatile string _inputTextCache = string.Empty;
     // EDIT 线程写入、Unity 主线程读取的输入快照版本。只有版本变化时 Unity 才复制字符串和触发重绘。
     private static int _inputTextVersion;
+    // 原生 EDIT 的 UTF-16 选区快照。Unity 渲染层据此绘制真实插入光标。
+    private static int _inputSelectionStart;
+    private static int _inputSelectionEnd;
+    private static int _inputSelectionVersion;
     private static bool _closeNotificationSent;
     private static WndProcDelegate _wndProcDelegate; // 防止被 GC
     private static EditWndProcDelegate _editWndProcDelegate; // 防止被 GC（EDIT 子类化）
@@ -223,6 +229,9 @@ public static class ExternalChatWindow
     [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode)]
     private static extern IntPtr SendMessageW(IntPtr hWnd, uint msg, IntPtr wParam,
         [MarshalAs(UnmanagedType.LPWStr)] string lParam);
+    [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static extern IntPtr SendMessageGetSelW(IntPtr hWnd, uint msg,
+        out int wParam, out int lParam);
     [DllImport("user32.dll")]
     private static extern int GetMessageW(ref MSG msg, IntPtr hWnd, uint min, uint max);
     [DllImport("user32.dll")]
@@ -953,7 +962,10 @@ public static class ExternalChatWindow
         // 过程完成后再读取，确保拿到已经修改后的文本。
         int vk = wParam.ToInt32();
         if (msg == WM_CHAR || msg == WM_PASTE || msg == WM_CUT || msg == WM_CLEAR || msg == WM_SETTEXT
-            || (msg == WM_KEYDOWN && (vk == VK_BACK || vk == VK_DELETE)))
+            || msg == WM_SETFOCUS || msg == WM_KILLFOCUS
+            || msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP
+            // 方向键/Home/End 改变选区但不改变文本，仍需同步插入点。
+            || msg == WM_KEYDOWN)
             UpdateInputTextCache();
         return result;
     }
@@ -1015,6 +1027,18 @@ public static class ExternalChatWindow
         {
             _inputTextCache = next;
             Interlocked.Increment(ref _inputTextVersion);
+        }
+
+        int selectionStart;
+        int selectionEnd;
+        SendMessageGetSelW(_edit, EM_GETSEL, out selectionStart, out selectionEnd);
+        selectionStart = Math.Max(0, selectionStart);
+        selectionEnd = Math.Max(selectionStart, selectionEnd);
+        if (selectionStart != _inputSelectionStart || selectionEnd != _inputSelectionEnd)
+        {
+            _inputSelectionStart = selectionStart;
+            _inputSelectionEnd = selectionEnd;
+            Interlocked.Increment(ref _inputSelectionVersion);
         }
     }
 
@@ -1276,6 +1300,18 @@ public static class ExternalChatWindow
     {
         return Volatile.Read(ref _inputTextVersion);
     }
+
+    /// <summary>原生 EDIT 的 UTF-16 选区起点。</summary>
+    public static int GetInputSelectionStart() => Volatile.Read(ref _inputSelectionStart);
+
+    /// <summary>原生 EDIT 的 UTF-16 选区终点；无选区时就是插入光标位置。</summary>
+    public static int GetInputSelectionEnd() => Volatile.Read(ref _inputSelectionEnd);
+
+    /// <summary>供 Unity 绘制插入光标的真实位置。</summary>
+    public static int GetInputCaretIndex() => GetInputSelectionEnd();
+
+    /// <summary>选区版本，供需要时做低成本变更检测。</summary>
+    public static int GetInputSelectionVersion() => Volatile.Read(ref _inputSelectionVersion);
 
     /// <summary>外置窗口输入通道是否聚焦，用于 RT 中绘制可见插入光标。</summary>
     public static bool IsInputFocused => _inputFocusActive;

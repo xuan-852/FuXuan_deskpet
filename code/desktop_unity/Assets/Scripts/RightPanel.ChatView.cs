@@ -27,6 +27,14 @@ public partial class RightPanel
         return inputRect.x + _termInputStyle.padding.left + textWidth;
     }
 
+    private float GetInputTextCaretX(Rect inputRect, string text, int caretIndex)
+    {
+        text = text ?? string.Empty;
+        int index = Mathf.Clamp(caretIndex, 0, text.Length);
+        return GetInputTextEndX(inputRect,
+            index == text.Length ? text : text.Substring(0, index));
+    }
+
     /// <summary>会话条目（QQ 式会话列表项）</summary>
     private class ChatSession
     {
@@ -524,8 +532,21 @@ public partial class RightPanel
             ? ExternalChatWindow.IsInputFocused
             : GUI.GetNameOfFocusedControl() == "rightPanelInput";
         string caretText = _inputText ?? string.Empty;
+        int caretIndex = caretText.Length;
         if (_externalRender)
-            caretText += ExternalChatWindow.GetInputComposition();
+        {
+            string composition = ExternalChatWindow.GetInputComposition();
+            if (!string.IsNullOrEmpty(composition))
+            {
+                // 组词阶段的光标落在组词末尾；普通编辑则跟随原生 EDIT 插入点。
+                caretIndex = caretText.Length + composition.Length;
+                caretText += composition;
+            }
+            else
+            {
+                caretIndex = Mathf.Clamp(ExternalChatWindow.GetInputCaretIndex(), 0, caretText.Length);
+            }
+        }
         if (_inputCaretBlinkStart < 0f
             || inputCaretFocused != _inputCaretFocusSnapshot
             || !string.Equals(caretText, _inputCaretTextSnapshot, StringComparison.Ordinal))
@@ -540,7 +561,7 @@ public partial class RightPanel
         bool inputCaretVisible = inputCaretFocused && caretBlinkPhase < INPUT_CARET_BLINK_PERIOD * 0.5f;
         float caretH = Mathf.Min(26f, inputBgRect.height - 12f);
         float caretY = inputBgRect.y + (inputBgRect.height - caretH) * 0.5f;
-        float caretX = Mathf.Clamp(GetInputTextEndX(inputBgRect, caretText) + 1f,
+        float caretX = Mathf.Clamp(GetInputTextCaretX(inputBgRect, caretText, caretIndex) + 1f,
             inputBgRect.x + _termInputStyle.padding.left,
             inputBgRect.xMax - _termInputStyle.padding.right - 3f);
         if (_externalRender)

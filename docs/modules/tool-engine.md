@@ -149,3 +149,10 @@ qwen2.5:3b → {action, tool, arguments, reason}
 5. **危险工具**：必须入 `DangerousTools` 清单；execSync 类调用注意输出编码（run_command 用 `chcp 65001` + UTF-8 解码，勿用 `Encoding.GetEncoding(936)`）
 6. **危险命令白名单**：run_command 有高危命令拦截（format c: 等），测试这类用例预期返回「此术涉及高危操作」而非成功
 7. **验证方法**：全量稳定性测试用 `ToolBenchmarkRunner`（`.benchmark` 开关触发，真机运行）；测试后清理 `_bench*` 残留、还原剪贴板、回退 pet_memory/personality（备份 `_test_backup_*`）
+
+### 本地模型课表路由补齐（2026-08-22）
+
+- `query_schedule` 已加入本地模型默认回退白名单、无参数工具恢复白名单和关键词触发词。
+- `课表`、`课程表`、`课程安排`、`上课`、`课程` 与“查看/打开/查询/第 N 周”等组合会生成受限 `query_schedule` 计划；“第 N 周”会解析为 `{ "week": N }`。
+- 工具仍复用 `ServerPollService → /api/pet/schedule` 的只读链路，不新增任意程序启动权限；“打开课表”在本地模型侧表现为查询并展示课表结果。
+- 已补充 EditMode 路由单测，覆盖“打开今天的课表”和“查看第 12 周课程安排”。

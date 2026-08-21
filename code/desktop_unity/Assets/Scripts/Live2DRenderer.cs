@@ -98,6 +98,7 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     const float WALK_BREATH       = 3f;     // 呼吸恒定加深（给物理持续输入）
     const float IDLE_BLEND_DURATION = 0.4f;  // 走路→空闲混合消退时长
     const float WALK_FADE_IN_DURATION = 0.3f; // 空闲→走路体态淡入时长
+    const float AI_LOCOMOTION_HANDOFF_DURATION = 0.25f; // 走路→AI动作交接淡出
 
     // -- 下落 --
     const float FALL_BODY_ANGLE_X  = -3f;    // 下落身体前倾
@@ -478,6 +479,7 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     // 空闲→走路体态淡入计时（动作结束后切走路不生硬）
     private float _walkFadeInRemaining = 0f;
+    private float _aiLocomotionFadeRemaining = 0f;
 
     // 走路时随机触发表情的计时
     private float _walkExpressionTimer = 0f;
@@ -846,7 +848,14 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             }
             ApplyWalkBodyPose(bodyWeight);
         }
-        else if (_wasWalkingLastFrame || _walkBlendRemaining > 0f)
+        else if (_aiControlLocked && _aiLocomotionFadeRemaining > 0f)
+        {
+            float handoffWeight = Mathf.Clamp01(_aiLocomotionFadeRemaining / AI_LOCOMOTION_HANDOFF_DURATION);
+            UpdateWalkAnimation(handoffWeight * handoffWeight);
+            ApplyWalkBodyPose(handoffWeight * handoffWeight);
+            _aiLocomotionFadeRemaining -= Time.deltaTime;
+        }
+        else if (!_aiControlLocked && (_wasWalkingLastFrame || _walkBlendRemaining > 0f))
         {
             // 过渡帧：_walkBlendRemaining 要到 LateUpdate 才设，但物理在 LateUpdate(0) 就要读体态了
             // 用 _wasWalkingLastFrame 兜住「刚停的第一帧」不设体态的空窗期
@@ -854,7 +863,7 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             float eased = blendWeight * blendWeight;
             ApplyWalkBodyPose(eased);
         }
-        else
+        else if (!_aiControlLocked)
         {
             // ★ 空闲时：给物理系统中性体态 + 头角度信号，防止左臂物理残留偏量
             //    Physics(800) 读取 ParamBodyAngleX/Y/Z（身体）、
@@ -947,7 +956,16 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             ResetIdleAction(true);
         }
 
-        if (isWalking)
+        // AI 动作已经接管参数时，禁止这里再补写一帧走路/淡出姿态。
+        // 原先动作第一帧会被 LateUpdate 的 UpdateWalkAnimation 盖掉，
+        // 表现为身体和后发丝突然卡一下。
+        if (_aiControlLocked)
+        {
+            _walkBlendRemaining = 0f;
+            _walkFadeInRemaining = 0f;
+            _wasWalkingLastFrame = false;
+        }
+        else if (isWalking)
         {
             if (!_wasWalkingLastFrame && !_actionLocked)
             {
@@ -2551,6 +2569,8 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// <param name="duration">锁定时长（秒），默认 AI_CONTROL_DURATION</param>
     public void SetAiControlLock(float duration = AI_CONTROL_DURATION)
     {
+        if (!_aiControlLocked && _wasWalkingLastFrame)
+            _aiLocomotionFadeRemaining = AI_LOCOMOTION_HANDOFF_DURATION;
         _aiControlLocked = true;
         _aiControlTimer = Mathf.Max(_aiControlTimer, duration);
         Debug.Log($"[Live2DRenderer] 🤖 AI 控制锁激活，持续 {_aiControlTimer:F1}s");
@@ -2608,6 +2628,7 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         _walkBlendRemaining = 0f;
         _walkFadeInRemaining = 0f;
+        _aiLocomotionFadeRemaining = 0f;
         _wasWalkingLastFrame = false;
     }
 

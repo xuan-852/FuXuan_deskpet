@@ -49,7 +49,8 @@ public static class LocalToolRouter
         "open_app", "open_url", "open_folder", "search", "search_web", "get_system_info",
         "get_clipboard", "notify", "file_read", "search_files", "search_file", "get_weather",
         "set_expression", "play_action", "stop_action", "generate_motion", "take_screenshot",
-        "query_reminders", "set_reminder", "generate_ppt", "generate_docx", "generate_xlsx",
+        "query_reminders", "query_exams", "query_scores", "query_schedule", "query_user_status",
+        "set_reminder", "generate_ppt", "generate_docx", "generate_xlsx",
         "run_command", "openclaw_task"
     };
 
@@ -58,7 +59,7 @@ public static class LocalToolRouter
         "打开", "启动", "运行", "执行", "搜索", "查找", "查询", "读取", "查看",
         "创建", "生成", "设置提醒", "提醒我", "播放", "停止", "截图", "天气", "文件",
         "网页", "网址", "剪贴板", "复制", "整理", "锁屏", "关机", "重启", "命令",
-        "脚本", "联网", "PPT", "Word", "Excel", "LaTeX"
+        "脚本", "联网", "PPT", "Word", "Excel", "LaTeX", "课表", "课程", "上课", "学业"
     };
 
     public static string[] GetAllowedTools(string intent)
@@ -243,6 +244,14 @@ public static class LocalToolRouter
         if (ContainsAny(message, "天气", "温度", "下雨", "气温"))
             return AssignPlan(out plan, "get_weather", "{}", "用户明确查询天气");
 
+        if (ContainsAny(message, "课表", "课程表", "课程安排", "上课", "课程")
+            && ContainsAny(message, "查", "看", "问", "打开", "今天", "明天", "本周", "下周", "第"))
+        {
+            int week = ExtractWeek(message);
+            string args = week > 0 ? JsonConvert.SerializeObject(new { week }) : "{}";
+            return AssignPlan(out plan, "query_schedule", args, "用户明确查询或打开课表");
+        }
+
         bool mentionsClipboard = message.IndexOf("剪贴板", StringComparison.OrdinalIgnoreCase) >= 0;
         if (mentionsClipboard && ContainsAny(message, "查看", "读取", "内容", "复制了什么"))
             return AssignPlan(out plan, "get_clipboard", "{}", "用户明确读取剪贴板");
@@ -349,6 +358,14 @@ public static class LocalToolRouter
         return query;
     }
 
+    private static int ExtractWeek(string message)
+    {
+        Match match = Regex.Match(message ?? "", @"第\s*(\d+)\s*周");
+        if (match.Success && int.TryParse(match.Groups[1].Value, out int week))
+            return Math.Max(0, week);
+        return 0;
+    }
+
     private static bool IsNoArgumentTool(string toolName)
     {
         switch ((toolName ?? "").Trim())
@@ -360,6 +377,7 @@ public static class LocalToolRouter
             case "query_reminders":
             case "query_exams":
             case "query_scores":
+            case "query_schedule":
             case "query_user_status":
             case "stop_action":
             case "take_screenshot":

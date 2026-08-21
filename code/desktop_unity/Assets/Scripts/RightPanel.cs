@@ -136,6 +136,7 @@ public partial class RightPanel : MonoBehaviour
     private bool _externalInputDirty;
     private string _lastExternalComposition = string.Empty;
     private int _lastExternalInputVersion = -1;
+    private bool _lastExternalInputFocus;
     // ★ 异步读回（AsyncGPUReadback）：渲染保持 60fps 动画流畅，读回不阻塞主线程
     private Unity.Collections.NativeArray<byte> _extReadBack;
     private bool _extReadPending;    // 上一帧读回未完成（防止堆积）
@@ -557,6 +558,12 @@ public partial class RightPanel : MonoBehaviour
         // 不再让原生 EDIT 覆盖 IMGUI 输入框，避免黑框与真实输入框交替闪烁。
         if (_externalMode)
         {
+            bool inputFocusedNow = ExternalChatWindow.IsInputFocused;
+            if (inputFocusedNow != _lastExternalInputFocus)
+            {
+                _lastExternalInputFocus = inputFocusedNow;
+                SetExternalUiInputPerformanceMode(inputFocusedNow);
+            }
             int inputVersion = ExternalChatWindow.GetInputTextVersion();
             string nativeComposition = ExternalChatWindow.GetInputComposition();
             if (inputVersion != _lastExternalInputVersion || nativeComposition != _lastExternalComposition)
@@ -2309,6 +2316,8 @@ public partial class RightPanel : MonoBehaviour
         _externalInputDirty = false;
         _lastExternalComposition = string.Empty;
         _lastExternalInputVersion = -1;
+        _lastExternalInputFocus = false;
+        SetExternalUiInputPerformanceMode(false);
         SetExternalUiPerformanceMode(false);
         ExternalChatWindow.OnSendText -= OnExternalSend;
         ExternalChatWindow.OnClosed -= OnExternalClosed;
@@ -2374,6 +2383,18 @@ public partial class RightPanel : MonoBehaviour
             _performanceMonitor.SetExternalUiMode(enabled);
         else
             Debug.LogWarning("[RightPanel] 未找到 PerformanceMonitor，外置 UI 无法临时提升帧率");
+    }
+
+    private void SetExternalUiInputPerformanceMode(bool enabled)
+    {
+        if (_performanceMonitor == null)
+        {
+            _performanceMonitor = _pet != null ? _pet.GetPerformanceMonitor() : null;
+            if (_performanceMonitor == null)
+                _performanceMonitor = FindObjectOfType<PerformanceMonitor>();
+        }
+        if (_performanceMonitor != null)
+            _performanceMonitor.SetExternalInputMode(enabled);
     }
 
     /// <summary>外置窗口不再额外绘制标题栏，直接使用面板自身标题行。</summary>
@@ -2453,7 +2474,7 @@ public partial class RightPanel : MonoBehaviour
         }
         // 外置聊天 UI 按当前性能档位推送：High=60 / Normal=45 / Low=30 FPS。
         // 输入变化仍走 dirty 即时通道，确保中文组词和光标反馈不等待普通节流。
-        float uiFps = _performanceMonitor != null ? Mathf.Clamp(_performanceMonitor.targetFPS, 15f, 60f) : 60f;
+        float uiFps = _performanceMonitor != null ? Mathf.Clamp(_performanceMonitor.targetFPS, 15f, 90f) : 60f;
         float captureInterval = 1f / uiFps;
         if ((_externalInputDirty || Time.time - _lastExtCapture >= captureInterval)
             && !_extReadPending && _extReadBack.IsCreated)
