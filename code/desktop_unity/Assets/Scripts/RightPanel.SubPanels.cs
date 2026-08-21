@@ -34,6 +34,10 @@ public partial class RightPanel
     private GUIStyle _subSectionStyle;     // 子面板小节标题
     private GUIStyle _subInputStyle;       // 子面板输入框
     private GUIStyle _subScrollStyle;      // 子面板滚动条
+    private GUIStyle _modelButtonStyle;
+    private GUIStyle _modelBodyStyle;
+    private GUIStyle _modelSmallStyle;
+    private GUIStyle _modelSectionStyle;
     private Texture2D _subBtnBg;           // 子面板按钮背景
     private Texture2D _subBtnHoverBg;
     private Texture2D _subInputBg;         // 子面板输入框背景
@@ -72,14 +76,20 @@ public partial class RightPanel
             PanelView.Memory => "🧠 忆境 · 核心记忆",
             _ => ""
         };
-        GUI.Label(new Rect(px + 56f, py + 8f, pw - 200f, 26f), subTitle, _termTitleStyle);
+        GUIStyle headerTitleStyle = _currentView == PanelView.ModelSettings
+            ? new GUIStyle(_termTitleStyle) { fontSize = 14 }
+            : _termTitleStyle;
+        GUIStyle headerHintStyle = _currentView == PanelView.ModelSettings
+            ? new GUIStyle(_termLogDimStyle) { fontSize = 11 }
+            : _termLogDimStyle;
+        GUI.Label(new Rect(px + 56f, py + 8f, pw - 200f, 24f), subTitle, headerTitleStyle);
         GUI.Label(new Rect(px + 56f, py + 32f, pw - 200f, 18f),
             _currentView == PanelView.Settings ? "调教本座走位习惯，微调权重以符占卜之数" :
             _currentView == PanelView.ModelSettings ? "选择本地对话模型，并查看新架构的真实生成样例" :
             _currentView == PanelView.Reminders ? "卜算记事簿 — 记要事，勿相忘" :
             _currentView == PanelView.Usage ? "Token 消耗统计 — 看看本座每小时烧多少" :
             _currentView == PanelView.Memory ? "核心事实与长期记忆 — 可查看、清理，不会误触对话注入" :
-            "演武心经 — 每次演武后 AI 自评记录的修为报告", _termLogDimStyle);
+            "演武心经 — 每次演武后 AI 自评记录的修为报告", headerHintStyle);
 
         // —— 时间 + ✕ 关闭 ——
         GUI.Label(new Rect(px + pw - 130f, py + 16f, 60f, 22f), _timeDisplay, _termTimeStyle);
@@ -411,7 +421,7 @@ public partial class RightPanel
         if (!string.IsNullOrEmpty(_modelStatusMsg))
         {
             GUI.Label(new Rect(x, y + h - 28f, w, 22f), _modelStatusMsg,
-                new GUIStyle(_termLogDimStyle) { fontSize = 14, normal = { textColor = _modelStatusColor } });
+                new GUIStyle(_modelSmallStyle) { normal = { textColor = _modelStatusColor } });
         }
     }
 
@@ -429,12 +439,59 @@ public partial class RightPanel
         }
     }
 
+    /// <summary>
+    /// 外置模型页命中兜底。坐标必须与 DrawModelOptions/DrawModelExamples 的布局公式保持一致，
+    /// 用来覆盖页面切换后命中表还未完成一帧重建的极短窗口。
+    /// </summary>
+    private bool TryHandleModelSettingsInput(float x, float y)
+    {
+        const float contentX = 16f;
+        const float contentY = 68f; // 标题栏 54 + 内容上边距 14
+        const float leftW = 300f;
+        const float gap = 18f;
+        const float optionY = contentY + 84f;
+
+        for (int i = 0; i < ModelSettingsProfiles.Length; i++)
+        {
+            if (new Rect(contentX, optionY + i * 72f, leftW, 62f).Contains(new Vector2(x, y)))
+            {
+                SelectModelProfile(i);
+                return true;
+            }
+        }
+
+        float applyY = optionY + ModelSettingsProfiles.Length * 72f + 14f;
+        if (new Rect(contentX, applyY, leftW, 42f).Contains(new Vector2(x, y)))
+        {
+            if (_selectedChatModelIndex >= 0 && !ModelSettingsProfiles[_selectedChatModelIndex].Cloud)
+                ApplySelectedChatModel();
+            return true;
+        }
+
+        float panelW = Mathf.Max(860f, _panelRect.width);
+        float contentW = panelW - 32f;
+        float rightX = contentX + leftW + gap;
+        float rightW = contentW - leftW - gap;
+        float tabY = contentY + 80f;
+        float tabW = (rightW - 12f) / 3f;
+        for (int i = 0; i < LocalModelDemoData.Qwen3Samples.Length; i++)
+        {
+            if (new Rect(rightX + i * (tabW + 6f), tabY, tabW, 34f).Contains(new Vector2(x, y)))
+            {
+                _modelDemoIndex = i;
+                Debug.Log("[RightPanel] 模型样例切换: " + LocalModelDemoData.Qwen3Samples[i].CaseId);
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void DrawModelOptions(float x, float y, float w, float h, Vector2 mp)
     {
-        GUI.Label(new Rect(x, y, w, 34f), "选择聊天模型", _subSectionStyle);
+        GUI.Label(new Rect(x, y, w, 34f), "选择聊天模型", _modelSectionStyle);
         GUI.Label(new Rect(x, y + 34f, w, 40f),
             "聊天模型独立于动作模型，质量优先时可使用更大的本地模型。",
-            new GUIStyle(_termLogDimStyle) { fontSize = 13, wordWrap = true });
+            _modelSmallStyle);
 
         float optionY = y + 84f;
         for (int i = 0; i < ModelSettingsProfiles.Length; i++)
@@ -449,26 +506,34 @@ public partial class RightPanel
 
             string state = profile.Cloud ? "待配置" : (LocalLLMClient.IsModelReady(profile.Model) ? "已检测" : "可选择");
             string label = (selected ? "● " : "○ ") + profile.Title + "\n" + profile.Model + " · " + state;
-            if (GUI.Button(optionRect, label, _subBtnStyle))
-            {
-                _selectedChatModelIndex = i;
-                _modelStatusMsg = profile.Cloud
-                    ? "云端模型暂未启用：需要先完成安全的 API Key 存储与脱敏。"
-                    : "已选择 " + profile.Model + "，点击「应用本地模型」后生效。";
-                _modelStatusColor = profile.Cloud ? new Color(1f, 0.70f, 0.35f, 1f) : Color.gray;
-            }
+            int profileIndex = i;
+            if (GUI.Button(optionRect, label, _modelButtonStyle))
+                SelectModelProfile(profileIndex);
+            RegisterExtHit(optionRect, () => SelectModelProfile(profileIndex));
         }
 
         float applyY = optionY + ModelSettingsProfiles.Length * 72f + 14f;
         Rect applyRect = new Rect(x, applyY, w, 42f);
         bool cloud = ModelSettingsProfiles[_selectedChatModelIndex].Cloud;
-        if (!cloud && GUI.Button(applyRect, "✓ 应用本地模型", _subBtnStyle))
+        if (!cloud && GUI.Button(applyRect, "✓ 应用本地模型", _modelButtonStyle))
             ApplySelectedChatModel();
         RegisterExtHit(applyRect, () => { if (!cloud) ApplySelectedChatModel(); });
 
         GUI.Label(new Rect(x, applyY + 52f, w, 64f),
             "当前聊天：" + LocalLLMClient.ChatModelName + "\n动作/摘要：" + LocalLLMClient.ModelName + "\n两者分离，避免动作循环跟着升高占用。",
-            new GUIStyle(_termLogDimStyle) { fontSize = 13, wordWrap = true });
+            _modelSmallStyle);
+    }
+
+    private void SelectModelProfile(int index)
+    {
+        if (index < 0 || index >= ModelSettingsProfiles.Length) return;
+        ModelProfile profile = ModelSettingsProfiles[index];
+        _selectedChatModelIndex = index;
+        _modelStatusMsg = profile.Cloud
+            ? "云端模型暂未启用：需要先完成安全的 API Key 存储与脱敏。"
+            : "已选择 " + profile.Model + "，点击「应用本地模型」后生效。";
+        _modelStatusColor = profile.Cloud ? new Color(1f, 0.70f, 0.35f, 1f) : Color.gray;
+        Debug.Log("[RightPanel] 模型设置页选择: " + profile.Model);
     }
 
     private void ApplySelectedChatModel()
@@ -488,10 +553,10 @@ public partial class RightPanel
 
     private void DrawModelExamples(float x, float y, float w, float h, Vector2 mp)
     {
-        GUI.Label(new Rect(x, y, w, 34f), "生成质量对比", _subSectionStyle);
+        GUI.Label(new Rect(x, y, w, 34f), "生成质量对比", _modelSectionStyle);
         GUI.Label(new Rect(x, y + 34f, w, 38f),
             "以下是隔离测试得到的真实回复，不会写入生产忆境。",
-            new GUIStyle(_termLogDimStyle) { fontSize = 13, wordWrap = true });
+            _modelSmallStyle);
 
         float tabsY = y + 80f;
         float tabW = (w - 12f) / 3f;
@@ -500,8 +565,10 @@ public partial class RightPanel
             Rect tab = new Rect(x + i * (tabW + 6f), tabsY, tabW, 34f);
             if (i == _modelDemoIndex)
                 UiTextureFactory.DrawPixelRect(tab, new Color(0.45f, 0.30f, 0.78f, 0.30f));
-            if (GUI.Button(tab, LocalModelDemoData.Qwen3Samples[i].CaseId, _subBtnStyle))
-                _modelDemoIndex = i;
+            int demoIndex = i;
+            if (GUI.Button(tab, LocalModelDemoData.Qwen3Samples[i].CaseId, _modelButtonStyle))
+                _modelDemoIndex = demoIndex;
+            RegisterExtHit(tab, () => _modelDemoIndex = demoIndex);
         }
 
         LocalModelDemoData.Sample sample = LocalModelDemoData.Qwen3Samples[Mathf.Clamp(_modelDemoIndex, 0, LocalModelDemoData.Qwen3Samples.Length - 1)];
@@ -510,27 +577,27 @@ public partial class RightPanel
         UiTextureFactory.DrawPixelRect(new Rect(x, cardY, w, cardH), new Color(0.04f, 0.05f, 0.13f, 0.72f));
         GUI.Label(new Rect(x + 14f, cardY + 12f, w - 28f, 24f),
             "本地真实样例 · " + LocalModelDemoData.TestModel + " · " + LocalModelDemoData.TestDate,
-            _subLabelStyle);
+            _modelSmallStyle);
         GUI.Label(new Rect(x + 14f, cardY + 48f, w - 28f, 54f),
             "用户：" + sample.Input,
-            new GUIStyle(_subLabelStyle) { wordWrap = true });
+            _modelBodyStyle);
         GUI.Label(new Rect(x + 14f, cardY + 108f, w - 28f, cardH - 172f),
             "符玄：" + sample.Reply,
-            new GUIStyle(_subLabelStyle) { wordWrap = true, alignment = TextAnchor.UpperLeft });
+            _modelBodyStyle);
         GUI.Label(new Rect(x + 14f, cardY + cardH - 52f, w - 28f, 40f),
             string.Format("耗时 {0:0.0}s · {1} 字 · 规则评分 {2}/5", sample.LatencyMs / 1000f, sample.ReplyChars, sample.RuleScore),
-            new GUIStyle(_termLogDimStyle) { fontSize = 13 });
+            _modelSmallStyle);
 
         float cloudY = cardY + cardH + 18f;
         UiTextureFactory.DrawPixelRect(new Rect(x, cloudY, w, 104f), new Color(0.12f, 0.08f, 0.20f, 0.78f));
-        GUI.Label(new Rect(x + 14f, cloudY + 12f, w - 28f, 24f), "云端模型 · DeepSeek", _subLabelStyle);
+        GUI.Label(new Rect(x + 14f, cloudY + 12f, w - 28f, 24f), "云端模型 · DeepSeek", _modelBodyStyle);
         GUI.Label(new Rect(x + 14f, cloudY + 40f, w - 28f, 54f),
             "暂未放入伪造对照文本。接入云端前需由用户配置专属 API Key，并完成安全存储、脱敏日志与消耗记录。",
-            new GUIStyle(_termLogDimStyle) { fontSize = 13, wordWrap = true });
+            _modelSmallStyle);
 
         GUI.Label(new Rect(x, h + y - 28f, w, 22f),
             string.Format("本批次：3/3 成功 · 平均 {0:0.0}s · 小样本仅用于选型参考", LocalModelDemoData.AverageLatencyMs / 1000f),
-            new GUIStyle(_termLogDimStyle) { fontSize = 13 });
+            _modelSmallStyle);
     }
 
     private struct ModelProfile
@@ -1081,6 +1148,29 @@ public partial class RightPanel
             normal = { textColor = new Color(0.88f, 0.78f, 0.55f, 1f), background = _subSectionBg }, // 太卜司金
             padding = new RectOffset(10, 10, 6, 6),
             border = new RectOffset(3, 3, 3, 3)
+        };
+        _modelButtonStyle = new GUIStyle(_subBtnStyle)
+        {
+            fontSize = 14,
+            padding = new RectOffset(8, 8, 4, 4),
+            wordWrap = true
+        };
+        _modelBodyStyle = new GUIStyle(_subLabelStyle)
+        {
+            fontSize = 14,
+            wordWrap = true,
+            alignment = TextAnchor.UpperLeft
+        };
+        _modelSmallStyle = new GUIStyle(_termLogDimStyle)
+        {
+            fontSize = 11,
+            wordWrap = true,
+            alignment = TextAnchor.UpperLeft
+        };
+        _modelSectionStyle = new GUIStyle(_subSectionStyle)
+        {
+            fontSize = 15,
+            padding = new RectOffset(8, 8, 4, 4)
         };
         _subInputStyle = new GUIStyle
         {

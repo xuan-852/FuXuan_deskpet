@@ -147,6 +147,11 @@ public partial class RightPanel : MonoBehaviour
     private readonly List<ExtHitZone> _extHitZones = new List<ExtHitZone>();
     private readonly List<ExtHitZone> _extTitleZones = new List<ExtHitZone>();
     private PanelView _extHitView = (PanelView)(-1);
+    private bool _pendingExtInput;
+    private float _pendingExtInputX;
+    private float _pendingExtInputY;
+    private bool _pendingExtInputDoubleClick;
+    private PanelView _pendingExtInputView = (PanelView)(-1);
     private struct ExtHitZone
     {
         public Rect rect;
@@ -181,11 +186,23 @@ public partial class RightPanel : MonoBehaviour
         if (_currentView == PanelView.SessionList && TryHandleSessionListInput(x, y, isDoubleClick))
             return;
 
+        // 模型设置页的选项/样例是外置窗口中最常用的首屏交互。
+        // 在命中表尚未完成一帧重建时，使用与绘制区域相同的几何公式兜底，避免切页首击丢失。
+        if (_currentView == PanelView.ModelSettings && TryHandleModelSettingsInput(x, y))
+            return;
+
         // 视图已切换但尚未完成下一帧外置渲染时，禁止使用旧视图的动作闭包。
         // 等待下一次 Repaint 重建命中表，避免“点 A 执行了旧页面的 B 动作”。
         if (_extHitView != _currentView)
         {
-            Debug.Log($"[RightPanel] 外部点击等待当前视图命中表: {_currentView}（旧表 {_extHitView}）");
+            // 页面切换后 RenderTexture/命中表可能还在下一帧重建。
+            // 暂存一次点击，避免用户刚切页就点击时丢失操作。
+            _pendingExtInput = true;
+            _pendingExtInputX = x;
+            _pendingExtInputY = y;
+            _pendingExtInputDoubleClick = isDoubleClick;
+            _pendingExtInputView = _currentView;
+            Debug.Log($"[RightPanel] 外部点击等待当前视图命中表: {_currentView}（旧表 {_extHitView}），已排队");
             return;
         }
 
@@ -311,6 +328,8 @@ public partial class RightPanel : MonoBehaviour
         _extHitZones.Clear();
         _extTitleZones.Clear();
         _extHitView = (PanelView)(-1);
+        _pendingExtInput = false;
+        _pendingExtInputView = (PanelView)(-1);
     }
 
     // ==================== 字体档位缩放 ====================
@@ -2402,6 +2421,15 @@ public partial class RightPanel : MonoBehaviour
         }
         _externalRender = false;
         _extHitView = _currentView;
+        if (_pendingExtInput && _pendingExtInputView == _currentView)
+        {
+            float pendingX = _pendingExtInputX;
+            float pendingY = _pendingExtInputY;
+            bool pendingDoubleClick = _pendingExtInputDoubleClick;
+            _pendingExtInput = false;
+            // 当前帧已经完成命中表重建，再回放刚才的点击；避免切页后的首击丢失。
+            HandleExternalInput(pendingX, pendingY, pendingDoubleClick);
+        }
         GUI.matrix = prevMatrix;
         RenderTexture.active = prev;
 

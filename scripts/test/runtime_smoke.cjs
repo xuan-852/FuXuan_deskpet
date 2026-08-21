@@ -83,6 +83,12 @@ const COMMANDS = [
     ['@@view:back', '[TestInbox] @@view 命令: back'],
     ['@@view:list', '[TestInbox] @@view 命令: list'],
     ['@@view:external', '[TestInbox] @@view 命令: external'],
+    ['@@view:model', '[RightPanel] 打开模型设置页'],
+    ['@@view:extclick:100,250', '[RightPanel] 模型设置页选择: qwen2.5:3b'],
+    ['@@view:extclick:400,170', '[TestInbox] @@view 命令: extclick:400,170'],
+    ['@@view:extclick:100,545', '[RightPanel] 对话模型已切换: qwen2.5:3b'],
+    ['@@view:back', '子面板返回 → Chat'],
+    ['@@view:list', '[TestInbox] @@view 命令: list'],
     // ★ 外置面板交互链路（Phase A3/A4）：会话项双击进聊天 → 工具行进设置 → ◀ 返回 → 审批注入
     ['@@view:extclick:100,200,true', '进入聊天: '],
     ['@@view:extclick:753,87', '打开子面板 → Settings'],
