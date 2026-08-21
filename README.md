@@ -2,19 +2,20 @@
 
 <div align="center">
 
-![版本](https://img.shields.io/badge/迭代-N41%2B-blue)
+![版本](https://img.shields.io/badge/版本-v1.0.8-blue)
 ![引擎](https://img.shields.io/badge/引擎-团结引擎%20Tuanjie%202022.3.62t7-purple)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%2064位-green)
 ![Live2D](https://img.shields.io/badge/Live2D-Cubism%205--r.4-orange)
-![对话](https://img.shields.io/badge/对话-DeepSeek%20Chat%20%2B%20Function%20Calling-red)
-![视觉](https://img.shields.io/badge/视觉-GLM--4V%20自评闭环-yellow)
-![本地LLM](https://img.shields.io/badge/本地LLM-Ollama%20Qwen2.5-blue)
+![对话](https://img.shields.io/badge/对话-本地%20Ollama%20优先-red)
+![云端](https://img.shields.io/badge/云端-DeepSeek%20可选-orange)
+![本地LLM](https://img.shields.io/badge/本地LLM-Ollama%20Qwen3-blue)
 ![工具](https://img.shields.io/badge/工具-65%20个%20%7C%20危险审批-orange)
 
 **「穷观妙算，天机尽显。」** — 仙舟「罗浮」太卜司之首，符玄大人驾临您的桌面。
 
-一个基于 **Unity + Live2D** 的 Windows 桌面 AI 伴侣：能对话、能感知、能执行、能记忆，
-具备完整的 **感知 → 决策 → 执行 → 验证 → 记忆** 具身智能闭环。
+一个基于 **Unity + Live2D + Ollama** 的 Windows 桌面 AI 伴侣：能对话、能感知、能执行、能记忆。
+默认优先使用本地模型，云端 DeepSeek 作为可选的高质量对话与工具调用通道；
+系统围绕 **感知 → 决策 → 执行 → 验证 → 记忆** 构建，并尽量避免不必要的云端消耗。
 
 </div>
 
@@ -34,15 +35,17 @@
 
 | 亮点 | 说明 |
 |------|------|
-| 🤖 **真正的桌面 AI 伴侣** | DeepSeek Function Calling + **65 个工具** + 最多 10 轮工具回环，不只是聊天 |
+| 🤖 **本地优先的桌面 AI 伴侣** | Ollama 本地聊天 + 可选 DeepSeek Function Calling + **65 个工具**，不只是聊天 |
 | 🎭 **Live2D 活灵活现** | Cubism 5-r.4 参数化动画 + 物理模拟（裙/发/法盘惯性跟随）+ DWM 透明窗口融入桌面 |
-| 🧠 **三层记忆 + 五维人格** | 长期记忆、情感演化、知识库 RAG，符玄会"记得"你 |
+| 🧠 **忆境与人格** | 相关性记忆检索、核心事实、对话摘要、五维人格与本地知识库 RAG |
 | 🔍 **感知你的一举一动** | 前台窗口、浏览器标签、时间天气、系统性能、GPU 负载、剪贴板 |
-| 🏃 **具身动作闭环** | LLM 生成动作关键帧 → 插值播放 → GLM-4V 视觉自评 → 记忆沉淀 |
+| 🏃 **具身动作闭环** | 轻量本地模型决策 → 动作模板/关键帧播放 → 可选视觉验证与运动记忆沉淀 |
 | 🖥️ **任务外包执行** | 经本地 Node 桥接调用 OpenClaw 智能体，浏览器/命令行/定时任务全外包，**进度可视化 + 关键步审批** |
 | 📋 **办公文档生成** | 一句话生成 PPT / Word / Excel（python-pptx / python-docx / openpyxl） |
 | 📜 **LaTeX 编译** | 长文档分块生成（AgentWrite 式），实测 31 页 PDF 一次成功 |
-| 🛡️ **安全第一** | 危险工具审批弹窗（60s 倒计时）、exec 敏感命令审批、密钥不入库 |
+| 🛡️ **安全第一** | 危险工具审批弹窗、exec 敏感命令审批、测试模式隔离、密钥不入库 |
+| ⚙️ **模型可切换** | 设置页可选择 qwen3:8b、qwen2.5:3b、qwen2.5:1.5b、qwen2.5:0.5b，并查看当前模型的真实生成示例 |
+| 🗃️ **忆境可管理** | 设置页可浏览核心事实与长期记忆，可清理过期记忆或二次确认清空忆境 |
 | 🧩 **像素表情包** | 17×24 像素小符玄，9 种表情帧 + 符号徽章 |
 
 ---
@@ -67,19 +70,20 @@
 │  SystemTray · VisualHeartbeat                             │
 ├────────────────────────────────────────────────────────────┤
 │                    AI 核心层                                │
-│  ChatManager(10轮工具循环·意图过滤·600s看门狗)             │
-│  ApiClient(SSE) · LocalLLMAgentService(4离线能力)          │
-│  IdleChatGenerator · ProactiveMessageScheduler            │
+│  ChatManager(本地优先·10轮工具循环·意图过滤·看门狗)        │
+│  LocalLLMAgentService(Ollama) · ApiClient(可选云端 SSE)     │
+│  ModelSettings · RuntimeReadiness · QualityTelemetry        │
+│  IdleChatGenerator · ProactiveMessageScheduler              │
 ├────────────────────────────────────────────────────────────┤
 │                    感知层                                   │
 │  ActivityTracker · BrowserTabReader · PetMemory            │
 │  TimeWeatherController · PerformanceMonitor · GpuLoad      │
-│  KnowledgeBaseManager · ClipboardListener                  │
+│  KnowledgeBaseManager · MemoryGovernance · ClipboardListener│
 ├────────────────────────────────────────────────────────────┤
 │                    具身层                                   │
 │  MotionAgent · MotionTranslator · MotionPlanner            │
 │  MotionGenerator · MotionMemoryManager · SafetyValidator   │
-│  VisionMotionVerifier(GLm-4V) · PersonalityManager         │
+│  VisionMotionVerifier(可选 GLM-4V) · PersonalityManager    │
 │  EmotionState · IdleActionScheduler                        │
 ├────────────────────────────────────────────────────────────┤
 │                    物理与渲染层                              │
@@ -89,8 +93,8 @@
 ├────────────────────────────────────────────────────────────┤
 │                    系统层                                   │
 │  WindowOverlay (DWM透明) · SystemTrayManager               │
-│  ReminderManager · ServerPollService · OpenClawBridge     │
-│  ToolEngine (12 工具文件 + 7 基础设施 · 65 工具)           │
+│  ReminderManager · ServerPollService · OpenClawBridge      │
+│  ToolEngine (插件化工具发现/审批 · 65 工具)                │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -103,19 +107,33 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
                                                         |   (PPT/Word/Excel/LaTeX 生成器)
 ```
 
-- 桥接服务器：Node.js，PM2 管理，鉴权 `x-bridge-token`，**per-session 请求锁**（同会话串行、多任务并行）
+- 桥接服务器：Node.js，开发环境可由 PM2 管理，安装包支持本地服务方式运行；鉴权 `x-bridge-token`，**per-session 请求锁**（同会话串行、多任务并行）
 - 端点：`/health` `/search` `/task`（提交/轮询/取消/**审批**）`/compile_latex` `/generate_office`
 - **exec 审批闭环**（2026-08-12 E2E 实测打通）：`tools.exec.mode=ask` → 敏感命令触发审批事件
   → 桌宠弹窗（60s 倒计时）→ 用户决策（allow-once/allow-always/deny）→ `exec.approval.resolve` 回执 → 命令继续/中止
+
+### 本地优先对话与模型路由
+
+```
+用户输入 → ChatManager → RuntimeReadiness 检查
+                       ├─ 本地聊天：Ollama / qwen3:8b（可在设置页切换）
+                       └─ 云端通道：DeepSeek API（用户配置后按需启用）
+
+动作、意图分类、摘要、记忆提取 → Ollama / qwen2.5:3b
+相关忆境 → 当前问题检索 → 本地最多 700 字符 / 云端最多 1400 字符
+```
+
+本地聊天和动作模型分开，避免动作循环占用质量模型；Qwen3 默认关闭 thinking，
+把等待预算用于完整回复。模型设置页切换的是聊天模型，不会改变动作/摘要模型。
 
 ### 具身智能数据流
 
 ```
 MotionAgent ──→ MotionTranslator ──→ MotionPlanner ──→ MotionGenerator
-(感知/决策)    (DeepSeek 关键帧)     (10 模板/6 曲线)   (插值播放)
+(感知/决策)    (本地/可选云端)       (10 模板/6 曲线)   (插值播放)
      ↑                                                      │
      │    MotionMemoryManager ←── VisionMotionVerifier ←────┘
-     │    (30 条 + 负反馈)      (GLM-4V 多帧拼图评分)
+     │    (30 条 + 负反馈)      (可选 GLM-4V 多帧拼图评分)
      └────────────────────────────────────────────────────────┘
 ```
 
@@ -129,20 +147,26 @@ MotionAgent ──→ MotionTranslator ──→ MotionPlanner ──→ MotionG
 |------|------|------|
 | 团结引擎 | ✅ | `D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe` |
 | Live2D SDK | ✅ | CubismSdkForUnity-5-r.4（模型在 `StreamingAssets/Live2D/Fuxuan/`） |
-| DeepSeek API | ✅ | 对话 + 工具调用 + 动作关键帧生成 |
-| GLM-4V API | ✅ | 截图分析 + 动作视觉评分 |
-| Ollama | ⭕ | 本地 LLM 动作决策 + RAG 嵌入（`qwen2.5:3b` / `nomic-embed-text`） |
+| Ollama | 推荐 | 默认本地聊天 `qwen3:8b`；动作/分类/摘要使用 `qwen2.5:3b`；知识库可选 `nomic-embed-text` |
+| DeepSeek API | 可选 | 云端高质量对话、工具调用与部分复杂动作生成；需要用户自行配置专属 API Key |
+| GLM-4V API | 可选 | 截图分析与动作视觉评分；未配置时不影响本地聊天 |
 | OpenClaw | ⭕ | 搜索网关 / 任务外包（HTTP 19876 / WebSocket 18789） |
 | Everything CLI | ⭕ | 毫秒级文件搜索（自动检测 `es.exe`） |
-| Node.js + PM2 | ⭕ | 桥接服务器（进程名 `openclaw-bridge`） |
+| Node.js | ⭕ | 桥接服务器；开发环境可配合 PM2，安装包可使用本地服务方式 |
 
 ### 环境变量
 
 ```powershell
-# DeepSeek（必需 — 对话 + 动作生成）
+# DeepSeek（可选 — 启用云端对话/工具调用时配置）
 setx DEEPSEEK_API_KEY "sk-your-key-here"
-# 智谱 GLM（必需 — 视觉分析 + 动作自评）
+# 智谱 GLM（可选 — 启用视觉分析/动作评分时配置）
 setx GLM_API_KEY "your-glm-key-here"
+# 本地聊天模型（默认 qwen3:8b，可在设置页选择）
+setx FU_XUAN_LOCAL_CHAT_MODEL "qwen3:8b"
+# 动作/分类/摘要模型（默认 qwen2.5:3b）
+setx FU_XUAN_LOCAL_MODEL "qwen2.5:3b"
+# 用户数据根目录（默认 D:\DesktopPetData，安装器会优先复用已有目录）
+setx FU_XUAN_DATA "D:\DesktopPetData"
 # 和风天气（可选 — 默认 wttr.in，cityCode=Nanjing）
 setx QWEATHER_API_KEY "your-qweather-key-here"
 # OpenClaw Bridge 认证（可选 — 搜索/LaTeX/任务外包网关）
@@ -153,6 +177,7 @@ setx DESKTOP_TOKEN "your-server-token-here"
 
 > ⚠ 设完后需**重启 VS Code / 重新登录**使环境变量生效。
 > 密钥一律环境变量读取（`ChatConfig.cs`，附 `.cs.example` 模板），**不入库**。
+> 本地聊天不需要 API Key；选择云端模型前才需要配置 `DEEPSEEK_API_KEY`。
 > 环境变量名以代码为准：OpenClaw Bridge 用 `BRIDGE_TOKEN`（fallback 自动读 `GATEWAY_TOKEN`）；
 > `DESKTOP_TOKEN` 仅用于 ServerPollService 便签轮询（`localhost:3000`）。
 
@@ -171,10 +196,14 @@ setx DESKTOP_TOKEN "your-server-token-here"
 
 ## 🤖 核心能力
 
-### 💬 AI 对话系统（65 工具）
+### 💬 AI 对话系统（本地优先，云端可选）
 
-基于 **DeepSeek Chat API** 的 Function Calling 体系，通过 `ToolEngine/IPetTool` 插件接口自动发现并注册
-**65 个工具**（12 个工具文件 + 7 个基础设施 .cs），支持最多 **10 轮** 回环调用。
+日常聊天默认走本地 **Ollama**，聊天模型与动作/分类/摘要模型分离：聊天默认 `qwen3:8b`，
+动作、意图分类、摘要和记忆提取默认使用轻量 `qwen2.5:3b`。用户可在设置页切换聊天模型，
+并查看当前模型的真实生成示例。配置 DeepSeek API Key 后，才启用云端高质量对话与工具调用。
+
+云端通道通过 `ToolEngine/IPetTool` 插件接口自动发现并注册 **65 个工具**，支持最多 **10 轮** 回环调用；
+本地聊天不会因为没有云端 Key 而失效。
 
 | 类别 | 工具（真实注册名） | 能力 |
 |------|------|------|
@@ -203,11 +232,15 @@ setx DESKTOP_TOKEN "your-server-token-here"
 
 **核心机制**：
 - **意图过滤**：本地 Ollama 分类（chat/emotion/command/knowledge/operation），chat/emotion 不发工具，其余按白名单注入子集（首轮 65→约 27）
+- **模型分层**：聊天模型单独保留质量预算；动作/分类/摘要使用轻量模型，避免动作循环拖慢输入响应
+- **本地质量护栏**：短角色卡、相关忆境、最近两轮历史、回复后处理和确定性句数约束共同控制低能力模型的输出
 - **Token 优化（N40 T1-T8）**：时间戳挪尾部（缓存命中率 98.6%）、body schema 裁剪、max_tokens:1200+thinking 禁用、历史 15000 字符预算 + Ollama 摘要、SystemPrompt -41%、Speculative Multi-Action（一次多 tool_call）
 - **危险工具审批**：7 个危险工具（file_delete/power/lock_screen/run_command/set_volume/mute/openclaw_task）走 `ToolConfirmManager` 确认
 - **看门狗**：单次请求总超时 600s；任务外包有心跳熔断（无进展自动取消）+ 成本熔断（不可重试错误禁重复调用）
 - **自动重试**：最多 3 次，400/401/403 不重试
 - **打字机逐句显示**（2.5s 间隔）、**消息队列**（等待时不丢输入）
+- **运行状态**：标题栏显示本地生成、云端连接、流式输出、工具执行、重试、错误和取消状态；可取消卡住的请求
+- **成本保护**：本地模式不发云端请求；测试模式与 `--no-cloud` 可在请求前阻断云端调用
 
 ### 🎨 Live2D 渲染
 
@@ -233,8 +266,8 @@ setx DESKTOP_TOKEN "your-server-token-here"
 
 ### 🎭 动作系统 — ActionAgent（15 文件）
 
-- **MotionAgent 自主决策**：4 档密度（High/Med/Low/Sleep），本地 Ollama Qwen2.5 决策，连续 3 次失败回退概率模式；GPU 监控检测游戏自动暂停
-- **MotionTranslator**：自然语言 → Live2D 关键帧序列（DeepSeek, temp=0.3），10 条规则 + 10 种特殊模式，VERIFIED FEEDBACK 注入
+- **MotionAgent 自主决策**：4 档密度（High/Med/Low/Sleep），本地 Ollama `qwen2.5:3b` 决策，连续 3 次失败回退概率模式；GPU 监控检测游戏自动暂停
+- **MotionTranslator**：自然语言 → Live2D 关键帧序列（本地/可选云端），10 条规则 + 10 种特殊模式，VERIFIED FEEDBACK 注入
 - **MotionPlanner/Generator**：10 种硬编码模板 + 6 种插值曲线（Linear/Smooth/EaseOut/EaseIn/Hold/Bounce）+ 3 阶段计划（淡入/保持/回归）
 - **闭环视觉验证**：GLM-4V 对动作 20/40/60/80% 截图合成 2×2 拼图评分（1-5 分，passThreshold=3）
 - **MotionMemoryManager**：上限 30 条，负反馈反例（≤2 分），无望检测，冷却 120s 防复读
@@ -247,10 +280,14 @@ setx DESKTOP_TOKEN "your-server-token-here"
 | 法眼 | 2s 轮询前台窗口 | 8 类分类：编程/游戏/学习/浏览/娱乐/通讯/空闲/其他 |
 | 多窗口 | EnumWindows 扫描 | 环境感知（注入 prompt） |
 | 浏览器标签 | UIA 反射 | 读取 6 种浏览器标签 |
-| 长期记忆 | 3 层 JSON 持久化 | 存储 entries+coreFacts+conversationSummary；输出为 4 层 |
+| 忆境记忆 | 分层 JSON 持久化 | `entries`、`coreFacts`、`conversationSummary`；写入经过重要度/置信度/相关性治理 |
 | 知识库 | Ollama 嵌入语义检索 | `nomic-embed-text` + 余弦 TopK，25+ 文件类型分块索引 |
 | 人格 | 五维 + 三维关系 | 跨会话连续演化 |
-| 反思 | ✅ 已接线 | CheckReflection → DoReflection（DeepSeek 提炼）→ CommitReflection |
+| 记忆注入 | 本地与云端共用 | 按当前问题检索；本地最多 700 字符，云端最多 1400 字符，避免无关记忆污染回复 |
+| 反思 | ✅ 已接线 | CheckReflection → DoReflection（按可用模型提炼）→ CommitReflection |
+
+所有用户数据默认位于 `D:\DesktopPetData`，可由 `FU_XUAN_DATA` 覆盖。安装、升级和卸载不会默认删除忆境；
+卸载时选择“保留”会原地保留同一个数据目录，选择“删除”才清理已记录的专用目录，避免生成第二份活动数据。
 
 ### 🧬 人格演化系统
 
@@ -279,6 +316,8 @@ setx DESKTOP_TOKEN "your-server-token-here"
 | 🟣 **悬浮球 BallPanel** | 右下角粉✦ | 420×580px 辐射菜单（设置/报告/便签） |
 | 📋 **右侧面板 RightPanel** | `~`键 / 鼠标划过右边缘 | 220px Widgets（聊/设/签/告）+ **任务进度 + 审批弹窗（60s 倒计时）** |
 | 💬 **古风气泡 ChatBubble** | AI 回复/提醒/闲话 | OnGUI 手绘圆角 + 12 星点 |
+| ⚙️ **模型设置页** | 右侧面板「设」 | 切换本地聊天模型、查看对应真实样例；云端选项仅在安全配置完成后启用 |
+| 🧠 **忆境页** | 右侧面板「忆境」 | 只读查看核心事实/长期记忆、清理过期记忆、二次确认清空 |
 | 🧩 **像素表情包**（N41） | AI 回复 `【表情:xxx】` | 17×24 像素形象 → ×4 显示，9 种脸部表情帧，呼吸浮动 + 点击/回复跳跃 + 眨眼，右上角符号徽章（4 秒） |
 
 ### ⚡ 性能优化
@@ -298,14 +337,18 @@ setx DESKTOP_TOKEN "your-server-token-here"
 
 ```
 Desktop_per_pro/
-├── code/desktop_unity/          # Unity 工程（Assets/Scripts/ 84 个 C# 文件）
+├── code/desktop_unity/          # Unity/Tuanjie 工程
 │   ├── Assets/Scripts/
-│   │   ├── ChatManager.cs       # AI 对话核心（10轮工具循环·意图过滤）
-│   │   ├── ToolEngine/          # 65 工具插件架构（19 文件：12 工具 + 7 基础设施）
-│   │   ├── ActionAgent/         # 具身动作闭环（15 文件）
+│   │   ├── ChatManager.cs       # 本地优先对话核心（意图过滤/记忆/云端回退）
+│   │   ├── ToolEngine/          # 65 工具插件架构（自动发现 + 审批）
+│   │   ├── Live2DFramework/ActionAgent/ # 具身动作闭环
+│   │   ├── MemoryGovernance.cs  # 忆境写入/容量/相关性治理
+│   │   ├── LocalChatModelProfiles.cs # 聊天模型档位与预算
 │   │   ├── Live2DFramework/     # Live2D 渲染/参数映射
 │   │   └── ...（感知/记忆/UI/物理 各子系统）
-│   └── openclaw_bridge.js       # Node.js 桥接服务器（:19876，PM2 管理）
+│   └── openclaw_bridge.js       # Node.js 桥接服务器（:19876）
+├── installer/                   # Inno Setup 安装包与组件脚本
+│   └── dist/FuXuanSetup-1.0.8.exe # 当前发布安装包（GitHub Release Assets）
 ├── scripts/office/              # Python 办公生成器（PPT/Word/Excel）
 ├── docs/                        # 权威文档（架构/规范/模块/路线图）
 │   ├── code-truth-architecture.md   # 代码真相架构审计
@@ -335,25 +378,26 @@ Desktop_per_pro/
 
 ---
 
-## ⚠️ 已知问题清单（代码真相版）
+## ⚠️ 当前限制与注意事项
 
 详见 [`docs/code-truth-architecture.md`](docs/code-truth-architecture.md) 与 [`docs/modules/tool-engine.md`](docs/modules/tool-engine.md)：
 
-1. 工具回环为 **10 轮**；注册工具 **65 个 / 19 文件**（12 工具文件 + 7 基础设施）
-2. ActionAgent 为 **15 文件**；MotionTranslator 为 **10 规则 + 10 特殊**
-3. 插值曲线为 **Bounce**（共 6 种：Linear/Smooth/EaseOut/EaseIn/Hold/Bounce）；天气默认 **wttr.in**
-4. **N39 已修复**：反思已接线；`DualModelValidator` 已简化为 `VisionMotionVerifier`（单 GLM-4V）
-5. `isMultiMonitor` 恒 false（跨屏行走规划中）；3D 渲染分支规划中
-6. 已确认 **9 个 Bug（BUG-1~BUG-9）已全部修复（N39）**
+1. 云端 API Key 目前只应通过安全配置提供；项目不把 Key 写入仓库、日志或公开示例
+2. `qwen3:8b` 是质量优先的本地聊天模型，低端设备可切换到更小模型，但回复质量和长度会下降
+3. 动作/分类/摘要仍使用轻量本地模型，避免动作循环抢占聊天模型资源
+4. `isMultiMonitor` 目前为 false，跨屏行走仍是后续能力；3D 渲染分支也未作为当前版本功能承诺
+5. 云端消耗归属与官方账单存在采样延迟，运行期间应保留 `usage_log.jsonl`，不能只依赖实时后台读数
+6. 开源分发前仍需确认符玄 Live2D 模型的授权范围
 
 ---
 
 ## 📜 版本历史
 
-完整历史见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **N41+**：
+完整历史见 [`CHANGELOG.md`](CHANGELOG.md)。当前发布版本 **v1.0.8**：
 
 | 版本 | 日期 | 亮点 |
 |------|------|------|
+| **v1.0.8** | 2026-08-21 | 本地优先聊天模型路由与模型设置页；忆境治理与只读管理页；统一 `D:\DesktopPetData` 数据目录；安装/升级/卸载保留与删除逻辑；发布 Windows 安装包 |
 | **2026-08-12** | — | 任务可视化（进度/审批弹窗）+ **exec 审批 E2E 打通** + 多任务并行（per-session 锁）+ 任务模板库/轨迹沉淀（65 工具）+ 办公文档生成 + 偏好系统 |
 | **N41** | 2026-08-09 | 像素表情包（9 种脸部表情帧）+ 颜文字禁绝（SystemPrompt + 代码兜底翻译为表情动作） |
 | N40 | 2026-08-05~08 | 安全加固（危险工具审批/Bridge 鉴权）+ Token 优化 T1-T8（缓存命中率 98.6%、成本降 60%） |
@@ -367,12 +411,13 @@ Desktop_per_pro/
 
 ---
 
-## 🗺️ 路线图（摘录 v0.2）
+## 🗺️ 当前路线图
 
-- ✅ N39 代码真相修复（9 Bug + 结构偏差）
-- ✅ N40 安全加固 + Token 优化 T1-T8（成本降 60%）
-- ✅ N41 像素表情包 + 颜文字禁绝
-- ✅ 2026-08-12 任务执行可视化：进度可见 + 关键步审批 + exec 审批 E2E + 多任务并行 + 任务模板库/轨迹沉淀
+- ✅ 本地优先聊天：qwen3:8b 质量档与 qwen2.5 系列低占用档位
+- ✅ 模型设置页：按模型展示真实生成样例，不复用其他模型的假样例
+- ✅ 忆境治理：重要度/置信度/相关性闸门、容量控制、按问题选择性注入、忆境只读管理页
+- ✅ v1.0.8 安装与分发：数据目录复用、卸载保留/删除选择、GitHub Release 安装包
+- 🔜 真实运行采样：对话质量、延迟、GPU/CPU 占用、动作状态切换与云端消耗归属
 - 🔜 多屏行走、3D 渲染模式、任务模板可视化画布
 
 ---
