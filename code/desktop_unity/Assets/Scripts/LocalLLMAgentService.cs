@@ -189,6 +189,14 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
     {
         if (string.IsNullOrWhiteSpace(userMessage) || onResult == null) return;
 
+        // “打开课表”是确定的网页导航意图，不交给轻量模型二次猜测；
+        // 这样既避免误选 query_schedule，也避免为一个固定 URL 多等待一轮 Ollama。
+        if (LocalToolRouter.TryBuildScheduleOpenPlan(userMessage, out LocalToolPlan schedulePlan))
+        {
+            onResult(schedulePlan);
+            return;
+        }
+
         string systemPrompt = @"你是符玄桌宠的本地术式规划器，不是聊天助手。
 请根据用户请求和可用术式目录，判断是否需要执行一个工具。
 只能从目录中选择一个 tool；不需要执行时返回 action=none。

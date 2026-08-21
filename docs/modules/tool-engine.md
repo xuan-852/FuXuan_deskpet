@@ -153,6 +153,7 @@ qwen2.5:3b → {action, tool, arguments, reason}
 ### 本地模型课表路由补齐（2026-08-22）
 
 - `query_schedule` 已加入本地模型默认回退白名单、无参数工具恢复白名单和关键词触发词。
-- `课表`、`课程表`、`课程安排`、`上课`、`课程` 与“查看/打开/查询/第 N 周”等组合会生成受限 `query_schedule` 计划；“第 N 周”会解析为 `{ "week": N }`。
-- 工具仍复用 `ServerPollService → /api/pet/schedule` 的只读链路，不新增任意程序启动权限；“打开课表”在本地模型侧表现为查询并展示课表结果。
-- 已补充 EditMode 路由单测，覆盖“打开今天的课表”和“查看第 12 周课程安排”。
+- `课表`、`课程表`、`课程安排`、`上课`、`课程` 与“查看/查询/今天/第 N 周”等组合会生成受限 `query_schedule` 计划；“第 N 周”会解析为 `{ "week": N }`。
+- 明确说“打开/进入/访问/跳转到课表”时，`LocalLLMAgentService` 会直接生成受限 `open_url` 计划，打开 `http://localhost:3000`（`D:\C\小程序\server\src\dashboard.html` 对应的 Web 看板），不让轻量模型在“查询”和“打开网页”之间猜测。
+- `open_url` 已加入知识意图白名单，最终仍经过 ChatManager 的意图校验、工具注册和 URL 协议白名单；查询课表仍复用 `ServerPollService → /api/pet/schedule` 的只读链路。
+- 已补充 EditMode 路由单测，覆盖课表查询与课表网页打开的分流。

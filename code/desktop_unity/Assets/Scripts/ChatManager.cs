@@ -407,7 +407,7 @@ public class ChatManager : MonoBehaviour
 
         ["knowledge"] = new[]  // 知识查询类
         {
-            "search_web", "search", "openclaw_search", "openclaw_task",
+            "search_web", "search", "openclaw_search", "openclaw_task", "open_url",
             "knowledge_search", "compile_latex", "get_weather",
             "generate_ppt", "generate_docx", "generate_xlsx",
             "get_system_info", "get_mouse_pos", "get_clipboard",
