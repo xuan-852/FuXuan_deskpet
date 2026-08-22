@@ -228,6 +228,13 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 
 > 服务方式最接近「常规软件」体验：开机自启、崩溃自愈、任务管理器可见。
 
+### 5.6 Windows 下载信誉与代码签名
+
+- SmartScreen 的“通常不会下载”主要由发布者证书信誉和文件哈希下载信誉决定；GitHub Release 本身不会替未签名 EXE 自动背书。
+- `installer\build-installer.ps1` 支持通过 `FUXUAN_SIGN_PFX` 指定 PFX、通过 `FUXUAN_SIGN_PASSWORD` 提供密码，并用 `signtool` 的 SHA256 + RFC3161 时间戳签名；密码不写入命令行和日志。
+- 每次发布同时生成 `FuXuanSetup-<版本>.exe.sha256`、ZIP 备用下载包及其 SHA256 文件。没有受信任 CA 证书时明确保持未签名，不使用自签名证书冒充可信发布者。
+- 正式消除大多数 SmartScreen 警告需要持续使用同一受信任 CA 证书（或改用 Microsoft Store/Trusted Signing）；新版本仍需逐步积累干净下载信誉。
+
 ---
 
 ## 六、环境变量规范（安装器写入，用户级）
@@ -283,7 +290,7 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 |---|---|---|---|
 | **0** | 三个移植障碍代码改造（§三清单）+ `build.ps1 -Quick` + 测试 + 更新架构文档 | 0.5~1 天 | ✅ 2026-08-14 完成（import 动态解析 / `FU_XUAN_DATA` / requirements.txt / Pogget 环境变量；EditMode 78/78 + 冒烟测试通过） |
 | **1** | 便携目录原型：内置 Node/Python 解包 + `start-bridge.cmd` + 数据目录 + 环境变量脚本 | 1 天 | ✅ 2026-08-14 完成（`installer\build-portable.ps1` 组装 `installer\portable\`；便携桥 `/health`+`/extract_pdf` 通过、桌宠从便携目录启动零异常；**Node 锁定 v22.22.3+**（OpenClaw 要求 SQLite 3.51.3+，v22.14.0 实测启动报 WAL bug）；⚠️ Python embeddable 内置待补测，当前回退系统 Python） |
-| **2** | Inno Setup 安装器：§四全部页面/组件/注册/卸载 | 1~2 天 | ✅ 2026-08-15 完成；✅ 2026-08-21 补强数据目录生命周期（已有目录检测、保留卸载保留环境变量、删除失败保护、静默卸载默认保留、卸载标记清理）；产物 `FuXuanSetup-1.0.9.exe` 已重新打包 |
+| **2** | Inno Setup 安装器：§四全部页面/组件/注册/卸载 | 1~2 天 | ✅ 2026-08-15 完成；✅ 2026-08-21 补强数据目录生命周期；✅ 2026-08-22 产物 `FuXuanSetup-1.0.10.exe`、ZIP 和 SHA256 已生成；受信任证书签名流程已接入，待配置证书 |
 | **3** | 组件安装脚本：OpenClaw npm 静默 + Ollama 拉模型 + MiKTeX + VC++ + Everything | 1 天 | ✅ 2026-08-15 完成（`installer\components\` 7 脚本均含 `/CHECK` 只检测模式：install-vcredist / install-openclaw（网关启动走内置 CLI，openclaw 包已内置故免 npm -g）/ install-ollama（含模型存在跳过）/ install-miktex / install-everything / install-service + uninstall-service（NSSM 2.24，wrapper+env 文件规避 LocalSystem 读不到用户环境变量）；已接入 [Run] 组件链 + [UninstallRun]，`/SKIPCOMPONENTS` 本地测试开关；本机实测：VC++/OpenClaw/Ollama 已装跳过、MiKTeX 缺失、NSSM 下载+检查正常） |
 | **4** | 虚拟机验收（§八清单）+ 版权/密钥文档 + 发布流程（构建→打包→版本号） | 0.5~1 天 | ✅ **验收完成（2026-08-15）**：三环境交叉验证——本机 15 PASS（聊天/工具/PPT/PDF 真跑通）；腾讯云 2C4G 干净 Win Server 10 PASS（**完整环境变量路径 + NSSM 服务 RUNNING**，/health 因弱机资源崩溃）；Win10 VM 安装产物 5/5 PASS（剩余 FAIL 均为 VM 环境细节：无 D 盘、注入乱局路径截断，非产品缺陷）。结论：**安装包验收达成，产品级缺陷 0**。⚠️ 待办：版权/密钥分发文档、发布流程（版本号/CHANGELOG/推送） |
 | 合计 | | **4~6 天** | |

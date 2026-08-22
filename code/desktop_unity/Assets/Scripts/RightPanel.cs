@@ -136,6 +136,7 @@ public partial class RightPanel : MonoBehaviour
     private bool _externalInputDirty;
     private string _lastExternalComposition = string.Empty;
     private int _lastExternalInputVersion = -1;
+    private bool _lastExternalInputFocus;
     // ★ 异步读回（AsyncGPUReadback）：渲染保持 60fps 动画流畅，读回不阻塞主线程
     private Unity.Collections.NativeArray<byte> _extReadBack;
     private bool _extReadPending;    // 上一帧读回未完成（防止堆积）
@@ -152,6 +153,9 @@ public partial class RightPanel : MonoBehaviour
     private float _pendingExtInputY;
     private bool _pendingExtInputDoubleClick;
     private PanelView _pendingExtInputView = (PanelView)(-1);
+    // 外置窗口点击命中表的当前点击坐标。输入栏需要用它把可见 Unity 字层
+    // 的点击位置换算成隐藏 Win32 EDIT 的 UTF-16 插入点。
+    private Vector2 _externalActionClickPosition = new Vector2(-1f, -1f);
     private struct ExtHitZone
     {
         public Rect rect;
@@ -215,6 +219,7 @@ public partial class RightPanel : MonoBehaviour
                 // 会话项遵循 QQ 式双击进入：第一次按下只保留在列表，不提前切页。
                 if (zone.doubleClickOnly && !isDoubleClick)
                     return;
+                _externalActionClickPosition = p;
                 try { zone.action(); }
                 catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部点击动作异常: {e.Message}"); }
                 return; // 只命中第一个（渲染顺序=绘制顺序，最上层优先）
@@ -557,6 +562,12 @@ public partial class RightPanel : MonoBehaviour
         // 不再让原生 EDIT 覆盖 IMGUI 输入框，避免黑框与真实输入框交替闪烁。
         if (_externalMode)
         {
+            bool inputFocusedNow = ExternalChatWindow.IsInputFocused;
+            if (inputFocusedNow != _lastExternalInputFocus)
+            {
+                _lastExternalInputFocus = inputFocusedNow;
+                SetExternalUiInputPerformanceMode(inputFocusedNow);
+            }
             int inputVersion = ExternalChatWindow.GetInputTextVersion();
             string nativeComposition = ExternalChatWindow.GetInputComposition();
             if (inputVersion != _lastExternalInputVersion || nativeComposition != _lastExternalComposition)
@@ -633,6 +644,7 @@ public partial class RightPanel : MonoBehaviour
             _mascotSubscribed = true;
             _chat.OnNewReply += OnMascotReply;
             _chat.OnExpressionTag += OnMascotExpression;
+            _chat.OnDeveloperCommandReply += OnDeveloperCommandReply;
         }
 
         // 4b. 表情徽章计时（到时清除）
@@ -1842,6 +1854,14 @@ public partial class RightPanel : MonoBehaviour
         _mascotJumpStart = Time.time;
     }
 
+    /// <summary>开发者指令回执只作为当前 UI 动态日志显示，不进入聊天历史。</summary>
+    private void OnDeveloperCommandReply(string reply)
+    {
+        if (string.IsNullOrEmpty(reply)) return;
+        AddLiveLog("[dev] " + reply, 2);
+        GUI.changed = true;
+    }
+
     /// <summary>AI 回复解析出表情标记 → 右上角显示对应符号徽章（4 秒）</summary>
     private void OnMascotExpression(string expName)
     {
@@ -2227,6 +2247,7 @@ public partial class RightPanel : MonoBehaviour
         {
             _chat.OnNewReply -= OnMascotReply;
             _chat.OnExpressionTag -= OnMascotExpression;
+            _chat.OnDeveloperCommandReply -= OnDeveloperCommandReply;
         }
         foreach (var kv in _emblemTex)
             if (kv.Value != null) Destroy(kv.Value);
@@ -2309,6 +2330,8 @@ public partial class RightPanel : MonoBehaviour
         _externalInputDirty = false;
         _lastExternalComposition = string.Empty;
         _lastExternalInputVersion = -1;
+        _lastExternalInputFocus = false;
+        SetExternalUiInputPerformanceMode(false);
         SetExternalUiPerformanceMode(false);
         ExternalChatWindow.OnSendText -= OnExternalSend;
         ExternalChatWindow.OnClosed -= OnExternalClosed;
@@ -2339,9 +2362,19 @@ public partial class RightPanel : MonoBehaviour
     private void OnExternalSend(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
-        Debug.Log($"[RightPanel] 外部窗口发送: {text.Trim()}");
-        _inputText = text.Trim(); // 让面板内输入框视觉同步（外置模式显示文本）
-        if (_chat != null) _chat.SendMessage(text.Trim(), null);
+        string message = text.Trim();
+        Debug.Log($"[RightPanel] 外部窗口发送: {message}");
+
+        // DoSend() 已经在窗口线程清空了 Win32 EDIT。这里不能再把已发送文本写回
+        // Unity 渲染字层，否则当 MainThreadDispatcher 与 RightPanel.Update 的执行
+        // 顺序交错时，旧句子会永久残留在输入栏，后续输入看起来像被冻结。
+        _inputText = string.Empty;
+        _lastExternalInputVersion = ExternalChatWindow.GetInputTextVersion();
+        _lastExternalComposition = string.Empty;
+        _externalInputDirty = true;
+        GUI.changed = true;
+
+        if (_chat != null) _chat.SendMessage(message, null);
         else Debug.LogWarning("[RightPanel] 外部窗口发送时 ChatManager 未就绪");
     }
 
@@ -2364,6 +2397,18 @@ public partial class RightPanel : MonoBehaviour
             _performanceMonitor.SetExternalUiMode(enabled);
         else
             Debug.LogWarning("[RightPanel] 未找到 PerformanceMonitor，外置 UI 无法临时提升帧率");
+    }
+
+    private void SetExternalUiInputPerformanceMode(bool enabled)
+    {
+        if (_performanceMonitor == null)
+        {
+            _performanceMonitor = _pet != null ? _pet.GetPerformanceMonitor() : null;
+            if (_performanceMonitor == null)
+                _performanceMonitor = FindObjectOfType<PerformanceMonitor>();
+        }
+        if (_performanceMonitor != null)
+            _performanceMonitor.SetExternalInputMode(enabled);
     }
 
     /// <summary>外置窗口不再额外绘制标题栏，直接使用面板自身标题行。</summary>
@@ -2443,7 +2488,7 @@ public partial class RightPanel : MonoBehaviour
         }
         // 外置聊天 UI 按当前性能档位推送：High=60 / Normal=45 / Low=30 FPS。
         // 输入变化仍走 dirty 即时通道，确保中文组词和光标反馈不等待普通节流。
-        float uiFps = _performanceMonitor != null ? Mathf.Clamp(_performanceMonitor.targetFPS, 15f, 60f) : 60f;
+        float uiFps = _performanceMonitor != null ? Mathf.Clamp(_performanceMonitor.targetFPS, 15f, 90f) : 60f;
         float captureInterval = 1f / uiFps;
         if ((_externalInputDirty || Time.time - _lastExtCapture >= captureInterval)
             && !_extReadPending && _extReadBack.IsCreated)

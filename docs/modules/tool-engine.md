@@ -149,3 +149,11 @@ qwen2.5:3b → {action, tool, arguments, reason}
 5. **危险工具**：必须入 `DangerousTools` 清单；execSync 类调用注意输出编码（run_command 用 `chcp 65001` + UTF-8 解码，勿用 `Encoding.GetEncoding(936)`）
 6. **危险命令白名单**：run_command 有高危命令拦截（format c: 等），测试这类用例预期返回「此术涉及高危操作」而非成功
 7. **验证方法**：全量稳定性测试用 `ToolBenchmarkRunner`（`.benchmark` 开关触发，真机运行）；测试后清理 `_bench*` 残留、还原剪贴板、回退 pet_memory/personality（备份 `_test_backup_*`）
+
+### 本地模型课表路由补齐（2026-08-22）
+
+- `query_schedule` 已加入本地模型默认回退白名单、无参数工具恢复白名单和关键词触发词。
+- `课表`、`课程表`、`课程安排`、`上课`、`课程` 与“查看/查询/今天/第 N 周”等组合会生成受限 `query_schedule` 计划；“第 N 周”会解析为 `{ "week": N }`。
+- 明确说“打开/进入/访问/跳转到课表”时，`LocalLLMAgentService` 会直接生成受限 `open_url` 计划，打开 `http://localhost:3000`（`D:\C\小程序\server\src\dashboard.html` 对应的 Web 看板），不让轻量模型在“查询”和“打开网页”之间猜测。
+- `open_url` 已加入知识意图白名单，最终仍经过 ChatManager 的意图校验、工具注册和 URL 协议白名单；查询课表仍复用 `ServerPollService → /api/pet/schedule` 的只读链路。
+- 已补充 EditMode 路由单测，覆盖课表查询与课表网页打开的分流。

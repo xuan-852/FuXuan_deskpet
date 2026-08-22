@@ -336,6 +336,8 @@ public class ChatManager : MonoBehaviour
     public System.Action OnRequestStarted;
     /// <summary>收到 AI 文字回复时触发</summary>
     public System.Action<string> OnNewReply;
+    /// <summary>开发者本地指令回执；不写入聊天历史，也不进入模型请求。</summary>
+    public System.Action<string> OnDeveloperCommandReply;
     /// <summary>回复解析出表情标记时触发（参数 = 标准英文表情名，如 happy/angry/confused）</summary>
     public System.Action<string> OnExpressionTag;
     /// <summary>执行了工具调用时触发（参数 = 工具名）</summary>
@@ -407,7 +409,7 @@ public class ChatManager : MonoBehaviour
 
         ["knowledge"] = new[]  // 知识查询类
         {
-            "search_web", "search", "openclaw_search", "openclaw_task",
+            "search_web", "search", "openclaw_search", "openclaw_task", "open_url",
             "knowledge_search", "compile_latex", "get_weather",
             "generate_ppt", "generate_docx", "generate_xlsx",
             "get_system_info", "get_mouse_pos", "get_clipboard",
@@ -525,6 +527,17 @@ public class ChatManager : MonoBehaviour
     private void SendMessageInternal(string text, System.Action onUpdate, string caseId)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
+
+        // 开发者指令必须在排队、写历史和启动 LLM 之前处理。
+        // 这样在模型忙碌时切换模式也不会被排到普通对话队列，更不会消耗 token。
+        string developerReply;
+        if (DeveloperCommandSet.TryHandle(text, out developerReply))
+        {
+            OnDeveloperCommandReply?.Invoke(developerReply);
+            onUpdate?.Invoke();
+            Debug.Log("[DeveloperCommand] 本地指令已处理: " + developerReply);
+            return;
+        }
 
         if (_isWaiting)
         {

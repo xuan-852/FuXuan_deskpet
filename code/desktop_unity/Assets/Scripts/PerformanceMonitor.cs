@@ -27,6 +27,8 @@ public class PerformanceMonitor : MonoBehaviour
 
     /// <summary>外置聊天 UI 临时性能模式：提高 Unity 主循环帧率，退出外置窗口后恢复后台档位。</summary>
     public bool externalUiMode { get; private set; }
+    /// <summary>输入聚焦时临时提高主循环频率，失焦后立即恢复。</summary>
+    public bool externalInputMode { get; private set; }
 
     [Header("FPS 降档参数")]
     [Tooltip("低于目标帧率多少比例算跑不满")]
@@ -330,6 +332,15 @@ public class PerformanceMonitor : MonoBehaviour
         Debug.Log($"[PerformanceMonitor] 外置聊天 UI 性能模式 {(enabled ? "开启" : "关闭")}：目标 {targetFPS:F0}fps");
     }
 
+    /// <summary>输入聚焦高频档：High/Normal/Low = 90/75/60 FPS。</summary>
+    public void SetExternalInputMode(bool enabled)
+    {
+        if (externalInputMode == enabled) return;
+        externalInputMode = enabled;
+        ApplyTierSettings(currentTier);
+        Debug.Log($"[PerformanceMonitor] 外置输入高频 {(enabled ? "开启" : "关闭")}：目标 {targetFPS:F0}fps");
+    }
+
     /// <summary>
     /// 外部调用的强制降档（系统内存不足时由 DesktopPet 调用）。
     /// 忽略 MIN_CHANGE_INTERVAL 冷却，直接降到 Low。
@@ -344,10 +355,13 @@ public class PerformanceMonitor : MonoBehaviour
     // ★ 2026-08-05: 降低帧率缓解主线程 GPU 同步忙等（nvlddmkm spin）
     //   桌宠 Live2D 动画 30fps 已足够（Live2D 标准动画帧率），
     //   60fps 时全屏 RT(2560x1600) 渲染成为 GPU 瓶颈 → 主线程每帧等待 GPU 满核。
-    private float GetTargetFPS(PerformanceTier t) => externalUiMode ? t switch
+    private float GetTargetFPS(PerformanceTier t) => externalUiMode ? (externalInputMode ? t switch
+    {
+        PerformanceTier.High => 90f, PerformanceTier.Normal => 75f, PerformanceTier.Low => 60f, _ => 90f
+    } : t switch
     {
         PerformanceTier.High => 60f, PerformanceTier.Normal => 45f, PerformanceTier.Low => 30f, _ => 60f
-    } : t switch
+    }) : t switch
     {
         PerformanceTier.High => 30f, PerformanceTier.Normal => 24f, PerformanceTier.Low => 15f, _ => 30f
     };

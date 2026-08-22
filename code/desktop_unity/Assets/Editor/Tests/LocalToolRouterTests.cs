@@ -82,4 +82,34 @@ public class LocalToolRouterTests
 
         Assert.IsTrue(LocalToolRouter.IsAllowed("generate_xlsx", "operation"));
     }
+
+    [Test]
+    public void KeywordFallbackRecognizesScheduleQueries()
+    {
+        LocalToolPlan plan;
+
+        Assert.IsTrue(LocalToolRouter.ShouldAttempt("chat", "查看今天的课表"));
+        Assert.IsTrue(LocalToolRouter.TryBuildKeywordPlan("", "查看今天的课表", out plan));
+        Assert.AreEqual("query_schedule", plan.ToolName);
+        Assert.AreEqual("{}", plan.ArgumentsJson);
+
+        Assert.IsTrue(LocalToolRouter.TryBuildKeywordPlan("", "查看第 12 周课程安排", out plan));
+        Assert.AreEqual("query_schedule", plan.ToolName);
+        StringAssert.Contains("\"week\":12", plan.ArgumentsJson);
+        Assert.IsTrue(LocalToolRouter.IsAllowed("query_schedule", "knowledge"));
+    }
+
+    [Test]
+    public void ScheduleOpenRequestUsesDashboardUrl()
+    {
+        LocalToolPlan plan;
+
+        Assert.IsTrue(LocalToolRouter.ShouldAttempt("chat", "请打开课表网页"));
+        Assert.IsTrue(LocalToolRouter.TryBuildScheduleOpenPlan("请打开课表网页", out plan));
+        Assert.AreEqual("open_url", plan.ToolName);
+        StringAssert.Contains(LocalToolRouter.ScheduleDashboardUrl, plan.ArgumentsJson);
+        Assert.IsTrue(LocalToolRouter.IsAllowed("open_url", "knowledge"));
+
+        Assert.IsFalse(LocalToolRouter.TryBuildScheduleOpenPlan("我今天有什么课", out plan));
+    }
 }

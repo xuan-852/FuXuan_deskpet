@@ -325,6 +325,17 @@
 - 2026-08-20 IME 稳定性修复：`ImmGetCompositionStringW` 改用精确的非托管 UTF-16 缓冲区读取，严格按“字节数 → UTF-16 字符数”转换，避免组合文本末尾出现伪字符；原生 `EDIT` 改为持久 IME 宿主，输入期间不再重复 `ShowWindow`、布局或启动隐藏计时器。`build.ps1 -Quick`（114/114）、完整构建和隔离运行时冒烟测试通过。
 - 2026-08-19 第二轮视觉统一：空消息区增加“本座已候命 / 输入消息，开始与符玄对话”空状态；聊天工具项保持当前态底色和强调线，其他工具仅在 hover 时提亮；标题头像移除黑色方形衬底，侧栏头像缩小为 44px，减少头像层级差异。
 
+### 输入编辑与低延迟回归修复（2026-08-22）
+
+- `ExternalChatWindow` 在 EDIT 默认过程完成后同步 `EM_GETSEL` 的 UTF-16 选区；左右键、Home/End、鼠标选区和删除键现在同时更新 Unity 渲染层的插入点与文本。
+- Unity 渲染字层的光标不再固定在文本末尾，而是按原生 EDIT 的真实插入点绘制；Win32 EDIT 仍只作为不可见 IME/键盘宿主。
+- 输入获得焦点时，`PerformanceMonitor` 临时将外置 UI 目标帧率提高为 High/Normal/Low = 90/75/60 FPS；失焦或关闭外置窗口立即恢复普通外置档位，避免常驻增加负载。
+- 长文本输入现在维护独立的 Unity 水平视口：光标接近右边界时自动向左跟随，删除或向左移动后视口自动回收，不再把光标夹在输入框最右侧。
+- 外置输入栏点击使用 `_termInputStyle.GetCursorStringIndex` 按实际字体宽度计算最近的 UTF-16 插入点，再通过窗口线程消息安全同步给隐藏 Win32 EDIT；可在中英文混排文本中点击中间位置继续编辑。
+- 已补充 EditMode 路由回归单测；最终 `build.ps1 -Quick` 与隔离 `runtime_smoke.cjs --verbose` 通过，生产记忆目录零污染。
+
+本次回归（2026-08-22）：宿主交互式环境 `build.ps1 -Quick` 19 秒通过，完整构建 24 秒通过并更新 `Build/DesktopPet.exe`；隔离 `runtime_smoke.cjs --verbose` 通过，生产记忆目录未写入。
+
 ## 十二、外置窗口残留生命周期修复（2026-08-17）
 
 - 外置 Win32 窗口创建时不再带 `WS_VISIBLE`，完成 Unity 事件订阅、客户区尺寸和输入控件初始化后才由 `Show()` 显示，避免启动阶段在旧位置闪现原生窗口外壳。
@@ -336,3 +347,9 @@
 - 输入文字栏：继续保留 Windows 原生 IME 候选栏，使用 Unity 实际光标矩形和 `CFS_EXCLUDE` 定位到渲染字层下方。
 - Win32 原生字层：隐藏 EDIT 绘制，并在 `WM_IME_SETCONTEXT` 关闭默认组合窗口；`WM_IME_START/COMPOSITION/ENDCOMPOSITION` 由 `EditProc` 接管，提交结果手动写入 EDIT，组合文本交给 Unity 绘制。
 - 外置窗口的 EditMode 构建测试已生成 128/128 通过结果；完整构建已生成 `Build/DesktopPet.exe`。`runtime_smoke.cjs --verbose` 仍有既有窗口尺寸日志缺失项，未将其误记为通过。
+
+### 发送后输入冻结回归修复（2026-08-22）
+
+- 原因：Win32 `EDIT` 已在 `DoSend()` 中清空，但 `RightPanel.OnExternalSend()` 又把刚发送的原句写回 Unity 渲染字层；当 `MainThreadDispatcher` 与 `RightPanel.Update()` 的执行顺序交错时，旧句子会永久残留，后续输入表现为冻结。
+- 修复：发送回调只提交消息，不回写旧文本；同时同步输入版本、清空组合文本并标记外置 RenderTexture 立即刷新。
+- 验证：`build.ps1 -Quick` 通过；隔离 `runtime_smoke.cjs --verbose` 通过，生产记忆目录零污染。
