@@ -140,6 +140,7 @@ flowchart TB
 - **`CoreToolSubset`** = {play_action, set_expression, stop_action, generate_motion, get_system_info, get_mouse_pos}
 - **`InjectMultiActionCapability()`**（N40 T7）：一次预测 2-3 步工具调用（UFO² Speculative Multi-Action）
 - **`IsTestMode`**：存在 `D:\DesktopPetData\.test_mode` 标记文件时为测试模式（跳过睡眠判断等）
+- **`DeveloperCommandSet`**：桌宠本地开发指令唯一入口；支持 `/mode set test`、`/mode set normality`、`/tell mode`，在 `ChatManager` 写历史/启动 LLM 前处理，回执只进入当前 UI 动态日志
 - **`HISTORY_CHAR_BUDGET = 15000`**（N40 T5）+ 旧消息 Ollama 本地摘要【旧事纪要】
 
 ### 3.2 系统 Prompt 注入链（真实）

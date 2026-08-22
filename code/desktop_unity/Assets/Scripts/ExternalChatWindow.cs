@@ -91,6 +91,7 @@ public static class ExternalChatWindow
     private const int WM_CUT = 0x0300;
     private const int WM_CLEAR = 0x0303;
     private const int WM_SETTEXT = 0x000C;
+    private const int EM_SETSEL = 0x00B1;
     private const int WM_APP_FOCUS_INPUT = 0x8000 + 1; // 自定义：请求窗口线程聚焦输入框
     private const int WM_APP_SHUTDOWN = 0x8000 + 2;    // 自定义：由窗口线程自己销毁窗口并退出消息循环
     private const int WM_APP_ACTIVATE = 0x8000 + 3;    // 自定义：热键唤出时恢复并带到前台
@@ -106,6 +107,7 @@ public static class ExternalChatWindow
     private const int IDC_SEND = 102;
     private const int IDC_ARROW = 32512;
     private const int WM_APP_POSITION_IME = 0x8000 + 4;
+    private const int WM_APP_SET_INPUT_SELECTION = 0x8000 + 5;
     private const int IDC_IBEAM = 32513;
     private const int SW_RESTORE = 9;
     private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
@@ -713,6 +715,21 @@ public static class ExternalChatWindow
                     PositionImeWindow();
                 }
                 return IntPtr.Zero;
+            case WM_APP_SET_INPUT_SELECTION:
+            {
+                // Unity 主线程不能直接 SendMessage 到隐藏 EDIT：输入法/窗口线程正处于
+                // IME 回调时可能同步互等。由窗口线程自己执行 EM_SETSEL，点击定位与
+                // 键盘、中文组词使用同一条安全消息队列。
+                if (_edit != IntPtr.Zero)
+                {
+                    int length = (_inputTextCache ?? string.Empty).Length;
+                    int start = Math.Max(0, Math.Min(length, wParam.ToInt32()));
+                    int end = Math.Max(start, Math.Min(length, lParam.ToInt32()));
+                    SendMessageW(_edit, EM_SETSEL, new IntPtr(start), new IntPtr(end));
+                    UpdateInputTextCache();
+                }
+                return IntPtr.Zero;
+            }
             case WM_APP_ACTIVATE:
             {
                 // 由窗口创建线程执行，避免跨线程激活/置前不稳定。
@@ -1312,6 +1329,20 @@ public static class ExternalChatWindow
 
     /// <summary>选区版本，供需要时做低成本变更检测。</summary>
     public static int GetInputSelectionVersion() => Volatile.Read(ref _inputSelectionVersion);
+
+    /// <summary>
+    /// 将 Unity 字层命中的 UTF-16 插入点安全地同步给隐藏 EDIT。
+    /// 消息由外置窗口线程处理，避免主线程直接跨线程 SendMessage 导致输入卡死。
+    /// </summary>
+    public static void SetInputSelection(int start, int end)
+    {
+        if (!IsCreated || _hwnd == IntPtr.Zero) return;
+        int length = (GetInputText() ?? string.Empty).Length;
+        start = Math.Max(0, Math.Min(length, start));
+        end = Math.Max(start, Math.Min(length, end));
+        PostMessageW(_hwnd, WM_APP_SET_INPUT_SELECTION,
+            new IntPtr(start), new IntPtr(end));
+    }
 
     /// <summary>外置窗口输入通道是否聚焦，用于 RT 中绘制可见插入光标。</summary>
     public static bool IsInputFocused => _inputFocusActive;

@@ -17,6 +17,9 @@ public partial class RightPanel
     private string _inputCaretTextSnapshot = string.Empty;
     private bool _inputCaretFocusSnapshot;
     private const float INPUT_CARET_BLINK_PERIOD = 1.0f;
+    // 外置输入栏的可见水平视口。原生 EDIT 仅作键盘/IME 宿主，Unity 字层必须自己
+    // 维护横向滚动，否则长文本会一直从第 0 个字符绘制，光标只能被夹在右边。
+    private float _inputHorizontalScroll;
 
     private float GetInputTextEndX(Rect inputRect, string text)
     {
@@ -33,6 +36,49 @@ public partial class RightPanel
         int index = Mathf.Clamp(caretIndex, 0, text.Length);
         return GetInputTextEndX(inputRect,
             index == text.Length ? text : text.Substring(0, index));
+    }
+
+    /// <summary>
+    /// 让外置 Unity 字层的横向视口跟随插入光标，并在删除文字后向左回收空出来的区域。
+    /// 这里的 x 使用 IMGUI 逻辑坐标；实际绘制时会在输入框局部 Group 内减去该偏移。
+    /// </summary>
+    private float UpdateInputHorizontalScroll(Rect inputRect, string visualText, int caretIndex)
+    {
+        visualText = visualText ?? string.Empty;
+        int index = Mathf.Clamp(caretIndex, 0, visualText.Length);
+        float visibleLeft = inputRect.x + _termInputStyle.padding.left;
+        float visibleRight = inputRect.xMax - _termInputStyle.padding.right - 3f;
+        float caretX = GetInputTextCaretX(inputRect, visualText, index);
+        float contentEndX = GetInputTextEndX(inputRect, visualText);
+        float scroll = Mathf.Max(0f, _inputHorizontalScroll);
+
+        if (caretX - scroll > visibleRight)
+            scroll = caretX - visibleRight;
+        else if (caretX - scroll < visibleLeft)
+            scroll = caretX - visibleLeft;
+
+        // 文本变短或焦点切回开头时，不能保留已经失效的右移量。
+        float maxScroll = Mathf.Max(0f, contentEndX - visibleRight);
+        _inputHorizontalScroll = Mathf.Clamp(scroll, 0f, maxScroll);
+        return _inputHorizontalScroll;
+    }
+
+    /// <summary>把外置 Unity 字层中的点击位置转换为隐藏 EDIT 的插入点。</summary>
+    private void SetExternalInputCaretFromClick(Rect inputRect, Vector2 clickPosition)
+    {
+        string text = _inputText ?? string.Empty;
+        float localX = clickPosition.x - inputRect.x;
+        float localY = clickPosition.y - inputRect.y;
+        float scroll = _inputHorizontalScroll;
+
+        // GetCursorStringIndex 会按 GUIStyle 的真实字体、padding 和 Unicode 字宽
+        // 选择最近的 UTF-16 边界，比按字符平均宽度估算可靠（中英文混排尤其明显）。
+        Rect textRect = new Rect(-scroll, 0f,
+            inputRect.width + scroll + 64f, inputRect.height);
+        int index = _termInputStyle.GetCursorStringIndex(
+            textRect, new GUIContent(text), new Vector2(localX, localY));
+        index = Mathf.Clamp(index, 0, text.Length);
+        ExternalChatWindow.SetInputSelection(index, index);
     }
 
     /// <summary>会话条目（QQ 式会话列表项）</summary>
@@ -476,6 +522,8 @@ public partial class RightPanel
         if (inputVisualActive)
             GUI.DrawTexture(inputBgRect, _inputGlowTex);
 
+        float inputHorizontalScroll = 0f;
+        bool externalInputGroupOpen = false;
         if (!_externalRender)
         {
         GUI.SetNextControlName("rightPanelInput");
@@ -501,22 +549,36 @@ public partial class RightPanel
             // 外置模式：透明原生 EDIT 只负责输入法桥接，Unity 负责绘制可见文本。
             // 外置模式：原生 EDIT 仅作为输入法/键盘桥接；已提交文字和正在组词的文字均由 Unity 绘制。
             // 这样原生控件可以保持无黑框，同时用户不会丢失中文输入法的组词反馈。
-            GUI.Label(inputBgRect, _inputText, _termInputStyle);
             string composition = ExternalChatWindow.GetInputComposition();
+            string visualText = _inputText ?? string.Empty;
+            int visualCaretIndex = Mathf.Clamp(ExternalChatWindow.GetInputCaretIndex(), 0, visualText.Length);
             if (ExternalChatWindow.IsInputFocused && !string.IsNullOrEmpty(composition))
             {
-                Vector2 compositionStart = _termInputStyle.GetCursorPixelPosition(
-                    inputBgRect, new GUIContent(_inputText ?? string.Empty), (_inputText ?? string.Empty).Length);
+                visualText += composition;
+                visualCaretIndex = visualText.Length;
+            }
+
+            inputHorizontalScroll = UpdateInputHorizontalScroll(inputBgRect, visualText, visualCaretIndex);
+
+            // 只在输入框内部裁剪。此前直接 GUI.Label(inputBgRect, text) 虽然能显示
+            // 短文本，但无法把超出右边的内容向左移动，也会让组合字/光标越界。
+            GUI.BeginGroup(inputBgRect);
+            externalInputGroupOpen = true;
+            Rect shiftedTextRect = new Rect(-inputHorizontalScroll, 0f,
+                inputBgRect.width + inputHorizontalScroll + 64f, inputBgRect.height);
+            GUI.Label(shiftedTextRect, _inputText, _termInputStyle);
+
+            if (ExternalChatWindow.IsInputFocused && !string.IsNullOrEmpty(composition))
+            {
                 Vector2 compositionSize = _termInputStyle.CalcSize(new GUIContent(composition));
-                float compositionTextX = Mathf.Clamp(GetInputTextEndX(inputBgRect, _inputText),
-                    inputBgRect.x + _termInputStyle.padding.left,
-                    inputBgRect.xMax - _termInputStyle.padding.right - 3f);
+                float compositionTextX = GetInputTextEndX(inputBgRect, _inputText)
+                    - inputBgRect.x - inputHorizontalScroll;
                 float compositionRectX = compositionTextX - _termInputStyle.padding.left;
-                GUI.Label(new Rect(compositionRectX, inputBgRect.y, inputBgRect.xMax - compositionRectX, inputBgRect.height),
+                GUI.Label(new Rect(compositionRectX, 0f, inputBgRect.width - compositionRectX + 64f, inputBgRect.height),
                     composition, _termInputStyle);
                 float compositionUnderlineY = Mathf.Clamp(
-                    compositionStart.y + compositionSize.y - 2f,
-                    inputBgRect.y + 4f, inputBgRect.yMax - 4f);
+                    (_termInputStyle.padding.top + compositionSize.y - 2f),
+                    4f, inputBgRect.height - 4f);
                 float compositionWidth = Mathf.Max(18f,
                     compositionSize.x - _termInputStyle.padding.left - _termInputStyle.padding.right);
                 UiTextureFactory.DrawPixelRect(
@@ -561,21 +623,28 @@ public partial class RightPanel
         bool inputCaretVisible = inputCaretFocused && caretBlinkPhase < INPUT_CARET_BLINK_PERIOD * 0.5f;
         float caretH = Mathf.Min(26f, inputBgRect.height - 12f);
         float caretY = inputBgRect.y + (inputBgRect.height - caretH) * 0.5f;
-        float caretX = Mathf.Clamp(GetInputTextCaretX(inputBgRect, caretText, caretIndex) + 1f,
+        float caretAbsoluteX = Mathf.Clamp(GetInputTextCaretX(inputBgRect, caretText, caretIndex) + 1f,
             inputBgRect.x + _termInputStyle.padding.left,
             inputBgRect.xMax - _termInputStyle.padding.right - 3f);
+        // 外置模式的光标在输入框局部 Group 内绘制；传给 Win32 的候选栏锚点仍使用
+        // 未平移的绝对逻辑坐标，否则中文候选框会跟着视口偏移到错误位置。
+        float caretX = _externalRender
+            ? caretAbsoluteX - inputBgRect.x - inputHorizontalScroll
+            : caretAbsoluteX;
         if (_externalRender)
         {
             ExternalChatWindow.SetInputCaretRect(
-                Mathf.RoundToInt(caretX), Mathf.RoundToInt(caretY), 2, Mathf.RoundToInt(caretH));
+                Mathf.RoundToInt(caretAbsoluteX), Mathf.RoundToInt(caretY), 2, Mathf.RoundToInt(caretH));
         }
         if (inputCaretVisible)
         {
             // 使用 Unity 的实际光标测量结果，避免 CalcSize 后再次叠加 padding 造成“字与光标之间多一个空格”。
             UiTextureFactory.DrawPixelRect(
-                new Rect(caretX, caretY, 2f, caretH),
+                new Rect(caretX, _externalRender ? caretY - inputBgRect.y : caretY, 2f, caretH),
                 new Color(0.86f, 0.76f, 1f, 0.96f));
         }
+        if (externalInputGroupOpen)
+            GUI.EndGroup();
 
         // ——— 发送按钮（太极图，符玄道法风，hover 紫色光晕） ———
         sendBtnRect = new Rect(tfX + tfW + 10f, inputY + (inputBarHeight - sendBtnSize) / 2f, sendBtnSize, sendBtnSize);
@@ -634,6 +703,7 @@ public partial class RightPanel
             ExternalChatWindow.SetInputRect(
                 Mathf.RoundToInt(inputBgRect.x + 8f), Mathf.RoundToInt(inputBgRect.y + 2f),
                 Mathf.RoundToInt(inputBgRect.width - 14f), Mathf.RoundToInt(inputBgRect.height - 4f));
+            SetExternalInputCaretFromClick(inputBgRect, _externalActionClickPosition);
             ExternalChatWindow.FocusInput();
         });
 

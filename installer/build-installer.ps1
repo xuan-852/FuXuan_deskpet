@@ -17,7 +17,11 @@
 param(
     [switch]$SkipPack,
     [switch]$Test,
-    [string]$Version = "1.0.9"
+    [string]$Version = "1.0.10",
+    # 正式发布时建议使用受信任 CA 签发的 PFX。密码只从环境变量读取，避免出现在命令历史/日志。
+    [string]$SignPfx = "",
+    [string]$SignPasswordEnv = "FUXUAN_SIGN_PASSWORD",
+    [string]$TimestampUrl = "http://timestamp.digicert.com"
 )
 
 . "$PSScriptRoot\..\scripts\encoding\init-utf8.ps1"
@@ -31,6 +35,59 @@ $IsccDir = Join-Path $PSScriptRoot "innosetup"
 $Iscc = Join-Path $IsccDir "ISCC.exe"
 $Downloads = Join-Path $PSScriptRoot "downloads"
 $Dist = Join-Path $PSScriptRoot "dist"
+
+function Get-SignToolPath {
+    $command = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    $kitsRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits"
+    if (Test-Path $kitsRoot) {
+        $candidate = Get-ChildItem $kitsRoot -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "\\x64\\" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+        if ($candidate) { return $candidate.FullName }
+    }
+    return $null
+}
+
+function Sign-PeArtifact([string]$path) {
+    $pfxPath = $SignPfx
+    if ([string]::IsNullOrWhiteSpace($pfxPath)) {
+        $pfxPath = [Environment]::GetEnvironmentVariable("FUXUAN_SIGN_PFX", "Process")
+    }
+    if ([string]::IsNullOrWhiteSpace($pfxPath)) {
+        Write-Host "[WARN] 未配置 FUXUAN_SIGN_PFX，产物保持未签名（SmartScreen 信誉无法继承）" -ForegroundColor Yellow
+        return $false
+    }
+    if (-not (Test-Path -LiteralPath $pfxPath)) {
+        throw "签名证书不存在: $pfxPath"
+    }
+    $signTool = Get-SignToolPath
+    if ([string]::IsNullOrWhiteSpace($signTool)) {
+        throw "已配置签名证书，但找不到 signtool.exe；请安装 Windows SDK。"
+    }
+    $password = [Environment]::GetEnvironmentVariable($SignPasswordEnv, "Process")
+    if ([string]::IsNullOrWhiteSpace($password)) {
+        throw "已配置 PFX，但环境变量 $SignPasswordEnv 未设置。"
+    }
+    Write-Host "    使用受信任证书签名: $([IO.Path]::GetFileName($pfxPath))"
+    & $signTool sign /fd SHA256 /f $pfxPath /p $password /tr $TimestampUrl /td SHA256 $path | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "signtool 签名失败 exit=$LASTEXITCODE" }
+    $signature = Get-AuthenticodeSignature -FilePath $path
+    if ($signature.Status -ne "Valid") {
+        throw "签名完成但验证失败: $($signature.Status) $($signature.StatusMessage)"
+    }
+    Write-Host "    [OK] 数字签名有效: $($signature.SignerCertificate.Subject)"
+    return $true
+}
+
+function Write-ReleaseMetadata([string]$path) {
+    $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToUpperInvariant()
+    $hashPath = "$path.sha256"
+    [IO.File]::WriteAllText($hashPath, "$hash  $([IO.Path]::GetFileName($path))`r`n", (New-Object Text.UTF8Encoding($false)))
+    Write-Host "    [OK] SHA256: $hash"
+    return $hash
+}
 
 # ── 1. portable 就绪 ──
 if (-not $SkipPack) {
@@ -96,6 +153,18 @@ Write-Host "`n[3/4] 编译生产安装器（admin 权限）..."
 if ($LASTEXITCODE -ne 0) { Write-Host "[ERROR] 生产版编译失败" -ForegroundColor Red; exit $LASTEXITCODE }
 $prodSetup = Join-Path $Dist "FuXuanSetup-$Version.exe"
 Write-Host "[OK] 生产安装器: $prodSetup ($([math]::Round((Get-Item $prodSetup).Length/1MB,1)) MB)"
+
+# 签名必须发生在计算哈希之前；没有正式证书时仍生成可验证的备用发布元数据。
+$signed = Sign-PeArtifact $prodSetup
+$prodHash = Write-ReleaseMetadata $prodSetup
+$zipPath = Join-Path $Dist "FuXuanSetup-$Version.zip"
+if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
+Compress-Archive -LiteralPath $prodSetup -DestinationPath $zipPath -CompressionLevel Optimal
+$zipHash = Write-ReleaseMetadata $zipPath
+Write-Host "[OK] ZIP 备用下载包: $zipPath ($([math]::Round((Get-Item $zipPath).Length/1MB,1)) MB)"
+if (-not $signed) {
+    Write-Host "[NOTICE] 当前 EXE 未签名：浏览器仍可能提示‘通常不会下载’；ZIP 可作为下载绕过方案，长期需受信任 CA 证书。" -ForegroundColor Yellow
+}
 
 # ── 4. 测试变体 + 本地静默验证 ──
 if ($Test) {

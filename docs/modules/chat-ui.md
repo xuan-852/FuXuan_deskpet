@@ -330,7 +330,11 @@
 - `ExternalChatWindow` 在 EDIT 默认过程完成后同步 `EM_GETSEL` 的 UTF-16 选区；左右键、Home/End、鼠标选区和删除键现在同时更新 Unity 渲染层的插入点与文本。
 - Unity 渲染字层的光标不再固定在文本末尾，而是按原生 EDIT 的真实插入点绘制；Win32 EDIT 仍只作为不可见 IME/键盘宿主。
 - 输入获得焦点时，`PerformanceMonitor` 临时将外置 UI 目标帧率提高为 High/Normal/Low = 90/75/60 FPS；失焦或关闭外置窗口立即恢复普通外置档位，避免常驻增加负载。
+- 长文本输入现在维护独立的 Unity 水平视口：光标接近右边界时自动向左跟随，删除或向左移动后视口自动回收，不再把光标夹在输入框最右侧。
+- 外置输入栏点击使用 `_termInputStyle.GetCursorStringIndex` 按实际字体宽度计算最近的 UTF-16 插入点，再通过窗口线程消息安全同步给隐藏 Win32 EDIT；可在中英文混排文本中点击中间位置继续编辑。
 - 已补充 EditMode 路由回归单测；最终 `build.ps1 -Quick` 与隔离 `runtime_smoke.cjs --verbose` 通过，生产记忆目录零污染。
+
+本次回归（2026-08-22）：宿主交互式环境 `build.ps1 -Quick` 19 秒通过，完整构建 24 秒通过并更新 `Build/DesktopPet.exe`；隔离 `runtime_smoke.cjs --verbose` 通过，生产记忆目录未写入。
 
 ## 十二、外置窗口残留生命周期修复（2026-08-17）
 

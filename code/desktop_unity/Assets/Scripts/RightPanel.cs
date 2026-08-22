@@ -153,6 +153,9 @@ public partial class RightPanel : MonoBehaviour
     private float _pendingExtInputY;
     private bool _pendingExtInputDoubleClick;
     private PanelView _pendingExtInputView = (PanelView)(-1);
+    // 外置窗口点击命中表的当前点击坐标。输入栏需要用它把可见 Unity 字层
+    // 的点击位置换算成隐藏 Win32 EDIT 的 UTF-16 插入点。
+    private Vector2 _externalActionClickPosition = new Vector2(-1f, -1f);
     private struct ExtHitZone
     {
         public Rect rect;
@@ -216,6 +219,7 @@ public partial class RightPanel : MonoBehaviour
                 // 会话项遵循 QQ 式双击进入：第一次按下只保留在列表，不提前切页。
                 if (zone.doubleClickOnly && !isDoubleClick)
                     return;
+                _externalActionClickPosition = p;
                 try { zone.action(); }
                 catch (Exception e) { Debug.LogWarning($"[RightPanel] 外部点击动作异常: {e.Message}"); }
                 return; // 只命中第一个（渲染顺序=绘制顺序，最上层优先）
@@ -640,6 +644,7 @@ public partial class RightPanel : MonoBehaviour
             _mascotSubscribed = true;
             _chat.OnNewReply += OnMascotReply;
             _chat.OnExpressionTag += OnMascotExpression;
+            _chat.OnDeveloperCommandReply += OnDeveloperCommandReply;
         }
 
         // 4b. 表情徽章计时（到时清除）
@@ -1849,6 +1854,14 @@ public partial class RightPanel : MonoBehaviour
         _mascotJumpStart = Time.time;
     }
 
+    /// <summary>开发者指令回执只作为当前 UI 动态日志显示，不进入聊天历史。</summary>
+    private void OnDeveloperCommandReply(string reply)
+    {
+        if (string.IsNullOrEmpty(reply)) return;
+        AddLiveLog("[dev] " + reply, 2);
+        GUI.changed = true;
+    }
+
     /// <summary>AI 回复解析出表情标记 → 右上角显示对应符号徽章（4 秒）</summary>
     private void OnMascotExpression(string expName)
     {
@@ -2234,6 +2247,7 @@ public partial class RightPanel : MonoBehaviour
         {
             _chat.OnNewReply -= OnMascotReply;
             _chat.OnExpressionTag -= OnMascotExpression;
+            _chat.OnDeveloperCommandReply -= OnDeveloperCommandReply;
         }
         foreach (var kv in _emblemTex)
             if (kv.Value != null) Destroy(kv.Value);

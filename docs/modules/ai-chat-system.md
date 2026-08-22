@@ -131,6 +131,20 @@
 
 存在 `D:\DesktopPetData\.test_mode` 标记文件 → 跳过记忆/人格/反思全部持久化写入。**自动化测试必须开启**，否则污染忆境与人格演化计数。
 
+### 2.8.1 桌宠开发者指令集（2026-08-22）
+
+`Assets/Scripts/DeveloperCommandSet.cs` 是桌宠内部开发指令的唯一登记处。`ChatManager.SendMessage` 在排队、写入历史和启动模型请求之前先调用它；识别到开发指令后只执行本地逻辑，不消耗 token，不写入聊天历史、忆境、人格或质量案例。
+
+当前指令：
+
+| 指令 | 作用 |
+|---|---|
+| `/mode set test` | 创建当前 `DataPathConfig.DataRoot/.test_mode`，启用测试保护 |
+| `/mode set normality` | 删除同一个 `.test_mode` 标记，恢复正常模式 |
+| `/tell mode` | 返回当前是测试模式还是正常模式 |
+
+指令回执通过 `ChatManager.OnDeveloperCommandReply` 交给 `RightPanel`，仅作为当前界面的 `[dev]` 动态日志显示，不进入会话历史；普通用户不会在 UI 的指令列表中看到这组开发指令。模式状态只有 `.test_mode` 一个事实源，不会创建第二个模式文件。
+
 ### 2.9 本地聊天质量护栏（2026-08-19～2026-08-21）
 
 本地 Ollama 回退链路不直接复用云端完整 system prompt，而由 `LocalRoleplayPromptBuilder` 生成短角色卡和短句组合约束；同时调用同一 `PetMemory.GetFormattedMemories(userMessage)`，以不超过 700 字符的【相关忆境】背景注入本地 system prompt：
