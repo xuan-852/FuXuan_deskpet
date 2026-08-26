@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading;
 using System.Runtime.InteropServices;
 using UnityEngine;
@@ -157,9 +157,15 @@ public class DesktopPet : MonoBehaviour
     private SystemTrayManager _trayManager;
     private PerformanceMonitor _perfMonitor;
     private bool _pendingEscToTray = false;  // ESC 按下时托盘未就绪，等就绪后自动隐藏
+    // 退出入口可能同时来自托盘、测试命令、Unity OnApplicationQuit 和 OnDestroy。
+    // 所有路径必须共用幂等清理，不能手动调用 Unity 生命周期方法。
+    private bool _shutdownStarted = false;
 
     // 时间间隙检测：睡眠唤醒后 Time.realtimeSinceStartup 跳变 >10s 则触发重建
     private float _lastUpdateRealtime = 0f;
+    private float _sessionStartedRealtime = 0f;
+    private bool _stableSessionMarked = false;
+    private bool _crashWatchdogEnabled = true;
 
     #endregion
 
@@ -377,7 +383,9 @@ public class DesktopPet : MonoBehaviour
     // ===== 崩溃看门狗 =====
     private const string PREF_CRASH_COUNT = "_crash_count";
     private const string PREF_CLEAN_EXIT = "_clean_exit";
+    private const string PREF_STABLE_SESSION = "_stable_session";
     private const int MAX_CRASHES_BEFORE_SAFE_MODE = 2;
+    private const float STABLE_SESSION_SECONDS = 60f;
 
     // PlayerPrefs 是启动辅助状态，不应成为桌宠主流程的硬依赖。
     // 沙盒权限、注册表损坏或测试隔离环境均可能让 Unity PlayerPrefs 抛异常；
@@ -429,33 +437,46 @@ public class DesktopPet : MonoBehaviour
         // ★ 全量日志镜像（运行中实时可看 player_log.txt）
         Application.logMessageReceivedThreaded += MirrorAllLogs;
 #endif
-        // ★ 看门狗逻辑：检查上次是否正常退出（方式1: clean_exit 标记）
-        bool previousCleanExit = SafePrefsGetInt(PREF_CLEAN_EXIT, 0) == 1;
-        SafePrefsDeleteKey(PREF_CLEAN_EXIT); // 清除标记，等正常退出时重新设置
-        SafePrefsSave();
+        _sessionStartedRealtime = Time.realtimeSinceStartup;
+        _crashWatchdogEnabled = !System.IO.File.Exists(DataPathConfig.TestModeFile);
 
-        if (!previousCleanExit)
+        if (_crashWatchdogEnabled)
         {
-            // 上次异常退出 → 崩溃计数+1
-            int crashCount = SafePrefsGetInt(PREF_CRASH_COUNT, 0) + 1;
-            SafePrefsSetInt(PREF_CRASH_COUNT, crashCount);
+            // 看门狗只统计连续异常会话。稳定运行标记与正常退出标记都能
+            // 结束一次异常启动链，避免构建/测试强杀后永久累加计数。
+            bool previousCleanExit = SafePrefsGetInt(PREF_CLEAN_EXIT, 0) == 1;
+            bool previousStableSession = SafePrefsGetInt(PREF_STABLE_SESSION, 0) == 1;
+            SafePrefsDeleteKey(PREF_CLEAN_EXIT);
+            SafePrefsDeleteKey(PREF_STABLE_SESSION);
             SafePrefsSave();
-            Debug.LogWarning($"[DesktopPet] ⚠ 上次异常退出（崩溃计数={crashCount}/{MAX_CRASHES_BEFORE_SAFE_MODE}）");
 
-            if (crashCount >= MAX_CRASHES_BEFORE_SAFE_MODE)
+            if (!previousCleanExit && !previousStableSession)
             {
-                // 连续多次崩溃 → 下一次唤醒跳过 DWM 重建（黑色背景不透明，但程序稳定运行）
-                SafePrefsSetString("_skip_dwm_rebuild", "1");
+                int crashCount = SafePrefsGetInt(PREF_CRASH_COUNT, 0) + 1;
+                SafePrefsSetInt(PREF_CRASH_COUNT, crashCount);
                 SafePrefsSave();
-                Debug.LogWarning("[DesktopPet] 🛡 连续崩溃超过阈值，下次睡眠唤醒跳过 DWM 玻璃层重建（安全模式）");
+                Debug.LogWarning($"[DesktopPet] ⚠ 上次异常退出（连续异常计数={crashCount}/{MAX_CRASHES_BEFORE_SAFE_MODE}）");
+
+                if (crashCount >= MAX_CRASHES_BEFORE_SAFE_MODE)
+                {
+                    SafePrefsSetString("_skip_dwm_rebuild", "1");
+                    SafePrefsSave();
+                    Debug.LogWarning("[DesktopPet] 🛡 连续异常启动达到阈值，唤醒时启用 DWM 恢复保护");
+                }
+            }
+            else
+            {
+                SafePrefsSetInt(PREF_CRASH_COUNT, 0);
+                SafePrefsDeleteKey("_skip_dwm_rebuild");
+                SafePrefsSave();
+                Debug.Log("[DesktopPet] ✅ 上次会话已正常结束或稳定运行，重置异常计数");
             }
         }
         else
         {
-            // 上次正常退出 → 重置崩溃计数 + 清除安全模式
-            SafePrefsSetInt(PREF_CRASH_COUNT, 0);
-            SafePrefsDeleteKey("_skip_dwm_rebuild");
-            SafePrefsSave();
+            // 测试数据目录与 PlayerPrefs 并非同一隔离层；测试模式必须完全
+            // 跳过生产崩溃计数，避免运行时验收污染用户的安全模式状态。
+            Debug.Log("[DesktopPet] 🧪 测试模式：跳过生产崩溃计数与 DWM 安全模式状态");
         }
 
         // ---- 单例互斥锁：防止 Build and Run 产生多个实例 ----
@@ -479,15 +500,7 @@ public class DesktopPet : MonoBehaviour
         {
             // 上一个实例崩溃了，Mutex 被系统遗弃 — 我们获得了所有权，正常启动
             Debug.LogWarning("[DesktopPet] 检测到上一个实例异常崩溃，已接管互斥锁，正常启动");
-            // 方式2: 互斥锁遗弃也视为崩溃
-            int crashCount = SafePrefsGetInt(PREF_CRASH_COUNT, 0) + 1;
-            SafePrefsSetInt(PREF_CRASH_COUNT, crashCount);
-            if (crashCount >= MAX_CRASHES_BEFORE_SAFE_MODE)
-            {
-                SafePrefsSetString("_skip_dwm_rebuild", "1");
-                Debug.LogWarning("[DesktopPet] 🛡 连续崩溃超过阈值，下次睡眠唤醒跳过 DWM 玻璃层重建（安全模式）");
-            }
-            SafePrefsSave();
+            // 启动阶段已经根据 clean/stable 标记统计过一次，不能在这里重复累加。
         }
         catch (System.Exception ex)
         {
@@ -620,6 +633,18 @@ public class DesktopPet : MonoBehaviour
             Debug.Log("[DesktopPet] 自动添加了 ReminderManager 组件");
         }
 
+        // 自动确保偏好与任务模板管理器存在，避免对应工具已注册但运行时单例未初始化。
+        if (PreferencesManager.Instance == null)
+        {
+            gameObject.AddComponent<PreferencesManager>();
+            Debug.Log("[DesktopPet] 自动添加了 PreferencesManager（心之所向）组件");
+        }
+        if (TaskTemplateManager.Instance == null)
+        {
+            gameObject.AddComponent<TaskTemplateManager>();
+            Debug.Log("[DesktopPet] 自动添加了 TaskTemplateManager（太卜阵法图）组件");
+        }
+
         // 自动确保 ServerPollService 存在（连接本地课表服务）
         if (GetComponent<ServerPollService>() == null)
         {
@@ -748,10 +773,6 @@ public class DesktopPet : MonoBehaviour
                 if (_trayManager != null)
                 {
                     _trayManager.Initialize(_windowOverlay.WindowHandle);
-                    // 修复阶段始终刷新自启动命令，确保已有旧注册表项也迁移到 --ollama。
-                    if (_trayManager.AutoStartEnabled)
-                        _trayManager.SetAutoStart(true);
-
                     // ★ 首次运行自动设置开机自启（写入 HKCU\\Run）
                     // 这样下次重启后程序会自动启动
                     if (!_trayManager.AutoStartEnabled)
@@ -785,6 +806,17 @@ public class DesktopPet : MonoBehaviour
         //     这是最可靠的睡眠检测方式。必须在最顶部执行，因为 Win32 操作（在 DragHandler.Update 等中）
         //     可能在稍后触发处于 DWM 恢复期的窗口操作，导致 DWM 崩溃。
         float now = Time.realtimeSinceStartup;
+        if (_crashWatchdogEnabled && !_stableSessionMarked && _sessionStartedRealtime > 0f
+            && now - _sessionStartedRealtime >= STABLE_SESSION_SECONDS)
+        {
+            _stableSessionMarked = true;
+            SafePrefsSetInt(PREF_CRASH_COUNT, 0);
+            SafePrefsSetInt(PREF_STABLE_SESSION, 1);
+            SafePrefsDeleteKey("_skip_dwm_rebuild");
+            SafePrefsSave();
+            Debug.Log("[DesktopPet] ✅ 会话已稳定运行 60 秒，清除异常计数与 DWM 安全模式");
+        }
+
         if (_lastUpdateRealtime > 0f && (now - _lastUpdateRealtime) > 10f)
         {
             Debug.Log($"[DesktopPet] ⚠ 检测到时间间隙 {(now - _lastUpdateRealtime):F0}s，系统可能刚从睡眠恢复");
@@ -1178,7 +1210,7 @@ public class DesktopPet : MonoBehaviour
     private void OnTrayQuitRequested()
     {
         Debug.Log("[DesktopPet] 托盘管理器请求退出程序");
-        OnDestroy(); // 释放互斥锁
+        BeginShutdown("托盘");
         Application.Quit();
     }
 
@@ -1190,7 +1222,7 @@ public class DesktopPet : MonoBehaviour
     public void QuitFromTestCommand()
     {
         Debug.Log("[DesktopPet] 测试命令请求完整退出");
-        OnDestroy();
+        BeginShutdown("测试命令");
         Application.Quit();
     }
 
@@ -1200,15 +1232,7 @@ public class DesktopPet : MonoBehaviour
         PlayerPrefs.SetInt(PREF_CLEAN_EXIT, 1);
         PlayerPrefs.Save();
 
-        // ★ 退出传播取消：有在途 OpenClaw 任务时通知桥接层取消，
-        //   避免桌宠退出后 OpenClaw 继续后台跑任务烧 token
-        if (OpenClawBridge.IsBusy && !string.IsNullOrEmpty(OpenClawBridge.LastTaskId))
-        {
-            Debug.Log($"[DesktopPet] 🚫 退出时取消在途任务: {OpenClawBridge.LastTaskId}");
-            _ = OpenClawBridge.CancelTaskAsync(OpenClawBridge.LastTaskId);
-        }
-
-        ReleaseMutex();
+        BeginShutdown("Unity 生命周期");
     }
 
     /// <summary>
@@ -1265,6 +1289,34 @@ public class DesktopPet : MonoBehaviour
 
     private void OnDestroy()
     {
+        BeginShutdown("对象销毁");
+    }
+
+    /// <summary>
+    /// 统一的退出/销毁清理入口。Unity 不保证多个组件 OnDestroy 的先后顺序，
+    /// 因此必须在 OnApplicationQuit 阶段主动停止外置窗口线程，早于 D3D/RT 资源回收。
+    /// </summary>
+    private void BeginShutdown(string source)
+    {
+        if (_shutdownStarted) return;
+        _shutdownStarted = true;
+        Debug.Log($"[DesktopPet] 开始退出清理（来源: {source}）");
+
+        if (_trayManager != null)
+            _trayManager.OnQuitRequested -= OnTrayQuitRequested;
+
+        // 外置窗口线程可能仍在读取 RT/NativeArray；先让它在自身线程销毁窗口，
+        // 再进入 Unity 组件的 OnDestroy，避免 destroyTJDevice 竞态。
+        if (ExternalChatWindow.IsCreated)
+            ExternalChatWindow.Shutdown();
+
+        // 退出传播取消：避免桌宠退出后 OpenClaw 继续后台运行任务。
+        if (OpenClawBridge.IsBusy && !string.IsNullOrEmpty(OpenClawBridge.LastTaskId))
+        {
+            Debug.Log($"[DesktopPet] 🚫 退出时取消在途任务: {OpenClawBridge.LastTaskId}");
+            _ = OpenClawBridge.CancelTaskAsync(OpenClawBridge.LastTaskId);
+        }
+
 #if !UNITY_EDITOR
         Application.logMessageReceivedThreaded -= MirrorAllLogs;
 #endif

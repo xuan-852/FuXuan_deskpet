@@ -42,6 +42,38 @@ public static class OpenClawBridge
     public static string LastError { get; private set; } = "";
 
     /// <summary>
+    /// 优先保留桥接层返回的结构化 error，再回退到 UnityWebRequest 的传输错误。
+    /// Node 端错误可能包含引号、换行或中文，不能直接拼接进 JSON 字符串。
+    /// </summary>
+    private static string GetResponseError(UnityWebRequest req, string fallback)
+    {
+        string raw = req.downloadHandler?.text;
+        if (!string.IsNullOrEmpty(raw))
+        {
+            try
+            {
+                string bridgeError = JObject.Parse(raw)["error"]?.ToString();
+                if (!string.IsNullOrEmpty(bridgeError)) return bridgeError;
+            }
+            catch { /* 非 JSON 响应，继续使用 Unity 错误 */ }
+        }
+
+        return !string.IsNullOrEmpty(req.error) ? req.error : fallback;
+    }
+
+    /// <summary>生成符合桥接统一契约的失败 JSON，确保错误文本始终正确转义。</summary>
+    private static string ErrorJson(string error, bool isScanned = false)
+    {
+        var obj = new JObject
+        {
+            ["success"] = false,
+            ["error"] = string.IsNullOrEmpty(error) ? "未知桥接错误" : error
+        };
+        if (isScanned) obj["is_scanned"] = true;
+        return obj.ToString(Newtonsoft.Json.Formatting.None);
+    }
+
+    /// <summary>
     /// 执行网络搜索，返回 AI 研究的文本结果
     /// </summary>
     /// <param name="query">搜索查询</param>
@@ -68,9 +100,9 @@ public static class OpenClawBridge
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                LastError = req.error;
+                LastError = GetResponseError(req, "桥接请求失败");
                 IsAvailable = false;
-                return $"❌ 太卜通神术式失联: {req.error}";
+                return $"❌ 太卜通神术式失联: {LastError}";
             }
 
             string raw = req.downloadHandler?.text ?? "{}";
@@ -120,7 +152,7 @@ public static class OpenClawBridge
             if (req.result != UnityWebRequest.Result.Success)
             {
                 IsAvailable = false;
-                LastError = req.error;
+                LastError = GetResponseError(req, "健康检查失败");
                 return false;
             }
 
@@ -187,8 +219,8 @@ public static class OpenClawBridge
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                LastError = req.error;
-                return $"{{\"success\":false,\"error\":\"{req.error}\"}}";
+                LastError = GetResponseError(req, "LaTeX 编译请求失败");
+                return ErrorJson(LastError);
             }
 
             string raw = req.downloadHandler?.text ?? "{}";
@@ -201,12 +233,12 @@ public static class OpenClawBridge
 
                 string err = obj["error"]?.ToString() ?? "未知编译错误";
                 LastError = err;
-                return $"{{\"success\":false,\"error\":\"{err}\"}}";
+                return ErrorJson(LastError);
             }
             catch (Exception ex)
             {
                 LastError = ex.Message;
-                return $"{{\"success\":false,\"error\":\"{ex.Message}\"}}";
+                return ErrorJson(LastError);
             }
         }
     }
@@ -253,9 +285,9 @@ public static class OpenClawBridge
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                LastError = req.error;
+                LastError = GetResponseError(req, "办公文档请求失败");
                 IsAvailable = false;
-                return $"{{\"success\":false,\"error\":\"{req.error}\"}}";
+                return ErrorJson(LastError);
             }
 
             string raw = req.downloadHandler?.text ?? "{}";
@@ -272,12 +304,12 @@ public static class OpenClawBridge
 
                 string err = obj["error"]?.ToString() ?? "未知错误";
                 LastError = err;
-                return $"{{\"success\":false,\"error\":\"{err}\"}}";
+                return ErrorJson(LastError);
             }
             catch (Exception ex)
             {
                 LastError = ex.Message;
-                return $"{{\"success\":false,\"error\":\"{ex.Message}\"}}";
+                return ErrorJson(LastError);
             }
         }
     }
@@ -319,8 +351,8 @@ public static class OpenClawBridge
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                LastError = req.error;
-                return $"{{\"success\":false,\"error\":\"{req.error}\"}}";
+                LastError = GetResponseError(req, "PDF 提取请求失败");
+                return ErrorJson(LastError);
             }
 
             string raw = req.downloadHandler?.text ?? "{}";
@@ -336,13 +368,13 @@ public static class OpenClawBridge
                 // 透传 is_scanned 标记，让工具层给出针对性提示
                 bool isScanned = obj["is_scanned"]?.Value<bool>() ?? false;
                 if (isScanned)
-                    return $"{{\"success\":false,\"error\":\"{err}\",\"is_scanned\":true}}";
-                return $"{{\"success\":false,\"error\":\"{err}\"}}";
+                    return ErrorJson(err, true);
+                return ErrorJson(err);
             }
             catch (Exception ex)
             {
                 LastError = ex.Message;
-                return $"{{\"success\":false,\"error\":\"{ex.Message}\"}}";
+                return ErrorJson(LastError);
             }
         }
     }
@@ -457,7 +489,7 @@ public static class OpenClawBridge
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                LastError = req.error;
+                LastError = GetResponseError(req, "任务提交请求失败");
                 IsAvailable = false;
                 return "";
             }
@@ -507,8 +539,8 @@ public static class OpenClawBridge
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                LastError = req.error;
-                return $"{{\"success\":false,\"error\":\"{req.error}\"}}";
+                LastError = GetResponseError(req, "任务轮询请求失败");
+                return ErrorJson(LastError);
             }
             return req.downloadHandler?.text ?? "{\"success\":false,\"error\":\"empty response\"}";
         }
@@ -538,7 +570,7 @@ public static class OpenClawBridge
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                LastError = req.error;
+                LastError = GetResponseError(req, "任务取消请求失败");
                 return false;
             }
             return true;
@@ -582,7 +614,7 @@ public static class OpenClawBridge
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                LastError = req.error;
+                LastError = GetResponseError(req, "审批回执请求失败");
                 LastApprovalOk = false;
                 return false;
             }

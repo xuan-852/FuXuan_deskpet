@@ -2,9 +2,9 @@
 
 > **测试脚本注意**：`scripts/test/runtime_smoke.cjs` 未显式设置 `PLAYER_LOG` 时，读取测试隔离目录 `<FU_XUAN_TEST_DATA>/logs/player_log.txt`（应用日志镜像），避免误读旧的默认 Unity `Player.log` 导致冒烟测试假失败。
 
-> **文档作用**: 让 AI **第一时间**了解三件事——① 常规运行（生产）与测试模式在 Token 消耗上的**本质区别**；② 测试时关于消耗的**铁律与常见误判**；③ 当前**未解决的痛点**。任何涉及"改测试逻辑 / 改云端调用 / 排查烧钱 / 写测试"的工作，先读本文再动手。
+> **文档作用**: 让 AI **第一时间**了解三件事——① 常规运行（生产）与测试模式在 Token 消耗上的**本质区别**；② 测试时关于消耗的**铁律与常见误判**；③ 当前**痛点与已排除事项**。任何涉及"改测试逻辑 / 改云端调用 / 排查烧钱 / 写测试"的工作，先读本文再动手。
 > **基本架构**: 成本观测链路 = `ApiClient`（云端调用点）→ `TokenBudgetManager`（后台来源频率闸门）→ `UsageStats`（内存，面板实时）→ `UsageLogger`（JSONL 落盘，跨重启）；质量观测链路 = `QualityTelemetry`（本地/模板/云端来源、案例编号、解析、回退、耗时、GLM 评分）；测试拦截开关 = `ApiClient.BlockCloudInTestMode`（默认跟随测试模式）。纯云端配对基线使用 `--cloud-baseline`，完整流程见 [`quality-comparison-test-guide.md`](quality-comparison-test-guide.md)；完整设计见 [`token-saving-architecture.md`](token-saving-architecture.md)。
-> **开发历史迭代**: 2026-08-15 本地模型优先（N43）；2026-08-16 测试模式禁云端（N44，`51cbecb`）+ UsageLogger 持久化（`08494dd`）。
+> **开发历史迭代**: 2026-08-15 本地模型优先（N43）；2026-08-16 测试模式禁云端（N44，`51cbecb`）+ UsageLogger 持久化（`08494dd`）；2026-08-26 确认约 ¥5/天异常来自其他项目复用同一用户级 API Key。
 > **编写注意事项**: 本文记录的是**已验证的代码真相** + 痛点现状；痛点状态变化时（如 ¥5/天来源已定位）必须同步更新第五节。
 
 ---
@@ -94,17 +94,18 @@ node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData
 
 第一阶段重点观察 `motion_translation` 的 local `ok/accepted/parse`、`motion_validation` 的 GLM `avg_score/pass`、以及 `chat` 的 local/cloud 回退比例。建议累计至少 30 次聊天和 30 次动作验证后再调整路由阈值。
 
-## 五、未解决痛点（2026-08-16 记录，状态会变）
+## 五、当前仍需关注事项（2026-08-26）
 
-1. **¥5/天消耗源头未定位（最优先）**：pet 侧 DeepSeek 调用量实测很小（1-2 次/会话），但用户报 ¥5/天。候选嫌疑：① 崩溃反复重启（退出崩溃计数已达 120+，每次启动的问候/初始化都烧一次）；② Ollama 未就绪时本地优先回退云端（开机瞬间尤甚）；③ 定时触发源（IdleChat/ServerPoll/ProactiveMessageScheduler）在后台持续调用。**对策：持久化 usage_log 已上线，需生产环境连续跑数天收集分源数据后再定位**——不要凭猜测下结论。
-2. **测试模式一刀切**：禁云端后测试里无法验证真实云端链路（缓存命中率/价格/响应质量），也没有"受控单次放开"的通道（目前只能改代码开关 + 用户确认，见铁律 5）。
-3. **测试与生产行为偏差**：测试里"本地失败 = 功能缺失"而非"回退云端"，动作翻译/天气语录/闲话在本地模型不健康时表现与生产不同——排查 bug 时注意区分"被拦/本地挂"与"真 bug"。
-4. **destroyTJDevice 退出崩溃**：引擎退出时崩溃计数持续增长（105→108→120），已按 DisableExternalMode→Shutdown→释放 RT 顺序修复，但退出时引擎崩溃是否彻底消失**未最终确认**（退出时崩溃不影响外部交互，但会触发重启 → 叠加痛点 1）。
-5. **schannel TLS 全坏（系统级）**：`SEC_E_NO_CREDENTIALS (0x8009030e)`，Node/curl/.NET 全部 HTTPS 失败（浏览器 OK，因 BoringSSL），连 baidu.com 都连不上。影响 DSH harness 切 GPT（`dsh-codex-auth` 已装但连不上）。修复需用户操作：重启 → `sfc /scannow` → `DISM /Online /Cleanup-Image /RestoreHealth` → 卸 SteamTools MITM 证书。**注意：codex CLI（Rust/rustls）不受 schannel 影响，可直接用**。
-6. **缓存即记忆（成本优化构想）未实施**：复用 LLM 上下文缓存做记忆、把非文档内容放进同一滚动历史、消除 tool schema 重复发送——预期再降输入 tokens 50%+。**前提：先用 usage_log 收集到真实分源数据**，验证当前主要消耗在哪，再动上下文结构（动 system prompt 前缀会摧毁 98.6% 缓存命中，须谨慎）。
-7. **测试模式禁云端的开关粒度**：`BlockCloudInTestMode` 是全局布尔，没有按 source 粒度（如"只拦 chat 放行 idle"）或按时间窗口的开关——后续如需精细化可扩展。
-8. **后台来源预算闸门已落地（2026-08-18）**：`idle`/`reflect`/`weather`/`motion`/`glm` 均已接入 `TokenBudgetManager`，`chat` 仍只观测不硬限流；预算拒绝带不可重试前缀，避免自动重试绕过闸门。
-9. **上下文与工具结果预算已落地（2026-08-18）**：`PromptContextBudget` 限制动态上下文段，`ToolResultBudget` 只压缩回填模型历史的工具结果副本；两者均不改变 UI 原始结果和固定 Prompt 前缀。
+> 约 ¥5/天异常已排除：用户确认费用来自其他项目复用同一个用户级 `DEEPSEEK_API_KEY`，不是桌宠自身调用。历史金额和测试记录保留在对应报告中，但不再列为本项目的待解决问题。
+
+1. **测试模式一刀切**：禁云端后测试里无法验证真实云端链路（缓存命中率/价格/响应质量），也没有"受控单次放开"的通道（目前只能改代码开关 + 用户确认，见铁律 5）。
+2. **测试与生产行为偏差**：测试里"本地失败 = 功能缺失"而非"回退云端"，动作翻译/天气语录/闲话在本地模型不健康时表现与生产不同——排查 bug 时注意区分"被拦/本地挂"与"真 bug"。
+3. **destroyTJDevice 退出崩溃**：引擎退出时崩溃计数持续增长（105→108→120），已按 DisableExternalMode→Shutdown→释放 RT 顺序修复，但退出时引擎崩溃是否彻底消失**未最终确认**（退出时崩溃不影响外部交互，但仍需独立观察）。
+4. **schannel TLS 全坏（系统级）**：`SEC_E_NO_CREDENTIALS (0x8009030e)`，Node/curl/.NET 全部 HTTPS 失败（浏览器 OK，因 BoringSSL），连 baidu.com 都连不上。影响 DSH harness 切 GPT（`dsh-codex-auth` 已装但连不上）。修复需用户操作：重启 → `sfc /scannow` → `DISM /Online /Cleanup-Image /RestoreHealth` → 卸 SteamTools MITM 证书。**注意：codex CLI（Rust/rustls）不受 schannel 影响，可直接用**。
+5. **缓存即记忆（成本优化构想）未实施**：复用 LLM 上下文缓存做记忆、把非文档内容放进同一滚动历史、消除 tool schema 重复发送——预期再降输入 tokens 50%+。**前提：先用 usage_log 收集到真实分源数据**，验证当前主要消耗在哪，再动上下文结构（动 system prompt 前缀会摧毁 98.6% 缓存命中，须谨慎）。
+6. **测试模式禁云端的开关粒度**：`BlockCloudInTestMode` 是全局布尔，没有按 source 粒度（如"只拦 chat 放行 idle"）或按时间窗口的开关——后续如需精细化可扩展。
+7. **后台来源预算闸门已落地（2026-08-18）**：`idle`/`reflect`/`weather`/`motion`/`glm` 均已接入 `TokenBudgetManager`，`chat` 仍只观测不硬限流；预算拒绝带不可重试前缀，避免自动重试绕过闸门。
+8. **上下文与工具结果预算已落地（2026-08-18）**：`PromptContextBudget` 限制动态上下文段，`ToolResultBudget` 只压缩回填模型历史的工具结果副本；两者均不改变 UI 原始结果和固定 Prompt 前缀。
 
 ---
 

@@ -353,3 +353,10 @@
 - 原因：Win32 `EDIT` 已在 `DoSend()` 中清空，但 `RightPanel.OnExternalSend()` 又把刚发送的原句写回 Unity 渲染字层；当 `MainThreadDispatcher` 与 `RightPanel.Update()` 的执行顺序交错时，旧句子会永久残留，后续输入表现为冻结。
 - 修复：发送回调只提交消息，不回写旧文本；同时同步输入版本、清空组合文本并标记外置 RenderTexture 立即刷新。
 - 验证：`build.ps1 -Quick` 通过；隔离 `runtime_smoke.cjs --verbose` 通过，生产记忆目录零污染。
+
+### 外置窗口退出竞态收敛（2026-08-26）
+
+- `DesktopPet` 不再从托盘或测试退出入口手动调用 `OnDestroy()`；托盘、测试命令、`OnApplicationQuit` 和对象销毁统一进入幂等 `BeginShutdown`。
+- `BeginShutdown` 在 Unity 组件释放前主动调用 `ExternalChatWindow.Shutdown()`，先停止窗口线程，再由 `RightPanel` 释放 RenderTexture/NativeArray，降低 `destroyTJDevice` 退出竞态。
+- `ExternalChatWindow` 增加 `_shutdownRequested`：窗口线程尚未设置 `IsCreated` 时收到关闭请求，也会在建窗前退出；`EnsureCreated()` 不会在旧线程退出期间重复创建新线程。
+- 验证：本轮 Quick、完整构建通过；新构建包隔离 `runtime_smoke.cjs --verbose` 通过，零 NRE 且生产记忆零污染。真实退出崩溃仍需按 P1 做多轮观察。

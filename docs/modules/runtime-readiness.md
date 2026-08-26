@@ -4,7 +4,7 @@ This module documents the UX safety layer added on 2026-08-21.
 
 ## Architecture
 
-`RuntimeReadinessService` reports local Ollama, bridge, and cloud configuration state. Cloud readiness is configuration-only; it never makes a paid probe. Local readiness is true only when Ollama responds and the configured model is present in `/api/tags`.
+`RuntimeReadinessService` reports local Ollama, bridge, and cloud configuration state. Cloud readiness is configuration-only; it never makes a paid probe. Local readiness is true only when Ollama responds and the configured model is present in `/api/tags`. In a standalone player, `LocalLLMClient` can start the standard Ollama application/CLI when the first local health check finds the API offline, then performs one delayed retry.
 
 `ChatManager` exposes a request lifecycle through `RequestStage`, `RequestStatusText`, and `OnRequestStatusChanged`. The stages cover thinking, local generation, cloud connection, streaming, tool execution, retry, error, and cancellation.
 
@@ -14,11 +14,19 @@ This module documents the UX safety layer added on 2026-08-21.
 
 The title status changes as the request moves through the lifecycle, so a slow local model, a network retry, or a tool execution is distinguishable from a frozen window.
 
+DesktopPet startup recovery uses a consecutive-abnormal-session watchdog. Production `PlayerPrefs` are not modified in `.test_mode`; a session that remains stable for 60 seconds clears the abnormal counter and the DWM fallback flag. After sleep or GPU recovery, `WindowOverlay` still performs a delayed DWM rebuild in fallback mode instead of returning early with an invisible layered window.
+
+`WindowOverlay` also maintains a lightweight topmost watchdog. Every two seconds it reapplies `HWND_TOPMOST` without activating the window, restores a hidden main window, or reacquires a stale Unity handle and reapplies the full overlay configuration. This prevents external windows, tray restore, and DWM resets from silently lowering the pet's Z-order.
+
 ## Cost protection
 
 `--no-cloud` or `FU_XUAN_NO_CLOUD=1` blocks `ApiClient` requests before HTTP and token accounting. `--ollama` / `--local` continue to enforce local-only chat. No API key is stored in code or logs.
 
 ## Notes
+
+- Ollama bootstrap is disabled in the Unity Editor and `.test_mode`, uses `OLLAMA_EXE` first and then the standard per-user/Program Files paths, and has a 60-second launch cooldown to avoid spawning duplicate processes during repeated readiness checks.
+- DesktopPet autostart is stored as a Windows `REG_SZ`; the registry bridge must encode values as UTF-16LE. The reader keeps a UTF-8 fallback so values written by older builds are migrated on the next successful startup.
+- Build/test force-termination must not be treated as proof of a DesktopPet crash. The watchdog therefore resets after a stable session and skips production crash state entirely in `.test_mode`.
 
 ## Verification
 
@@ -37,3 +45,9 @@ The data root must be temporary and contain `.test_mode`; production memory and 
 - Host user `FU\\25295`: full `build.ps1` completed in 45 seconds and regenerated `Build/DesktopPet.exe` at 14:48:27.
 - `node --check code/desktop_unity/openclaw_bridge.js`: passed.
 - `node scripts/test/runtime_smoke.cjs --verbose`: passed. The isolated run covered view switching, external-panel clicks, approval injection, three window sizes, zero `NullReferenceException`, and unchanged production memory mtimes; the temporary test directory was removed afterward.
+- 2026-08-24: `build.ps1 -Quick` passed under the real user account after the autostart registry encoding fix and Ollama bootstrap change. A fresh EditMode XML result was not produced by this invocation, so the historical test count is not treated as a new test run.
+- 2026-08-26: `build.ps1 -Quick` and full `build.ps1` passed after the crash-watchdog/DWM recovery change. Isolated `runtime_smoke.cjs --verbose` passed with zero NRE and zero production-memory pollution; the production player logged stable-session confirmation after 60 seconds and completed DWM transparency setup.
+- 2026-08-26: `build.ps1 -Quick` and full `build.ps1` passed after adding the non-activating topmost watchdog. The rebuilt player started successfully and reported DWM transparency setup; elevated process inspection confirmed the player remained running in the interactive session.
+- 2026-08-26: `DesktopPet` now routes tray exit, test exit, `OnApplicationQuit`, and `OnDestroy` through one idempotent `BeginShutdown` path; it closes the external window thread before Unity render resources are destroyed and avoids manually invoking `OnDestroy`.
+- 2026-08-26: `ExternalChatWindow.Shutdown()` now records the shutdown request before checking `IsCreated`; a window thread that is still between startup and `IsCreated=true` exits before completing native-window initialization, and an already-exiting thread cannot be duplicated by `EnsureCreated()`.
+- 2026-08-26: Quick and full build passed; the rebuilt `Build/DesktopPet.exe` passed isolated `runtime_smoke.cjs --verbose` with all view/external-click/approval/emote paths, three window sizes, zero NRE, and unchanged production-memory mtimes. The EditMode XML was not refreshed and remains historical 114/114, so it is not counted as a fresh test result.

@@ -35,7 +35,7 @@ AsyncToolBase (异步/协程工具基类, ToolName 虚属性)
 本地模式不依赖 Ollama 的原生 `tools`/`tool_calls` 支持，而使用受控的文本规划协议：
 
 ```text
-qwen2.5:3b → {action, tool, arguments, reason}
+qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请求） → {action, tool, arguments, reason}
            → LocalToolRouter 白名单
            → ToolConfirmManager（危险工具）
            → ToolCallInvoker → ToolRegistry → IPetTool
@@ -44,6 +44,15 @@ qwen2.5:3b → {action, tool, arguments, reason}
 
 `LocalToolRouter` 按意图只暴露常用小目录，拒绝未知工具和当前意图之外的工具；
 因此本地模型获得“能执行”的能力，但不会获得绕过 Unity 安全层的权限。
+
+### 2.2.2 自然语言工具覆盖（2026-08-25）
+
+- 65 个已注册工具均至少出现在 `LocalToolRouter` 的一个自然语言意图目录中，并同步存在于 `ChatManager.IntentToolMap`；偏好、任务模板、动作复盘/验证、文件读写等此前容易漏路由的工具已补齐关键词和白名单。
+- `DesktopPet` 启动时自动挂载 `PreferencesManager` 与 `TaskTemplateManager`，确保 `set/query/remove_preference` 和 `query/save/remove_task_template` 不会因单例未初始化而失效。
+- 隔离运行时基准覆盖 65 个用例：42 个 OK、7 个 DANGER_GUARD、8 个 SKIP；7 个危险工具均只核验注册与危险标记，未执行真实副作用。文件写入在隔离目录中被 `ToolHelpers.IsPathAllowed` 按 Windows 安全策略拦截，知识库索引因测试目录不存在而返回预期错误，均不属于自然语言路由断链。
+- 2026-08-25 的自然语言隔离验收为 5/5：系统信息、文件搜索、打开文件夹、剪贴板、Excel 均命中预期工具；其中剪贴板误路由曾被复现并由“高置信度规则先行”修复。
+- 文档/PDF/OpenClaw 任务不再完全依赖本地 3B 模型转述：原始用户需求由 `TryHardenPlanArguments` 确定性回填；`openclaw_bridge.js` 额外限制 LaTeX 请求体 2 MiB、编译器为 xelatex/pdflatex/lualatex，输出路径仅允许 `D:\DesktopPetData\Documents`。
+- 规划模型按任务分层：轻量/普通歧义请求使用 `LocalLLMClient.ModelName`（默认 qwen2.5:3b），PDF、Office、OpenClaw 和多步骤请求使用 `LocalLLMClient.ChatModelName`（默认 qwen3:8b）；8B 不可用自动降级 3B，最终执行仍走同一白名单与审批链。
 
 ### 2.3 文件清单与工具分类（真实注册名，65 个）
 

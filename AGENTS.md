@@ -2,7 +2,7 @@
 
 > 本文件是 AI 编码代理（GitHub Copilot / Claude Code 等）的**快速入口**。
 > 详细规范见 [`docs/development-standards.md`](docs/development-standards.md)（两者冲突时以详细版为准）。
-> 📚 **文档总索引**：[`docs/README.md`](docs/README.md)——顶层权威文档表 + 9 个模块文档（`docs/modules/`）。
+> 📚 **文档总索引**：[`docs/README.md`](docs/README.md)——顶层权威文档表 + 10 个模块文档（`docs/modules/`）。
 >
 > **AI 读文档优先级**：`AGENTS.md` → `docs/README.md` → `development-standards.md` → `build-workflow.md`（**改 C# 后构建 / 构建卡死时先读**）→ `code-truth-architecture.md` → `docs/token-cost-testing.md`（涉及云端调用/测试/排查烧钱时**必须先读**）→ `docs/token-saving-architecture.md`（设计/修改成本控制时**必须先读**）→ `docs/quality-measurement-test-guide.md`（编译后测量本地质量时**必须先读**）→ `docs/quality-comparison-test-guide.md`（本地/云端配对对照时**必须先读**）→ `docs/project-bugs-and-acceptance.md`（改外置窗口/渲染/退出/测试代码前**必须先读**）→ 对应 `docs/modules/<模块>.md`
 
@@ -14,11 +14,11 @@ Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣
 
 | 层 | 位置 | 语言 |
 |----|------|------|
-| Unity 桌宠 | `code/desktop_unity/Assets/Scripts/` | C#（92 文件，架构见 `docs/code-truth-architecture.md`） |
+| Unity 桌宠 | `code/desktop_unity/Assets/Scripts/` | C#（118 文件，架构见 `docs/code-truth-architecture.md`） |
 | 桥接服务器 | `code/desktop_unity/openclaw_bridge.js` | Node.js，端口 19876，PM2 管理（进程名 `openclaw-bridge`） |
 | 工具系统 | `Assets/Scripts/ToolEngine/` | `IPetTool` → `AsyncToolBase` → 反射自动发现，危险工具需审批 |
 | Python 生成器 | `scripts/office/` 等 | python-pptx / python-docx / openpyxl |
-| 文档 | `docs/` | 总索引 = `docs/README.md`；权威架构 = `code-truth-architecture.md`；模块细节 = `docs/modules/`（9 份，见下表） |
+| 文档 | `docs/` | 总索引 = `docs/README.md`；权威架构 = `code-truth-architecture.md`；模块细节 = `docs/modules/`（10 份，见下表） |
 
 ## 模块文档（docs/modules/，每份含「作用/架构/迭代/注意」四要素）
 
@@ -52,7 +52,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
                                                         |--execSync 临时JSON--> Python scripts
 ```
 
-- 端点：`/health`（免鉴权）、`/search`、`/compile_latex`、`/generate_office`（均带 `x-bridge-token`）
+- 端点：`/health`、`/search`、`/compile_latex`、`/generate_office`（当前实现均经过 `x-bridge-token` 鉴权）
 - 新端点必须鉴权 + 放 404 前 + 更新 404 文案；返回 `{success: bool, ...}` 或 `{success:false,error:"..."}`
 - 办公文档输出：`D:\DesktopPetData\Documents\{标题}_{日期}_{随机}\`，成功后自动打开
 

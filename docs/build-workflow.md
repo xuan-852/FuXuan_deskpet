@@ -103,7 +103,7 @@ Stop-Process -Name Tuanjie.Licensing.Client -Force -ErrorAction SilentlyContinue
 |------|------|---------|
 | 编译 | `.\build.ps1 -Quick` | `[OK] Build succeeded! (mm:ss)` |
 | 完整构建 | `.\build.ps1` | `[OK] Output: Build/DesktopPet.exe` |
-| EditMode | `.\build.ps1 -RunTests` | `test_results.xml` 78/78 通过 |
+| EditMode | `.\build.ps1 -RunTests` | `test_results.xml` 中 `result=Passed` 且 `failed=0`；现有历史产物为 114/114 |
 | 冒烟 | `node scripts/test/runtime_smoke.cjs` | `[PASS]` + 生产记忆零污染 |
 | 人工 | 启动 exe | 桌宠落地、功能正常 |
 

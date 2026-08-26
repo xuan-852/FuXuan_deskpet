@@ -204,7 +204,7 @@
 | ✅ | 人格五维 | diligence/warmth/playfulness/confidence/curiosity |
 | ✅ | 三维关系 | 信任/亲密/熟悉度(对数增长) |
 | ✅ | 人格↔情绪联动 | 五维×权重 → EmotionState |
-| ⚠️ | 无交互回归 | `DriftTowardNeutral()` 存在但 ActionAgent 内无调用者（保持现状） |
+| ✅ | 无交互回归 | `MotionAgent` 已按帧调用 `PersonalityManager.DriftTowardNeutral()` |
 | ✅ | KnowledgeBase | Ollama 嵌入(nomic-embed-text)语义检索 |
 | ✅ | 知识库 25+ 格式 | 分块索引 JSON 持久化 |
 | ✅ | 持久化目录 | `D:\DesktopPetData\` 7 个 JSON + Documents/ + ActionRefs/ + glm_collages/ |
@@ -251,8 +251,8 @@
 | ✅ | build_current 任务 | VS Code task |
 | ✅ | Tuanjie Subst 方案 | 路径拼接 Bug 绕过 |
 | ✅ | 持久化目录 | `D:\DesktopPetData\` 自动创建 |
-| 🔧 | 服务端自动启动 | 需手动启动 |
-| 💡 | 安装包制作 | 未开始 |
+| 🔧 | 服务端自动启动 | 开发环境仍可手动启动；安装器已提供 OpenClaw/Ollama 组件自动化与 NSSM 服务注册 |
+| ✅ | 安装包制作 | Inno Setup 安装器、便携包、EXE/ZIP 与 SHA256 已完成；干净 VM/部分依赖仍需补测 |
 
 ---
 
@@ -291,7 +291,7 @@
 | 🟢 低 | 半透明特效 DWM 限制 | 视觉受限 | 💡 待研究 |
 
 > 完整审计：9 个已确认 Bug（**N39 已全部修复或澄清**）+ 16 项文档偏差，详见 `code-truth-architecture.md` 与 `report.md` 第 16 章。
-> **遗留项（规划中能力，勿在文档中宣称可用）**：3D 渲染（HybridRenderer TODO）、多屏支持（isMultiMonitor 恒 false）、动态分辨率降级（GetResolutionScale 恒 1.0）。
+> **遗留项（规划中能力，勿在文档中宣称可用）**：3D 渲染（HybridRenderer TODO）、跨屏行走策略、动态分辨率降级（GetResolutionScale 恒 1.0；当前为有意保持全分辨率）。多屏检测本身已由 `WindowOverlay.isMultiMonitor` 实现。
 
 ---
 

@@ -38,7 +38,7 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { writeFileSync, unlinkSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, copyFileSync, readdirSync } from 'node:fs';
-import { dirname, basename, extname, join } from 'node:path';
+import { dirname, basename, extname, join, resolve, relative, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
@@ -73,6 +73,9 @@ const BRIDGE_TOKEN    = process.env.BRIDGE_TOKEN   || GATEWAY_TOKEN;
 const BRIDGE_PORT     = parseInt(process.env.BRIDGE_PORT || '19876', 10);
 const SESSION_KEY     = process.env.SESSION_KEY     || 'agent:main:main';
 const CHAT_TIMEOUT_MS = parseInt(process.env.CHAT_TIMEOUT_MS || '180000', 10);
+const LATEX_DOCUMENTS_ROOT = resolve('D:\\DesktopPetData\\Documents');
+const MAX_COMPILE_BODY_BYTES = 2 * 1024 * 1024;
+const ALLOWED_LATEX_COMPILERS = new Set(['xelatex', 'pdflatex', 'lualatex']);
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let chatClient   = null;
@@ -967,6 +970,22 @@ async function generateChunkedLatex(description, compiler = 'xelatex') {
     }
 }
 
+function isPathInside(rootDir, targetPath) {
+    const rel = relative(resolve(rootDir), resolve(targetPath));
+    return rel === ''
+        || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith('..\\') && !rel.startsWith('../'));
+}
+
+function validateLatexOutputPath(outputPath) {
+    if (!outputPath || !String(outputPath).trim()) return null;
+    const requested = String(outputPath).trim();
+    if (!isAbsolute(requested)) return 'output_path 必须是 Documents 目录下的绝对 .tex 路径';
+    const target = requested.toLowerCase().endsWith('.tex') ? requested : `${requested}.tex`;
+    if (!isPathInside(LATEX_DOCUMENTS_ROOT, target))
+        return 'output_path 只能写入 D:\\DesktopPetData\\Documents 目录，已阻止越权写文件';
+    return null;
+}
+
 // ─── 编译前检查外部文件引用 ────────────────────────────────────────────────
 // AI 生成的文档可能引用不存在的代码/图片文件（如 \lstinputlisting{code/gpio_poll.c}），
 // 直接编译必然失败且报错晦涩。这里提前检查并给出明确提示。
@@ -985,7 +1004,10 @@ function checkMissingExternalRefs(tex, baseDir) {
             // \input{foo} 可能是 foo.tex / foo.sty / foo.cls，都试一下
             const candidates = ref.includes('.') ? [ref] : [`${ref}.tex`, `${ref}.sty`, `${ref}.cls`];
             const found = candidates.some(c => {
-                try { return existsSync(join(baseDir, c)); } catch { return false; }
+                try {
+                    const candidate = resolve(baseDir, c);
+                    return isPathInside(baseDir, candidate) && existsSync(candidate);
+                } catch { return false; }
             });
             if (!found) missing.push({ cmd, ref });
         }
@@ -1221,8 +1243,22 @@ function startHttpServer() {
             // 当描述文本较长被拆成多个块时，跨块边界的 UTF-8 中文字符会被截断成乱码
             // （日志里 "???????????,?50?" 就是此问题导致的）。
             const bodyChunks = [];
-            req.on('data', chunk => bodyChunks.push(chunk));
+            let bodyBytes = 0;
+            let bodyTooLarge = false;
+            req.on('data', chunk => {
+                bodyBytes += chunk.length;
+                if (bodyBytes <= MAX_COMPILE_BODY_BYTES) bodyChunks.push(chunk);
+                else bodyTooLarge = true;
+            });
             req.on('end', async () => {
+                if (bodyTooLarge) {
+                    res.writeHead(413, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({
+                        success: false,
+                        error: `LaTeX 请求体过大（上限 ${MAX_COMPILE_BODY_BYTES} 字节），请拆分文档或减少内嵌源码`
+                    }));
+                    return;
+                }
                 const body = Buffer.concat(bodyChunks).toString('utf-8');
                 try {
                     const { source, description, output_path, compiler: requestedCompiler, title, pin_to_desktop, mode } = JSON.parse(body);
@@ -1290,7 +1326,16 @@ function startHttpServer() {
                     }
 
                     // ── 选择编译器 ──
-                    const compiler = requestedCompiler || 'xelatex';  // 默认 xelatex（中文友好）
+                    const compiler = String(requestedCompiler || 'xelatex').trim().toLowerCase();
+                    if (!ALLOWED_LATEX_COMPILERS.has(compiler)) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({
+                            success: false,
+                            error: 'PDF 编译器只允许 xelatex、pdflatex 或 lualatex',
+                            compiler
+                        }));
+                        return;
+                    }
                     const compilerPath = process.env.LATEX_COMPILER || compiler;
                     try {
                         execSync(`where "${compilerPath}"`, { stdio: 'pipe', windowsHide: true, timeout: 5000, encoding: 'utf-8' });
@@ -1304,15 +1349,25 @@ function startHttpServer() {
                         return;
                     }
 
+                    const normalizedOutputPath = typeof output_path === 'string' ? output_path.trim() : '';
+                    const outputPathError = validateLatexOutputPath(normalizedOutputPath);
+                    if (outputPathError) {
+                        res.writeHead(403, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: outputPathError }));
+                        return;
+                    }
+
                     // ── 确定输出路径（按标题建文件夹） ──
-                    const docTitle = (title || 'document').replace(/[<>:"\/\\|?*]/g, '_');
+                    const docTitle = (typeof title === 'string' ? title : 'document')
+                        .replace(/[<>:"\/\\|?*]/g, '_').trim() || 'document';
                     let texPath, outDir;
-                    if (output_path) {
-                        texPath = output_path.endsWith('.tex') ? output_path : output_path + '.tex';
+                    if (normalizedOutputPath) {
+                        texPath = resolve(normalizedOutputPath.endsWith('.tex')
+                            ? normalizedOutputPath : normalizedOutputPath + '.tex');
                         outDir = dirname(texPath);
                     } else {
                         const folderName = `${docTitle}_${new Date().toISOString().slice(0,10).replace(/-/g,'')}_${Date.now().toString(36)}`;
-                        outDir = join('D:\\DesktopPetData\\Documents', folderName);
+                        outDir = join(LATEX_DOCUMENTS_ROOT, folderName);
                         texPath = join(outDir, `${docTitle}.tex`);
                     }
                     if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });

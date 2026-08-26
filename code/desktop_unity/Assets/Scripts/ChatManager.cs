@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
@@ -12,7 +12,7 @@ using Live2D.Cubism.Core;
 /// 聊天管理器 — 支持 OpenAI 兼容 Function Calling (工具调用)
 /// 符玄可以用「法阵术式」操控电脑（打开网页、搜索、截图、调音量等）
 /// </summary>
-public class ChatManager : MonoBehaviour
+public partial class ChatManager : MonoBehaviour
 {
     [Header("API 设置")]
     public string apiUrl = "https://api.deepseek.com";
@@ -403,8 +403,8 @@ public class ChatManager : MonoBehaviour
             "lock_screen", "set_volume", "mute", "power",
             "get_system_info", "get_mouse_pos", "list_files", "search_files",
             "run_command", "notify", "get_clipboard", "set_clipboard",
-            "file_open", "file_move", "file_copy", "file_delete",
-            "file_rename", "file_info", "file_create", "take_screenshot"
+            "file_open", "file_move", "file_copy", "file_delete", "file_read",
+            "file_rename", "file_info", "file_create", "dir_create", "take_screenshot"
         },
 
         ["knowledge"] = new[]  // 知识查询类
@@ -413,11 +413,11 @@ public class ChatManager : MonoBehaviour
             "knowledge_search", "compile_latex", "get_weather",
             "generate_ppt", "generate_docx", "generate_xlsx",
             "get_system_info", "get_mouse_pos", "get_clipboard",
-            "file_info", "list_files", "search_files",
+            "file_info", "list_files", "file_read", "search_files", "search_file",
             "query_exams", "query_scores", "query_schedule",
-            "query_user_status",
+            "query_user_status", "query_reminders", "query_preferences", "query_task_templates",
             "inspect_motion_memory", "inspect_personality",
-            "explore_body", "explore_body_vision"
+            "explore_body", "explore_body_vision", "set_preference", "remove_preference"
         },
 
         ["operation"] = new[]  // 桌宠控制类
@@ -425,8 +425,12 @@ public class ChatManager : MonoBehaviour
             "set_expression", "play_action", "stop_action",
             "generate_motion",
             "inspect_motion_memory", "inspect_personality",
-            "explore_body", "explore_body_vision",
-            "take_screenshot", "knowledge_index"
+            "explore_body", "explore_body_vision", "control_body",
+            "run_verification", "vis_verify", "self_review",
+            "take_screenshot", "knowledge_index",
+            "set_reminder", "query_reminders", "mark_reminder_done", "delete_reminder",
+            "set_preference", "query_preferences", "remove_preference",
+            "query_task_templates", "save_task_template", "remove_task_template"
         },
     };
 
@@ -483,118 +487,6 @@ public class ChatManager : MonoBehaviour
         apiUrl = url;
         apiKey = key;
         model = modelName;
-    }
-
-    // ==================================================================
-    //  主动发送 / 触发 AI 对话（不含用户输入框）
-    // ==================================================================
-
-    /// <summary>直接发送一条消息（外部调用，如 AutoChat）</summary>
-    public void SendMessage(string text, System.Action onUpdate)
-    {
-        SendMessageInternal(text, onUpdate, QualityTelemetry.CurrentCaseId);
-    }
-
-    public bool CancelCurrentRequest()
-    {
-        if (!_isWaiting) return false;
-        _abortRequested = true;
-        _requestGeneration++;
-        _isWaiting = false;
-        _requestStartTime = 0f;
-        _messageQueue.Clear();
-        if (_activeRequestCoroutine != null)
-        {
-            StopCoroutine(_activeRequestCoroutine);
-            _activeRequestCoroutine = null;
-        }
-        _lastError = "本次回复已停止";
-        SetRequestStatus("已停止", RequestStage.Cancelled);
-        OnRequestError?.Invoke("⏹ 已停止本次回复");
-        _onUpdate?.Invoke();
-        return true;
-    }
-
-    private void SetRequestStatus(string text, RequestStage stage)
-    {
-        if (string.IsNullOrEmpty(text)) text = "就绪";
-        bool changed = _requestStage != stage || !string.Equals(_requestStatusText, text, StringComparison.Ordinal);
-        _requestStage = stage;
-        _requestStatusText = text;
-        if (changed) OnRequestStatusChanged?.Invoke(text);
-    }
-
-    private void SendMessageInternal(string text, System.Action onUpdate, string caseId)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return;
-
-        // 开发者指令必须在排队、写历史和启动 LLM 之前处理。
-        // 这样在模型忙碌时切换模式也不会被排到普通对话队列，更不会消耗 token。
-        string developerReply;
-        if (DeveloperCommandSet.TryHandle(text, out developerReply))
-        {
-            OnDeveloperCommandReply?.Invoke(developerReply);
-            onUpdate?.Invoke();
-            Debug.Log("[DeveloperCommand] 本地指令已处理: " + developerReply);
-            return;
-        }
-
-        if (_isWaiting)
-        {
-            // 排队，等当前回复完自动发（上限 MAX_QUEUED_MESSAGES，超出丢弃最旧）
-            if (_messageQueue.Count >= MAX_QUEUED_MESSAGES)
-            {
-                _messageQueue.Dequeue();
-                Debug.LogWarning($"[ChatManager] 消息队列已满（>{MAX_QUEUED_MESSAGES}），丢弃最旧消息");
-            }
-            _messageQueue.Enqueue((text.Trim(), onUpdate, caseId ?? ""));
-            return;
-        }
-
-        _activeRequestCaseId = caseId ?? "";
-
-        _history.Add(new Entry { role = "user", content = text.Trim() });
-        TrimHistory(); // 裁剪旧历史，防止 token 无限增长
-        _isWaiting = true;
-        _lastReply = "";
-        _lastError = "";
-        _abortRequested = false; // 重置中止标志，允许新的请求
-        _apiRetryCount = 0; // 重置自动重试计数
-        _toolRound = 0; // 重置工具轮次
-        _requestStartTime = Time.time; // 启动看门狗计时
-        _onUpdate = onUpdate;
-        SetRequestStatus("思考中…", RequestStage.Thinking);
-
-        // ★ T4 修复：重置意图状态，首轮请求必须等待本次分类结果（杜绝残留）
-        _lastIntent = "";
-        _intentReady = false;
-
-        // 触发"AI 开始处理"事件（悬浮球显示"思考中…"）
-        OnRequestStarted?.Invoke();
-
-        // ★ 代际递增：新请求接管；若旧协程因看门狗中止仍残留，恢复时会检测代际不符自动退场
-        _requestGeneration++;
-        _activeRequestCoroutine = StartCoroutine(SendRequestCoroutine(_requestGeneration, _activeRequestCaseId));
-
-        // 🧠 功能1：意图/情绪分类（异步，SendRequestCoroutine 首轮会等待其结果）
-        if (!ChatConfig.UseOllamaMode && !ChatConfig.UseCloudBaseline
-            && LocalLLMAgentService.Instance != null && LocalLLMAgentService.Instance.CanProcess)
-        {
-            LocalLLMAgentService.Instance.ClassifyIntent(text.Trim(), intent =>
-            {
-                if (intent.success)
-                {
-                    _lastIntent = intent.intent;  // ★ 存下来供 BuildRequestBody 过滤 tools
-                    Debug.Log($"[ChatManager] 🏷️ 本地灵识判断: intent={intent.intent}, emotion={intent.emotion}");
-                }
-                _intentReady = true; // ★ 无论成败都标记就绪（失败 → 首轮走全量探测）
-            });
-        }
-        else
-        {
-            // 本地模型不可用 → 立即就绪，首轮走全量探测
-            _intentReady = true;
-        }
     }
 
     // ==================================================================
@@ -829,12 +721,24 @@ public class ChatManager : MonoBehaviour
                     }
                     else
                     {
-                        string localToolResult = null;
-                        yield return StartCoroutine(ExecuteLocalPlannedToolCoroutine(plan,
-                            result => localToolResult = result));
-                        localToolResult = localToolResult ?? "❌ 本地术式没有返回结果";
-                        localToolContext = "术式：「" + plan.ToolName + "」\n"
-                            + ToolResultBudget.Compact(plan.ToolName, localToolResult);
+                        string hardenedArgs;
+                        string hardeningError;
+                        if (!LocalToolRouter.TryHardenPlanArguments(plan.ToolName, userMessage,
+                            plan.ArgumentsJson, out hardenedArgs, out hardeningError))
+                        {
+                            localToolContext = "❌ 本地术式参数保护已拦截：" + hardeningError;
+                            Debug.LogWarning("[ChatManager] 🛡️ 本地术式参数保护: " + hardeningError);
+                        }
+                        else
+                        {
+                            plan.ArgumentsJson = hardenedArgs;
+                            string localToolResult = null;
+                            yield return StartCoroutine(ExecuteLocalPlannedToolCoroutine(plan,
+                                result => localToolResult = result));
+                            localToolResult = localToolResult ?? "❌ 本地术式没有返回结果";
+                            localToolContext = "术式：「" + plan.ToolName + "」\n"
+                                + ToolResultBudget.Compact(plan.ToolName, localToolResult);
+                        }
                     }
                 }
                 else if (planDone && !plan.Success)

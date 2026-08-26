@@ -1,4 +1,4 @@
-using Live2D.Cubism.Core;
+﻿using Live2D.Cubism.Core;
 using Live2D.Cubism.Framework;
 using Live2D.Cubism.Framework.Physics;
 using Live2D.Cubism.Framework.Raycasting;
@@ -28,7 +28,7 @@ using UnityEngine;
 /// </summary>
 [RequireComponent(typeof(DesktopPet))]
 [DefaultExecutionOrder(801)]   // CubismPhysicsController=800，我们跑在物理之后
-public class Live2DRenderer : MonoBehaviour, IPetRenderer
+public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 {
     // ===================================================================
     // ===== 🎛️ 调参区 — 改这里 =====
@@ -487,6 +487,7 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     // 屏幕边缘碰撞反弹
     private float _wallHitTime = 0f;
+    private int _wallHitDirection = 1;
 
     // 鼠标眼睛跟随目标（null=使用默认 Perlin 噪声）
     private float? _eyeTargetX = null;
@@ -827,7 +828,10 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         else
         {
             _walkBounceOffset = 0f;
-            _walkPhase = 0f;
+            // 停止过渡期间仍要让 LateUpdate 使用上一帧的走路相位做淡出。
+            // 立即归零会让 Param94/31-37 在同一帧跳回相位起点，表现为手抽动。
+            if (!_wasWalkingLastFrame && _walkBlendRemaining <= 0f)
+                _walkPhase = 0f;
         }
 
         UpdateModelPosition();
@@ -837,6 +841,8 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         //   走路的转体/前倾/低头，确保物理拿到正确的体态输入。
         bool isWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
             && !_pet.isPaused && !_actionLocked && !_aiControlLocked);
+        if (!isWalking && !_aiControlLocked && _wasWalkingLastFrame && _walkBlendRemaining <= 0f)
+            _walkBlendRemaining = IDLE_BLEND_DURATION;
         if (isWalking)
         {
             float bodyWeight = 1f;
@@ -857,24 +863,22 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
         else if (!_aiControlLocked && (_wasWalkingLastFrame || _walkBlendRemaining > 0f))
         {
-            // 过渡帧：_walkBlendRemaining 要到 LateUpdate 才设，但物理在 LateUpdate(0) 就要读体态了
-            // 用 _wasWalkingLastFrame 兜住「刚停的第一帧」不设体态的空窗期
+            // 过渡帧保留走路相位，避免停止瞬间手臂摆动跳回相位起点。
             float blendWeight = Mathf.Clamp01(_walkBlendRemaining / IDLE_BLEND_DURATION);
             float eased = blendWeight * blendWeight;
             ApplyWalkBodyPose(eased);
         }
-        else if (!_aiControlLocked)
+        // 边缘反弹的身体/头部角度必须在 CubismPhysics(order 800) 之前写入。
+        // 原先只在 LateUpdate 写入，导致物理读取上一帧走路体态，衣服后摆在贴边时
+        // 会看到两套输入来回切换。
+        ApplyWallHitPhysicsPose();
+
+        // 停止后恢复历史上稳定的物理边界：在 CubismPhysics 步进前固定
+        // 身体/呼吸/左臂的物理输入，避免 LateUpdate 的 Perlin 与动作参数
+        // 被下一帧物理当成新的外部驱动，反复激发衣服后摆弹簧。
+        // LateUpdate 仍可更新最终渲染姿态，但不再改变本帧物理输入的基准。
+        if (!isWalking && !_aiControlLocked && _wallHitTime <= 0f)
         {
-            // ★ 空闲时：给物理系统中性体态 + 头角度信号，防止左臂物理残留偏量
-            //    Physics(800) 读取 ParamBodyAngleX/Y/Z（身体）、
-            //    ParamAngleX/Y/Z（头部）、ParamBreath（呼吸）来决定
-            //    衣服/头发/手臂(Param34/36/37)的物理摆动。
-            //    如果不设干净，物理读到走路残留值，左臂就歪到裙子背后。
-            //
-            // ★ 也设 Param34/36/37=0 打断 RestoreParameters 循环：
-            //    CubismParameterStore(order 150) 在 LateUpdate 阶段保存参数值。
-            //    如果不在这里设 0，order 150 会保存上一帧物理输出残留的非零值 →
-            //    ForceUpdateNow→RestoreParameters 恢复非零，导致弹簧动量永不归零。
             SetParameter("ParamBodyAngleX", 0f);
             SetParameter("ParamBodyAngleY", 0f);
             SetParameter("ParamBodyAngleZ", 0f);
@@ -1015,7 +1019,8 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
                 float blendWeight = Mathf.Clamp01(_walkBlendRemaining / IDLE_BLEND_DURATION);
                 // 先播空闲动画（覆盖基础呼吸/Perlin/眼睛）
                 UpdateIdleAnimation();
-                // 再叠加消退中的走路动画参数（手臂/腿逐渐停止）
+                // 再叠加消退中的手臂/腿参数。身体姿态由 Update() 在
+                // CubismPhysics 前统一处理；这里不能再次写身体物理输入。
                 UpdateWalkAnimation(blendWeight);
                 _walkBlendRemaining -= Time.deltaTime;
             }
@@ -1041,14 +1046,6 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
             // 张嘴（渐消）
             float mouthOpen = Mathf.Lerp(WALL_HIT_MOUTH_OPEN, 0f, progress * progress);
             SetParameter("ParamMouthOpenY", mouthOpen);
-
-            // 身体后仰（迅速弹回）
-            float bodyLean = Mathf.Lerp(WALL_HIT_BODY_LEAN, 0f, progress * 2f);
-            SetParameter("ParamBodyAngleX", bodyLean);
-
-            // 头部微缩（受惊）
-            float headBack = Mathf.Lerp(3f, 0f, progress);
-            SetParameter("ParamAngleY", headBack);
 
             _wallHitTime -= Time.deltaTime;
         }
@@ -1083,19 +1080,20 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         // ★ 强制网格更新：Cubism 的网格在 Update() 阶段已用 C++ 核心算完，
         //    Physics(800) 覆盖了衣服参数，我们(801)覆盖了手臂参数，
         //    但网格仍是旧参数结果，需强制刷新用最新参数重新算一遍。
-        // ★ 每帧都 ForceUpdateNow：因为眼睛保护参数（Param132等）每帧都设了值，
-        //   如果不强制更新，C++ 核心保留旧值（如法阵动作残留的非零 Param132），
-        //   导致眼睛持续发白。无条件执行确保参数始终被渲染引擎采纳。
+        // ★ 基础状态恢复隔帧 ForceUpdateNow：ForceUpdateNow 会再次跑一遍
+        //   Cubism 更新/物理链路。停止状态每帧额外跑一次会让衣服弹簧的
+        //   有效步进频率翻倍，正是本次“走路正常、停下抖动”的回归来源之一。
+        //   眼睛保护值仍由普通参数写入；特殊动作保留各自的专用刷新路径。
         bool hasActiveAction = (_currentIdleAction > 0 && _idleActionTime > 0f);
         bool debugOffsetActive = (debugOffsetEnabled && !_actionLocked && !hasActiveAction && debugOffsets != null && debugOffsets.Count > 0);
         // ★ 重要：空闲动作（如星辉/伸懒腰）也要 ForceUpdate，否则物理系统覆盖了我们的值
         // ★ 2026-08-20 卡顿修复：法阵(#7)/星辰(#4)分支内部已有自己的 ForceUpdateNow
         //   （法阵 L1169/L1199 两次、星辰分支内一次），此处跳过可省 1 次全量模型更新，
         //   缓解"法阵期每帧 4+ 次 ForceUpdateNow → 帧率暴跌 → deltaTime 膨胀 → 动作拉长"恶性循环。
-        // ★ 2026-08-20 二次修复：基础渲染每帧 1 次 ForceUpdateNow + 57 次 SetParameter 也占满 CPU
-        //   （实测空闲 5s 增 7s ≈ 1.4 核）→ 隔帧执行 ForceUpdateNow（帧计数 & 1），
-        //   模型网格刷新率减半，动画参数仍每帧设置，视觉几乎无感知，CPU 显著下降。
-        if (_currentIdleAction != 7 && _currentIdleAction != 4 && (Time.frameCount & 1) == 0)
+        // ★ 法阵/星辰分支内部已有自己的刷新路径；其他状态按历史稳定节奏
+        //   隔帧刷新，避免物理链路被 LateUpdate 的额外刷新重复推进。
+        if (_currentIdleAction != 7 && _currentIdleAction != 4
+            && (Time.frameCount & 1) == 0)
             _cubismModel.ForceUpdateNow();
 
         // ============================================================
@@ -1638,7 +1636,9 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         // Idle actions may only start while locomotion is stopped. Without
         // this guard the same frame can write walk parameters and action
         // parameters, producing a visible blended pose.
-        if (_currentIdleAction == 0 && !isWalking && !isPaused && !_actionLocked && !_aiControlLocked)
+        bool locomotionSettling = _walkBlendRemaining > 0f || _wasWalkingLastFrame;
+        if (_currentIdleAction == 0 && !isWalking && !locomotionSettling
+            && !isPaused && !_actionLocked && !_aiControlLocked)
         {
             int picked = PickNextIdleAction();
             if (picked > 0)
@@ -2346,17 +2346,23 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         SetParameter("Param37", 0f);
     }
 
-    /// <summary>设置手部透视/图层（不最高，让手自然融入身体）</summary>
+    /// <summary>
+    /// 设置手部透视/图层。
+    ///
+    /// 这些权重必须与 Live2DMotionTemplates 的剑指动作保持一致；
+    /// 手臂姿态已经抬起时，如果图层仍使用较低权重，手掌和袖口会
+    /// 留在衣服后面，出现穿模或手臂断层。
+    /// </summary>
     private void SetHandLayer(float layer)
     {
-        SetParameter("Param95", layer * 0.6f);
-        SetParameter("Param117", layer * 0.5f);
-        SetParameter("Param98", layer * 0.5f);
-        SetParameter("Param100", layer * 0.5f);
-        SetParameter("Param116", layer * 0.4f);
-        SetParameter("Param120", layer * 0.6f);
-        SetParameter("Param108", layer * 0.6f);
-        SetParameter("Param119", layer * 0.6f);
+        SetParameter("Param95", layer * 1f);
+        SetParameter("Param117", layer * 0.8f);
+        SetParameter("Param98", layer * 0.8f);
+        SetParameter("Param100", layer * 0.8f);
+        SetParameter("Param116", layer * 0.6f);
+        SetParameter("Param120", layer * 1f);
+        SetParameter("Param108", layer * 1f);
+        SetParameter("Param119", layer * 1f);
     }
 
     // ================================================================
@@ -2931,6 +2937,24 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         // 呼吸加深
         SetParameter("ParamBreath", (WALK_BREATH + Mathf.Sin(phase) * 0.5f) * weight);
+    }
+
+    /// <summary>
+    /// 在物理步进前叠加屏幕边缘反弹的身体输入。
+    /// 衣服物理读取 ParamBodyAngleX/ParamAngleY；这些值不能只在 LateUpdate
+    /// 写入，否则物理与最终渲染会使用不同姿态，贴边时会出现衣摆抽动。
+    /// </summary>
+    private void ApplyWallHitPhysicsPose()
+    {
+        if (_wallHitTime <= 0f) return;
+
+        float progress = Mathf.Clamp01(_wallHitTime / WALL_HIT_DURATION);
+        float directionSign = _wallHitDirection > 0 ? -1f : 1f;
+        float bodyLean = directionSign * Mathf.Lerp(WALL_HIT_BODY_LEAN, 0f, progress * 2f);
+        float headBack = Mathf.Lerp(3f, 0f, progress);
+
+        SetParameter("ParamBodyAngleX", bodyLean);
+        SetParameter("ParamAngleY", headBack);
     }
 
     private void SetParameter(string name, float value)
@@ -3550,16 +3574,15 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         // 开启反弹动画计时器
         _wallHitTime = WALL_HIT_DURATION;
+        _wallHitDirection = direction > 0 ? 1 : -1;
 
         // 瞪眼（瞬时覆盖，后续由 LateUpdate 衰减）
         SetParameter("ParamEyeLOpen", WALL_HIT_EYE_OPEN);
         SetParameter("ParamEyeROpen", WALL_HIT_EYE_OPEN);
         SetParameter("ParamMouthOpenY", WALL_HIT_MOUTH_OPEN);
 
-        // 身体往反方向倾斜（受惊后仰）
-        float bodyLean = (direction > 0) ? -WALL_HIT_BODY_LEAN : WALL_HIT_BODY_LEAN;
-        SetParameter("ParamBodyAngleX", bodyLean);
-
+        // 身体/头部角度由 Update() 的 ApplyWallHitPhysicsPose 统一写入，
+        // 确保它发生在 CubismPhysics 之前，不再在回调阶段抢写物理输入。
         Debug.Log($"[Live2DRenderer] 墙碰! direction={direction}");
     }
 
@@ -3756,146 +3779,6 @@ public class Live2DRenderer : MonoBehaviour, IPetRenderer
         {
             ListAllChildren(child.gameObject, depth + 1);
         }
-    }
-
-    // ============================================================
-    //  模型置顶 — 叠加渲染
-    // ============================================================
-
-    /// <summary>从主相机剔除叠加层</summary>
-    private void ExcludeOverlayLayerFromMainCamera()
-    {
-        Camera cam = Camera.main;
-        if (cam == null) return;
-        cam.cullingMask &= ~(1 << OVERLAY_LAYER);
-        Debug.Log($"[Live2DRenderer] 主相机已剔除 Layer {OVERLAY_LAYER}");
-    }
-
-    /// <summary>获取当前 RT 分辨率缩放（从 PerformanceMonitor 读取）</summary>
-    private float GetRTScale()
-    {
-        var pet = GetComponent<DesktopPet>();
-        if (pet != null)
-        {
-            var pm = pet.GetPerformanceMonitor();
-            if (pm != null) return pm.rtResolutionScale;
-        }
-        return 1f; // 默认全分辨率
-    }
-
-    /// <summary>设置叠加相机+RT</summary>
-    private void SetupOverlayRendering()
-    {
-        if (_modelRoot == null) return;
-
-        Camera mainCam = Camera.main;
-        if (mainCam == null) return;
-
-        // 根据性能档位创建 RT（High=100%, Normal=75%, Low=50%）
-        float scale = GetRTScale();
-        _overlayScreenW = Mathf.Max(1, (int)(Screen.width * scale));
-        _overlayScreenH = Mathf.Max(1, (int)(Screen.height * scale));
-        _overlayRT = new RenderTexture(_overlayScreenW, _overlayScreenH, 24, RenderTextureFormat.ARGB32);
-        _overlayRT.name = "ModelOverlayRT";
-        _overlayRT.useMipMap = false;
-        _overlayRT.Create();
-
-        // 创建叠加相机
-        GameObject camGO = new GameObject("ModelOverlayCamera");
-        camGO.transform.parent = transform;
-        camGO.transform.position = mainCam.transform.position;
-        camGO.transform.rotation = mainCam.transform.rotation;
-        _overlayCamera = camGO.AddComponent<Camera>();
-        _overlayCamera.CopyFrom(mainCam);
-        _overlayCamera.targetTexture = _overlayRT;
-        _overlayCamera.cullingMask = 1 << OVERLAY_LAYER;
-        _overlayCamera.clearFlags = CameraClearFlags.SolidColor;
-        _overlayCamera.backgroundColor = new Color(0f, 0f, 0f, 0f);
-        _overlayCamera.depth = mainCam.depth + 1;
-        _overlayCamera.allowHDR = false;
-        _overlayCamera.allowMSAA = false;
-
-        _overlayReady = true;
-        Debug.Log($"[Live2DRenderer] 叠加相机就绪 RT=({_overlayScreenW}x{_overlayScreenH})");
-    }
-
-    /// <summary>每帧同步叠加相机位置</summary>
-    private void SyncOverlayCamera()
-    {
-        if (_overlayCamera == null) return;
-        Camera mainCam = Camera.main;
-        if (mainCam == null) return;
-        _overlayCamera.transform.position = mainCam.transform.position;
-        _overlayCamera.transform.rotation = mainCam.transform.rotation;
-        _overlayCamera.orthographicSize = mainCam.orthographicSize;
-        _overlayCamera.fieldOfView = mainCam.fieldOfView;
-    }
-
-    void OnGUI()
-    {
-        if (!_overlayReady || _overlayRT == null || _pet == null) return;
-
-        // 窗口大小或性能档位变了就重建 RT
-        float scale = GetRTScale();
-        int targetW = Mathf.Max(1, (int)(Screen.width * scale));
-        int targetH = Mathf.Max(1, (int)(Screen.height * scale));
-        if (targetW != _overlayScreenW || targetH != _overlayScreenH)
-        {
-            _overlayScreenW = targetW;
-            _overlayScreenH = targetH;
-            if (_overlayRT != null) _overlayRT.Release();
-            _overlayRT = new RenderTexture(_overlayScreenW, _overlayScreenH, 24, RenderTextureFormat.ARGB32);
-            _overlayRT.name = "ModelOverlayRT";
-            _overlayRT.useMipMap = false;
-            _overlayRT.Create();
-            _overlayCamera.targetTexture = _overlayRT;
-            Debug.Log($"[Live2DRenderer] RT 分辨率变更: {_overlayScreenW}x{_overlayScreenH} (scale={scale})");
-        }
-
-        SyncOverlayCamera();
-
-        // GUI.depth = 1 → 在底层 GUI 元素之上绘制
-        GUI.depth = 1;
-
-        // ★ 全屏绘制 RT — 叠加相机只渲染了 Layer 31（模型），背景透明 (0,0,0,0)
-        //   用 alphaBlend=true 让透明区域露出下方的输入栏等 GUI 元素
-        //   不再裁剪到 pet 范围（模型实际尺寸远大于 170px，裁剪导致头/脚消失）
-        GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), _overlayRT, ScaleMode.StretchToFill, true);
-    }
-
-    private void OnDestroy()
-    {
-        if (_overlayRT != null)
-        {
-            _overlayRT.Release();
-            Destroy(_overlayRT);
-            _overlayRT = null;
-        }
-        if (_overlayCamera != null)
-        {
-            Destroy(_overlayCamera.gameObject);
-            _overlayCamera = null;
-        }
-        _overlayReady = false;
-    }
-
-    private void SetLayerRecursively(GameObject go, int layer)
-    {
-        if (go == null) return;
-        go.layer = layer;
-        foreach (Transform child in go.transform)
-        {
-            SetLayerRecursively(child.gameObject, layer);
-        }
-    }
-
-    /// <summary>
-    /// 性能档位变化时回调 — 由 DesktopPet.PerformanceMonitor 触发
-    /// </summary>
-    public void OnPerformanceTierChanged(PerformanceTier tier)
-    {
-        // 分辨率缩放由 OnGUI 中的重建逻辑自动处理（读取 PerformanceMonitor.rtResolutionScale）
-        Debug.Log($"[Live2DRenderer] 性能档位：{tier}");
     }
 
     /// <summary>

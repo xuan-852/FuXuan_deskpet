@@ -154,6 +154,9 @@ public static class ExternalChatWindow
     private static EditWndProcDelegate _editWndProcDelegate; // 防止被 GC（EDIT 子类化）
     private static IntPtr _origEditProc;             // 原 EDIT 窗口过程
     private static Thread _windowThread;
+    // Shutdown 可能发生在窗口线程把 IsCreated 设为 true 之前；该标志必须先于
+    // 建窗流程生效，避免退出时窗口线程“晚到一步”继续创建原生窗口。
+    private static volatile bool _shutdownRequested;
 
     private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     private delegate IntPtr EditWndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
@@ -408,6 +411,12 @@ public static class ExternalChatWindow
     public static void EnsureCreated()
     {
         if (IsCreated) return;
+        if (_windowThread != null && _windowThread.IsAlive)
+        {
+            Debug.LogWarning("[ExternalChat] 窗口线程仍在退出，暂不创建新窗口");
+            return;
+        }
+        _shutdownRequested = false;
         _windowThread = new Thread(WindowThreadMain) { IsBackground = true, Name = "FuXuanChatWindow" };
         _windowThread.SetApartmentState(ApartmentState.STA);
         _windowThread.Start();
@@ -478,7 +487,7 @@ public static class ExternalChatWindow
     ///   D3D 设备销毁竞态 → destroyTJDevice 崩溃）</summary>
     public static void Shutdown()
     {
-        if (!IsCreated) return;
+        _shutdownRequested = true;
         // DestroyWindow 必须由创建该窗口的线程调用。此前 Unity 主线程直接调用
         // DestroyWindow，窗口线程仍可能在 WM_PAINT 访问像素缓冲，存在退出竞态，
         // 也是 destroyTJDevice 崩溃风险的一部分。改为投递自定义消息，让窗口线程
@@ -488,6 +497,7 @@ public static class ExternalChatWindow
         {
             PostMessageW(hwnd, WM_APP_SHUTDOWN, IntPtr.Zero, IntPtr.Zero);
         }
+        if (!IsCreated && (_windowThread == null || !_windowThread.IsAlive)) return;
         // 等窗口线程退出（最多 1s）；不要在超时后强行伪造 IsCreated=false，
         // 否则仍在运行的窗口线程会继续使用已释放的 Unity 资源。
         if (_windowThread != null && _windowThread != Thread.CurrentThread)
@@ -603,6 +613,12 @@ public static class ExternalChatWindow
                 Debug.LogError("[ExternalChat] CreateWindowExW 失败");
                 return;
             }
+            if (_shutdownRequested)
+            {
+                DestroyWindow(_hwnd);
+                _hwnd = IntPtr.Zero;
+                return;
+            }
             // 无边框窗口：客户区 = 窗口区（WS_POPUP 无系统边框），直接 SetWindowPos 定尺寸
             SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, _width, _height, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
@@ -641,11 +657,17 @@ public static class ExternalChatWindow
                 DispatchMessageW(ref msg);
             }
             IsCreated = false;
+            _hwnd = IntPtr.Zero;
+            _edit = IntPtr.Zero;
+            _sendBtn = IntPtr.Zero;
         }
         catch (Exception e)
         {
             Debug.LogError($"[ExternalChat] 窗口线程异常: {e}");
             IsCreated = false;
+            _hwnd = IntPtr.Zero;
+            _edit = IntPtr.Zero;
+            _sendBtn = IntPtr.Zero;
         }
     }
 

@@ -1,7 +1,7 @@
 # AI 对话系统 — ChatManager 与 Token 优化
 
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
-> **基本架构**: 用户输入 → `ChatManager`（本地优先 / 10 轮云端回环 / 意图过滤 / 看门狗）；云端路径使用 `ApiClient`（DeepSeek SSE + Function Calling）→ `ToolEngine/` 插件调度；本地路径使用 `LocalToolRouter`（轻量模型 JSON 规划 + 白名单 + 同一 ToolEngine 执行）→ `LocalLLMAgentService` / `qwen3:8b` 生成最终回复。动作/分类/摘要/工具规划使用轻量 `qwen2.5:3b`，聊天单独使用质量优先的 `qwen3:8b`（均可由环境变量覆盖）；云端与本地聊天都经过同一 `PetMemory` 相关性检索，本地只使用更紧凑的忆境预算；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`、`LocalToolRouter.cs`、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
+> **基本架构**: 用户输入 → `ChatManager`（本地优先 / 10 轮云端回环 / 意图过滤 / 看门狗）；云端路径使用 `ApiClient`（DeepSeek SSE + Function Calling）→ `ToolEngine/` 插件调度；本地路径使用 `LocalToolRouter`（轻量模型 JSON 规划 + 白名单 + 同一 ToolEngine 执行）→ `LocalLLMAgentService` / `qwen3:8b` 生成最终回复。动作/分类/摘要/工具规划使用轻量 `qwen2.5:3b`，聊天单独使用质量优先的 `qwen3:8b`（均可由环境变量覆盖）；云端与本地聊天都经过同一 `PetMemory` 相关性检索，本地只使用更紧凑的忆境预算；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`、`ChatManager.RequestLifecycle.cs`、`LocalToolRouter.cs`、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
 > **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀；2026-08-12 P5 注入链新增任务轨迹（TaskTrajectoryManager，太卜手札）与任务模板（TaskTemplateManager，太卜阵法图），同样置于【当前时刻】之前；2026-08-18 成本闸门接入全部主要云端直连点，新增 `PromptContextBudget` / `ToolResultBudget` / `QualityTelemetry`，EditMode 99/99 通过。
 > **编写注意事项**: ①测试必须开测试模式（`D:\DesktopPetData\.test_mode`）否则污染 pet_memory/pet_personality；②`{current_time}` 等动态内容**必须放 system prompt 尾部**（放开头会摧毁 DeepSeek 缓存命中，全价 ¥1/M）；③deepseek-v4-flash 是推理模型，必须显式 `"thinking":{"type":"disabled"}` + `max_tokens:1200` 否则 `content=""`；④历史裁剪须按字符预算且向前对齐最近 user 消息，防止切断 tool_calls↔tool 配对导致 API 400。
 
@@ -27,7 +27,10 @@
   → ChatManager.SendMessage (消息入队 _messageQueue，等待时不丢)
     → SendRequestCoroutine
       ├─ 本地模式 → DoOllamaOnlyReply
-      │   → qwen2.5:3b 意图分类 / LocalToolRouter JSON 规划
+      │   → qwen2.5:3b 意图分类
+      │   → 高置信度规则先行（剪贴板/天气/系统/PDF 等）
+      │   → 普通歧义请求由 qwen2.5:3b 规划；PDF/Office/OpenClaw 多步骤请求由 qwen3:8b 规划（不可用时降级 3B）
+      │   → 原始用户需求加固后再形成工具参数
       │   → 白名单筛选 + ToolConfirmManager + ToolEngine 执行
       │   → 工具结果压缩后交给 qwen3:8b 生成角色回复
       └─ 云端模式 → 意图过滤 (LocalLLMAgentService.ClassifyIntent, 异步非阻塞)
@@ -37,6 +40,19 @@
       → 逐句队列显示 (2.5s/句, SentenceVersionId 支持重播)
   → CheckReflection → DoReflection (DeepSeek 提炼) → CommitReflection (N39 接线)
 ```
+
+### 2.1.1 本地模型与外部工具的信息保真保护（2026-08-25）
+
+- 本地模型只负责意图和工具选择，不再被视为可靠的全文转述器。剪贴板、天气、系统查询、PDF/Office 等高置信度表达先由 `LocalToolRouter.TryBuildKeywordPlan` 生成计划，避免“复制到剪贴板”被误选为 `file_copy`。
+- 对未被确定性规则直接处理的请求，工具规划按任务分层：普通歧义请求继续用 `LocalLLMClient.ModelName`（默认 `qwen2.5:3b`）；PDF、Office、OpenClaw、多步骤/网页操作等信息密集请求使用 `LocalLLMClient.ChatModelName`（默认 `qwen3:8b`），8B 不可用时自动降级到 3B。最终角色回复仍使用聊天模型。
+- 对 `compile_latex`、Office 生成和无模板 `openclaw_task`，`TryHardenPlanArguments` 将用户原始消息写入 `description/task`，保留模型提取的标题等可选字段；需求超过 60000 字符或 PDF 编译器不在白名单时直接拦截。
+- 计划仍必须经过意图白名单、工具注册、危险审批和统一 `ToolEngine`；规则层只生成计划，不绕过执行安全层。
+
+### 2.1.2 请求生命周期分层（2026-08-26）
+
+- `ChatManager.RequestLifecycle.cs` 负责对外发送入口、消息排队、请求取消、请求状态通知和意图分类启动。
+- `ChatManager.cs` 保留请求协程、工具回环、上下文构建、历史裁剪和回复收尾；两个文件通过 `partial class ChatManager` 共享既有状态，未改变公开调用签名。
+- 继续拆分时优先保持“状态字段集中、纯流程逐块迁移”的节奏；修改请求状态或代际逻辑后必须同时验证取消、超时、排队和本地/云端两条路径。
 
 ### 2.2 可靠性参数（ChatManager 常量，代码真相）
 
@@ -84,12 +100,12 @@
 | 能力 | 方法 | 作用 |
 |------|------|------|
 | 意图/情绪分类 | `ClassifyIntent` | 异步非阻塞，写 `_lastIntent` 供工具过滤 |
-| 本地工具规划 | `PlanLocalTool` | qwen2.5:3b 输出单个 JSON 计划，不直接执行工具 |
+| 本地工具规划 | `PlanLocalTool` | 普通请求用 qwen2.5:3b；PDF/Office/OpenClaw 等复杂请求用 qwen3:8b，失败降级 3B；均只输出单个 JSON 计划，不直接执行工具 |
 | 本地角色回复 | `GenerateFallbackReply` | qwen3:8b 结合忆境和实际工具结果生成最终回复 |
 | 对话摘要 | `SummarizeConversation` | T5 旧史压缩【旧事纪要】 |
 | 记忆提取 | `ExtractMemory` | 仅对明确长期信号做结构化筛选；importance/confidence/type/原话交叉闸门 |
 
-模型路由：`LocalLLMClient.ModelName` 默认用于动作、意图分类、摘要和记忆提取（`qwen2.5:3b`）；`LocalLLMClient.ChatModelName` 只用于聊天回退（`qwen3:8b`）。这样把质量模型的耗时限制在用户真正等待的聊天请求中，不拖慢动作循环。`FU_XUAN_LOCAL_CHAT_MODEL` 可单独覆盖聊天模型，`FU_XUAN_LOCAL_MODEL` 可同时覆盖两类模型。
+模型路由：`LocalLLMClient.ModelName` 默认用于动作、意图分类、摘要和记忆提取（`qwen2.5:3b`），也用于普通歧义工具规划；`LocalLLMClient.ChatModelName` 默认用于最终聊天回复和 PDF/Office/OpenClaw 等信息密集工具规划（`qwen3:8b`）。8B 规划失败时回退到 3B，避免模型缺失导致工具链中断。`FU_XUAN_LOCAL_CHAT_MODEL` 可单独覆盖质量模型，`FU_XUAN_LOCAL_MODEL` 可覆盖轻量模型。
 
 > ★ `LocalLLMClient.cs` 是**手写 JSON 构造**（非 Newtonsoft/JsonUtility），重试 2 次。
 
@@ -225,7 +241,8 @@
 | N40 T7 | 2026-08-07 | Speculative Multi-Action（一次预测 2-3 步 tool_call，实测一次响应双工具） | `77645d4` |
 | N40 T6 | 2026-08-07 | SystemPrompt.txt 5012→2972 字符（-41%，工具表与硬性铁则原样保留） | `77645d4` |
 | N40 | 2026-08-08 | **T4 竞态修复**（`_intentReady` + 3s 兜底）；**新增 IsTestMode** 防测试污染（实测 3 条测试消息后 pet_memory 28 条无新增、人格 totalInteractions 56 无变化） | — |
-| N44 | 2026-08-16 | **测试模式禁云端 + 长效消耗日志**：`ApiClient.BlockCloudInTestMode`（默认跟随 IsTestMode）短路所有云端调用，绕过 ApiClient 的直连方（GLM 视觉×6、DeepSeek 兜底×2）补 `ShouldBlockCloudPublic` 拦截，本地 Ollama 不受影响；新增 `UsageLogger` JSONL 持久化（`DataRoot/usage_log.jsonl`，2MB/2 万行封顶，按 source 记录 chat/motion/idle/weather/reflect/glm/local），面板「来源明细」按源统计——定位 ¥5/天消耗源头（实测 45s 测试运行 usage_log 零云端行，仅 local 免费调用） | `08494dd` `51cbecb` |
+| N44 | 2026-08-16 | **测试模式禁云端 + 长效消耗日志**：`ApiClient.BlockCloudInTestMode`（默认跟随 IsTestMode）短路所有云端调用，绕过 ApiClient 的直连方（GLM 视觉×6、DeepSeek 兜底×2）补 `ShouldBlockCloudPublic` 拦截，本地 Ollama 不受影响；新增 `UsageLogger` JSONL 持久化（`DataRoot/usage_log.jsonl`，2MB/2 万行封顶，按 source 记录 chat/motion/idle/weather/reflect/glm/local），面板「来源明细」按源统计——用于定位费用来源（实测 45s 测试运行 usage_log 零云端行，仅 local 免费调用） | `08494dd` `51cbecb` |
+| 2026-08-26 | **请求生命周期 partial 拆分**：将发送、取消、排队入口、状态通知和意图分类启动迁移至 `ChatManager.RequestLifecycle.cs`；请求循环与上下文构建仍由 `ChatManager.cs` 负责，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 
 ### 实测数据（2026-08-08，Player.log）
 

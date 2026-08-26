@@ -98,6 +98,8 @@ const COMMANDS = [
     ['@@emote:happy', '已注入表情: happy'],
     ['@@view:close', '[TestInbox] @@view 命令: close'],
     ['@@view:open', '[TestInbox] @@view 命令: open'],
+    // 退出生命周期回归：优先走应用自己的完整退出链，清理阶段的 taskkill 只作兜底。
+    ['@@test:quit', '[TestInbox] @@test:quit → 执行完整退出（等同托盘退出）'],
 ];
 
 const FIXED_SCREEN_SIZES = ['窗口=486x1269', '窗口=1290x1269', '窗口=860x900'];
@@ -201,6 +203,17 @@ async function main() {
     const otherExc = (content.match(/Exception:/g) || []).length - nre;
     if (nre > 0) fails.push(`Player.log 发现 ${nre} 次 NullReferenceException（面板渲染中断，见堆栈）`);
     if (otherExc > 0) log(`[warn] 其他异常 ${otherExc} 次（不判失败，请人工确认是否良性）`);
+
+    // @@test:quit 必须真的让应用自行退出；后面的 taskkill 只是防止测试实例残留，
+    // 不能用强杀结果掩盖退出链没有生效。
+    if (COMMANDS.some(([cmd]) => cmd === '@@test:quit')) {
+        let stillRunning = false;
+        try {
+            process.kill(proc.pid, 0);
+            stillRunning = true;
+        } catch { /* 进程已退出 */ }
+        if (stillRunning) fails.push('@@test:quit 后桌宠进程仍在运行，未完成应用自身退出');
+    }
 
     // 6. 清理：删测试模式 + 结束实例 + 删除隔离目录 + 断言生产记忆未变
     fs.unlinkSync(testMode);

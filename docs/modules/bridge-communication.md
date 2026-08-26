@@ -76,6 +76,8 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | **取消任务防崩溃** `cancelTask()` | ⚠️ 2026-08-13 修复：原实现直接 `w.reject(new Error('Task cancelled'))`，若 `sendChatAndWait` 尚未 `await responsePromise`（还停在 `chatClient.client.request` 内），reject 先于 catch 注册 → Node v15+ unhandled rejection 默认崩溃 → PM2 重启 14+ 次（search_web 失败叠加根因）。修复：`setImmediate(() => w.reject(...))` 延迟到当前微任务/宏任务栈跑完后再 reject，确保 catch 已挂上 |
 | **断线自动重连** | ⚠️ 2026-08-13 新增：原 `onDisconnected` 只置 `connected=false`，无自动重连（仅靠 PM2 兜底）。修复：`reconnecting` 标志防重连风暴 + 断线后 1s 重连，失败 5s 后再试；waiter reject 同样 `setImmediate` 包装防 unhandled rejection |
 
+> **LaTeX 安全边界（2026-08-25）**：`/compile_latex` 请求体上限 2 MiB；编译器仅允许 `xelatex`/`pdflatex`/`lualatex`；自定义 `output_path` 必须位于 `D:\DesktopPetData\Documents`，阻止模型参数越权写文件；AI 生成源码的外部引用检查不允许通过 `..` 越出编译目录。
+
 ### 2.5 C# 侧方法（OpenClawBridge.cs，静态类）
 
 | 方法 | 端点 | 超时 | 返回 |
@@ -90,6 +92,8 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | `ApproveTaskAsync(taskId, decision)` | `/task/{id}/approve` | — | 校验 decision ∈ 三值后 POST；设置 `LastApprovalOk`/`LastError` |
 | 任务系列（IsBusy/LastTaskId/LastTaskWasFatal/HasActiveTask/ActiveTaskId/ActiveStepCount/ActiveStepLabel/LastTaskStepCount/PendingApproval/LastApprovalOk） | `/task` | — | 轮询状态 + 实时进度 + 审批回执（后台 Task.Run 线程写，主线程 OnGUI 只读的原子字段） |
 
+`OpenClawBridge` 的公共错误边界由 `GetResponseError()` 和 `ErrorJson()` 统一处理：HTTP 失败优先读取 Node 返回的 `error` 字段；需要返回 JSON 的路径统一使用 Newtonsoft.Json 序列化，避免错误文本中的引号、换行或中文破坏 JSON 契约。该边界覆盖搜索、健康检查、LaTeX、办公、PDF、任务轮询/取消/审批等调用。
+
 ## 三、开发历史迭代
 
 | 日期 | 变更 |
@@ -103,6 +107,8 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | 2026-08-12 | **并行化 + exec 审批打通**：全局 `requestChain` → per-session `requestChains`（同 sessionKey 串行、跨 sessionKey 并行，多任务实测差 88ms；任务独立 sessionKey `agent:main:task-<id>`）→ `pendingApproval` 加 `kind` 标记（exec/plugin）→ 审批决议按 kind 选 API（exec→`exec.approval.resolve` / plugin→`plugin.approval.resolve`）→ 配置 `tools.exec.mode=ask` → E2E 实测：提交 hostname 任务 → pendingApproval(kind=exec) 到达 bridge → approve 回执 success:true → 任务 done 且返回 hostname 输出（此前回执失败 `unknown or expired approval id`，根因：exec 审批误用 plugin.approval.resolve） |
 | 2026-08-15 | **PDF 文本提取端点**：新增 `/extract_pdf`（POST，`{path, max_chars?}`）+ `ExtractPdfTextAsync` + Python 脚本 `scripts/knowledge/pdf_extract.py`（双引擎：PyMuPDF 优先——中文内嵌子集字体 CMap 解码最佳；pypdf 兜底）。供「藏书阁」knowledge_index 索引 PDF。实测：控制理论.pdf 159 页 17.2 万字符提取成功，中文完整。扫描版 PDF（无文本层）返回 `is_scanned:true` |
 | 2026-08-17 | **修复 `/task` 首次连接无响应**：Gateway 未连接时，旧实现只等待 `connect_()` 的失败回调，连接成功后未继续创建任务或发送 `task_id`，导致 C# 提交请求超时；改为 `await connect_()`，成功后继续入队，失败仍返回 503。 |
+| 2026-08-25 | **PDF/本地模型保护**：本地高置信度工具规则前置；文档与 OpenClaw 任务回填用户原始需求；`/compile_latex` 增加请求体、编译器、输出目录和外部引用越界保护。 |
+| 2026-08-26 | **C# 桥接错误契约收敛**：统一透传 Node 结构化错误并用 JSON 序列化生成失败响应；新增本地测试覆盖引号、换行、中文和 `is_scanned` 标志，避免错误响应非法化。 |
 
 ## 四、编写注意事项
 
