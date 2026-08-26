@@ -32,6 +32,7 @@
 | [`installer-plan.md`](installer-plan.md) | 安装包与分发方案（Inno Setup、组件安装、移植障碍清单） | 打包/分发/换机部署前 |
 | [`data-directory-cleanup-manifest-2026-08-21.md`](data-directory-cleanup-manifest-2026-08-21.md) | `D:\DesktopPetData` 数据分类、整理映射与安装/卸载生命周期约定 | 整理用户数据或修改安装器前 |
 | [`task-inventory.md`](task-inventory.md) | 项目任务清单（N40+，65 工具） | 接任务/汇报进度时 |
+| [`optimization.md`](optimization.md) | 当前已验证优化、后续优先级与统一验收标准 | 规划重构、性能、稳定性或成本优化前 |
 
 ### 1.2 模块文档（modules/，每份含四要素）
 
