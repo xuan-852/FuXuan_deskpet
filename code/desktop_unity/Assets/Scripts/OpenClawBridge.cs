@@ -382,6 +382,15 @@ public static class OpenClawBridge
     /// <summary>当前是否有在途任务（提交后未完成）</summary>
     public static bool IsBusy { get; private set; } = false;
 
+    /// <summary>请求当前一站式任务尽快结束；用于退出流程和用户取消，不阻塞调用线程。</summary>
+    public static void RequestTaskCancellation()
+    {
+        if (IsBusy)
+            _taskCancellationRequested = true;
+    }
+
+    private static volatile bool _taskCancellationRequested;
+
     /// <summary>最近提交的任务 ID</summary>
     public static string LastTaskId { get; private set; } = "";
 
@@ -506,9 +515,14 @@ public static class OpenClawBridge
                 }
 
                 string taskId = obj["task_id"]?.ToString();
+                if (string.IsNullOrEmpty(taskId))
+                {
+                    LastError = "任务提交响应缺少 task_id";
+                    return "";
+                }
                 LastTaskId = taskId;
                 LastError = "";
-                return taskId ?? "";
+                return taskId;
             }
             catch (Exception ex)
             {
@@ -573,7 +587,24 @@ public static class OpenClawBridge
                 LastError = GetResponseError(req, "任务取消请求失败");
                 return false;
             }
-            return true;
+
+            try
+            {
+                var obj = JObject.Parse(req.downloadHandler?.text ?? "{}");
+                bool success = obj["success"]?.Value<bool>() ?? false;
+                if (!success)
+                {
+                    LastError = obj["error"]?.ToString() ?? "任务取消失败";
+                    return false;
+                }
+                LastError = "";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LastError = $"任务取消响应解析失败: {ex.Message}";
+                return false;
+            }
         }
     }
 
@@ -655,6 +686,7 @@ public static class OpenClawBridge
         string task, string mode = "agent", int totalTimeoutSeconds = 1800,
         int maxSteps = 0, int heartbeatSeconds = 60, int maxIdleHeartbeats = 5)
     {
+        _taskCancellationRequested = false;
         IsBusy = true;
         LastTaskWasFatal = false;
         // ★ 进度状态复位（后台线程写，主线程 OnGUI 只读）
@@ -674,6 +706,14 @@ public static class OpenClawBridge
             }
             ActiveTaskId = taskId;
 
+            if (_taskCancellationRequested)
+            {
+                await CancelTaskAsync(taskId);
+                LastTaskStepCount = ActiveStepCount;
+                PendingApproval = null;
+                return "❌ 任务已被取消";
+            }
+
             // ★ 心跳参数：探测间隔与「连续无进展」阈值
             int pollDelayMs = Math.Min(Math.Max(5, heartbeatSeconds * 1000), 5000); // 每 5s 轮询（done 更快感知）
             int maxIdleSeconds = Math.Max(30, heartbeatSeconds * maxIdleHeartbeats); // 默认 300s 无进展=卡死
@@ -681,12 +721,25 @@ public static class OpenClawBridge
             double deadline = Time.realtimeSinceStartup + Math.Max(60, totalTimeoutSeconds);
             while (Time.realtimeSinceStartup < deadline)
             {
+                if (_taskCancellationRequested)
+                {
+                    await CancelTaskAsync(taskId);
+                    LastTaskStepCount = ActiveStepCount;
+                    PendingApproval = null;
+                    return "❌ 任务已被取消";
+                }
+
                 string raw = await PollTaskAsync(taskId);
                 try
                 {
                     var obj = JObject.Parse(raw);
                     if (!(obj["success"]?.Value<bool>() ?? false))
-                        return $"❌ 任务轮询失败: {obj["error"]?.ToString() ?? "未知"}";
+                    {
+                        string pollError = obj["error"]?.ToString() ?? "未知";
+                        LastTaskWasFatal = IsNetworkishError(pollError);
+                        string prefix = LastTaskWasFatal ? FATAL_PREFIX + " " : "";
+                        return $"{prefix}任务轮询失败: {pollError}";
+                    }
 
                     string status = obj["status"]?.ToString() ?? "running";
 
@@ -758,6 +811,7 @@ public static class OpenClawBridge
             HasActiveTask = false;   // ★ 任务结束（任何路径）→ 进度状态复位
             ActiveStepLabel = "";
             PendingApproval = null;
+            _taskCancellationRequested = false;
         }
     }
 

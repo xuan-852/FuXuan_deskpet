@@ -1314,6 +1314,7 @@ public class DesktopPet : MonoBehaviour
         if (OpenClawBridge.IsBusy && !string.IsNullOrEmpty(OpenClawBridge.LastTaskId))
         {
             Debug.Log($"[DesktopPet] 🚫 退出时取消在途任务: {OpenClawBridge.LastTaskId}");
+            OpenClawBridge.RequestTaskCancellation();
             _ = OpenClawBridge.CancelTaskAsync(OpenClawBridge.LastTaskId);
         }
 

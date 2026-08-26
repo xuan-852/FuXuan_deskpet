@@ -10,6 +10,8 @@ This module documents the UX safety layer added on 2026-08-21.
 
 `CancelCurrentRequest()` immediately stops the active coroutine, clears queued messages, releases the waiting state, and leaves the input usable. The embedded and external chat buttons use the same cancellation path.
 
+OpenClaw task cancellation has a separate bridge-level guard: `OpenClawBridge.RequestTaskCancellation()` is non-blocking and is called during `DesktopPet.BeginShutdown()`. The task loop checks it before polling, then confirms cancellation through `/task/{id}/cancel`; a 2xx transport response without `success=true` is not treated as a successful cancellation.
+
 ## Iteration and recovery
 
 The title status changes as the request moves through the lifecycle, so a slow local model, a network retry, or a tool execution is distinguishable from a frozen window.
@@ -51,3 +53,4 @@ The data root must be temporary and contain `.test_mode`; production memory and 
 - 2026-08-26: `DesktopPet` now routes tray exit, test exit, `OnApplicationQuit`, and `OnDestroy` through one idempotent `BeginShutdown` path; it closes the external window thread before Unity render resources are destroyed and avoids manually invoking `OnDestroy`.
 - 2026-08-26: `ExternalChatWindow.Shutdown()` now records the shutdown request before checking `IsCreated`; a window thread that is still between startup and `IsCreated=true` exits before completing native-window initialization, and an already-exiting thread cannot be duplicated by `EnsureCreated()`.
 - 2026-08-26: Quick and full build passed; the rebuilt `Build/DesktopPet.exe` passed isolated `runtime_smoke.cjs --verbose` with all view/external-click/approval/emote paths, three window sizes, zero NRE, and unchanged production-memory mtimes. The EditMode XML was not refreshed and remains historical 114/114, so it is not counted as a fresh test result.
+- 2026-08-27: Quick and full build passed after bridge task-cancellation/error-classification changes; isolated `runtime_smoke.cjs --verbose` passed with zero NRE, complete self-exit, and zero production-memory pollution. The EditMode XML remains historical 114/114 and is not counted as a fresh test result.

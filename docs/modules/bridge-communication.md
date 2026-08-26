@@ -90,9 +90,13 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | `ExecuteTaskAndWaitAsync(task, mode, maxSteps)` | `/task` 提交+轮询 | 心跳熔断 | 任务结果文本；每轮轮询调 `RefreshTaskProgress` 更新进度状态 |
 | `RefreshTaskProgress(obj)` | `/task/{id}` 轮询解析 | — | 解析 `steps` JArray → `ActiveStepCount`/`ActiveStepLabel`（`第n步: tool summary`，summary 去换行截 48 字符）；解析 `pendingApproval` → `PendingApproval`（id 变化才刷新） |
 | `ApproveTaskAsync(taskId, decision)` | `/task/{id}/approve` | — | 校验 decision ∈ 三值后 POST；设置 `LastApprovalOk`/`LastError` |
+| `RequestTaskCancellation()` | 本地任务状态 | — | 非阻塞设置取消请求；`ExecuteTaskAndWaitAsync` 在提交后/每轮轮询前检查，并向桥接端发送取消 |
+| `CancelTaskAsync(taskId)` | `/task/{id}/cancel` | 10s | HTTP 成功后仍校验响应 `success`，失败响应写入 `LastError` |
 | 任务系列（IsBusy/LastTaskId/LastTaskWasFatal/HasActiveTask/ActiveTaskId/ActiveStepCount/ActiveStepLabel/LastTaskStepCount/PendingApproval/LastApprovalOk） | `/task` | — | 轮询状态 + 实时进度 + 审批回执（后台 Task.Run 线程写，主线程 OnGUI 只读的原子字段） |
 
 `OpenClawBridge` 的公共错误边界由 `GetResponseError()` 和 `ErrorJson()` 统一处理：HTTP 失败优先读取 Node 返回的 `error` 字段；需要返回 JSON 的路径统一使用 Newtonsoft.Json 序列化，避免错误文本中的引号、换行或中文破坏 JSON 契约。该边界覆盖搜索、健康检查、LaTeX、办公、PDF、任务轮询/取消/审批等调用。
+
+任务取消与终态边界：`DesktopPet.BeginShutdown()` 先调用 `RequestTaskCancellation()`，让 C# 轮询循环在下一次网络操作前主动收敛，再异步调用 `/task/{id}/cancel`；取消端点只有在响应体 `success=true` 时才报告成功。轮询失败若属于 timeout/connection/network 等错误，会设置 `LastTaskWasFatal`，避免上层把不可重试的桥接故障当成普通任务失败反复消耗云端调用。
 
 ## 三、开发历史迭代
 
@@ -109,6 +113,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | 2026-08-17 | **修复 `/task` 首次连接无响应**：Gateway 未连接时，旧实现只等待 `connect_()` 的失败回调，连接成功后未继续创建任务或发送 `task_id`，导致 C# 提交请求超时；改为 `await connect_()`，成功后继续入队，失败仍返回 503。 |
 | 2026-08-25 | **PDF/本地模型保护**：本地高置信度工具规则前置；文档与 OpenClaw 任务回填用户原始需求；`/compile_latex` 增加请求体、编译器、输出目录和外部引用越界保护。 |
 | 2026-08-26 | **C# 桥接错误契约收敛**：统一透传 Node 结构化错误并用 JSON 序列化生成失败响应；新增本地测试覆盖引号、换行、中文和 `is_scanned` 标志，避免错误响应非法化。 |
+| 2026-08-27 | **任务取消与错误分类收敛**：退出流程新增非阻塞取消请求；取消接口校验响应 `success`；轮询网络错误正确标记 `LastTaskWasFatal`；新增网络错误分类测试。 |
 
 ## 四、编写注意事项
 
