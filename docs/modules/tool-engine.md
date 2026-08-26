@@ -30,6 +30,12 @@ AsyncToolBase (异步/协程工具基类, ToolName 虚属性)
   ↑ ChatManager 调用 (云端 DoToolLoop / 本地 LocalToolRouter, 最多 10 轮云端回环)
 ```
 
+### 2.1.1 注册与异步执行边界（2026-08-27）
+
+- `ToolRegistry.Execute()` 与 `ExecuteAsync()` 在未经过场景中 `ToolCallInvoker.Awake()` 时会自动执行一次惰性初始化，避免编辑器测试或独立调用因初始化顺序返回“未知工具”。
+- 异步工具的协程创建、推进和 `Current` 读取统一经过异常边界；工具异常转换为 `❌ 施法失败：...` 回调，避免异常直接打断 `ChatManager` 的工具回环。
+- 工具本身的危险审批、参数校验和同步/异步分类不在该边界内改变，仍由 `ToolRegistry`、`ToolConfirmManager` 和各工具实现负责。
+
 ### 2.2.1 本地工具调用入口
 
 本地模式不依赖 Ollama 的原生 `tools`/`tool_calls` 支持，而使用受控的文本规划协议：
@@ -112,6 +118,7 @@ qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请�
 | P1 | 2026-08-12 | 工具数修正 55→**59**：补录 `OfficeTools.cs` 3 个（generate_ppt/docx/xlsx，此前漏登记）+ `VisionKnowledgeTools.cs` 补录 openclaw_task；`/task` 外包端点落地（提交/轮询/取消/心跳），ChatManager knowledge 白名单补 generate_* 三工具；桥接 404 文案补 /generate_office、/task |
 | P5 | 2026-08-12 | 工具数 62→**65**：新增 `TaskTemplateTools.cs` 3 个模板工具 + `TaskTemplateManager.cs`（task_templates.json，5 预置模板）+ `TaskTrajectoryManager.cs`（task_trajectories.json，轨迹库）；openclaw_task 支持 template/template_args + 自动轨迹记录与参考文本附加；EditMode 测试 21 个（P5TrajectoryTests） |
 | 2026-08-12 | **Phase B 任务可视化**（方案七）：`RecordTrajectory` + `TaskTrajectoryEntry` 追加 `stepCount`（工具步数，0=未知），成功路径回传 `OpenClawBridge.LastTaskStepCount`；RightPanel 进度显示 + 审批弹窗配套（桥接层见 bridge-communication.md，UI 见 chat-ui.md） |
+| 2026-08-27 | **ToolRegistry 调度边界收敛**：同步/异步执行入口支持惰性初始化；异步工具协程创建与推进异常统一转为失败回调；快速构建、完整构建和隔离冒烟通过。 |
 
 ### 2026-08-08 Benchmark 修复清单（提交 9b94c09）
 

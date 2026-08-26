@@ -112,6 +112,8 @@ public static class ToolRegistry
     /// <summary>同步执行工具</summary>
     public static string Execute(string name, string argsJson)
     {
+        if (!_initialized) Initialize();
+
         if (_syncTools == null || !_syncTools.TryGetValue(name, out var tool))
         {
             return $"❌ 不识此术：「{name}」";
@@ -123,12 +125,49 @@ public static class ToolRegistry
     /// <summary>异步执行工具（协程），结果通过 onResult 回调返回</summary>
     public static IEnumerator ExecuteAsync(string name, string argsJson, Action<string> onResult)
     {
+        if (!_initialized) Initialize();
+
         if (_asyncTools == null || !_asyncTools.TryGetValue(name, out var tool))
         {
             onResult?.Invoke($"❌ 不识此术：「{name}」");
             yield break;
         }
-        yield return tool.ExecuteAsync(argsJson ?? "{}", result => onResult?.Invoke(result));
+
+        IEnumerator routine;
+        try
+        {
+            routine = tool.ExecuteAsync(argsJson ?? "{}", result => onResult?.Invoke(result));
+        }
+        catch (Exception e)
+        {
+            onResult?.Invoke($"❌ 施法失败：{e.Message}");
+            yield break;
+        }
+
+        if (routine == null)
+        {
+            onResult?.Invoke("❌ 施法失败：异步工具未返回执行协程");
+            yield break;
+        }
+
+        while (true)
+        {
+            bool hasNext;
+            object current = null;
+            try
+            {
+                hasNext = routine.MoveNext();
+                if (hasNext) current = routine.Current;
+            }
+            catch (Exception e)
+            {
+                onResult?.Invoke($"❌ 施法失败：{e.Message}");
+                yield break;
+            }
+
+            if (!hasNext) yield break;
+            yield return current;
+        }
     }
 
     /// <summary>
