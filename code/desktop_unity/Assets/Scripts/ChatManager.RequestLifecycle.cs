@@ -79,6 +79,7 @@ public partial class ChatManager
         _isWaiting = true;
         _lastReply = "";
         _lastError = "";
+        _replyPublished = false;
         _abortRequested = false; // 重置中止标志，允许新的请求
         _apiRetryCount = 0; // 重置自动重试计数
         _toolRound = 0; // 重置工具轮次

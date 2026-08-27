@@ -224,6 +224,8 @@ public partial class ChatManager : MonoBehaviour
     private string _requestStatusText = "就绪";
     private string _lastReply = "";
     private string _lastError = "";
+    // 回复收尾的成功信号：不能用 _lastError 判断，因为云端失败后本地回退可能成功。
+    private bool _replyPublished = false;
     private System.Action _onUpdate;
 
     // ---- T5: 旧史摘要（被裁剪历史的本地 Ollama 摘要，缓存后注入保持上下文连续）----
@@ -453,13 +455,20 @@ public partial class ChatManager : MonoBehaviour
             yield break;
         }
 
+        bool replyPublished = _replyPublished;
         _isWaiting = false;
         _requestStartTime = 0f; // 请求完成，停止看门狗
-        SetRequestStatus("就绪", RequestStage.Idle);
+        if (replyPublished)
+            SetRequestStatus("就绪", RequestStage.Idle);
+        else if (string.IsNullOrEmpty(_lastError))
+        {
+            _lastError = "请求未生成有效回复";
+            SetRequestStatus("请求失败", RequestStage.Error);
+        }
         _onUpdate?.Invoke();
 
         // 只在带 case_id 的质量测试中启动裁判；日常运行零额外评分开销。
-        if (!string.IsNullOrEmpty(requestCaseId) && !string.IsNullOrEmpty(_lastReply))
+        if (replyPublished && !string.IsNullOrEmpty(requestCaseId) && !string.IsNullOrEmpty(_lastReply))
         {
             string judgeInput = GetLastUserMessage();
             string judgeReply = _lastReply;
@@ -476,6 +485,10 @@ public partial class ChatManager : MonoBehaviour
             }));
         }
 
+        // 当前协程已经完成，先清理自身引用，再启动队列中的下一条消息。
+        // 否则 SendMessageInternal 会写入新协程引用，随后被旧协程末尾的 null 覆盖。
+        _activeRequestCoroutine = null;
+
         // ——— 处理队列中的下一条消息 ———
         if (_messageQueue.Count > 0)
         {
@@ -483,8 +496,8 @@ public partial class ChatManager : MonoBehaviour
             SendMessageInternal(next.text, next.onUpdate, next.caseId);
         }
 
-        // ——— 检查是否需要记忆反思（不阻塞对话流；测试模式跳过）———
-        if (PetMemory.Instance != null && !IsTestMode)
+        // 失败请求不触发反思、人格演化和知识库后台检索，避免把失败状态写成有效交互。
+        if (replyPublished && PetMemory.Instance != null && !IsTestMode)
         {
             var candidates = PetMemory.Instance.CheckReflection();
             if (candidates != null && candidates.Count >= 2)
@@ -493,13 +506,15 @@ public partial class ChatManager : MonoBehaviour
             }
         }
 
-        // ——— 人格演化：记录本次交互 ———
-        RecordPersonalityInteraction();
+        if (replyPublished)
+        {
+            // ——— 人格演化：记录本次交互 ———
+            RecordPersonalityInteraction();
 
-        // ——— 知识库：针对对话话题进行后台检索（缓存结果供下次对话使用）———
-        StartCoroutine(BackgroundKnowledgeSearch());
+            // ——— 知识库：针对对话话题进行后台检索（缓存结果供下次对话使用）———
+            StartCoroutine(BackgroundKnowledgeSearch());
+        }
 
-        _activeRequestCoroutine = null; // 正常完成，清除在途引用
     }
 
     /// <summary>

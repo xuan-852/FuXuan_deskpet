@@ -10,6 +10,8 @@ This module documents the UX safety layer added on 2026-08-21.
 
 `CancelCurrentRequest()` immediately stops the active coroutine, clears queued messages, releases the waiting state, and leaves the input usable. The embedded and external chat buttons use the same cancellation path.
 
+`ChatManager` now distinguishes a published final reply from a failed request. Only a published reply transitions the status back to `Idle` and starts quality review, reflection, personality evolution, and background knowledge work; failures keep `Error` visible. When a queued message starts, the completed coroutine clears its own reference before launching the next one, so the watchdog and cancellation path retain the new coroutine handle.
+
 OpenClaw task cancellation has a separate bridge-level guard: `OpenClawBridge.RequestTaskCancellation()` is non-blocking and is called during `DesktopPet.BeginShutdown()`. The task loop checks it before polling, then confirms cancellation through `/task/{id}/cancel`; a 2xx transport response without `success=true` is not treated as a successful cancellation.
 
 ## Iteration and recovery
@@ -54,3 +56,4 @@ The data root must be temporary and contain `.test_mode`; production memory and 
 - 2026-08-26: `ExternalChatWindow.Shutdown()` now records the shutdown request before checking `IsCreated`; a window thread that is still between startup and `IsCreated=true` exits before completing native-window initialization, and an already-exiting thread cannot be duplicated by `EnsureCreated()`.
 - 2026-08-26: Quick and full build passed; the rebuilt `Build/DesktopPet.exe` passed isolated `runtime_smoke.cjs --verbose` with all view/external-click/approval/emote paths, three window sizes, zero NRE, and unchanged production-memory mtimes. The EditMode XML was not refreshed and remains historical 114/114, so it is not counted as a fresh test result.
 - 2026-08-27: Quick and full build passed after bridge task-cancellation/error-classification changes; isolated `runtime_smoke.cjs --verbose` passed with zero NRE, complete self-exit, and zero production-memory pollution. The EditMode XML remains historical 114/114 and is not counted as a fresh test result.
+- 2026-08-27: `ChatManager` request finalization now keeps failed requests in `RequestStage.Error`, skips success-only quality/background work, and clears the completed coroutine reference before starting a queued request. Quick/full build and isolated `runtime_smoke.cjs --verbose` passed; the EditMode XML remains historical 114/114.

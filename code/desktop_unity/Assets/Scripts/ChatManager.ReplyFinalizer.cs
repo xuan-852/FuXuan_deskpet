@@ -14,6 +14,7 @@ public partial class ChatManager
     private void PublishFinalReply(string displayReply, string sentenceSource = null)
     {
         _lastReply = displayReply ?? "";
+        _replyPublished = true;
         OnNewReply?.Invoke(_lastReply);
 
         if (sentenceSource != null)

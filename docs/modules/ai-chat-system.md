@@ -59,6 +59,7 @@
 - `ChatManager.ContextBuilder.cs` 负责 `BuildSystemPrompt()` 及长期记忆、人格、偏好、知识库、活动观测、Live2D 参数、动作经验、剪贴板、任务轨迹和模板注入。
 - `ChatManager.ToolLoop.cs` 承载 `DoToolLoop()` 主体、本地规划与云端 tool_call 共用的危险操作确认等待、工具执行、`openclaw_task` 熔断、`ToolResultBudget.Compact()` 和 tool history 写回。
 - `ChatManager.ReplyFinalizer.cs` 承载最终回复发布、逐句队列触发、明确记忆写入和对话摘要；质量遥测与请求状态收尾仍由原流程负责，便于后续逐项核对。
+- 请求收尾使用 `_replyPublished` 作为成功信号：失败请求保留 `RequestStage.Error`，不启动质量复核、反思、人格演化或知识库后台任务；队列启动前先清理已完成协程引用，避免新请求句柄被旧协程覆盖。
 - 原有注入顺序、`PromptContextBudget` 截断规则和动态时间追加到 prompt 尾部的缓存策略保持不变；请求入口由 `RequestLifecycle` 负责，上下文由 `ContextBuilder` 负责，工具回环由 `ToolLoop` 负责。
 - 当前分层只做职责隔离，不宣称已经降低 Token；任何预算或注入顺序调整必须另行测量 usage 和回复质量。
 
@@ -256,6 +257,7 @@
 | 2026-08-27 | **工具回环主体 partial 拆分**：将 `DoToolLoop()` 主体、工具执行、`openclaw_task` 致命失败熔断、结果压缩和 tool history 写回迁移至 `ChatManager.ToolLoop.cs`；工具轮数、审批、重试、流式显示和历史顺序不变，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 | 2026-08-27 | **回复发布 partial 拆分**：将最终回复通知与逐句队列触发抽到 `ChatManager.ReplyFinalizer.cs`，保持云端、工具循环上限和本地回退的原有调用顺序；Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 | 2026-08-27 | **对话记忆 partial 拆分**：将明确记忆提取、确定性兜底和周期性摘要迁移至 `ChatManager.ReplyFinalizer.cs`；测试模式隔离、记忆治理和异步摘要回退行为不变，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
+| 2026-08-27 | **请求收尾状态修复**：增加 `_replyPublished` 成功信号，避免失败状态被无条件覆盖为「就绪」，并在队列启动前清理旧协程引用；失败请求不再触发成功专属质量/记忆后台任务，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 
 ### 实测数据（2026-08-08，Player.log）
 
