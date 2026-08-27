@@ -20,7 +20,7 @@
 | `b1261ca` | C# 桥接请求统一经 `ConfigureRequest()` 配置鉴权、JSON 请求头和 timeout | 已验证 |
 | `3d92475` | `ChatManager.ContextBuilder.cs` 拆出 SystemPrompt 上下文注入，保持顺序和预算规则不变 | 已验证 |
 | `487dbe8` | `ChatManager.ToolLoop.cs` 承载 `DoToolLoop()` 主体、危险工具确认、工具执行、结果压缩与历史写回，保持回环行为不变 | 已验证 |
-| 当前工作区 | `ChatManager.ReplyFinalizer.cs` 抽出最终回复发布与逐句队列触发，保持云端、本地和工具循环上限路径顺序不变 | 待提交 |
+| `9a1d7dd` | `ChatManager.ReplyFinalizer.cs` 抽出最终回复发布与逐句队列触发，保持云端、本地和工具循环上限路径顺序不变 | 已验证 |
 
 验证基线：
 
