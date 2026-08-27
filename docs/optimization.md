@@ -19,7 +19,7 @@
 | `e774c74` | ToolRegistry 惰性初始化、异步协程异常边界 | 已验证 |
 | `b1261ca` | C# 桥接请求统一经 `ConfigureRequest()` 配置鉴权、JSON 请求头和 timeout | 已验证 |
 | `3d92475` | `ChatManager.ContextBuilder.cs` 拆出 SystemPrompt 上下文注入，保持顺序和预算规则不变 | 已验证 |
-| `aac54f3` | `ChatManager.ToolLoop.cs` 承载 `DoToolLoop()` 主体、危险工具确认、工具执行、结果压缩与历史写回，保持回环行为不变 | 已验证 |
+| `487dbe8` | `ChatManager.ToolLoop.cs` 承载 `DoToolLoop()` 主体、危险工具确认、工具执行、结果压缩与历史写回，保持回环行为不变 | 已验证 |
 
 验证基线：
 
