@@ -32,11 +32,11 @@ code/desktop_unity/Assets/
 | `Scripts/Live2DRenderer.cs` | **3,930** | Live2D 模型加载、参数、动作与交互逻辑 |
 | `Scripts/Live2DRenderer.OverlayRendering.cs` | **144** | Live2D 置顶叠加相机、RenderTexture、OnGUI 与性能档位 |
 | `RightPanel.cs` | **2,530** | 右键面板主逻辑；聊天区和子面板已拆到 partial 文件 |
-| `ChatManager.cs` | **1,889** | AI 请求协程、历史裁剪与回复收尾 |
+| `ChatManager.cs` | **1,760** | AI 请求协程、历史裁剪与请求状态收尾 |
 | `ChatManager.RequestLifecycle.cs` | **120** | ChatManager 请求发送、排队、取消、状态通知与意图分类入口 |
 | `ChatManager.ContextBuilder.cs` | **144** | ChatManager SystemPrompt 上下文注入与预算截断 |
 | `ChatManager.ToolLoop.cs` | **283** | ChatManager 工具回环、审批、执行、结果压缩与历史写回 |
-| `ChatManager.ReplyFinalizer.cs` | **18** | ChatManager 最终回复发布与逐句队列触发 |
+| `ChatManager.ReplyFinalizer.cs` | **140** | ChatManager 最终回复发布、对话记忆与摘要 |
 | `Editor/ParameterVisionScanner.cs` | 1,851 | 编辑器：参数视觉扫描 |
 | `ExternalChatWindow.cs` | **1,488** | 外置 Win32 窗口、DPI、输入和生命周期 |
 | `DesktopPet.cs` | **1,408** | 主控制器、状态机、日志镜像 |
@@ -126,7 +126,7 @@ flowchart TB
 
 ## 三、AI 核心层真相
 
-### 3.1 ChatManager（2,454 行，主文件 1,889 + RequestLifecycle 120 + ContextBuilder 144 + ToolLoop 283 + ReplyFinalizer 18）— 与文档差异显著
+### 3.1 ChatManager（2,447 行，主文件 1,760 + RequestLifecycle 120 + ContextBuilder 144 + ToolLoop 283 + ReplyFinalizer 140）— 与文档差异显著
 
 | 项 | README 声称 | **代码实际** |
 |---|---|---|
