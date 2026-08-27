@@ -74,6 +74,20 @@ public static class OpenClawBridge
     }
 
     /// <summary>
+    /// 配置所有桥接 HTTP 请求的公共头和超时。
+    /// 端点只保留自身的 timeout 选择，避免新增调用遗漏鉴权头。
+    /// </summary>
+    private static void ConfigureRequest(UnityWebRequest req, int timeoutSeconds, bool jsonPayload = false, bool acceptJson = false)
+    {
+        req.timeout = timeoutSeconds;
+        req.SetRequestHeader("x-bridge-token", BridgeToken);
+        if (jsonPayload)
+            req.SetRequestHeader("Content-Type", "application/json");
+        if (acceptJson)
+            req.SetRequestHeader("Accept", "application/json");
+    }
+
+    /// <summary>
     /// 执行网络搜索，返回 AI 研究的文本结果
     /// </summary>
     /// <param name="query">搜索查询</param>
@@ -88,9 +102,7 @@ public static class OpenClawBridge
 
         using (var req = UnityWebRequest.Get(url))
         {
-            req.timeout = timeoutSeconds;
-            req.SetRequestHeader("Accept", "application/json");
-            req.SetRequestHeader("x-bridge-token", BridgeToken);
+            ConfigureRequest(req, timeoutSeconds, acceptJson: true);
 
             var op = req.SendWebRequest();
 
@@ -143,8 +155,7 @@ public static class OpenClawBridge
         string url = $"{BASE_URL}/health";
         using (var req = UnityWebRequest.Get(url))
         {
-            req.timeout = 3;
-            req.SetRequestHeader("x-bridge-token", BridgeToken);
+            ConfigureRequest(req, 3);
             var op = req.SendWebRequest();
             while (!op.isDone)
                 await Task.Yield();
@@ -208,10 +219,8 @@ public static class OpenClawBridge
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
             req.uploadHandler = new UploadHandlerRaw(bodyRaw);
             req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.SetRequestHeader("x-bridge-token", BridgeToken);
             // 长文档（多章节）走分块生成 + 编译，全程可能 10-20 分钟，180s 会超时。
-            req.timeout = 1800;
+            ConfigureRequest(req, 1800, jsonPayload: true);
 
             var op = req.SendWebRequest();
             while (!op.isDone)
@@ -274,10 +283,8 @@ public static class OpenClawBridge
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
             req.uploadHandler = new UploadHandlerRaw(bodyRaw);
             req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.SetRequestHeader("x-bridge-token", BridgeToken);
             // AI 组织内容 + 本地渲染，通常 10-60s；给足余量
-            req.timeout = 300;
+            ConfigureRequest(req, 300, jsonPayload: true);
 
             var op = req.SendWebRequest();
             while (!op.isDone)
@@ -340,10 +347,8 @@ public static class OpenClawBridge
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
             req.uploadHandler = new UploadHandlerRaw(bodyRaw);
             req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.SetRequestHeader("x-bridge-token", BridgeToken);
             // 大 PDF 提取可能耗时较长，给足余量
-            req.timeout = 180;
+            ConfigureRequest(req, 180, jsonPayload: true);
 
             var op = req.SendWebRequest();
             while (!op.isDone)
@@ -488,9 +493,7 @@ public static class OpenClawBridge
             byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
             req.uploadHandler = new UploadHandlerRaw(bodyRaw);
             req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.SetRequestHeader("x-bridge-token", BridgeToken);
-            req.timeout = 15; // 提交只做入队，快速返回
+            ConfigureRequest(req, 15, jsonPayload: true); // 提交只做入队，快速返回
 
             var op = req.SendWebRequest();
             while (!op.isDone)
@@ -545,8 +548,7 @@ public static class OpenClawBridge
         string url = $"{BASE_URL}/task/{UnityWebRequest.EscapeURL(taskId)}";
         using (var req = UnityWebRequest.Get(url))
         {
-            req.timeout = 10;
-            req.SetRequestHeader("x-bridge-token", BridgeToken);
+            ConfigureRequest(req, 10);
             var op = req.SendWebRequest();
             while (!op.isDone)
                 await Task.Yield();
@@ -576,8 +578,7 @@ public static class OpenClawBridge
         using (var req = new UnityWebRequest(url, "POST"))
         {
             req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("x-bridge-token", BridgeToken);
-            req.timeout = 10;
+            ConfigureRequest(req, 10);
             var op = req.SendWebRequest();
             while (!op.isDone)
                 await Task.Yield();
@@ -636,9 +637,7 @@ public static class OpenClawBridge
             byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
             req.uploadHandler = new UploadHandlerRaw(bodyRaw);
             req.downloadHandler = new DownloadHandlerBuffer();
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.SetRequestHeader("x-bridge-token", BridgeToken);
-            req.timeout = 10;
+            ConfigureRequest(req, 10, jsonPayload: true);
             var op = req.SendWebRequest();
             while (!op.isDone)
                 await Task.Yield();

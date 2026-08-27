@@ -96,6 +96,8 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 
 `OpenClawBridge` 的公共错误边界由 `GetResponseError()` 和 `ErrorJson()` 统一处理：HTTP 失败优先读取 Node 返回的 `error` 字段；需要返回 JSON 的路径统一使用 Newtonsoft.Json 序列化，避免错误文本中的引号、换行或中文破坏 JSON 契约。该边界覆盖搜索、健康检查、LaTeX、办公、PDF、任务轮询/取消/审批等调用。
 
+所有 C# 桥接请求还经过 `ConfigureRequest()` 设置 `x-bridge-token`、按需设置 JSON `Content-Type`/`Accept` 和端点专属 timeout；端点实现只保留业务 payload 与 timeout 选择，新增调用不得再散落设置鉴权头。
+
 任务取消与终态边界：`DesktopPet.BeginShutdown()` 先调用 `RequestTaskCancellation()`，让 C# 轮询循环在下一次网络操作前主动收敛，再异步调用 `/task/{id}/cancel`；取消端点只有在响应体 `success=true` 时才报告成功。轮询失败若属于 timeout/connection/network 等错误，会设置 `LastTaskWasFatal`，避免上层把不可重试的桥接故障当成普通任务失败反复消耗云端调用。
 
 ## 三、开发历史迭代
@@ -114,6 +116,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | 2026-08-25 | **PDF/本地模型保护**：本地高置信度工具规则前置；文档与 OpenClaw 任务回填用户原始需求；`/compile_latex` 增加请求体、编译器、输出目录和外部引用越界保护。 |
 | 2026-08-26 | **C# 桥接错误契约收敛**：统一透传 Node 结构化错误并用 JSON 序列化生成失败响应；新增本地测试覆盖引号、换行、中文和 `is_scanned` 标志，避免错误响应非法化。 |
 | 2026-08-27 | **任务取消与错误分类收敛**：退出流程新增非阻塞取消请求；取消接口校验响应 `success`；轮询网络错误正确标记 `LastTaskWasFatal`；新增网络错误分类测试。 |
+| 2026-08-27 | **C# 请求入口收敛**：搜索、健康、LaTeX、办公、PDF、任务和审批请求统一经 `ConfigureRequest()` 配置鉴权与请求头；各端点 timeout 数值保持不变，完整构建和隔离冒烟通过。 |
 
 ## 四、编写注意事项
 
