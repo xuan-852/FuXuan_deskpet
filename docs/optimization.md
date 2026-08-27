@@ -18,7 +18,7 @@
 | `6a524b0` | 桥接任务非阻塞取消、取消响应 `success` 校验、网络错误不可重试分类 | 已验证 |
 | `e774c74` | ToolRegistry 惰性初始化、异步协程异常边界 | 已验证 |
 | `b1261ca` | C# 桥接请求统一经 `ConfigureRequest()` 配置鉴权、JSON 请求头和 timeout | 已验证 |
-| 当前工作区 | `ChatManager.ContextBuilder.cs` 拆出 SystemPrompt 上下文注入，保持顺序和预算规则不变 | 已验证 |
+| `3d92475` | `ChatManager.ContextBuilder.cs` 拆出 SystemPrompt 上下文注入，保持顺序和预算规则不变 | 已验证 |
 
 验证基线：
 
@@ -27,6 +27,36 @@
 - `node --check` 通过。
 - `runtime_smoke.cjs --verbose` 通过：UI、外置窗口、审批、表情、三档尺寸、完整退出、零 NRE、生产记忆零污染。
 - `logs/build/test_results.xml` 仍是历史的 114/114 记录，不能当作本轮新鲜测试统计。
+
+## 二、执行看板
+
+状态定义：✅ 已完成并验证；🔧 正在实施；⏳ 待实施；⚠️ 仅部分验证；🚫 刻意不做。
+
+| 编号 | 工作包 | 状态 | 依赖 | 下一步产物 |
+|------|--------|------|------|------------|
+| O-01 | 退出生命周期与外置窗口启动竞态 | ✅ | — | 保持回归 |
+| O-02 | 桥接错误契约、取消和请求配置 | ✅ | — | 保持回归 |
+| O-03 | ToolRegistry 初始化与异步异常边界 | ✅ | — | 增加 mock/contract 测试 |
+| O-04 | ChatManager 请求生命周期分层 | ✅ | O-01/O-02 | 保持行为对照 |
+| O-05 | ChatManager 上下文构建分层 | ✅ | O-04 | 继续保持缓存前缀稳定 |
+| O-06 | ToolLoopCoordinator：工具回环、审批、结果压缩 | 🔧 | O-03/O-04 | 独立 partial + 工具回环回归 |
+| O-07 | ReplyFinalizer：回复收尾、记忆和质量遥测 | ⏳ | O-06 | 独立 partial + 本地/云端行为对照 |
+| O-08 | Live2D 普通参数数据化 | ⏳ | 可见播放器回归能力 | 模板迁移清单 + 动作截图 |
+| O-09 | 外置窗口真实可见多轮回归 | ⏳ | O-01 | 启动/隐藏/恢复/关闭记录 |
+| O-10 | EditMode 结果文件新鲜度治理 | ⏳ | 构建脚本 | 新鲜 XML 或独立结果摘要 |
+| O-11 | bridge/Gateway/Ollama 启动依赖治理 | ⏳ | 安装器现状确认 | 四种安装/启动场景验证 |
+
+### 执行顺序
+
+本计划按以下顺序推进，不跨越未通过的阶段门：
+
+1. **阶段 A（已完成）**：生命周期、桥接契约、ToolRegistry 基础边界。
+2. **阶段 B（当前）**：ChatManager 分层；先完成 `ContextBuilder`，再拆 `ToolLoopCoordinator`。
+3. **阶段 C**：拆 `ReplyFinalizer`，同时核对记忆写入、质量遥测和请求状态收尾。
+4. **阶段 D**：Live2D 普通参数模板化，只迁移可回归参数，保留 P0 安全网。
+5. **阶段 E**：外置窗口可见回归、EditMode 结果治理和安装器依赖治理。
+
+每个阶段必须先完成代码验证和文档更新，才进入下一个阶段；如果测试只证明编译成功，状态最多标为 ⚠️，不能标为 ✅。
 
 ## 二、优化原则
 
@@ -51,13 +81,20 @@
 
 #### 1. ChatManager 继续分层
 
-当前已把请求生命周期抽到 `ChatManager.RequestLifecycle.cs`，并已完成第一步上下文拆分：
+当前已把请求生命周期抽到 `ChatManager.RequestLifecycle.cs`，并已完成 `ChatManager.ContextBuilder.cs` 第一步上下文拆分；当前唯一进行中的代码工作包是 `O-06 ToolLoopCoordinator`：
 
 - `ChatManager.ContextBuilder.cs`：角色卡、记忆、偏好、任务轨迹、时间天气等上下文注入（已完成第一步，暂保持 partial 以减少行为风险）。
 - `ToolLoopCoordinator`：工具子集、工具回环、审批等待和结果压缩。
 - `ReplyFinalizer`：回复后处理、质量检查、写入历史和遥测。
 
 约束：缓存前缀顺序不能改变；`PromptContextBudget`、`ToolResultBudget` 和 `QualityTelemetry` 必须继续生效；拆分后先做行为对照，再做性能优化。
+
+### 阶段门：ToolLoopCoordinator 开工条件
+
+- 先记录当前 `DoToolLoop()` 的入口、最大轮数、审批等待、工具结果压缩和历史写入顺序。
+- 第一刀只移动方法，不改变 `MAX_TOOL_ROUNDS`、工具子集、危险审批和 `ToolResultBudget` 逻辑。
+- 必须通过 `build.ps1 -Quick`；由于涉及工具回环和运行时状态，还必须通过完整构建、隔离冒烟和无云端污染检查。
+- 测试通过后更新 `docs/modules/ai-chat-system.md`、`docs/modules/tool-engine.md` 和本文看板。
 
 #### 2. ToolEngine 调度治理
 
