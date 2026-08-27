@@ -14,7 +14,7 @@ Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣
 
 | 层 | 位置 | 语言 |
 |----|------|------|
-| Unity 桌宠 | `code/desktop_unity/Assets/Scripts/` | C#（119 文件，架构见 `docs/code-truth-architecture.md`） |
+| Unity 桌宠 | `code/desktop_unity/Assets/Scripts/` | C#（120 文件，架构见 `docs/code-truth-architecture.md`） |
 | 桥接服务器 | `code/desktop_unity/openclaw_bridge.js` | Node.js，端口 19876，PM2 管理（进程名 `openclaw-bridge`） |
 | 工具系统 | `Assets/Scripts/ToolEngine/` | `IPetTool` → `AsyncToolBase` → 反射自动发现，危险工具需审批 |
 | Python 生成器 | `scripts/office/` 等 | python-pptx / python-docx / openpyxl |

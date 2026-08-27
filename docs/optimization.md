@@ -19,6 +19,7 @@
 | `e774c74` | ToolRegistry 惰性初始化、异步协程异常边界 | 已验证 |
 | `b1261ca` | C# 桥接请求统一经 `ConfigureRequest()` 配置鉴权、JSON 请求头和 timeout | 已验证 |
 | `3d92475` | `ChatManager.ContextBuilder.cs` 拆出 SystemPrompt 上下文注入，保持顺序和预算规则不变 | 已验证 |
+| 当前工作区 | `ChatManager.ToolLoop.cs` 抽出本地/云端共用的危险工具确认协程，保持回环行为不变 | 已验证 |
 
 验证基线：
 
@@ -81,10 +82,10 @@
 
 #### 1. ChatManager 继续分层
 
-当前已把请求生命周期抽到 `ChatManager.RequestLifecycle.cs`，并已完成 `ChatManager.ContextBuilder.cs` 第一步上下文拆分；当前唯一进行中的代码工作包是 `O-06 ToolLoopCoordinator`：
+当前已把请求生命周期抽到 `ChatManager.RequestLifecycle.cs`，完成 `ChatManager.ContextBuilder.cs` 第一步上下文拆分，并完成 `O-06 ToolLoopCoordinator` 的第一刀：
 
 - `ChatManager.ContextBuilder.cs`：角色卡、记忆、偏好、任务轨迹、时间天气等上下文注入（已完成第一步，暂保持 partial 以减少行为风险）。
-- `ToolLoopCoordinator`：工具子集、工具回环、审批等待和结果压缩。
+- `ChatManager.ToolLoop.cs`：已统一危险工具审批等待；工具子集、工具回环主体和结果压缩仍待下一刀迁移。
 - `ReplyFinalizer`：回复后处理、质量检查、写入历史和遥测。
 
 约束：缓存前缀顺序不能改变；`PromptContextBudget`、`ToolResultBudget` 和 `QualityTelemetry` 必须继续生效；拆分后先做行为对照，再做性能优化。

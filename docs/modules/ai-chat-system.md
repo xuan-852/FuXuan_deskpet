@@ -57,6 +57,7 @@
 ### 2.1.3 上下文构建分层（2026-08-27）
 
 - `ChatManager.ContextBuilder.cs` 负责 `BuildSystemPrompt()` 及长期记忆、人格、偏好、知识库、活动观测、Live2D 参数、动作经验、剪贴板、任务轨迹和模板注入。
+- `ChatManager.ToolLoop.cs` 当前承载本地规划与云端 tool_call 共用的危险操作确认等待；工具回环主体仍在 `ChatManager.cs`，便于下一步按阶段继续拆分。
 - 原有注入顺序、`PromptContextBudget` 截断规则和动态时间追加到 prompt 尾部的缓存策略保持不变；`ChatManager.cs` 继续负责请求循环、工具回环、历史和回复收尾。
 - 当前分层只做职责隔离，不宣称已经降低 Token；任何预算或注入顺序调整必须另行测量 usage 和回复质量。
 
@@ -249,8 +250,8 @@
 | N40 | 2026-08-08 | **T4 竞态修复**（`_intentReady` + 3s 兜底）；**新增 IsTestMode** 防测试污染（实测 3 条测试消息后 pet_memory 28 条无新增、人格 totalInteractions 56 无变化） | — |
 | N44 | 2026-08-16 | **测试模式禁云端 + 长效消耗日志**：`ApiClient.BlockCloudInTestMode`（默认跟随 IsTestMode）短路所有云端调用，绕过 ApiClient 的直连方（GLM 视觉×6、DeepSeek 兜底×2）补 `ShouldBlockCloudPublic` 拦截，本地 Ollama 不受影响；新增 `UsageLogger` JSONL 持久化（`DataRoot/usage_log.jsonl`，2MB/2 万行封顶，按 source 记录 chat/motion/idle/weather/reflect/glm/local），面板「来源明细」按源统计——用于定位费用来源（实测 45s 测试运行 usage_log 零云端行，仅 local 免费调用） | `08494dd` `51cbecb` |
 | 2026-08-26 | **请求生命周期 partial 拆分**：将发送、取消、排队入口、状态通知和意图分类启动迁移至 `ChatManager.RequestLifecycle.cs`；请求循环与上下文构建仍由 `ChatManager.cs` 负责，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
-| 2026-08-27 | **上下文构建 partial 拆分**：将 `BuildSystemPrompt()` 及其注入链迁移至 `ChatManager.ContextBuilder.cs`；主类保留请求循环、工具回环、历史与回复收尾，注入顺序和预算规则不变；Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 | 2026-08-27 | **上下文构建 partial 拆分**：将 `BuildSystemPrompt()` 及长期记忆、人格、偏好、知识库、活动、Live2D 参数、轨迹和模板注入迁移至 `ChatManager.ContextBuilder.cs`；注入顺序、预算截断和动态时间尾部保持不变，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
+| 2026-08-27 | **工具确认协程 partial 拆分**：将危险工具的确认提示、60 秒自动拒绝和确认回执抽到 `ChatManager.ToolLoop.cs`，本地/云端共用；工具白名单、回环轮数、结果压缩和历史顺序不变，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 
 ### 实测数据（2026-08-08，Player.log）
 

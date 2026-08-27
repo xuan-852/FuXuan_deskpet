@@ -175,7 +175,7 @@ flowchart LR
 
 ```
 Assets/
-├── Scripts/                    # 主代码（顶层 64 个 .cs）
+├── Scripts/                    # 主代码（顶层 65 个 .cs）
 │   ├── Editor/                 # 编辑器工具（非运行时）
 │   ├── Live2DFramework/        # Live2D 参数框架
 │   │   └── ActionAgent/        # 具身动作闭环（15 文件）

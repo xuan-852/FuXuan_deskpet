@@ -640,29 +640,11 @@ public partial class ChatManager : MonoBehaviour
         if (ToolRegistry.IsDangerous(plan.ToolName))
         {
             bool confirmed = false;
-            bool resolved = false;
             string desc = ToolRegistry.GetDangerDescription(plan.ToolName);
-            var confirmBubble = FindObjectOfType<ChatBubble>();
-            if (confirmBubble != null)
-            {
-                confirmBubble.ShowMessage(
-                    $"⚠️ 本地模型欲施「{plan.ToolName}」——{desc}。\n点一下本座 = 允许，按 ESC = 拒绝。",
-                    60f, ChatBubble.MsgPriority.High);
-            }
-
-            ToolConfirmManager.Request(plan.ToolName, plan.ArgumentsJson, desc,
-                ok => { confirmed = ok; resolved = true; });
-
-            float confirmTimeout = Time.time + 60f;
-            while (!resolved)
-            {
-                if (Time.time > confirmTimeout)
-                {
-                    ToolConfirmManager.Resolve(false);
-                    break;
-                }
-                yield return null;
-            }
+            yield return StartCoroutine(WaitForDangerousToolConfirmation(
+                plan.ToolName, plan.ArgumentsJson,
+                $"⚠️ 本地模型欲施「{plan.ToolName}」——{desc}。\n点一下本座 = 允许，按 ESC = 拒绝。",
+                ok => confirmed = ok));
 
             if (!confirmed)
             {
@@ -674,8 +656,6 @@ public partial class ChatManager : MonoBehaviour
                 yield break;
             }
 
-            if (confirmBubble != null)
-                confirmBubble.ShowMessage("✅ 已获准许，施法！", 2.5f, ChatBubble.MsgPriority.Normal);
         }
 
         yield return StartCoroutine(toolInvoker.ExecuteCoroutine(plan.ToolName, plan.ArgumentsJson));
@@ -864,30 +844,11 @@ public partial class ChatManager : MonoBehaviour
                 if (toolInvoker && ToolRegistry.IsDangerous(call.name))
                 {
                     bool confirmed = false;
-                    bool resolved = false;
                     string desc = ToolRegistry.GetDangerDescription(call.name);
-
-                    var confirmBubble = FindObjectOfType<ChatBubble>();
-                    if (confirmBubble != null)
-                    {
-                        confirmBubble.ShowMessage(
-                            $"⚠️ 本座欲施「{call.name}」——{desc}。\n点一下本座 = 允许，按 ESC = 拒绝。",
-                            60f, ChatBubble.MsgPriority.High);
-                    }
-
-                    ToolConfirmManager.Request(call.name, call.arguments, desc, ok => { confirmed = ok; resolved = true; });
-
-                    // 等待用户点击 / ESC / 超时（60s 自动拒绝，防止协程永久挂起）
-                    float confirmTimeout = Time.time + 60f;
-                    while (!resolved)
-                    {
-                        if (Time.time > confirmTimeout)
-                        {
-                            ToolConfirmManager.Resolve(false); // 触发回调 → resolved=true, confirmed=false
-                            break;
-                        }
-                        yield return null;
-                    }
+                    yield return StartCoroutine(WaitForDangerousToolConfirmation(
+                        call.name, call.arguments,
+                        $"⚠️ 本座欲施「{call.name}」——{desc}。\n点一下本座 = 允许，按 ESC = 拒绝。",
+                        ok => confirmed = ok));
 
                     if (!confirmed)
                     {
@@ -906,8 +867,6 @@ public partial class ChatManager : MonoBehaviour
                     }
 
                     Debug.Log($"[ChatManager] ✅ 用户已确认: {call.name}");
-                    if (confirmBubble != null)
-                        confirmBubble.ShowMessage("✅ 已获准许，施法！", 2.5f, ChatBubble.MsgPriority.Normal);
                 }
 
                 if (toolInvoker && toolInvoker.IsCoroutineTool(call.name))
