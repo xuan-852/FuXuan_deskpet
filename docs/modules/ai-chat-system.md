@@ -1,7 +1,7 @@
 # AI 对话系统 — ChatManager 与 Token 优化
 
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
-> **基本架构**: 用户输入 → `ChatManager`（本地优先 / 10 轮云端回环 / 意图过滤 / 看门狗）；云端路径使用 `ApiClient`（DeepSeek SSE + Function Calling）→ `ToolEngine/` 插件调度；本地路径使用 `LocalToolRouter`（轻量模型 JSON 规划 + 白名单 + 同一 ToolEngine 执行）→ `LocalLLMAgentService` / `qwen3:8b` 生成最终回复。动作/分类/摘要/工具规划使用轻量 `qwen2.5:3b`，聊天单独使用质量优先的 `qwen3:8b`（均可由环境变量覆盖）；云端与本地聊天都经过同一 `PetMemory` 相关性检索，本地只使用更紧凑的忆境预算；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`、`ChatManager.RequestLifecycle.cs`、`ChatManager.ContextBuilder.cs`、`LocalToolRouter.cs`、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
+> **基本架构**: 用户输入 → `ChatManager`（本地优先 / 10 轮云端回环 / 意图过滤 / 看门狗）；云端路径使用 `ApiClient`（DeepSeek SSE + Function Calling）→ `ToolEngine/` 插件调度；本地路径使用 `LocalToolRouter`（轻量模型 JSON 规划 + 白名单 + 同一 ToolEngine 执行）→ `LocalLLMAgentService` / `qwen3:8b` 生成最终回复。动作/分类/摘要/工具规划使用轻量 `qwen2.5:3b`，聊天单独使用质量优先的 `qwen3:8b`（均可由环境变量覆盖）；云端与本地聊天都经过同一 `PetMemory` 相关性检索，本地只使用更紧凑的忆境预算；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`、`ChatManager.RequestLifecycle.cs`、`ChatManager.ContextBuilder.cs`、`ChatManager.ToolLoop.cs`、`LocalToolRouter.cs`、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
 > **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀；2026-08-12 P5 注入链新增任务轨迹（TaskTrajectoryManager，太卜手札）与任务模板（TaskTemplateManager，太卜阵法图），同样置于【当前时刻】之前；2026-08-18 成本闸门接入全部主要云端直连点，新增 `PromptContextBudget` / `ToolResultBudget` / `QualityTelemetry`，EditMode 99/99 通过。
 > **编写注意事项**: ①测试必须开测试模式（`D:\DesktopPetData\.test_mode`）否则污染 pet_memory/pet_personality；②`{current_time}` 等动态内容**必须放 system prompt 尾部**（放开头会摧毁 DeepSeek 缓存命中，全价 ¥1/M）；③deepseek-v4-flash 是推理模型，必须显式 `"thinking":{"type":"disabled"}` + `max_tokens:1200` 否则 `content=""`；④历史裁剪须按字符预算且向前对齐最近 user 消息，防止切断 tool_calls↔tool 配对导致 API 400。
 
@@ -51,14 +51,14 @@
 ### 2.1.2 请求生命周期分层（2026-08-26）
 
 - `ChatManager.RequestLifecycle.cs` 负责对外发送入口、消息排队、请求取消、请求状态通知和意图分类启动。
-- `ChatManager.cs` 保留请求协程、工具回环、上下文构建、历史裁剪和回复收尾；两个文件通过 `partial class ChatManager` 共享既有状态，未改变公开调用签名。
+- `ChatManager.cs` 保留请求协程、历史裁剪和回复收尾；`ChatManager.RequestLifecycle.cs`、`ChatManager.ContextBuilder.cs` 与 `ChatManager.ToolLoop.cs` 通过 `partial class ChatManager` 共享既有状态，未改变公开调用签名。
 - 继续拆分时优先保持“状态字段集中、纯流程逐块迁移”的节奏；修改请求状态或代际逻辑后必须同时验证取消、超时、排队和本地/云端两条路径。
 
 ### 2.1.3 上下文构建分层（2026-08-27）
 
 - `ChatManager.ContextBuilder.cs` 负责 `BuildSystemPrompt()` 及长期记忆、人格、偏好、知识库、活动观测、Live2D 参数、动作经验、剪贴板、任务轨迹和模板注入。
-- `ChatManager.ToolLoop.cs` 当前承载本地规划与云端 tool_call 共用的危险操作确认等待；工具回环主体仍在 `ChatManager.cs`，便于下一步按阶段继续拆分。
-- 原有注入顺序、`PromptContextBudget` 截断规则和动态时间追加到 prompt 尾部的缓存策略保持不变；`ChatManager.cs` 继续负责请求循环、工具回环、历史和回复收尾。
+- `ChatManager.ToolLoop.cs` 承载 `DoToolLoop()` 主体、本地规划与云端 tool_call 共用的危险操作确认等待、工具执行、`openclaw_task` 熔断、`ToolResultBudget.Compact()` 和 tool history 写回。
+- 原有注入顺序、`PromptContextBudget` 截断规则和动态时间追加到 prompt 尾部的缓存策略保持不变；请求入口由 `RequestLifecycle` 负责，上下文由 `ContextBuilder` 负责，工具回环由 `ToolLoop` 负责。
 - 当前分层只做职责隔离，不宣称已经降低 Token；任何预算或注入顺序调整必须另行测量 usage 和回复质量。
 
 ### 2.2 可靠性参数（ChatManager 常量，代码真相）
@@ -252,6 +252,7 @@
 | 2026-08-26 | **请求生命周期 partial 拆分**：将发送、取消、排队入口、状态通知和意图分类启动迁移至 `ChatManager.RequestLifecycle.cs`；请求循环与上下文构建仍由 `ChatManager.cs` 负责，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 | 2026-08-27 | **上下文构建 partial 拆分**：将 `BuildSystemPrompt()` 及长期记忆、人格、偏好、知识库、活动、Live2D 参数、轨迹和模板注入迁移至 `ChatManager.ContextBuilder.cs`；注入顺序、预算截断和动态时间尾部保持不变，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 | 2026-08-27 | **工具确认协程 partial 拆分**：将危险工具的确认提示、60 秒自动拒绝和确认回执抽到 `ChatManager.ToolLoop.cs`，本地/云端共用；工具白名单、回环轮数、结果压缩和历史顺序不变，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
+| 2026-08-27 | **工具回环主体 partial 拆分**：将 `DoToolLoop()` 主体、工具执行、`openclaw_task` 致命失败熔断、结果压缩和 tool history 写回迁移至 `ChatManager.ToolLoop.cs`；工具轮数、审批、重试、流式显示和历史顺序不变，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 
 ### 实测数据（2026-08-08，Player.log）
 

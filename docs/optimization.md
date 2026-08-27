@@ -19,7 +19,7 @@
 | `e774c74` | ToolRegistry 惰性初始化、异步协程异常边界 | 已验证 |
 | `b1261ca` | C# 桥接请求统一经 `ConfigureRequest()` 配置鉴权、JSON 请求头和 timeout | 已验证 |
 | `3d92475` | `ChatManager.ContextBuilder.cs` 拆出 SystemPrompt 上下文注入，保持顺序和预算规则不变 | 已验证 |
-| 当前工作区 | `ChatManager.ToolLoop.cs` 抽出本地/云端共用的危险工具确认协程，保持回环行为不变 | 已验证 |
+| `aac54f3` | `ChatManager.ToolLoop.cs` 承载 `DoToolLoop()` 主体、危险工具确认、工具执行、结果压缩与历史写回，保持回环行为不变 | 已验证 |
 
 验证基线：
 
@@ -40,7 +40,7 @@
 | O-03 | ToolRegistry 初始化与异步异常边界 | ✅ | — | 增加 mock/contract 测试 |
 | O-04 | ChatManager 请求生命周期分层 | ✅ | O-01/O-02 | 保持行为对照 |
 | O-05 | ChatManager 上下文构建分层 | ✅ | O-04 | 继续保持缓存前缀稳定 |
-| O-06 | ToolLoopCoordinator：工具回环、审批、结果压缩 | 🔧 | O-03/O-04 | 独立 partial + 工具回环回归 |
+| O-06 | ToolLoopCoordinator：工具回环、审批、结果压缩 | ✅ | O-03/O-04 | 保持工具回环回归 |
 | O-07 | ReplyFinalizer：回复收尾、记忆和质量遥测 | ⏳ | O-06 | 独立 partial + 本地/云端行为对照 |
 | O-08 | Live2D 普通参数数据化 | ⏳ | 可见播放器回归能力 | 模板迁移清单 + 动作截图 |
 | O-09 | 外置窗口真实可见多轮回归 | ⏳ | O-01 | 启动/隐藏/恢复/关闭记录 |
@@ -52,8 +52,8 @@
 本计划按以下顺序推进，不跨越未通过的阶段门：
 
 1. **阶段 A（已完成）**：生命周期、桥接契约、ToolRegistry 基础边界。
-2. **阶段 B（当前）**：ChatManager 分层；先完成 `ContextBuilder`，再拆 `ToolLoopCoordinator`。
-3. **阶段 C**：拆 `ReplyFinalizer`，同时核对记忆写入、质量遥测和请求状态收尾。
+2. **阶段 B（已完成）**：ChatManager 分层；已完成 `ContextBuilder` 与 `ToolLoopCoordinator` 首轮拆分。
+3. **阶段 C（当前）**：拆 `ReplyFinalizer`，同时核对记忆写入、质量遥测和请求状态收尾。
 4. **阶段 D**：Live2D 普通参数模板化，只迁移可回归参数，保留 P0 安全网。
 5. **阶段 E**：外置窗口可见回归、EditMode 结果治理和安装器依赖治理。
 
@@ -82,20 +82,20 @@
 
 #### 1. ChatManager 继续分层
 
-当前已把请求生命周期抽到 `ChatManager.RequestLifecycle.cs`，完成 `ChatManager.ContextBuilder.cs` 第一步上下文拆分，并完成 `O-06 ToolLoopCoordinator` 的第一刀：
+当前已把请求生命周期抽到 `ChatManager.RequestLifecycle.cs`，完成 `ChatManager.ContextBuilder.cs` 上下文拆分，并完成 `O-06 ToolLoopCoordinator` 的首轮迁移：
 
 - `ChatManager.ContextBuilder.cs`：角色卡、记忆、偏好、任务轨迹、时间天气等上下文注入（已完成第一步，暂保持 partial 以减少行为风险）。
-- `ChatManager.ToolLoop.cs`：已统一危险工具审批等待；工具子集、工具回环主体和结果压缩仍待下一刀迁移。
+- `ChatManager.ToolLoop.cs`：承载 `DoToolLoop()` 主体、危险工具审批等待、工具执行、`openclaw_task` 熔断、结果压缩和 tool history 写回。
 - `ReplyFinalizer`：回复后处理、质量检查、写入历史和遥测。
 
 约束：缓存前缀顺序不能改变；`PromptContextBudget`、`ToolResultBudget` 和 `QualityTelemetry` 必须继续生效；拆分后先做行为对照，再做性能优化。
 
-### 阶段门：ToolLoopCoordinator 开工条件
+### 阶段门：ReplyFinalizer 开工条件
 
-- 先记录当前 `DoToolLoop()` 的入口、最大轮数、审批等待、工具结果压缩和历史写入顺序。
-- 第一刀只移动方法，不改变 `MAX_TOOL_ROUNDS`、工具子集、危险审批和 `ToolResultBudget` 逻辑。
-- 必须通过 `build.ps1 -Quick`；由于涉及工具回环和运行时状态，还必须通过完整构建、隔离冒烟和无云端污染检查。
-- 测试通过后更新 `docs/modules/ai-chat-system.md`、`docs/modules/tool-engine.md` 和本文看板。
+- 先记录当前回复收尾的入口、流式缓冲刷新、`_lastReply` 更新、记忆写入、质量遥测和请求状态收尾顺序。
+- 第一刀只移动回复收尾方法，不改变本地/云端分支、流式显示、`RecordConversationMemory` 和 `QualityTelemetry` 逻辑。
+- 必须通过 `build.ps1 -Quick`；由于涉及请求状态和记忆写入，还必须通过完整构建、隔离冒烟和无云端污染检查。
+- 测试通过后更新 `docs/modules/ai-chat-system.md` 和本文看板。
 
 #### 2. ToolEngine 调度治理
 
