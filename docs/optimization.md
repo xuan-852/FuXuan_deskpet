@@ -20,6 +20,7 @@
 | `b1261ca` | C# 桥接请求统一经 `ConfigureRequest()` 配置鉴权、JSON 请求头和 timeout | 已验证 |
 | `3d92475` | `ChatManager.ContextBuilder.cs` 拆出 SystemPrompt 上下文注入，保持顺序和预算规则不变 | 已验证 |
 | `487dbe8` | `ChatManager.ToolLoop.cs` 承载 `DoToolLoop()` 主体、危险工具确认、工具执行、结果压缩与历史写回，保持回环行为不变 | 已验证 |
+| 当前工作区 | `ChatManager.ReplyFinalizer.cs` 抽出最终回复发布与逐句队列触发，保持云端、本地和工具循环上限路径顺序不变 | 待提交 |
 
 验证基线：
 
@@ -41,7 +42,7 @@
 | O-04 | ChatManager 请求生命周期分层 | ✅ | O-01/O-02 | 保持行为对照 |
 | O-05 | ChatManager 上下文构建分层 | ✅ | O-04 | 继续保持缓存前缀稳定 |
 | O-06 | ToolLoopCoordinator：工具回环、审批、结果压缩 | ✅ | O-03/O-04 | 保持工具回环回归 |
-| O-07 | ReplyFinalizer：回复收尾、记忆和质量遥测 | ⏳ | O-06 | 独立 partial + 本地/云端行为对照 |
+| O-07 | ReplyFinalizer：回复收尾、记忆和质量遥测 | 🔧 | O-06 | 继续拆记忆/遥测/请求状态收尾 |
 | O-08 | Live2D 普通参数数据化 | ⏳ | 可见播放器回归能力 | 模板迁移清单 + 动作截图 |
 | O-09 | 外置窗口真实可见多轮回归 | ⏳ | O-01 | 启动/隐藏/恢复/关闭记录 |
 | O-10 | EditMode 结果文件新鲜度治理 | ⏳ | 构建脚本 | 新鲜 XML 或独立结果摘要 |
@@ -86,14 +87,15 @@
 
 - `ChatManager.ContextBuilder.cs`：角色卡、记忆、偏好、任务轨迹、时间天气等上下文注入（已完成第一步，暂保持 partial 以减少行为风险）。
 - `ChatManager.ToolLoop.cs`：承载 `DoToolLoop()` 主体、危险工具审批等待、工具执行、`openclaw_task` 熔断、结果压缩和 tool history 写回。
-- `ReplyFinalizer`：回复后处理、质量检查、写入历史和遥测。
+- `ChatManager.ReplyFinalizer.cs`：已抽出最终回复发布与逐句队列触发；记忆、质量遥测和请求状态收尾仍待后续拆分。
 
 约束：缓存前缀顺序不能改变；`PromptContextBudget`、`ToolResultBudget` 和 `QualityTelemetry` 必须继续生效；拆分后先做行为对照，再做性能优化。
 
-### 阶段门：ReplyFinalizer 开工条件
+### 阶段门：ReplyFinalizer 后续拆分条件
 
 - 先记录当前回复收尾的入口、流式缓冲刷新、`_lastReply` 更新、记忆写入、质量遥测和请求状态收尾顺序。
-- 第一刀只移动回复收尾方法，不改变本地/云端分支、流式显示、`RecordConversationMemory` 和 `QualityTelemetry` 逻辑。
+- 第一刀已完成：只移动回复发布方法，没有改变本地/云端分支、流式显示、`RecordConversationMemory` 和 `QualityTelemetry` 逻辑。
+- 下一刀只处理记忆写入、质量遥测和请求状态收尾，必须继续保持代际守卫、队列调度和反思后台任务顺序。
 - 必须通过 `build.ps1 -Quick`；由于涉及请求状态和记忆写入，还必须通过完整构建、隔离冒烟和无云端污染检查。
 - 测试通过后更新 `docs/modules/ai-chat-system.md` 和本文看板。
 

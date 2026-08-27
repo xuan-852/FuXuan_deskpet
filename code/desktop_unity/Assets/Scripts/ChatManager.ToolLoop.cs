@@ -129,8 +129,7 @@ public partial class ChatManager
                 {
                     _history.Add(new Entry { role = "assistant", content = fullContent });
                 }
-                _lastReply = _fullReplyText;
-                OnNewReply?.Invoke(_lastReply);
+                PublishFinalReply(_fullReplyText);
                 // ℹ️ 不调 StartSentenceQueue：流式路径 AddStreamSentence 已经显示了内容
                 RecordConversationMemory(fullContent);
                 yield break;
@@ -245,8 +244,7 @@ public partial class ChatManager
         // 超过最大轮次
         _lastReply = "♾️ 术式循环过久，本座暂且收阵。";
         _history.Add(new Entry { role = "assistant", content = _lastReply });
-        OnNewReply?.Invoke(_lastReply);
-        StartSentenceQueue(_lastReply);
+        PublishFinalReply(_lastReply, _lastReply);
     }
 
     /// <summary>

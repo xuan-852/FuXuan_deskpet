@@ -23,7 +23,7 @@ code/desktop_unity/Assets/
 └── Resources/                        # 运行时资源
 ```
 
-> **实测统计（2026-08-27）**: 顶层 Scripts 65 + Editor 6 + Live2DFramework 8 + ActionAgent 15 + ActionPresets 6 + ToolEngine 20 = **120 个 .cs 文件**。
+> **实测统计（2026-08-27）**: 顶层 Scripts 66 + Editor 6 + Live2DFramework 8 + ActionAgent 15 + ActionPresets 6 + ToolEngine 20 = **121 个 .cs 文件**。
 
 ### 1.2 文件规模 TOP 榜（按行数）
 
@@ -32,10 +32,11 @@ code/desktop_unity/Assets/
 | `Scripts/Live2DRenderer.cs` | **3,930** | Live2D 模型加载、参数、动作与交互逻辑 |
 | `Scripts/Live2DRenderer.OverlayRendering.cs` | **144** | Live2D 置顶叠加相机、RenderTexture、OnGUI 与性能档位 |
 | `RightPanel.cs` | **2,530** | 右键面板主逻辑；聊天区和子面板已拆到 partial 文件 |
-| `ChatManager.cs` | **1,890** | AI 请求协程、历史裁剪与回复收尾 |
+| `ChatManager.cs` | **1,889** | AI 请求协程、历史裁剪与回复收尾 |
 | `ChatManager.RequestLifecycle.cs` | **120** | ChatManager 请求发送、排队、取消、状态通知与意图分类入口 |
-| `ChatManager.ContextBuilder.cs` | **135** | ChatManager SystemPrompt 上下文注入与预算截断 |
-| `ChatManager.ToolLoop.cs` | **285** | ChatManager 工具回环、审批、执行、结果压缩与历史写回 |
+| `ChatManager.ContextBuilder.cs` | **144** | ChatManager SystemPrompt 上下文注入与预算截断 |
+| `ChatManager.ToolLoop.cs` | **283** | ChatManager 工具回环、审批、执行、结果压缩与历史写回 |
+| `ChatManager.ReplyFinalizer.cs` | **18** | ChatManager 最终回复发布与逐句队列触发 |
 | `Editor/ParameterVisionScanner.cs` | 1,851 | 编辑器：参数视觉扫描 |
 | `ExternalChatWindow.cs` | **1,488** | 外置 Win32 窗口、DPI、输入和生命周期 |
 | `DesktopPet.cs` | **1,408** | 主控制器、状态机、日志镜像 |
@@ -125,7 +126,7 @@ flowchart TB
 
 ## 三、AI 核心层真相
 
-### 3.1 ChatManager（2,430 行，主文件 1,890 + RequestLifecycle 120 + ContextBuilder 135 + ToolLoop 285）— 与文档差异显著
+### 3.1 ChatManager（2,454 行，主文件 1,889 + RequestLifecycle 120 + ContextBuilder 144 + ToolLoop 283 + ReplyFinalizer 18）— 与文档差异显著
 
 | 项 | README 声称 | **代码实际** |
 |---|---|---|
@@ -279,7 +280,7 @@ flowchart TB
 | `HybridRenderer` 3D 模式可用 | **3D 模式不可用** — TODO 注释，强制走 Live2D |
 | `Model3DRenderer` 绿幕抠像（Color Key） | **实际设置纯黑背景**（黑色=透明，供 DWM 玻璃层抠像；代码注释已说明该设计，非矛盾，2026-08-14 澄清） |
 | `VisualHeartbeat` 默认表情 "curious" | **实际默认 "surprise"** |
-| README "36 个核心脚本" | **实际顶层 65 + 子目录 55（共 120 个 .cs，2026-08-27 实测）** |
+| README "36 个核心脚本" | **实际顶层 66 + 子目录 55（共 121 个 .cs，2026-08-27 实测）** |
 | `PerformanceMonitor.GetResolutionScale()` 动态降分辨率 | **恒返回 1.0f**（仅帧率降级；代码注释：始终全分辨率，防放大马赛克——**有意设计**，2026-08-14 澄清） |
 | `WindowOverlay.isMultiMonitor` 支持多屏 | **已真实实现（P4.4，2026-08-12）**：`SM_CXVIRTUALSCREEN` 差值法（`virtualW > w || virtualH > h`），供 AI 感知注入；主屏窗口定位仍用 `SM_CXSCREEN`（此前"恒 false"为过时结论） |
 
@@ -375,7 +376,7 @@ flowchart TB
 | 4 | "11 规则 + 12 特殊模式" | 10 规则 + 10 特殊（9 姿势） | 中 | ✅ 已修正 |
 | 5 | 曲线含 "BounceEaseOut" | `Bounce`（共 6 种） | 低 | ✅ 已修正 |
 | 6 | 双模型校验（Qwen+GLM） | 单 GLM-4V（Qwen 已删，N39 回调简化为 4 参） | 高 | ✅ 已修正 |
-| 7 | 36 个核心脚本 | 顶层 65 + 子目录 55（实测 **120** 个 .cs，2026-08-27） | 中 | ✅ 已更新 |
+| 7 | 36 个核心脚本 | 顶层 66 + 子目录 55（实测 **121** 个 .cs，2026-08-27） | 中 | ✅ 已更新 |
 | 8 | 知识库同步上下文 | ~~`GetFormattedContext()` 是 STUB~~ → **N39 已修复**（`LastFormattedContext` 缓存） | 高 | ✅ N39 已修复 |
 | 9 | 反思机制驱动 | ~~`OnReflectRequest` 恒 null~~ → **N39 已接线**（CheckReflection → DoReflection → CommitReflection） | 高 | ✅ N39 已修复 |
 | 10 | 3D 渲染可用 | HybridRenderer TODO，强制 Live2D | 中 | ⚠️ 保持现状（规划中） |

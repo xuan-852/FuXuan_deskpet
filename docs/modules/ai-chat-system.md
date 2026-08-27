@@ -51,13 +51,14 @@
 ### 2.1.2 请求生命周期分层（2026-08-26）
 
 - `ChatManager.RequestLifecycle.cs` 负责对外发送入口、消息排队、请求取消、请求状态通知和意图分类启动。
-- `ChatManager.cs` 保留请求协程、历史裁剪和回复收尾；`ChatManager.RequestLifecycle.cs`、`ChatManager.ContextBuilder.cs` 与 `ChatManager.ToolLoop.cs` 通过 `partial class ChatManager` 共享既有状态，未改变公开调用签名。
+- `ChatManager.cs` 保留请求协程和历史裁剪；`ChatManager.RequestLifecycle.cs`、`ChatManager.ContextBuilder.cs`、`ChatManager.ToolLoop.cs` 与 `ChatManager.ReplyFinalizer.cs` 通过 `partial class ChatManager` 共享既有状态，未改变公开调用签名。
 - 继续拆分时优先保持“状态字段集中、纯流程逐块迁移”的节奏；修改请求状态或代际逻辑后必须同时验证取消、超时、排队和本地/云端两条路径。
 
 ### 2.1.3 上下文构建分层（2026-08-27）
 
 - `ChatManager.ContextBuilder.cs` 负责 `BuildSystemPrompt()` 及长期记忆、人格、偏好、知识库、活动观测、Live2D 参数、动作经验、剪贴板、任务轨迹和模板注入。
 - `ChatManager.ToolLoop.cs` 承载 `DoToolLoop()` 主体、本地规划与云端 tool_call 共用的危险操作确认等待、工具执行、`openclaw_task` 熔断、`ToolResultBudget.Compact()` 和 tool history 写回。
+- `ChatManager.ReplyFinalizer.cs` 承载最终回复发布与逐句队列触发；记忆写入、质量遥测和请求状态收尾仍由原流程负责，便于后续逐项核对。
 - 原有注入顺序、`PromptContextBudget` 截断规则和动态时间追加到 prompt 尾部的缓存策略保持不变；请求入口由 `RequestLifecycle` 负责，上下文由 `ContextBuilder` 负责，工具回环由 `ToolLoop` 负责。
 - 当前分层只做职责隔离，不宣称已经降低 Token；任何预算或注入顺序调整必须另行测量 usage 和回复质量。
 
@@ -253,6 +254,7 @@
 | 2026-08-27 | **上下文构建 partial 拆分**：将 `BuildSystemPrompt()` 及长期记忆、人格、偏好、知识库、活动、Live2D 参数、轨迹和模板注入迁移至 `ChatManager.ContextBuilder.cs`；注入顺序、预算截断和动态时间尾部保持不变，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 | 2026-08-27 | **工具确认协程 partial 拆分**：将危险工具的确认提示、60 秒自动拒绝和确认回执抽到 `ChatManager.ToolLoop.cs`，本地/云端共用；工具白名单、回环轮数、结果压缩和历史顺序不变，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 | 2026-08-27 | **工具回环主体 partial 拆分**：将 `DoToolLoop()` 主体、工具执行、`openclaw_task` 致命失败熔断、结果压缩和 tool history 写回迁移至 `ChatManager.ToolLoop.cs`；工具轮数、审批、重试、流式显示和历史顺序不变，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
+| 2026-08-27 | **回复发布 partial 拆分**：将最终回复通知与逐句队列触发抽到 `ChatManager.ReplyFinalizer.cs`，保持云端、工具循环上限和本地回退的原有调用顺序；Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 
 ### 实测数据（2026-08-08，Player.log）
 

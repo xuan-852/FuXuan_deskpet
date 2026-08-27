@@ -1223,8 +1223,7 @@ public partial class ChatManager : MonoBehaviour
         _fullReplyText = _lastReply;
 
         // 触发显示（使用流式路径的显示机制）
-        OnNewReply?.Invoke(_lastReply);
-        StartSentenceQueue(fallbackReply);
+        PublishFinalReply(_lastReply, fallbackReply);
 
         // 记录记忆
         RecordConversationMemory(fallbackReply);
