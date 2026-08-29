@@ -66,7 +66,7 @@
 
 \title{\vspace{-2cm}符玄桌面宠物 --- 技术文档}
 \author{符玄桌宠项目}
-\date{N40 · 2026-08-08}
+\date{N40+ · 2026-08-29}
 
 \begin{document}
 
@@ -74,7 +74,7 @@
 \thispagestyle{empty}
 
 \begin{abstract}
-本文档为符玄桌面宠物项目的完整技术报告（N40+，2026-08-13 按代码真相审计修订）。项目基于 Tuanjie 2022.3.62t7（团结引擎）与 Live2D Cubism SDK 5-r.4，
+本文档为符玄桌面宠物项目的完整技术报告（N40+，2026-08-29 按代码真相审计修订）。项目基于 Tuanjie 2022.3.62t7（团结引擎）与 Live2D Cubism SDK 5-r.4，
 构建了一个运行于 Windows 桌面的 AI 驱动虚拟角色。系统深度集成 DeepSeek Chat API（含 Function Calling 65 个工具）、
 GLM-4V 多模态视觉模型、Ollama 本地 LLM 实时决策引擎、本地知识库（RAG）以及多层级感知与记忆系统。
 核心亮点是\textbf{具身智能闭环}——从感知、决策、执行到视觉验证与记忆学习的完整循环。
@@ -805,9 +805,8 @@ MoveLeftTime（权重 1）/ MoveRightTime（权重 1）/ StopTime（权重 6）�
 
 \subsection{多显示器支持}
 
-> ⚠️ N40 注记：旧文档称"通过 \texttt{VirtualScreen} 获取完整桌面区域，物理边界自动适配"，
-> 代码实测 \texttt{WindowOverlay.isMultiMonitor} 恒为 \texttt{false}（仅用 \texttt{SM\_CXSCREEN} 主屏尺寸），
-> 跨屏行走/多屏边界适配为规划中能力（见 roadmap Phase 4.4）。
+> ⚠️ N40 注记：\texttt{WindowOverlay.isMultiMonitor} 已通过 \texttt{SM\_CXVIRTUALSCREEN}/虚拟桌面范围检测多显示器环境；
+> 当前主屏窗口定位与跨屏行走策略仍未完成，不能把“检测到多屏”表述为“支持跨屏行走”（见 roadmap Phase 4.4）。
 
 \subsection{睡眠唤醒检测}
 

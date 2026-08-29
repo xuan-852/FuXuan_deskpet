@@ -1,9 +1,23 @@
 # 项目任务清单
 
-> 文件版本: N40+ · 最后更新: 2026-08-13（按代码真相审计修订，含 N39 修复、T1-T8 Token 优化、2026-08-12 任务可视化/办公/偏好/模板迭代）
+> 文件版本: N40+ · 最后更新: 2026-08-29（按代码真相审计修订，补入 2026-08-25~27 本地模型保护、请求生命周期、桥接任务取消、DWM 看门狗与构建权限记录）
 >
 > 图例: ✅ 已完成 / 🔧 已优化 / 🐛 已修复 / ⏳ 待办 / 💡 待研究 / ❌ 已废弃
 > ⚠️ 数字修正: 工具回环 5→**10 轮**、工具集 40+→**52 个**→**55 个（N40）**→**65 个（2026-08-12）**、MotionTranslator "11 规则+12 特殊"→**10+10**
+
+### 2026-08-29 状态同步
+
+以下近期任务已在代码和验证记录中落地，后续新任务不得继续按“待实现”描述：
+
+| 状态 | 任务 | 验证依据 |
+|------|------|---------|
+| ✅ | 本地 Ollama 就绪检查与模型存在性保护 | `RuntimeReadinessService`、`LocalLLMClient`；启动自检不发起付费云端探测 |
+| ✅ | 请求生命周期、取消与失败状态收敛 | `RequestLifecycle`、`RequestStatusText`、`CancelCurrentRequest()`、`ReplyFinalizer` |
+| ✅ | OpenClaw 任务取消与关闭路径保护 | `/task/{id}/cancel`、`BeginShutdown()`、取消结果 `success` 校验 |
+| ✅ | 外置窗口 DWM 恢复与非激活置顶看门狗 | `WindowOverlay` 延迟重建、2 秒一次 `HWND_TOPMOST` 看门狗 |
+| ✅ | 构建权限与受限沙箱判定说明 | `docs/build-workflow.md`、根目录 `AGENTS.md` |
+| ⚠️ | EditMode 新鲜测试结果 | 当前 `114/114` XML 仍按历史结果处理，不能冒充本次新鲜测试 |
+| ⚠️ | Tuanjie/Unity 构建复核 | 受限环境可能外层卡住；必须在本机权限下以新日志和 `[OK] Build succeeded!` 判定 |
 
 ---
 
@@ -237,7 +251,7 @@
 | ✅ | 工具注册 | `openclaw_search` |
 | ✅ | PM2 统一管理 | server/ecosystem.config.js（进程名 openclaw-bridge） |
 | ✅ | 环境变量鉴权（N39+） | 请求头 `x-bridge-token`：优先 `BRIDGE_TOKEN`（系统级 64 字符），fallback `GATEWAY_TOKEN`（自动从 openclaw.json 读取，含 BOM strip）；C# 侧同源读取 |
-| ✅ | 端点现状 | `/search`、`/health`、`/compile_latex`、`/generate_office`、`/task`（P1 已落地：POST 提交 / GET 轮询 / POST cancel，含心跳 lastActivityAt 与 maxSteps 成本熔断） |
+| ✅ | 端点现状 | `/search`、`/health`、`/compile_latex`、`/generate_office`、`/extract_pdf`、`/task` 系列（POST 提交 / GET 轮询 / POST cancel / approve，含心跳 lastActivityAt 与 maxSteps 成本熔断） |
 | ✅ | 任务外包工具（P1） | `openclaw_task`（太卜神行法，VisionKnowledgeTools.cs）→ `OpenClawBridge.ExecuteTaskAndWaitAsync`：提交 + 心跳轮询（默认 300s 无进展自动取消）+ 不可重试错误 `❌ [不可重试]` 前缀 + ChatManager 成本熔断 `_openclawTaskFatalSeen` |
 
 ---

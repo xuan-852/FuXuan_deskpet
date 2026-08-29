@@ -254,7 +254,7 @@ setx DESKTOP_TOKEN "your-server-token-here"
 |------|------|
 | **Cubism SDK 5-r.4** | 参数化变形 + 实时物理模拟（裙/发/法盘惯性跟随） |
 | **DWM 透明窗口** | `DwmExtendFrameIntoClientArea` 无缝融合桌面，无绿边 |
-| **Perlin 噪声微动** | 7 通道独立噪声：呼吸/身体晃(3)/头部/眼球(2) |
+| **Perlin 噪声微动** | 8 通道独立噪声：呼吸/身体晃(3)/头部/眼球(2) |
 | **参数映射** | 80+ 参数，按部位分组 → 语义名双向映射 |
 | **天气↔表情联动** | ☀️微笑 / 🌧委屈 / ❄️好奇 / 🌙垂眼 |
 
@@ -268,7 +268,7 @@ setx DESKTOP_TOKEN "your-server-token-here"
 | **鼠标跟随** | 眼球 150px 触发平滑追踪 |
 | **屏幕碰撞** | 边缘撞墙动画 + 反弹物理 |
 | **地面状态机** | 5 种行为：左/右行走（边缘/定时）、停留，加权随机切换 |
-| **多显示器** | ⚠️ `WindowOverlay.isMultiMonitor` **恒为 false**（跨屏行走为规划中能力） |
+| **多显示器** | ✅ `WindowOverlay.isMultiMonitor` 可检测虚拟桌面范围；跨屏行走策略仍为规划中能力 |
 
 ### 🎭 动作系统 — ActionAgent（15 文件）
 
@@ -379,8 +379,8 @@ Desktop_per_pro/
 | [`docs/development-standards.md`](docs/development-standards.md) | 开发规范（9 章，AI + 人类通用） |
 | [`docs/quality-measurement-test-guide.md`](docs/quality-measurement-test-guide.md) | 编译产物核验与 Ollama 本地质量采样说明 |
 | [`docs/quality-comparison-test-guide.md`](docs/quality-comparison-test-guide.md) | 本地 / 云端配对质量对照说明 |
-| [`docs/desktop-assistant-roadmap.md`](docs/desktop-assistant-roadmap.md) | 演进路线图（v0.2，含开源调研） |
-| [`docs/README.md`](docs/README.md) | 文档总索引（9 模块四要素文档） |
+| [`docs/desktop-assistant-roadmap.md`](docs/desktop-assistant-roadmap.md) | 演进路线图（v0.3，含开源调研） |
+| [`docs/README.md`](docs/README.md) | 文档总索引（10 模块四要素文档） |
 | [`AGENTS.md`](AGENTS.md) | AI 协作快速入口 |
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本迭代日志 |
 

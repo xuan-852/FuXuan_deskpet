@@ -130,7 +130,7 @@ flowchart TB
 
 | 项 | README 声称 | **代码实际** |
 |---|---|---|
-| 工具循环上限 | 5 轮 | **`MAX_TOOL_ROUNDS = 10`**（注释"5->10: 复杂任务需多轮"） |
+| 工具循环上限 | 旧文档曾写 5 轮 | **`MAX_TOOL_ROUNDS = 10`**（注释“5->10: 复杂任务需多轮”） |
 | 历史裁剪 | — | **`MAX_HISTORY_ENTRIES = 60`** 条 |
 | API 超时 | — | **看门狗 600s**（`REQUEST_TIMEOUT`，覆盖 GLM-4V 180s） |
 | API 自动重试 | — | 最多 **3 次**，400/401/403 **不重试**（`ShouldRetry`） |
@@ -191,7 +191,7 @@ flowchart TB
 | `TaskTemplateTools.cs` ★P5 新增 | **3 个**：query_task_templates / save_task_template / remove_task_template（TaskTemplateManager 配套） |
 | `PoggetTool.cs` ★文档未列 | **launch_pogget** → 启动 `d:\pogget\Pogget.exe` |
 | `PoggetAgentTool.cs` ★文档未列 | **pogget_agent** → IPC 调 `D:\pogget\agent\bin\PoggetAgent-debug.exe`（**8 个子命令**：ping / list_containers / get_container_items / add_to_container / remove_from_container / create_container / organize_desktop / **quickpanel_status**） |
-| `LatexCompileTool.cs` ★文档未列 | **compile_latex** → OpenClawBridge.CompileLatexAsync，输出 `D:\DesktopPetData\Documents\` |
+| `LatexCompileTool.cs` ★文档未列 | **compile_latex** → OpenClawBridge.CompileLatexAsync，输出 `DataPathConfig.DocumentsDir` |
 | `AsyncToolBase.cs` | 异步工具基类（含 `ToolName` 虚属性，`search_web` 等 override 于此） |
 | `IPetTool.cs` | 工具接口（ToolName / ToolDescription / ToolParametersJson / IsAsync / Execute / ExecuteAsync） |
 | `ToolRegistry.cs` | 反射自动发现 IPetTool（AppDomain.GetAssemblies）；DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, **openclaw_task**} |
@@ -239,7 +239,7 @@ flowchart TB
 | **BUG-3** | `MotionAgent.cs` | `GatherContext()` 注释声称农历→月相，实际用 `now.Day`（公历） | 月相感知名不符实 |
 | **BUG-4** | `ActivityTracker.cs` | `UpdateInteractionTime()` 分支为空实现 | 交互时间未更新 |
 | **BUG-5** | `DualModelValidator.cs` | **名为"Dual"实为单 GLM-4V**（Qwen-VL 已移除，qwenScore/review 恒 0） | 双模型校验名存实亡 |
-| **BUG-6** | `AutoMotionCollector.cs` | `[Obsolete]` 死代码 331 行（已被 MotionAgent+DualModelValidator 取代但未删） | 维护负担 |
+| **BUG-6** | `AutoMotionCollector.cs` | `[Obsolete]` 死代码 331 行（已被 MotionAgent+DualModelValidator 取代） | ✅ N39 已删除，保留本行用于历史追溯 |
 | **BUG-7** | `MotionTranslator.cs` | 示例（L242-256）用 `arm_right_upper: 0.8`，与规则"15-25 度"矛盾 | 可能误导 LLM 输出 |
 | **BUG-8** | `MotionTranslator.cs` | README 称"11 规则+12 特殊模式"，**实际 10 规则 + 10 特殊模式（9 种姿势，捂脸重复）** | 文档错误 |
 | **BUG-9** | `MotionPlanner.cs` | README 称曲线含 "BounceEaseOut"，实际为 `Bounce` | 文档错误 |
@@ -323,7 +323,7 @@ flowchart TB
 
 ## 七、数据持久化真相
 
-> 默认根目录在 `DataPathConfig.cs`：**`D:\DesktopPetData\`**（唯一事实源；可由 `FU_XUAN_DATA` 覆盖；配置路径失效且默认目录已有数据时自动复用默认目录，避免重装产生第二份活动数据；2026-08-21 起扩展 `EnsureDataRoot`）。`LogsDir` / `DocumentsDir` / `TestModeFile` / `InboxFile` 子路径均从该根目录派生。
+> 默认根目录在 `DataPathConfig.cs`：**`%LOCALAPPDATA%\FuXuan\DesktopPetData\`**（唯一事实源；可由 `FU_XUAN_DATA` 覆盖；配置路径失效且旧 `C:\DesktopPetData` 或 `D:\DesktopPetData` 已有数据时按代码规则复用，避免重装产生第二份活动数据；2026-08-21 起扩展 `EnsureDataRoot`）。`LogsDir` / `DocumentsDir` / `TestModeFile` / `InboxFile` 子路径均从该根目录派生。
 
 | 文件 | 用途 |
 |---|---|
@@ -402,6 +402,6 @@ flowchart TB
 5. **BUG-5**：DualModelValidator 名不副实 → ✅ N39 已修复（回调简化 4 参，删除恒 0 qwenScore）
 
 ### 建议
-- 以本文档为基准更新 README / docs 中的过时章节（**已完成**，2026-08-13 全量修订，含 65 工具 / /task 端点 / 新持久化文件）
+- 以本文档为基准更新 README / docs 中的过时章节（**本次 2026-08-29 已复核并修正关键过期项**；后续代码变更仍必须按文档同步门禁更新）
 - 清理死代码（AutoMotionCollector 已删）、修正注释与代码矛盾（Model3DRenderer、VisualHeartbeat）
 - 跨屏行走策略与 3D 模式仍为规划中能力；`isMultiMonitor` 多屏检测已实现，勿把“检测能力”误写成“跨屏行走已完成”

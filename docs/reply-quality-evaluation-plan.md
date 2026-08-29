@@ -1,7 +1,7 @@
 # 回复内容质量测评方案（Reply Content Quality Evaluation）
 
-> **用途**：补齐当前质量测评的空白——现有 `quality_log.jsonl` 只记录技术指标（成功/解析/延迟/字符数），**不评价"回复内容本身是否符合符玄人设、是否用了记忆/时间信息"**。本文定义一套可执行的回复内容质量评价体系。
-> **状态**：方案稿（2026-08-19），待评审后实现。
+> **用途**：定义回复内容质量的五维评价体系，并记录其在实际代码中的接线、数据字段和验证边界。
+> **状态**：✅ 核心实现已接入（2026-08-29 复核）；仍待补充更完整的记忆/时间/约束案例集，以及人工盲评相关性验证，本文保留“方案”章节作为后续验收标准。
 > **关联**：[`quality-comparison-test-guide.md`](quality-comparison-test-guide.md)（技术对照流程）、[`quality-measurement-test-guide.md`](quality-measurement-test-guide.md)（本地采样）、[`token-saving-architecture.md`](token-saving-architecture.md)（本地模型路由）。
 
 ---
@@ -143,7 +143,7 @@
                                     │
                                     ├─ QualityTelemetry.RecordChat（现有：ok/延迟/字符）
                                     │
-                                    └─ ReplyQualityJudge（新：异步评分）
+                                    └─ ReplyQualityJudge（已接入：异步评分）
                                            │ 本地/云端裁判
                                            ▼
                                     quality_log 追加 judge_* 字段
@@ -159,12 +159,12 @@
 
 | 项 | 说明 |
 |----|------|
-| `ReplyQualityJudge.cs` | 裁判核心：JudgeProvider 抽象 + Local/Cloud 实现 + 维度定义 |
-| `ChatManager.cs` 接线 | final_reply 分支，case_id 存在时触发 |
-| `QualityTelemetry.cs` 扩展 | judge_* 字段 + RecordJudge() |
-| EditMode 测试 | 裁判协议、N/A 处理、provider 切换 |
-| 指南文档更新 | `quality-measurement-test-guide.md` 补内容质量维度 |
-| 案例集补充 | 新增记忆类/时间类/约束类案例（见 §五） |
+| `ReplyQualityJudge.cs` | ✅ 裁判核心：JudgeProvider 抽象 + Local/Cloud 实现 + 维度定义 |
+| `ChatManager.cs` 接线 | ✅ final_reply 分支，case_id 存在时触发 |
+| `QualityTelemetry.cs` 扩展 | ✅ judge_* 字段 + RecordJudge() |
+| EditMode 测试 | ⚠️ 裁判协议、N/A 处理、provider 切换仍需补新鲜测试证据 |
+| 指南文档更新 | ⚠️ `quality-measurement-test-guide.md` 仍需补内容质量维度说明 |
+| 案例集补充 | ⏳ 记忆类/时间类/约束类案例仍待补齐 |
 
 ---
 

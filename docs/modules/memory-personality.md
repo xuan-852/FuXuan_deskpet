@@ -1,7 +1,7 @@
 # 记忆与人格系统 — PetMemory、人格演化与知识库
 
 > **文档作用**: 本模块文档描述桌宠「记忆与人格」子系统的**代码真相**——PetMemory 三层记忆、PersonalityManager 五维人格演化、KnowledgeBaseManager 本地 RAG 知识库，以及数据持久化文件地图。改记忆读写/人格演化/知识库相关代码前必读。
-> **基本架构**: `PetMemory`（entries + coreFacts + conversationSummary 三层存储；entries 按四层配额治理，按当前问题相关性收束注入）；`PersonalityManager`（五维人格 × 三维关系 × 情绪联动，`pet_personality.json`）；`KnowledgeBaseManager`（Ollama nomic-embed-text 嵌入 + 余弦 TopK 检索，`knowledge_base.json`）；反思链路（CheckReflection → DoReflection → CommitReflection）。数据根目录由 `DataPathConfig.cs` 统一解析：默认 `D:\DesktopPetData\`，可用 `FU_XUAN_DATA` 覆盖，失效配置会在已有默认目录存在时回退，防止重装生成第二份活动目录。
+> **基本架构**: `PetMemory`（entries + coreFacts + conversationSummary 三层存储；entries 按四层配额治理，按当前问题相关性收束注入）；`PersonalityManager`（五维人格 × 三维关系 × 情绪联动，`pet_personality.json`）；`KnowledgeBaseManager`（Ollama nomic-embed-text 嵌入 + 余弦 TopK 检索，`knowledge_base.json`）；反思链路（CheckReflection → DoReflection → CommitReflection）。数据根目录由 `DataPathConfig.cs` 统一解析：默认 `%LOCALAPPDATA%\FuXuan\DesktopPetData\`，可用 `FU_XUAN_DATA` 覆盖，失效配置会在已有旧目录时按代码规则回退，防止重装生成第二份活动目录。
 > **开发历史迭代**: N39 修复两大缺口——反思链路实际接线（死回调 OnReflectRequest 删除）、知识库上下文实际注入（GetFormattedContext 返回 LastFormattedContext 缓存）；测试模式 IsTestMode 防污染（.test_mode 标记文件）；2026-08-12 P4 新增 PreferencesManager 偏好结构化存储（`pet_preferences.json` + set/query/remove 三工具）。
 > **编写注意事项**: ①测试必须开 `.test_mode`（防污染 pet_memory.json 忆境 + pet_personality.json 人格计数），测后清理用 `scripts/openclaw/clean_test_pollution.cjs`；②人格触发词注意区分正负触发（"我的"/"我在"等 importantMarkers）；③`MotionAgent` 已按帧调用 `DriftTowardNeutral()`，修改动作循环时要防止无交互回归逻辑被移除；④知识库检索是协程异步填充缓存，同步 API 返回最近结果（可能有 1 帧延迟）。
 
@@ -61,7 +61,7 @@ SendRequestCoroutine → CheckReflection (L518)
 
 记忆重要性评估 / 反思提炼已实际驱动（曾有的 `OnReflectRequest` 死回调已删除）。
 
-### 2.5 数据持久化地图（根目录 `D:\DesktopPetData\`，DataPathConfig.cs）
+### 2.5 数据持久化地图（根目录由 `DataPathConfig.cs` 决定）
 
 | 文件 | 写入方 | 说明 |
 |------|--------|------|
@@ -152,7 +152,7 @@ SendRequestCoroutine → CheckReflection (L518)
 1. **测试必须开测试模式**：建空文件 `D:\DesktopPetData\.test_mode`（防污染 pet_memory/pet_personality），测后删 + `node scripts/openclaw/clean_test_pollution.cjs`（备份→删测试记忆→回退 totalInteractions→重算 familiarity）
 2. **人格触发词敏感**：测试消息仍可能推高 PersonalityManager 计数，务必使用测试模式隔离；记忆写入本身已不再使用宽泛的“我的/工作”关键词直接落盘
 3. **知识库异步缓存**：`GetFormattedContext()` 是同步 API 返回协程填充的缓存（可能有 1 帧延迟），不要改成同步阻塞检索
-4. **数据根目录硬编码**：所有持久化文件根在 `D:\DesktopPetData\`（`DataPathConfig.cs`），不要散落新路径；新增文件先查数据地图表
+4. **数据根目录统一解析**：所有持久化文件必须以 `DataPathConfig.DataRoot` 为根，不要散落新路径；新增文件先查数据地图表
 5. **反思链路不要回退**：历史曾有死回调（OnReflectRequest 恒 null），现在已接线——改 ChatManager 时保持 SendRequestCoroutine → CheckReflection → DoReflection → CommitReflection 链路
 6. **`DriftTowardNeutral()` 已由 MotionAgent 接入**：修改 MotionAgent 更新循环时必须保留该调用；如需改变回归速率，应修改调用参数并补充人格测试。
 7. **验证方法**：查看 `pet_memory.json` 结构（entries/coreFacts/conversationSummary）与 `pet_personality.json` 五维值；测试后确认无新增测试记忆、totalInteractions 无变化

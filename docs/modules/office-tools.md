@@ -1,6 +1,6 @@
 # 办公工具链 — PPT / Word / Excel 三件套生成
 
-> **文档作用**: 本模块文档描述桌宠「办公文档生成」子系统的**代码真相**——从用户需求描述到 .pptx/.docx/.xlsx 落盘的完整链路：AI 组织结构化内容（桥接服务器）→ 本地 Python 渲染（python-pptx/python-docx/openpyxl）→ 输出到 `D:\DesktopPetData\Documents\` 并自动打开。**改办公生成器/端点/工具类前必读**。
+> **文档作用**: 本模块文档描述桌宠「办公文档生成」子系统的**代码真相**——从用户需求描述到 .pptx/.docx/.xlsx 落盘的完整链路：AI 组织结构化内容（桥接服务器）→ 本地 Python 渲染（python-pptx/python-docx/openpyxl）→ 输出到 `DataPathConfig.DocumentsDir`（默认 `%LOCALAPPDATA%\FuXuan\DesktopPetData\Documents\`，可由 `FU_XUAN_DATA` 覆盖）并自动打开。**改办公生成器/端点/工具类前必读**。
 > **基本架构**: 工具层 `OfficeTools.cs`（GeneratePptTool/GenerateDocxTool/GenerateXlsxTool → `OfficeTools.RunOfficeGeneration`）→ 桥接 `OpenClawBridge.GenerateOfficeAsync`（HTTP POST /generate_office，300s）→ `openclaw_bridge.js` 三段式（`generateOfficeContent` AI 生成 JSON → 建输出目录 → `renderOfficeFile` execSync Python）→ `scripts/office/{ppt,docx,xlsx}_gen.py`。输出目录 `{标题}_{日期}_{随机}/`，成功后自动打开。
 > **开发历史迭代**: 2026-08-12 Phase A 第一期办公工具链落地；修复 /generate_office 首次 500（脚本路径只上探一级 → 多候选探测）；PM2 下 resolvePython 加 USERPROFILE 兜底。
 > **编写注意事项**: ①Python 脚本被 execSync 调用，输出**只能打 JSON**（stdout 即契约），日志走 console.error/stderr；②脚本定位靠多候选探测（OFFICE_SCRIPTS_DIR env → 硬编码 → cwd 上探 5 级 → argv[1] 上探 5 级）；③渲染超时 60s、AI 内容生成 180s，env 带 `PYTHONIOENCODING=utf-8 PYTHONUTF8=1`；④内容经临时 JSON 文件传递（避免命令行转义）；⑤AI 返回 JSON 用 `cleanJsonFence` 剥 Markdown 代码块。

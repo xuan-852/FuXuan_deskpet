@@ -1,7 +1,7 @@
 # 安装包与分发方案 — 让符玄在任意 Windows 电脑上跑起来
 
 > **文档作用**: 回答「怎么把符玄桌宠打包成常规软件样式的安装包，在别的电脑上完整安装运行」。给出运行时依赖全景、三个移植障碍、Inno Setup 安装器设计、组件安装流程、验收清单与分期计划。
-> **当前状态**: ✅ **阶段 0/1/2 已完成并验证**；✅ **阶段 3 组件自动化已完成（2026-08-15）**——7 个组件脚本（VC++ 静默装 / OpenClaw Gateway 启动 / Ollama+模型 / MiKTeX / Everything / NSSM 桥服务注册与卸载，均支持 `/CHECK` 只检测模式）已接入安装器 [Run] 链（按组件勾选执行，`/SKIPCOMPONENTS` 供本地测试跳过）；⚠️ 遗留：Python embeddable 内置待补测、干净 VM 全清单验收归入阶段 4。
+> **当前状态（2026-08-29）**: ✅ **阶段 0/1/2 已完成并验证**；✅ **阶段 3 组件自动化已完成（2026-08-15）**——7 个组件脚本（VC++ 静默装 / OpenClaw Gateway 启动 / Ollama+模型 / MiKTeX / Everything / NSSM 桥服务注册与卸载，均支持 `/CHECK` 只检测模式）已接入安装器 [Run] 链（按组件勾选执行，`/SKIPCOMPONENTS` 供本地测试跳过）。⚠️ **阶段 4 仍未形成可发布闭环**：已有历史三环境验收记录，但 Python embeddable、依赖完整性、版权/密钥分发、发布流程和当前已知问题仍需复核；不得据此宣称“产品级缺陷 0”。
 > **关联文档**: [`README.md`](../README.md)（环境依赖/快速上手）、[`code-truth-architecture.md`](code-truth-architecture.md)（六层架构）、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md)（功能路线）、[`development-standards.md`](development-standards.md)（通信/密钥规范）
 
 ---
@@ -292,7 +292,7 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 | **1** | 便携目录原型：内置 Node/Python 解包 + `start-bridge.cmd` + 数据目录 + 环境变量脚本 | 1 天 | ✅ 2026-08-14 完成（`installer\build-portable.ps1` 组装 `installer\portable\`；便携桥 `/health`+`/extract_pdf` 通过、桌宠从便携目录启动零异常；**Node 锁定 v22.22.3+**（OpenClaw 要求 SQLite 3.51.3+，v22.14.0 实测启动报 WAL bug）；⚠️ Python embeddable 内置待补测，当前回退系统 Python） |
 | **2** | Inno Setup 安装器：§四全部页面/组件/注册/卸载 | 1~2 天 | ✅ 2026-08-15 完成；✅ 2026-08-21 补强数据目录生命周期；✅ 2026-08-22 产物 `FuXuanSetup-1.0.12.exe`、ZIP 和 SHA256 已生成；Ollama 下载/安装/模型拉取增加超时与独立日志；受信任证书签名流程已接入，待配置证书 |
 | **3** | 组件安装脚本：OpenClaw npm 静默 + Ollama 拉模型 + MiKTeX + VC++ + Everything | 1 天 | ✅ 2026-08-15 完成（`installer\components\` 7 脚本均含 `/CHECK` 只检测模式：install-vcredist / install-openclaw（网关启动走内置 CLI，openclaw 包已内置故免 npm -g）/ install-ollama（含模型存在跳过）/ install-miktex / install-everything / install-service + uninstall-service（NSSM 2.24，wrapper+env 文件规避 LocalSystem 读不到用户环境变量）；已接入 [Run] 组件链 + [UninstallRun]，`/SKIPCOMPONENTS` 本地测试开关；本机实测：VC++/OpenClaw/Ollama 已装跳过、MiKTeX 缺失、NSSM 下载+检查正常） |
-| **4** | 虚拟机验收（§八清单）+ 版权/密钥文档 + 发布流程（构建→打包→版本号） | 0.5~1 天 | ✅ **验收完成（2026-08-15）**：三环境交叉验证——本机 15 PASS（聊天/工具/PPT/PDF 真跑通）；腾讯云 2C4G 干净 Win Server 10 PASS（**完整环境变量路径 + NSSM 服务 RUNNING**，/health 因弱机资源崩溃）；Win10 VM 安装产物 5/5 PASS（剩余 FAIL 均为 VM 环境细节：无 D 盘、注入乱局路径截断，非产品缺陷）。结论：**安装包验收达成，产品级缺陷 0**。⚠️ 待办：版权/密钥分发文档、发布流程（版本号/CHANGELOG/推送） |
+| **4** | 虚拟机验收（§八清单）+ 版权/密钥文档 + 发布流程（构建→打包→版本号） | 0.5~1 天 | ⚠️ **已有历史验收证据，发布闭环未完成**：本机、云主机和 Win10 VM 的历史结果保留在本节，但弱机 `/health` 崩溃、VM 环境差异、Python embeddable 未闭环、版权/密钥分发和版本发布流程仍需复核。当前项目已知风险以 [`project-bugs-and-acceptance.md`](project-bugs-and-acceptance.md) 为准。 |
 | 合计 | | **4~6 天** | |
 
 **关键路径**：阶段 0（代码）→ 阶段 1（原型验证内置运行时可行性，特别是 Python embeddable 跑 PyMuPDF/PIL）→ 阶段 2（安装器壳）→ 阶段 3（组件自动化）→ 阶段 4（验收）。

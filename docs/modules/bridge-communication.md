@@ -76,7 +76,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | **取消任务防崩溃** `cancelTask()` | ⚠️ 2026-08-13 修复：原实现直接 `w.reject(new Error('Task cancelled'))`，若 `sendChatAndWait` 尚未 `await responsePromise`（还停在 `chatClient.client.request` 内），reject 先于 catch 注册 → Node v15+ unhandled rejection 默认崩溃 → PM2 重启 14+ 次（search_web 失败叠加根因）。修复：`setImmediate(() => w.reject(...))` 延迟到当前微任务/宏任务栈跑完后再 reject，确保 catch 已挂上 |
 | **断线自动重连** | ⚠️ 2026-08-13 新增：原 `onDisconnected` 只置 `connected=false`，无自动重连（仅靠 PM2 兜底）。修复：`reconnecting` 标志防重连风暴 + 断线后 1s 重连，失败 5s 后再试；waiter reject 同样 `setImmediate` 包装防 unhandled rejection |
 
-> **LaTeX 安全边界（2026-08-25）**：`/compile_latex` 请求体上限 2 MiB；编译器仅允许 `xelatex`/`pdflatex`/`lualatex`；自定义 `output_path` 必须位于 `D:\DesktopPetData\Documents`，阻止模型参数越权写文件；AI 生成源码的外部引用检查不允许通过 `..` 越出编译目录。
+> **LaTeX 安全边界（2026-08-25）**：`/compile_latex` 请求体上限 2 MiB；编译器仅允许 `xelatex`/`pdflatex`/`lualatex`；自定义 `output_path` 必须位于配置的数据根目录 `DataPathConfig.DocumentsDir`（默认 `%LOCALAPPDATA%\FuXuan\DesktopPetData\Documents`），阻止模型参数越权写文件；AI 生成源码的外部引用检查不允许通过 `..` 越出编译目录。
 
 ### 2.5 C# 侧方法（OpenClawBridge.cs，静态类）
 

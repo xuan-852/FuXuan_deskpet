@@ -1,8 +1,17 @@
-# Runtime readiness and request recovery
+# 运行时状态与请求恢复
 
-This module documents the UX safety layer added on 2026-08-21.
+> **文档作用**: 描述桌宠启动自检、请求状态、取消/失败恢复、云端保护和外置窗口恢复；修改启动依赖、请求生命周期或退出流程前必读。
+> **基本架构**: `RuntimeReadinessService` 负责本地/桥接/云端就绪状态，`ChatManager` 负责请求生命周期，`DesktopPet` 与 `WindowOverlay` 负责关闭、DWM 和置顶恢复。
+> **开发历史迭代**: 2026-08-21 建立就绪层；2026-08-26 补充异常会话、DWM 重建和置顶看门狗；2026-08-27 补充桥接任务取消与请求失败最终态。
+> **编写注意事项**: 云端就绪检查不得发起付费探测；测试必须使用隔离数据目录；构建被权限或宿主环境阻断时只能记录为未验证。
 
-## Architecture
+本模块记录 2026-08-21 起加入的运行时安全层，以下内容以当前代码和验证记录为准。
+
+## 一、文档作用
+
+本模块供修改启动依赖、请求生命周期、取消恢复、外置窗口和云端保护的开发者与 AI 代理使用。
+
+## 二、基本架构
 
 `RuntimeReadinessService` reports local Ollama, bridge, and cloud configuration state. Cloud readiness is configuration-only; it never makes a paid probe. Local readiness is true only when Ollama responds and the configured model is present in `/api/tags`. In a standalone player, `LocalLLMClient` can start the standard Ollama application/CLI when the first local health check finds the API offline, then performs one delayed retry.
 
@@ -14,7 +23,7 @@ This module documents the UX safety layer added on 2026-08-21.
 
 OpenClaw task cancellation has a separate bridge-level guard: `OpenClawBridge.RequestTaskCancellation()` is non-blocking and is called during `DesktopPet.BeginShutdown()`. The task loop checks it before polling, then confirms cancellation through `/task/{id}/cancel`; a 2xx transport response without `success=true` is not treated as a successful cancellation.
 
-## Iteration and recovery
+## 三、开发历史迭代
 
 The title status changes as the request moves through the lifecycle, so a slow local model, a network retry, or a tool execution is distinguishable from a frozen window.
 
@@ -22,17 +31,19 @@ DesktopPet startup recovery uses a consecutive-abnormal-session watchdog. Produc
 
 `WindowOverlay` also maintains a lightweight topmost watchdog. Every two seconds it reapplies `HWND_TOPMOST` without activating the window, restores a hidden main window, or reacquires a stale Unity handle and reapplies the full overlay configuration. This prevents external windows, tray restore, and DWM resets from silently lowering the pet's Z-order.
 
-## Cost protection
+## 四、编写注意事项
+
+### 成本保护
 
 `--no-cloud` or `FU_XUAN_NO_CLOUD=1` blocks `ApiClient` requests before HTTP and token accounting. `--ollama` / `--local` continue to enforce local-only chat. No API key is stored in code or logs.
 
-## Notes
+### 其他注意事项
 
 - Ollama bootstrap is disabled in the Unity Editor and `.test_mode`, uses `OLLAMA_EXE` first and then the standard per-user/Program Files paths, and has a 60-second launch cooldown to avoid spawning duplicate processes during repeated readiness checks.
 - DesktopPet autostart is stored as a Windows `REG_SZ`; the registry bridge must encode values as UTF-16LE. The reader keeps a UTF-8 fallback so values written by older builds are migrated on the next successful startup.
 - Build/test force-termination must not be treated as proof of a DesktopPet crash. The watchdog therefore resets after a stable session and skips production crash state entirely in `.test_mode`.
 
-## Verification
+### 验证方法
 
 Run the project diagnostic after adding or changing C#:
 

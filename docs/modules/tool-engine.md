@@ -57,7 +57,7 @@ qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请�
 - `DesktopPet` 启动时自动挂载 `PreferencesManager` 与 `TaskTemplateManager`，确保 `set/query/remove_preference` 和 `query/save/remove_task_template` 不会因单例未初始化而失效。
 - 隔离运行时基准覆盖 65 个用例：42 个 OK、7 个 DANGER_GUARD、8 个 SKIP；7 个危险工具均只核验注册与危险标记，未执行真实副作用。文件写入在隔离目录中被 `ToolHelpers.IsPathAllowed` 按 Windows 安全策略拦截，知识库索引因测试目录不存在而返回预期错误，均不属于自然语言路由断链。
 - 2026-08-25 的自然语言隔离验收为 5/5：系统信息、文件搜索、打开文件夹、剪贴板、Excel 均命中预期工具；其中剪贴板误路由曾被复现并由“高置信度规则先行”修复。
-- 文档/PDF/OpenClaw 任务不再完全依赖本地 3B 模型转述：原始用户需求由 `TryHardenPlanArguments` 确定性回填；`openclaw_bridge.js` 额外限制 LaTeX 请求体 2 MiB、编译器为 xelatex/pdflatex/lualatex，输出路径仅允许 `D:\DesktopPetData\Documents`。
+- 文档/PDF/OpenClaw 任务不再完全依赖本地 3B 模型转述：原始用户需求由 `TryHardenPlanArguments` 确定性回填；`openclaw_bridge.js` 额外限制 LaTeX 请求体 2 MiB、编译器为 xelatex/pdflatex/lualatex，输出路径仅允许配置的数据根目录 `DataPathConfig.DocumentsDir`。
 - 规划模型按任务分层：轻量/普通歧义请求使用 `LocalLLMClient.ModelName`（默认 qwen2.5:3b），PDF、Office、OpenClaw 和多步骤请求使用 `LocalLLMClient.ChatModelName`（默认 qwen3:8b）；8B 不可用自动降级 3B，最终执行仍走同一白名单与审批链。
 
 ### 2.3 文件清单与工具分类（真实注册名，65 个）
@@ -69,11 +69,11 @@ qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请�
 | `ReminderAcademicTools.cs` | 8 | set_reminder / query_reminders / mark_reminder_done / delete_reminder / query_exams / query_scores / query_schedule / query_user_status | 卜算记事簿/传讯 |
 | `Live2DSyncTools.cs` | 7 | set_expression / play_action / stop_action / inspect_motion_memory / inspect_personality / explore_body / control_body | 演武/表情/动作 |
 | `VisionKnowledgeTools.cs` | 5 | take_screenshot / knowledge_search / knowledge_index / openclaw_search / openclaw_task | 摄形/藏书阁 RAG/OpenClaw 搜索+任务外包 |
-| `OfficeTools.cs` | 3 | generate_ppt / generate_docx / generate_xlsx（经 OpenClawBridge 调 `/generate_office`，输出 `D:\DesktopPetData\Documents\`） | 办公文档生成 |
+| `OfficeTools.cs` | 3 | generate_ppt / generate_docx / generate_xlsx（经 OpenClawBridge 调 `/generate_office`，输出 `DataPathConfig.DocumentsDir`） | 办公文档生成 |
 | `MotionCoroutineTools.cs` | 5 | generate_motion / explore_body_vision / run_verification / vis_verify / self_review | 异步动作生成(协程)/视觉验证 |
 | `PoggetTool.cs` | 1 | launch_pogget（启动 `d:\pogget\Pogget.exe`） | 启动 Pogget |
 | `PoggetAgentTool.cs` | 1 | pogget_agent（8 子命令：ping/list_containers/get_container_items/add_to_container/remove_from_container/create_container/organize_desktop/quickpanel_status） | Agent IPC |
-| `LatexCompileTool.cs` | 1 | compile_latex（经 OpenClawBridge.CompileLatexAsync，输出 `D:\DesktopPetData\Documents\`） | 问天录 |
+| `LatexCompileTool.cs` | 1 | compile_latex（经 OpenClawBridge.CompileLatexAsync，输出 `DataPathConfig.DocumentsDir`） | 问天录 |
 | `PreferenceTools.cs` | 3 | set_preference（key/value/source/note）/ query_preferences / remove_preference（偏好结构化存储，P4.2） | 心之所向 |
 | `TaskTemplateTools.cs` | 3 | query_task_templates / save_task_template（name/template + 可选 description/category）/ remove_task_template（任务模板库 CRUD，P5.3，TaskTemplateManager 配套） | 太卜阵法图 |
 

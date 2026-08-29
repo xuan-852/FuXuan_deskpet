@@ -1,5 +1,6 @@
 # 📚 docs/ 文档总索引
 
+> **索引状态**: 2026-08-29 复核；代码改动完成并通过相应验证后，必须同步更新模块文档与受影响的顶层文档。
 > **文档作用**: 本文件是 `docs/` 目录的**导航地图**——告诉 AI 与开发者每份文档的作用、归属模块、阅读优先级，以及统一的文档编写模板。
 > **基本架构**: 三层结构——① 顶层权威文档（架构/规范/路线图/清单）→ ② `modules/` 模块文档（每模块一份，四要素）→ ③ 构建产物（report.* 等，勿手改）。
 > **开发历史迭代**: 2026-08-12 由「平铺 14 份文档」重构为「索引 + 模块化」结构，全部模块文档统一四要素模板；当前 `modules/` 共 10 份模块文档。
@@ -23,14 +24,14 @@
 | [`quality-measurement-test-guide.md`](quality-measurement-test-guide.md) | **编译与本地质量采样说明**（新构建核验、Ollama 采样、质量/成本汇总） | **编译后测量本地模型质量前** |
 | [`quality-comparison-test-guide.md`](quality-comparison-test-guide.md) | **本地 / 云端配对对照说明**（纯云端基线、案例编号、质量差值） | **测量本地与云端质量差异前** |
 | [`quality-comparison-report-2026-08-18.md`](quality-comparison-report-2026-08-18.md) | **本地/云端质量对照测试报告**（60 案例实测：成功率/延迟/成本对比 + 局限） | **查看质量对照结论时** |
-| [`reply-quality-evaluation-plan.md`](reply-quality-evaluation-plan.md) | **回复内容质量测评方案**（人设/记忆/时间/相关性/约束 5 维 rubric + 裁判机制） | **评价"回复像不像符玄"时** |
+| [`reply-quality-evaluation-plan.md`](reply-quality-evaluation-plan.md) | **回复内容质量测评与实现说明**（5 维 rubric、规则/本地/云端裁判、质量遥测） | **评价回复质量或修改裁判链路时** |
 | [`project-bugs-and-acceptance.md`](project-bugs-and-acceptance.md) | **项目已知 Bug 与验收点**（活跃问题/已修防回归清单/验收标准） | **改外置窗口/渲染/退出/测试代码前** |
 | [`ui-acceptance-checklist.md`](ui-acceptance-checklist.md) | **UI 验收清单（考评师版）**（排版/功能/进阶/回归红线，含多模态验证项） | **UI 回归验收 / 交付签发前** |
 | [`ui-external-window-test-plan-2026-08-17.md`](ui-external-window-test-plan-2026-08-17.md) | **外置独立面板专项测评方案**（真实鼠标/键盘优先，点击/拖动 P0 项） | **外置窗口交互回归（codex 第三轮）** |
 | [`code-truth-architecture.md`](code-truth-architecture.md) | 代码真相架构审计（六层架构） | 改架构/子系统前 |
-| [`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) | 项目演进路线图（v0.2） | 规划新功能前 |
+| [`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) | 项目演进路线图（v0.3，2026-08-29） | 规划新功能前 |
 | [`installer-plan.md`](installer-plan.md) | 安装包与分发方案（Inno Setup、组件安装、移植障碍清单） | 打包/分发/换机部署前 |
-| [`data-directory-cleanup-manifest-2026-08-21.md`](data-directory-cleanup-manifest-2026-08-21.md) | `D:\DesktopPetData` 数据分类、整理映射与安装/卸载生命周期约定 | 整理用户数据或修改安装器前 |
+| [`data-directory-cleanup-manifest-2026-08-21.md`](data-directory-cleanup-manifest-2026-08-21.md) | 数据分类、整理映射与安装/卸载生命周期约定（默认根目录由 `DataPathConfig` 决定） | 整理用户数据或修改安装器前 |
 | [`task-inventory.md`](task-inventory.md) | 项目任务清单（N40+，65 工具） | 接任务/汇报进度时 |
 | [`optimization.md`](optimization.md) | 当前已验证优化、后续优先级与统一验收标准 | 规划重构、性能、稳定性或成本优化前 |
 
@@ -47,7 +48,7 @@
 | 记忆人格 | [`modules/memory-personality.md`](modules/memory-personality.md) | PetMemory、人格演化、知识库 |
 | 编码协议 | [`modules/encoding-protocol.md`](modules/encoding-protocol.md) | .editorconfig、BOM、乱码排查历史 |
 | 办公工具 | [`modules/office-tools.md`](modules/office-tools.md) | PPT/Word/Excel 生成器、/generate_office 端点 |
-| 运行时状态 | [`modules/runtime-readiness.md`](modules/runtime-readiness.md) | 启动自检、请求状态、停止恢复、云端保护 |
+| 运行时状态 | [`modules/runtime-readiness.md`](modules/runtime-readiness.md) | 启动自检、请求状态、停止恢复、云端保护（已按四要素模板整理） |
 
 ### 1.3 构建产物（勿手改）
 

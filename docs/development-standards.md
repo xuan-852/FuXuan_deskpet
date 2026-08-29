@@ -100,8 +100,10 @@ flowchart LR
 |------|------|------|------|
 | `/health` | GET | 免鉴权 | 健康检查，返回 `{"status":"ok","connected":true}` |
 | `/search?q=` | GET | `x-bridge-token` | AI 网络搜索 |
+| `/task`、`/task/{id}`、`/task/{id}/cancel`、`/task/{id}/approve` | POST/GET | `x-bridge-token` | OpenClaw 任务提交、轮询、取消与审批 |
 | `/compile_latex` | POST | `x-bridge-token` | LaTeX 分块编译 |
 | `/generate_office` | POST | `x-bridge-token` | 办公文档生成（PPT/Word/Excel） |
+| `/extract_pdf` | POST | `x-bridge-token` | PDF 文本提取 |
 | 其他 | — | — | 404 + 端点提示文案 |
 
 **端点新增规范**：
@@ -109,7 +111,7 @@ flowchart LR
 - 新端点必须鉴权（仅 `/health` 豁免）；
 - 请求体字段用 camelCase；返回统一 `{success: bool, ...}`；
 - 与 AI 交互用 `sendChatAndWait`（全局串行锁，天然排队）；
-- 文件类端点把输出目录约定写进常量/注释（如办公文档输出 `D:\DesktopPetData\Documents\{title}_{date}_{rand}`）。
+- 文件类端点把输出目录约定写进常量/注释（办公文档使用 `DataPathConfig.DocumentsDir`，默认 `%LOCALAPPDATA%\FuXuan\DesktopPetData\Documents\{title}_{date}_{rand}`）。
 
 ### 2.4 桥接 → OpenClaw Gateway（WebSocket）
 
@@ -399,7 +401,7 @@ Assets/
 | `logs/runtime/` | 运行时日志（桌宠运行期，若启用） |
 | `logs/archive/` | 历史日志归档（`build_log.txt` 等旧文件） |
 | `C:\Users\25295\.pm2\logs\openclaw-bridge-{out,error}.log` | 桥接 PM2 日志（勿手动删除，PM2 管理） |
-| `D:\DesktopPetData\` | 用户数据（记忆/人格/文档输出），非日志 |
+| `%LOCALAPPDATA%\FuXuan\DesktopPetData\` | 默认用户数据根目录（记忆/人格/文档输出），非日志；可由 `FU_XUAN_DATA` 覆盖，旧 `C:\DesktopPetData`/`D:\DesktopPetData` 数据会按代码规则复用 |
 
 ### 7.2 写入规范
 
@@ -437,6 +439,7 @@ Assets/
 - **小步验证**：C# 改完跑 `build.ps1 -Quick`；JS 改完 `node --check`；Python 改完跑对应生成器；
 - **不破坏契约**：改端点 schema / 工具参数时，必须同步更新调用方（C# ↔ JS ↔ Python 三层）；
 - **测试通过后更新文档**：功能级改动**必须先通过测试**（`build.ps1 -Quick` + `-RunTests` / 端到端 curl），再更新对应模块文档（`docs/modules/*.md`）→ README / roadmap / 本规范，标注版本与日期；**禁止在测试通过前凭预期写文档**——文档只记录已验证的代码真相；
+- **文档同步是交付门禁**：任务结束前必须用 `git diff --name-only` 检查本次改动涉及的模块，并逐项确认对应 `docs/modules/<模块>.md`、`docs/README.md`、根目录 `README.md`、roadmap/task 清单是否需要同步；需要更新的文档必须和代码改动放在同一任务交付中，不能以“之后再补”作为默认状态。
 - **不提交密钥**：新增配置文件用 `.example` 模板，真实文件进 `.gitignore`；
 - **环境感知**：PM2 管理进程勿手动 kill/start；改桥接后 `pm2 restart openclaw-bridge --update-env`。
 
@@ -446,6 +449,18 @@ Assets/
 - **更新时机**：模块文档在功能改动**测试通过后**更新（先代码后文档，文档即真相）；改动涉及模块边界时同步更新 `docs/README.md` 索引表；
 - 与代码冲突的旧文档要修正，不迁就错误描述；
 - 本规范变更需同步更新 `AGENTS.md` 摘要部分。
+
+### 8.4 AI 文档同步门禁（每个任务结束前执行）
+
+AI 代理在提交或交付前必须完成以下检查：
+
+1. 列出本次修改的代码、脚本、配置和测试文件，并确定受影响模块；
+2. 检查对应模块文档的“基本架构 / 开发历史迭代 / 编写注意事项”是否仍准确；
+3. 检查顶层文档中的版本号、日期、数量、完成状态、路径和已知问题，修正受影响内容；
+4. 测试未通过、构建被权限/环境阻断或证据不足时，只能记录为“未验证/阻断”，不得写成“已完成”；
+5. 在最终回复中列出已同步的文档；若确认无需更新，必须明确说明判断依据。
+
+这项门禁适用于代码、桥接端点、工具、安装器、渲染、测试和配置变更；纯文档任务也必须检查 `docs/README.md` 与 `AGENTS.md` 的索引/规则是否需要联动。
 
 ---
 
@@ -461,9 +476,10 @@ Assets/
 5. build.ps1 -Quick 编译验证
 6. 写/更新测试；**测试全部通过**；清理测试产物
 7. **测试通过后**更新对应模块文档（`docs/modules/<模块>.md`）+ README / roadmap / 本规范（如涉及）
-8. Conventional Commits 提交
+8. 执行“AI 文档同步门禁”，确认没有遗漏受影响文档
+9. Conventional Commits 提交
 ```
 
 ---
 
-*本规范 v1.0 建立于 2026-08-12，随项目演进持续修订。*
+*本规范 v1.1 建立于 2026-08-12，2026-08-29 增加 AI 文档同步门禁，随项目演进持续修订。*

@@ -1,8 +1,8 @@
 # Live2D 渲染管道 — 渲染、参数映射与硬编码迁移
 
-> **文档作用**: 本模块文档描述桌宠「Live2D 渲染」子系统的**代码真相**——模型加载双保险、80+ 参数映射、Perlin 噪声微动、天气↔表情联动、以及 `Live2DRenderer.cs` 379+ 处硬编码 `SetParameter` 调用的迁移清单（P0-P4 分级）。改渲染/表情/动作参数相关代码前必读。
+> **文档作用**: 本模块文档描述桌宠「Live2D 渲染」子系统的**代码真相**——模型加载双保险、80+ 参数映射、Perlin 噪声微动、天气↔表情联动、以及 `Live2DRenderer.cs` 约 427 处 `SetParameter`/`SetParameterValue` 匹配的迁移清单（P0-P4 分级）。改渲染/表情/动作参数相关代码前必读。
 > **基本架构**: `HybridRenderer` → `Live2DRenderer`（恒走 Live2D，3D 分支不可用）→ Cubism SDK 5-r.4。模型加载：AssetDatabase → Resources.Load("Fuxuan") 降级。参数映射：`Live2DParameterMapper`（语义名 ↔ Cubism 参数 ID）双向映射，核心入口 `Live2DRenderer.SetParameterValue(string, float)`。渲染器现由 `Live2DRenderer.cs`（模型加载、动作与参数）+ `Live2DRenderer.OverlayRendering.cs`（置顶叠加相机、RT、OnGUI 和性能档位）组成同一 partial 类。执行顺序：DesktopPet.Update（0）→ CubismPhysicsController.LateUpdate（800）→ Live2DRenderer.LateUpdate（801，覆盖物理重置参数）。
-> **开发历史迭代**: N38（2026-08-02）完成硬编码动作迁移清单（379+ 处调用、15 方法、P0-P4 分级）；7 个 legacy 方法（~270 行）已删除由 JSON + IdleActionScheduler 替代，仅保留星辉（#4）与法阵（#7）硬编码；N40 空闲动作 9 种 JSON 驱动。迁移路线图：阶段 1 梳理完成 → 阶段 2 P1 迁移（1 天）→ 阶段 3 P2（2 天）→ 阶段 4 P3（3 天）→ 阶段 5 P0/P4 视需求。
+> **开发历史迭代**: N38（2026-08-02）完成硬编码动作迁移清单（历史基线 379+ 处调用、15 方法、P0-P4 分级）；7 个 legacy 方法（~270 行）已删除由 JSON + IdleActionScheduler 替代，仅保留星辉（#4）与法阵（#7）硬编码；N40 空闲动作 9 种 JSON 驱动；2026-08-29 复核当前 `Live2DRenderer.cs` 仍有约 427 处参数写入匹配，普通参数数据化尚未完成。
 > **编写注意事项**: ①`LateUpdate`（801）必须晚于 Cubism Physics（800）执行，否则物理覆盖关键参数；②P0 安全网（Param132-71 眼睛保护等）每帧强制清零，**永远不应迁移**；③3D 分支恒不可用（HybridRenderer TODO / Model3DRenderer 注释与实现矛盾），勿修 3D；④默认空闲表情是 "surprise" 非 "curious"；⑤迁移 P1-P3 动作时保持「动作时冻结行走」（_pet.Pause/Resume）。
 
 ---
@@ -57,7 +57,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 | 手臂 | Param31-37, 92-120 | 36+ |
 | 呼吸 | ParamBreath | 1 |
 
-### 2.5 Perlin 噪声微动（7 通道）
+### 2.5 Perlin 噪声微动（8 通道）
 
 | 参数 | 通道 | 描述 |
 |------|------|------|
@@ -76,7 +76,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 | ❄️ 雪 | 好奇 | MouthOpenY +0.4, EyeLOpen +0.2 |
 | 🌙 夜晚 | 困倦 | EyeLOpen 垂 +0.07 |
 
-### 2.7 硬编码参数迁移清单（P0-P4 分级，2026-08-02 实测 379+ 处）
+### 2.7 硬编码参数迁移清单（P0-P4 分级，2026-08-29 复核约 427 处匹配；379+ 为 N38 历史基线）
 
 | 等级 | 含义 | 示例 | 处理 |
 |------|------|------|------|
