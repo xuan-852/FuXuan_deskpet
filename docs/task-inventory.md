@@ -21,6 +21,8 @@
 
 本轮实施（2026-08-29）：`Live2DRenderer` 已增加 `CubismParameter` 引用缓存，并统一 `ForceUpdateNow()` 统计入口；Quick、完整构建和隔离 `runtime_smoke.cjs --verbose` 均通过。实际 CPU/GPU 收益与可见播放器裁切效果仍待专项测量。
 
+本轮第二步（2026-08-29）：星空运动状态已从 IMGUI 绘制流程移至 `RightPanel.Update()`，`OnGUI` 仅绘制，避免 `Layout`/`Repaint` 多事件导致动画速度不稳定；Quick、完整构建和隔离运行时冒烟均通过。
+
 ---
 
 ## 一、渲染系统

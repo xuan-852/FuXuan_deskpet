@@ -558,6 +558,10 @@ public partial class RightPanel : MonoBehaviour
     {
         RefreshRefs();
 
+        // IMGUI 一帧可能触发多次 Layout/Repaint；动画状态必须按帧更新，不能绑定绘制事件次数。
+        if (_isOpen)
+            _starField.UpdateStarMotion();
+
         // 外置输入框是不可见的原生键盘通道，文字由此同步到 Unity RT；
         // 不再让原生 EDIT 覆盖 IMGUI 输入框，避免黑框与真实输入框交替闪烁。
         if (_externalMode)
@@ -1315,7 +1319,6 @@ public partial class RightPanel : MonoBehaviour
         if (_bgNebulaTex != null)
             GUI.DrawTexture(bgRect, _bgNebulaTex, ScaleMode.StretchToFill);
         // 分层星点：慢速漂移 + 方块拖尾（星尘），绝对像素尺寸不随面板缩放；大星呼吸微闪
-        _starField.UpdateStarMotion();
         _starField.DrawStars(px, py, pw, ph, _animAlpha);
         // 圆角细边框（SDF 九宫格，替代原 2px 硬边 + 四角方块）
         if (_panelBorderStyle != null)

@@ -5,7 +5,7 @@ using System.Collections.Generic;
 /// <summary>
 /// 星空背景系统 — RightPanel 拆分的自包含类（2026-08-14）
 /// 原位于 RightPanel.cs（L2779-3006）的分层星点：银河斜带 5 星群 + 流星拖尾 + 呼吸微闪。
-/// 由 RightPanel 持有实例并驱动：Init(seed) 一次性初始化 → 每帧 UpdateStarMotion() + DrawStars(..., animAlpha)。
+/// 由 RightPanel 持有实例并驱动：Init(seed) 一次性初始化 → Update 中每帧 UpdateStarMotion() → OnGUI 中 DrawStars(..., animAlpha)。
 /// animAlpha 由外部传入（淡入淡出全局透明度），不直接依赖 RightPanel 内部状态。
 /// 改星空视觉（星数/颜色/拖尾/速度）优先改这里。
 /// </summary>

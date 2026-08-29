@@ -202,6 +202,12 @@
 - 坑：聊天区提取时 `bgRect`（OnGUI 局部变量）被带入，改用等价字段 `_panelRect`（语义=窗口矩形）；新文件 `.meta` 由 Unity 首次编译自动生成
 - **坑（2026-08-14 真机验证发现）**：`StarField _starField` 字段拆分后必须**实例化**（`= new StarField()`）。漏了会引发双重故障：① `InitStyles` 内 `_starField.Init(42)` 首帧 NRE，且 `_stylesReady=true` 在抛异常**之前**已置位 → 900 行后全部样式/纹理永不创建（半初始化锁定）；② 面板打开后 `_starField.UpdateStarMotion()` 每帧 NRE，OnGUI 在视图分发前中断 → 面板只剩背景、列表/聊天/输入框不渲染。EditMode（nographics）跑不到 OnGUI 测不出，**必须真机开面板验证**（`@@view:open` 后查 Player.log 无 `NullReferenceException` 洪流）
 
+### 2.9 星空动画更新边界（2026-08-29）
+
+`StarField` 的运动状态现在由 `RightPanel.Update()` 每帧驱动，`OnGUI()` / `DrawPanelContent()` 只负责读取状态并绘制星点。这样可以避免 IMGUI 在同一帧触发多次 `Layout`/`Repaint` 时重复推进动画，保证星空速度不随绘制事件数量变化；面板关闭时不推进星空状态。
+
+本轮验证：`build.ps1 -Quick`、完整 `build.ps1` 和隔离 `runtime_smoke.cjs --verbose` 均通过；外置面板、多视图命令链路正常，无 NRE，生产记忆零污染。星空改动的实际 CPU/GPU 收益仍需后续可见播放器 Profiling。
+
 ### 2.10 模型设置页（2026-08-21）
 
 模型页沿用同一套 IMGUI/外置 RenderTexture 渲染链，不新增 UGUI 或独立原生设置窗口：

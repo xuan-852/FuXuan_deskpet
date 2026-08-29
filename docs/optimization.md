@@ -49,6 +49,7 @@
 | O-12 | Live2D 角色局部 RT 与高刷新率 | ⚠️ | — | 可见播放器 GPU/帧率与裁切对照；保留全屏窗口交互 |
 | O-13 | AI 运行时输入模拟与拖动挣扎修复 | ✅ | — | `@@sim:*` 隔离命令覆盖；目标点/速度提前写入 Cubism physics 输入；Unity 截图闭环已验证左右拖动及镜像后方向，响应增益已降幅 |
 | O-14 | Live2D 参数写入缓存与物理刷新观测 | ✅ | O-08/O-12 | 模型加载后缓存 `CubismParameter`；所有 `ForceUpdateNow()` 统一统计入口；不改变视觉/物理条件，实际 CPU/GPU 收益待 Profiling |
+| O-15 | IMGUI 星空动画更新边界 | ✅ | — | `StarField` 状态更新移至 `RightPanel.Update()`，`OnGUI` 仅绘制；Quick/完整构建/隔离冒烟通过，实际性能收益待 Profiling |
 | O-09 | 外置窗口真实可见多轮回归 | ⏳ | O-01 | 启动/隐藏/恢复/关闭记录 |
 | O-10 | EditMode 结果文件新鲜度治理 | ⏳ | 构建脚本 | 新鲜 XML 或独立结果摘要 |
 | O-11 | bridge/Gateway/Ollama 启动依赖治理 | ⏳ | 安装器现状确认 | 四种安装/启动场景验证 |
@@ -119,6 +120,10 @@
 - 继续把普通动作参数迁移到 `Live2DMotionTemplates` 或语义映射配置。
 - `P0` 眼睛保护、Physics 顺序、姿态锁和停止过渡保护继续保留在代码安全网中。
 - 每次迁移必须做动作截图或可见播放器回归，不能只以编译通过作为完成标准。
+
+#### 4. IMGUI 绘制节奏
+
+- 星空运动状态已从 `OnGUI` 绘制流程移至 `RightPanel.Update()`，避免 IMGUI 的多次 `Layout`/`Repaint` 事件放大动画更新次数；本轮构建与隔离冒烟已通过，实际 CPU/GPU 收益待 Profiling。
 
 ### P2：性能、成本和观测
 
