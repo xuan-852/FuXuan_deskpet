@@ -8,6 +8,8 @@
 
 > **2026-08-19 构建修复**：`build.ps1 -Quick` 现在复用 EditMode harness 编译路径，并自动使用临时 `FU_XUAN_DATA/.test_mode`；Quick/完整构建均带 `-nographics`。Tuanjie 必须在 full-access 环境启动，否则 Windows 沙箱可能在授权初始化阶段卡死且不创建日志。构建脚本会在确认没有 Tuanjie 进程后清理 `ArtifactDB-lock` / `SourceAssetDB-lock`，并在确认 ILPP PID 已退出后清理陈旧的 `Library\ilpp.pid`。
 
+> **AI 权限要求（重要）**：构建不是普通的沙箱内命令。Tuanjie/Unity 启动、授权握手、原生编译器和构建子进程需要访问本机进程、授权服务和项目 `Library`；如果 AI 代理在受限沙箱中执行，常见表现是“构建未成功”但没有 C# 编译错误、外层 PowerShell 长时间不返回，或日志停留在旧时间。遇到这种情况，应立即申请本机/full-access 权限后重新执行同一构建命令；不要把外层超时或无输出直接判断为代码编译失败。只有看到本次运行产生的新 `direct_compile.log`/`build_log.txt`，并出现 `[OK] Build succeeded!` 或明确的编译错误，才可以判定结果。
+
 ## 一、编译入口速查
 
 | 命令 | 用途 | 何时跑 |

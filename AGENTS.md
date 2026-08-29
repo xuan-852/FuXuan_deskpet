@@ -44,6 +44,8 @@ Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣
 node --check code/desktop_unity/openclaw_bridge.js   # 桥接 JS 语法
 ```
 
+> **构建权限提示**：Tuanjie/Unity 构建需要本机/full-access 权限（授权服务、原生编译器和构建子进程）。受限沙箱中可能表现为无 C# 错误但外层脚本卡住或无新日志；此时应申请本机权限后重跑，并以本次新生成的日志和 `[OK] Build succeeded!` 判断，不要把无输出直接当成代码失败。
+
 ## 通信架构（改端点/工具前必读）
 
 ```
