@@ -1759,7 +1759,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
                         if (targets != null)
                         {
                             foreach (var kvp in targets)
-                                SetParameter(kvp.Key, kvp.Value);
+                                SetIdleActionParameter(kvp.Key, kvp.Value);
                         }
                         if (completed)
                             ResetIdleAction(true);
@@ -3059,6 +3059,21 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         var param = FindCachedParameter(name);
         if (param != null) param.Value = value;
+    }
+
+    /// <summary>
+    /// 写入 JSON 空闲动作参数：优先走语义映射，兼容尚未迁移的 Param ID。
+    /// 这样动作配置可以逐步数据化，同时保留映射文件缺失时的旧路径。
+    /// </summary>
+    private void SetIdleActionParameter(string name, float value)
+    {
+        if (_mapper != null && _mapper.IsLoaded && _mapper.SemanticToId.ContainsKey(name))
+        {
+            _mapper.Set(name, value);
+            return;
+        }
+
+        SetParameter(name, value);
     }
 
     private void ForceUpdateModelNow()

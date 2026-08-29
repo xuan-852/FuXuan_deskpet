@@ -25,7 +25,9 @@
 
 本轮第三步（2026-08-29）：局部 RT 的 `UpdateOverlayFraming()` 已从普通 `Update()`/`LateUpdate()` 双重计算收敛为物理完成后的单次更新，并补齐拖拽/点击锁定提前返回路径；Quick、完整构建和隔离运行时冒烟均通过，实际 CPU/GPU 收益待专项测量。
 
-本轮第四步（2026-08-29）：O-08 完成参数映射缓存第一刀，`Live2DParameterMapper` 在映射加载/换模型时缓存 `CubismParameter`，语义化动作 `Set/Get` 不再重复查找；Quick、完整构建和隔离运行时冒烟均通过，普通动作模板接入与可见动作回归仍待继续。
+本轮第四步（2026-08-29）：O-08 完成参数映射缓存第一刀，`Live2DParameterMapper` 在映射加载/换模型时缓存 `CubismParameter`，语义化动作 `Set/Get` 不再重复查找；Quick、完整构建和隔离运行时冒烟均通过。普通动作接入和可见回归随后在第五步完成。
+
+本轮第五步（2026-08-29）：O-08 完成普通空闲动作配置迁移；7 种普通动作改用语义参数键，`IdleActionScheduler` 使用 Newtonsoft.Json 正确读取字典目标并复用逐帧缓冲，修复 `star_spin.json` 重复尾段。Quick、完整构建、隔离运行时冒烟和 `@@idle:1` 截图闭环通过；O-08 本轮范围完成。
 
 ---
 
@@ -532,8 +534,8 @@ public class ParameterVisionScanner : MonoBehaviour
 
 | 组件 | 文件 | 说明 | 工作量 |
 |------|------|------|--------|
-| `IdleActionScheduler` | `Live2DFramework/ActionAgent/IdleActionScheduler.cs` | JSON 数据驱动的空闲动作调度 | 1天 | ✅ |
-| 空闲动作 JSON 定义 | `Resources/Live2D/IdleActions/idle_actions.json` | 所有 9 个空闲动作的 JSON 配置 | 0.5天 | ✅ |
+| `IdleActionScheduler` | `Live2DFramework/ActionAgent/IdleActionScheduler.cs` | JSON 数据驱动的空闲动作调度；语义目标与运行时缓冲 | 1天 | ✅ |
+| 空闲动作 JSON 定义 | `Resources/Live2D/IdleActions/idle_actions.json` | 所有 9 个空闲动作的 JSON 配置，普通动作使用语义参数键 | 0.5天 | ✅ |
 | 集成到 LateUpdate | 修改 `Live2DRenderer.cs` | 替换 switch-case 调用（特殊动作 4/7 保留硬编码） | 0.5天 | ✅ |
 
 #### 空闲动作 JSON 格式示例

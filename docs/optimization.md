@@ -45,7 +45,7 @@
 | O-05 | ChatManager 上下文构建分层 | ✅ | O-04 | 继续保持缓存前缀稳定 |
 | O-06 | ToolLoopCoordinator：工具回环、审批、结果压缩 | ✅ | O-03/O-04 | 保持工具回环回归 |
 | O-07 | ReplyFinalizer：回复收尾、记忆和质量遥测 | 🔧 | O-06 | 核心收尾已完成；继续补充质量裁判的新鲜测试与案例 |
-| O-08 | Live2D 普通参数数据化 | 🔧 | 可见播放器回归能力 | 已完成语义映射参数缓存第一刀；继续迁移可回归普通动作并补动作截图 |
+| O-08 | Live2D 普通参数数据化 | ✅ | 可见播放器回归能力 | 7 种普通空闲动作已迁移为语义键；调度器字典解析、逐帧目标缓冲和动作截图闭环已验证；P0 安全网与 2 个复杂特效仍保留硬编码 |
 | O-12 | Live2D 角色局部 RT 与高刷新率 | ⚠️ | — | 可见播放器 GPU/帧率与裁切对照；保留全屏窗口交互 |
 | O-13 | AI 运行时输入模拟与拖动挣扎修复 | ✅ | — | `@@sim:*` 隔离命令覆盖；目标点/速度提前写入 Cubism physics 输入；Unity 截图闭环已验证左右拖动及镜像后方向，响应增益已降幅 |
 | O-14 | Live2D 参数写入缓存与物理刷新观测 | ✅ | O-08/O-12 | 模型加载后缓存 `CubismParameter`；所有 `ForceUpdateNow()` 统一统计入口；不改变视觉/物理条件，实际 CPU/GPU 收益待 Profiling |
@@ -118,9 +118,9 @@
 #### 3. Live2D 参数治理
 
 - 已完成第一步：模型加载后缓存 `CubismParameter` 引用，`SetParameter()`、调试偏移和参数范围查询不再反复执行 `FindById()`；所有 `ForceUpdateNow()` 统一经过统计入口。该改动保留原有物理顺序和调用条件，实际 CPU/GPU 收益仍待 Profiling。
-- 已完成第一刀：`Live2DParameterMapper` 在映射加载/换模型时缓存 `CubismParameter`，语义动作 `Set/Get` 不再重复 `FindById()`；不改变参数值、范围校验或换模型刷新行为。普通动作模板仍需逐项接入并做可见回归。
-- 继续把普通动作参数迁移到 `Live2DMotionTemplates` 或语义映射配置。
-- `P0` 眼睛保护、Physics 顺序、姿态锁和停止过渡保护继续保留在代码安全网中。
+- 已完成第一刀：`Live2DParameterMapper` 在映射加载/换模型时缓存 `CubismParameter`，语义动作 `Set/Get` 不再重复 `FindById()`；不改变参数值、范围校验或换模型刷新行为。
+- O-08 已完成本轮范围：`idle_actions.json` 的 7 种普通动作目标全部使用语义键，`IdleActionScheduler` 改用 Newtonsoft.Json 正确读取字典，并复用每帧目标缓冲与冷却键列表；渲染器保留 `ParamXX` 回退兼容。`@@idle:1` + `@@shot` 可见截图闭环、Quick、完整构建和隔离冒烟均通过。
+- P0 眼睛保护、Physics 顺序、姿态锁、停止过渡和星辉/法阵复杂特效继续保留在代码安全网中，不纳入普通参数迁移。
 - 每次迁移必须做动作截图或可见播放器回归，不能只以编译通过作为完成标准。
 
 #### 4. IMGUI 绘制节奏

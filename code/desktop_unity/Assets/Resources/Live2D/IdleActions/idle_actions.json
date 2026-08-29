@@ -8,8 +8,8 @@
       "weight": 5,
       "cooldown": 8,
       "phases": [
-        {"duration": 1.0, "curve": "easeOut", "targets": {"ParamAngleZ": 8}},
-        {"duration": 1.0, "curve": "easeIn",  "targets": {"ParamAngleZ": 0}}
+        {"duration": 1.0, "curve": "easeOut", "targets": {"head_angle_z": 8}},
+        {"duration": 1.0, "curve": "easeIn",  "targets": {"head_angle_z": 0}}
       ],
       "description": "往一侧歪头卖萌"
     },
@@ -20,8 +20,8 @@
       "weight": 5,
       "cooldown": 8,
       "phases": [
-        {"duration": 1.0, "curve": "easeOut", "targets": {"ParamEyeLSmile": 0.6, "ParamEyeRSmile": 0.6, "ParamMouthForm": 0.4}},
-        {"duration": 1.0, "curve": "easeIn",  "targets": {"ParamEyeLSmile": 0, "ParamEyeRSmile": 0, "ParamMouthForm": 0}}
+        {"duration": 1.0, "curve": "easeOut", "targets": {"eye_l_smile": 0.6, "eye_r_smile": 0.6, "mouth_form": 0.4}},
+        {"duration": 1.0, "curve": "easeIn",  "targets": {"eye_l_smile": 0, "eye_r_smile": 0, "mouth_form": 0}}
       ],
       "description": "眯眼微笑"
     },
@@ -32,8 +32,8 @@
       "weight": 3,
       "cooldown": 10,
       "phases": [
-        {"duration": 1.0, "curve": "easeOut", "targets": {"ParamBrowRY": 6, "ParamBrowLY": 6}},
-        {"duration": 1.0, "curve": "easeIn",  "targets": {"ParamBrowRY": 0, "ParamBrowLY": 0}}
+        {"duration": 1.0, "curve": "easeOut", "targets": {"brow_r_y": 6, "brow_l_y": 6}},
+        {"duration": 1.0, "curve": "easeIn",  "targets": {"brow_r_y": 0, "brow_l_y": 0}}
       ],
       "description": "眉毛微动"
     },
@@ -54,25 +54,25 @@
       "cooldown": 45,
       "phases": [
         {"duration": 0.8, "curve": "easeOut", "targets": {
-          "Param31": 4, "Param32": 3, "Param33": 5, "Param94": 10, "Param97": 3,
-          "Param95": 0.8, "Param117": 0.5, "Param98": 0.6, "Param100": 0.6,
-          "Param116": 0.4, "Param120": 0.8, "Param108": 0.8, "Param119": 0.8,
-          "Param93": 1, "Param118": 0.6,
-          "ParamBodyAngleX": -5, "ParamBodyAngleZ": 3,
-          "ParamAngleX": -8,
-          "ParamEyeLOpen": 0.6, "ParamEyeROpen": 0.6,
-          "ParamMouthForm": 0.6, "ParamBreath": 0.5
+          "arm_right_upper": 4, "arm_right_mid": 3, "arm_right_lower": 5, "arm_right_rotation": 10, "arm_right_base_rotation": 3,
+          "hand_layer_95": 0.8, "hand_layer_117": 0.5, "hand_layer_98": 0.6, "hand_layer_100": 0.6,
+          "hand_layer_116": 0.4, "hand_layer_120": 0.8, "hand_layer_108": 0.8, "hand_layer_119": 0.8,
+          "arm_right_switch": 1, "arm_right_reach": 0.6,
+          "body_angle_x": -5, "body_angle_z": 3,
+          "head_angle_x": -8,
+          "eye_l_open": 0.6, "eye_r_open": 0.6,
+          "mouth_form": 0.6, "breath": 0.5
         }},
         {"duration": 2.9, "curve": "hold", "targets": {}},
         {"duration": 0.8, "curve": "easeIn", "targets": {
-          "Param31": 0, "Param32": 0, "Param33": 0, "Param94": 0, "Param97": 0,
-          "Param95": 0, "Param117": 0, "Param98": 0, "Param100": 0,
-          "Param116": 0, "Param120": 0, "Param108": 0, "Param119": 0,
-          "Param93": 0, "Param118": 0,
-          "ParamBodyAngleX": 0, "ParamBodyAngleZ": 0,
-          "ParamAngleX": 0,
-          "ParamEyeLOpen": 1, "ParamEyeROpen": 1,
-          "ParamMouthForm": 0, "ParamBreath": 0
+          "arm_right_upper": 0, "arm_right_mid": 0, "arm_right_lower": 0, "arm_right_rotation": 0, "arm_right_base_rotation": 0,
+          "hand_layer_95": 0, "hand_layer_117": 0, "hand_layer_98": 0, "hand_layer_100": 0,
+          "hand_layer_116": 0, "hand_layer_120": 0, "hand_layer_108": 0, "hand_layer_119": 0,
+          "arm_right_switch": 0, "arm_right_reach": 0,
+          "body_angle_x": 0, "body_angle_z": 0,
+          "head_angle_x": 0,
+          "eye_l_open": 1, "eye_r_open": 1,
+          "mouth_form": 0, "breath": 0
         }}
       ],
       "description": "右手举高 + 身体后仰 + 眯眼张嘴"
@@ -85,19 +85,19 @@
       "cooldown": 30,
       "phases": [
         {"duration": 1.0, "curve": "easeOut", "targets": {
-          "Param130": 1, "ParamAngleY": 6,
-          "ParamBrowRY": 5, "ParamBrowLY": 5,
-          "ParamEyeLOpen": 1.15, "ParamEyeROpen": 1.15
+          "special_tear": 1, "head_angle_y": 6,
+          "brow_r_y": 5, "brow_l_y": 5,
+          "eye_l_open": 1.15, "eye_r_open": 1.15
         }},
         {"duration": 1.5, "curve": "smooth", "targets": {
-          "Param130": 1, "ParamAngleY": 6,
-          "ParamBrowRY": 5, "ParamBrowLY": 5,
-          "ParamEyeLOpen": 1.15, "ParamEyeROpen": 1.15
+          "special_tear": 1, "head_angle_y": 6,
+          "brow_r_y": 5, "brow_l_y": 5,
+          "eye_l_open": 1.15, "eye_r_open": 1.15
         }},
         {"duration": 1.0, "curve": "easeIn", "targets": {
-          "Param130": 0, "ParamAngleY": 0,
-          "ParamBrowRY": 0, "ParamBrowLY": 0,
-          "ParamEyeLOpen": 1, "ParamEyeROpen": 1
+          "special_tear": 0, "head_angle_y": 0,
+          "brow_r_y": 0, "brow_l_y": 0,
+          "eye_l_open": 1, "eye_r_open": 1
         }}
       ],
       "description": "泪眼汪汪 + 低头 + 八字眉 + 嘴巴微颤"
@@ -119,17 +119,17 @@
       "cooldown": 30,
       "phases": [
         {"duration": 0.8, "curve": "easeOut", "targets": {
-          "Param101": 1, "ParamAngleY": 4, "ParamAngleZ": -8,
-          "ParamEyeLSmile": 0.5, "ParamEyeRSmile": 0.5,
-          "ParamEyeLOpen": 0.8, "ParamEyeROpen": 0.8,
-          "ParamMouthForm": 0.3
+          "special_blush_dark": 1, "head_angle_y": 4, "head_angle_z": -8,
+          "eye_l_smile": 0.5, "eye_r_smile": 0.5,
+          "eye_l_open": 0.8, "eye_r_open": 0.8,
+          "mouth_form": 0.3
         }},
         {"duration": 1.9, "curve": "smooth", "targets": {}},
         {"duration": 0.8, "curve": "easeIn", "targets": {
-          "Param101": 0, "ParamAngleY": 0, "ParamAngleZ": 0,
-          "ParamEyeLSmile": 0, "ParamEyeRSmile": 0,
-          "ParamEyeLOpen": 1, "ParamEyeROpen": 1,
-          "ParamMouthForm": 0
+          "special_blush_dark": 0, "head_angle_y": 0, "head_angle_z": 0,
+          "eye_l_smile": 0, "eye_r_smile": 0,
+          "eye_l_open": 1, "eye_r_open": 1,
+          "mouth_form": 0
         }}
       ],
       "description": "脸黑 + 眼神躲闪 + 低头害羞微笑"
@@ -142,17 +142,17 @@
       "cooldown": 15,
       "phases": [
         {"duration": 0.8, "curve": "easeOut", "targets": {
-          "ParamAngleZ": 15, "ParamAngleX": -5,
-          "ParamBrowRY": -3, "ParamBrowLY": -3,
-          "ParamEyeLOpen": 0.85, "ParamEyeROpen": 0.85,
-          "ParamMouthForm": 0.2, "ParamBodyAngleZ": 3
+          "head_angle_z": 15, "head_angle_x": -5,
+          "brow_r_y": -3, "brow_l_y": -3,
+          "eye_l_open": 0.85, "eye_r_open": 0.85,
+          "mouth_form": 0.2, "body_angle_z": 3
         }},
         {"duration": 1.4, "curve": "hold", "targets": {}},
         {"duration": 0.8, "curve": "easeIn", "targets": {
-          "ParamAngleZ": 0, "ParamAngleX": 0,
-          "ParamBrowRY": 0, "ParamBrowLY": 0,
-          "ParamEyeLOpen": 1, "ParamEyeROpen": 1,
-          "ParamMouthForm": 0, "ParamBodyAngleZ": 0
+          "head_angle_z": 0, "head_angle_x": 0,
+          "brow_r_y": 0, "brow_l_y": 0,
+          "eye_l_open": 1, "eye_r_open": 1,
+          "mouth_form": 0, "body_angle_z": 0
         }}
       ],
       "description": "歪头 + 皱眉 + 眯眼（权重 0，不自发触发）"

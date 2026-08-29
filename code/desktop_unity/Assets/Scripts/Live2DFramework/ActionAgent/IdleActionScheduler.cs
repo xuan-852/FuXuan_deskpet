@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
 using UnityEngine;
 
 namespace Live2DFramework.ActionAgent
@@ -69,6 +70,9 @@ namespace Live2DFramework.ActionAgent
         // --- Runtime state ---
         private IdleActionState _current = new IdleActionState();
         private Dictionary<int, float> _cooldownTimers = new Dictionary<int, float>();
+        private List<int> _cooldownKeys = new List<int>();
+        // 普通空闲动作每帧读取一次目标；复用缓冲区避免持续产生短命 Dictionary。
+        private Dictionary<string, float> _currentTargetsBuffer = new Dictionary<string, float>(32);
         private float _globalCooldownTimer;
 
         // --- Public state access ---
@@ -84,7 +88,9 @@ namespace Live2DFramework.ActionAgent
 
         public void LoadConfig(string json)
         {
-            var root = JsonUtility.FromJson<IdleActionRootConfig>(json);
+            // JsonUtility 不支持 Dictionary<string, float>，会让旧版 idle_actions.json
+            // 的 targets 静默变成 null，导致普通空闲动作实际不写入任何参数。
+            var root = JsonConvert.DeserializeObject<IdleActionRootConfig>(json);
             if (root?.actions == null)
             {
                 Debug.LogError("[IdleActionScheduler] Failed to parse idle_actions.json");
@@ -94,11 +100,13 @@ namespace Live2DFramework.ActionAgent
             _actions = root.actions;
             _actionMap.Clear();
             _cooldownTimers.Clear();
+            _cooldownKeys.Clear();
 
             foreach (var a in _actions)
             {
                 _actionMap[a.id] = a;
                 _cooldownTimers[a.id] = 0f;
+                _cooldownKeys.Add(a.id);
             }
 
             _current.Reset();
@@ -254,14 +262,15 @@ namespace Live2DFramework.ActionAgent
             float t = Mathf.Clamp01(_current.phaseElapsed / phase.duration);
             float easedT = EvaluateCurve(t, phase.curve);
 
+            _currentTargetsBuffer.Clear();
+
             // If phase has no targets (empty "hold" etc), return empty
             if (phase.targets == null || phase.targets.Count == 0)
-                return new Dictionary<string, float>();
+                return _currentTargetsBuffer;
 
             // Interpolate from phase start values to target values
             // For phase 0: from zero/neutral → phase.targets
             // For subsequent phases: from previous phase target → this phase target
-            var result = new Dictionary<string, float>();
             var prevTargets = GetPreviousPhaseTargets();
 
             foreach (var kvp in phase.targets)
@@ -269,7 +278,7 @@ namespace Live2DFramework.ActionAgent
                 float from = prevTargets != null && prevTargets.ContainsKey(kvp.Key)
                     ? prevTargets[kvp.Key]
                     : 0f;
-                result[kvp.Key] = Mathf.Lerp(from, kvp.Value, easedT);
+                _currentTargetsBuffer[kvp.Key] = Mathf.Lerp(from, kvp.Value, easedT);
             }
 
             // Carrying over params from previous phase that aren't in current phase
@@ -277,15 +286,15 @@ namespace Live2DFramework.ActionAgent
             {
                 foreach (var kvp in prevTargets)
                 {
-                    if (!result.ContainsKey(kvp.Key))
+                    if (!_currentTargetsBuffer.ContainsKey(kvp.Key))
                     {
                         // Carry over the target value of the previous phase (the "to" value)
-                        result[kvp.Key] = kvp.Value;
+                        _currentTargetsBuffer[kvp.Key] = kvp.Value;
                     }
                 }
             }
 
-            return result;
+            return _currentTargetsBuffer;
         }
 
         /// <summary>
@@ -331,8 +340,8 @@ namespace Live2DFramework.ActionAgent
             if (_globalCooldownTimer > 0f)
                 _globalCooldownTimer -= deltaTime;
 
-            var keys = _cooldownTimers.Keys.ToList();
-            foreach (var k in keys)
+            // 键集合只在 LoadConfig 时变化，复用键列表避免每帧 Keys.ToList() 分配。
+            foreach (var k in _cooldownKeys)
             {
                 if (_cooldownTimers[k] > 0f)
                     _cooldownTimers[k] -= deltaTime;

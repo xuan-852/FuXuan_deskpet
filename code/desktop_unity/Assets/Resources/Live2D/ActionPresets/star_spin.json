@@ -141,25 +141,3 @@
     }
   ]
 }
-        { "s": "arm_right_lower", "v": 0 },
-        { "s": "arm_right_rotation", "v": 0 },
-        { "s": "arm_right_base_rotation", "v": 0 },
-        { "s": "arm_right_switch", "v": 0 },
-        { "s": "arm_right_reach", "v": 0 },
-        { "s": "arm_right_wrist_z", "v": 0 },
-        { "s": "sword_finger_switch", "v": 0 },
-        { "s": "finger_index", "v": 0 },
-        { "s": "eye_l_open", "v": 0.85 },
-        { "s": "eye_r_open", "v": 0.85 },
-        { "s": "eye_ball_x", "v": 0 },
-        { "s": "eye_ball_y", "v": 0 },
-        { "s": "eye_l_smile", "v": 0 },
-        { "s": "eye_r_smile", "v": 0 },
-        { "s": "mouth_open_y", "v": 0 },
-        { "s": "mouth_form", "v": 0 },
-        { "s": "brow_r_y", "v": 0 },
-        { "s": "brow_l_y", "v": 0 }
-      ]
-    }
-  ]
-}
