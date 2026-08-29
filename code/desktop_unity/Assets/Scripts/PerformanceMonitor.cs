@@ -10,7 +10,7 @@ using UnityEngine;
 ///   3. 紧急情况：CPU/GPU > 90% 长时间持续，即使 FPS 还行也预降
 ///
 /// 三档:
-///   High   (30fps, RT 100%)   ← 原 60fps，桌宠动画 30fps 足够，降帧减 CPU/GPU 负载
+///   High   (60fps, RT 100%)   ← 局部 RT 后恢复高刷新率；实际帧率仍受 GPU/物理负载影响
 ///   Normal (24fps, RT 75%)    ← 原 40fps
 ///   Low    (15fps, RT 50%)    ← 原 20fps
 /// </summary>
@@ -352,9 +352,8 @@ public class PerformanceMonitor : MonoBehaviour
         Debug.Log($"[PerformanceMonitor] ⬇⬇⬇ 外部强制降档至 Low");
     }
 
-    // ★ 2026-08-05: 降低帧率缓解主线程 GPU 同步忙等（nvlddmkm spin）
-    //   桌宠 Live2D 动画 30fps 已足够（Live2D 标准动画帧率），
-    //   60fps 时全屏 RT(2560x1600) 渲染成为 GPU 瓶颈 → 主线程每帧等待 GPU 满核。
+    // ★ 2026-08-29: Live2D 叠加层已改为角色局部 RT，不再因全屏 RT 固定限制为 30fps。
+    //   保留 60/45/30 三档目标帧率；实际帧率仍由 GPU、物理和系统调度共同决定。
     private float GetTargetFPS(PerformanceTier t) => externalUiMode ? (externalInputMode ? t switch
     {
         PerformanceTier.High => 90f, PerformanceTier.Normal => 75f, PerformanceTier.Low => 60f, _ => 90f
@@ -363,10 +362,10 @@ public class PerformanceMonitor : MonoBehaviour
         PerformanceTier.High => 60f, PerformanceTier.Normal => 45f, PerformanceTier.Low => 30f, _ => 60f
     }) : t switch
     {
-        PerformanceTier.High => 30f, PerformanceTier.Normal => 24f, PerformanceTier.Low => 15f, _ => 30f
+        PerformanceTier.High => 60f, PerformanceTier.Normal => 45f, PerformanceTier.Low => 30f, _ => 60f
     };
 
-    private static float GetResolutionScale(PerformanceTier t) => 1.0f; // 始终全分辨率，防放大马赛克
+    private static float GetResolutionScale(PerformanceTier t) => 1.0f; // 局部 RT 始终按目标区域全分辨率，防放大马赛克
 }
 
 public enum PerformanceTier { High = 2, Normal = 1, Low = 0 }

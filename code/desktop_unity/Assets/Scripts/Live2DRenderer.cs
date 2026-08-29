@@ -811,6 +811,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _walkPhase = 0f;
             _walkBounceOffset = 0f;
             UpdateModelPosition();
+            UpdateOverlayFraming();
             return;
         }
 
@@ -835,6 +836,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
 
         UpdateModelPosition();
+        UpdateOverlayFraming();
 
         // ★ 体态提前给物理用：Physics 在 CubismUpdateController.LateUpdate(0)
         //   中读取 ParamBodyAngleX/Y/Z 来驱动衣服。我们在 Update() 中先设好
@@ -1303,6 +1305,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         {
             UpdateIdleBubble(idleDuration);
         }
+
+        // 相机渲染发生在 LateUpdate 之后，确保本帧模型姿态变化先更新局部 RT 的取景框。
+        UpdateOverlayFraming();
     }
 
     /// <summary>

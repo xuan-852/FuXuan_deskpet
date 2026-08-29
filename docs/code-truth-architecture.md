@@ -1,7 +1,7 @@
 # 代码真相架构文档（Code-Truth Architecture）
 
 > **审计方式**: 全部结论以 `code/desktop_unity/Assets/Scripts/` 下真实代码为准（2026-08-26 快照，含本地工具路由/运行时就绪检查、安装器相关迭代，以及此前 N39-N44 修复）
-> **审计范围**: **119 个 .cs 文件**（2026-08-27 实测，含 Editor、Live2DFramework、ActionAgent、ActionPresets、ToolEngine 及 Preferences/TaskTemplate/TaskTrajectory 等）
+> **审计范围**: **121 个 .cs 文件**（2026-08-29 复核，含 Editor、Live2DFramework、ActionAgent、ActionPresets、ToolEngine 及 Preferences/TaskTemplate/TaskTrajectory 等）
 > **重要声明**: 本项目的 md 文档（README / docs / 各类方案文档）**部分已过时**，存在多处与代码不符的陈述。本文档即为"唯一可信"的架构参照。
 > **引擎**: 团结引擎 Tuanjie 2022.3.62t7（Unity 派生版）+ Live2D Cubism SDK 5-r.4
 > **版本基准**: N38 审计（2026-08-02）→ N39 代码修复（2026-08-02）→ N40 Token 优化（2026-08-07，T1-T8 全部完成）→ 2026-08-12 任务可视化/审批/并行化/65 工具 → N41/N42（像素表情、搜索/日志修复）→ 2026-08-17~22 外置窗口、输入、模型路由与安装包迭代 → 2026-08-25 LaTeX/PDF/本地模型保护 → 2026-08-27 当前工作区审计
@@ -23,14 +23,14 @@ code/desktop_unity/Assets/
 └── Resources/                        # 运行时资源
 ```
 
-> **实测统计（2026-08-27）**: 顶层 Scripts 66 + Editor 6 + Live2DFramework 8 + ActionAgent 15 + ActionPresets 6 + ToolEngine 20 = **121 个 .cs 文件**。
+> **实测统计（2026-08-29）**: 顶层 Scripts 66 + Editor 6 + Live2DFramework 8 + ActionAgent 15 + ActionPresets 6 + ToolEngine 20 = **121 个 .cs 文件**。
 
 ### 1.2 文件规模 TOP 榜（按行数）
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `Scripts/Live2DRenderer.cs` | **3,930** | Live2D 模型加载、参数、动作与交互逻辑 |
-| `Scripts/Live2DRenderer.OverlayRendering.cs` | **144** | Live2D 置顶叠加相机、RenderTexture、OnGUI 与性能档位 |
+| `Scripts/Live2DRenderer.cs` | **3,501** | Live2D 模型加载、参数、动作与交互逻辑 |
+| `Scripts/Live2DRenderer.OverlayRendering.cs` | **256** | Live2D 局部叠加相机、RenderTexture、OnGUI 与性能档位 |
 | `RightPanel.cs` | **2,530** | 右键面板主逻辑；聊天区和子面板已拆到 partial 文件 |
 | `ChatManager.cs` | **1,775** | AI 请求协程、历史裁剪与请求状态收尾 |
 | `ChatManager.RequestLifecycle.cs` | **121** | ChatManager 请求发送、排队、取消、状态通知与意图分类入口 |
@@ -280,8 +280,8 @@ flowchart TB
 | `HybridRenderer` 3D 模式可用 | **3D 模式不可用** — TODO 注释，强制走 Live2D |
 | `Model3DRenderer` 绿幕抠像（Color Key） | **实际设置纯黑背景**（黑色=透明，供 DWM 玻璃层抠像；代码注释已说明该设计，非矛盾，2026-08-14 澄清） |
 | `VisualHeartbeat` 默认表情 "curious" | **实际默认 "surprise"** |
-| README "36 个核心脚本" | **实际顶层 66 + 子目录 55（共 121 个 .cs，2026-08-27 实测）** |
-| `PerformanceMonitor.GetResolutionScale()` 动态降分辨率 | **恒返回 1.0f**（仅帧率降级；代码注释：始终全分辨率，防放大马赛克——**有意设计**，2026-08-14 澄清） |
+| README "36 个核心脚本" | **实际顶层 66 + 子目录 55（共 121 个 .cs，2026-08-29 复核）** |
+| `PerformanceMonitor.GetResolutionScale()` 动态降分辨率 | **恒返回 1.0f**（仅性能档位调节目标帧率；Live2D 已改用角色局部 RT，局部区域仍保持全分辨率，防放大马赛克） |
 | `WindowOverlay.isMultiMonitor` 支持多屏 | **已真实实现（P4.4，2026-08-12）**：`SM_CXVIRTUALSCREEN` 差值法（`virtualW > w || virtualH > h`），供 AI 感知注入；主屏窗口定位仍用 `SM_CXSCREEN`（此前"恒 false"为过时结论） |
 
 ### 6.2 真实实现（已核实存在且可用）
