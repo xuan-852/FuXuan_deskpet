@@ -247,6 +247,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private CubismParameterStore _paramStore;
     private CubismPhysicsSubRig _leftArmSubRig;
 
+    // 参数写入是 Live2D 的高频路径（拖拽挣扎每帧会写入多个参数）。
+    // 运行时缓存引用，避免每次 SetParameter 都按字符串线性查找。
+    private readonly Dictionary<string, CubismParameter> _parameterCache =
+        new Dictionary<string, CubismParameter>(System.StringComparer.Ordinal);
+    private CubismModel _parameterCacheModel;
+
     // DesktopPet 引用
     private DesktopPet _pet;
     private DragHandler _dragHandler;
@@ -486,6 +492,14 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     // 是否已加载
     private bool _loaded = false;
 
+    // ForceUpdateNow 可观测性：用于定位特殊动作/物理拦截造成的重复刷新。
+    public int ForceUpdateCountThisFrame { get; private set; }
+    public int ForceUpdateCountLastFrame { get; private set; }
+    public int ForceUpdateCountLastSecond { get; private set; }
+    public int ForceUpdateMaxPerFrame { get; private set; }
+    private int _forceUpdateCountThisSecond;
+    private float _forceUpdateWindowStart;
+
     // 走路颠簸当前偏移量（像素）
     private float _walkBounceOffset = 0f;
 
@@ -626,6 +640,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _cubismModel = _modelRoot.GetComponentInChildren<CubismModel>();
             _physicsController = _modelRoot.GetComponentInChildren<CubismPhysicsController>();
             _paramStore = _modelRoot.GetComponentInChildren<CubismParameterStore>();
+            RebuildParameterCache();
 
             // ★ 初始化 CubismRaycaster（射线触摸检测）
             _cubismRaycaster = _modelRoot.GetComponentInChildren<CubismRaycaster>();
@@ -716,7 +731,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
                 string rangeInfo = "[Live2DRenderer] 关键参数范围: ";
                 foreach (var pid in keyParams)
                 {
-                    var p = _cubismModel.Parameters.FindById(pid);
+                    var p = FindCachedParameter(pid);
                     if (p != null)
                         rangeInfo += $"{pid}(min={p.MinimumValue:F1},max={p.MaximumValue:F1},def={p.DefaultValue:F1}) ";
                 }
@@ -840,6 +855,20 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         if (!_loaded || _cubismModel == null) return;
 
+        // 在本帧第一次执行前封存上一帧统计，便于调试窗口/日志读取。
+        ForceUpdateCountLastFrame = ForceUpdateCountThisFrame;
+        ForceUpdateCountThisFrame = 0;
+        if (_forceUpdateWindowStart <= 0f)
+        {
+            _forceUpdateWindowStart = Time.time;
+        }
+        else if (Time.time - _forceUpdateWindowStart >= 1f)
+        {
+            ForceUpdateCountLastSecond = _forceUpdateCountThisSecond;
+            _forceUpdateCountThisSecond = 0;
+            _forceUpdateWindowStart = Time.time;
+        }
+
         // ★ 拖拽中不累积走路相位、不走体态逻辑（由 UpdateDragStruggle 接管身体参数给物理）
         if (_pet != null && _pet.isDragging)
         {
@@ -942,7 +971,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         {
             // 平滑转身（_dragSmoothBodyY 在 UpdateDragStruggle 中更新）
             UpdateDragStruggle();
-            if (_cubismModel != null) _cubismModel.ForceUpdateNow();
+            ForceUpdateModelNow();
             return;
         }
 
@@ -952,7 +981,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         {
             foreach (var kv in _clickSavedParams)
                 SetParameter(kv.Key, kv.Value);
-            if (_cubismModel != null) _cubismModel.ForceUpdateNow();
+            ForceUpdateModelNow();
             return;
         }
 
@@ -1135,7 +1164,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         //   隔帧刷新，避免物理链路被 LateUpdate 的额外刷新重复推进。
         if (_currentIdleAction != 7 && _currentIdleAction != 4
             && (Time.frameCount & 1) == 0)
-            _cubismModel.ForceUpdateNow();
+            ForceUpdateModelNow();
 
         // ============================================================
         // ★ 左臂(Param34/36/37) 物理拦截：双重 ForceUpdate + 权重归零
@@ -1179,7 +1208,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
             // ★ 2026-08-20 性能：左臂拦截的二次 ForceUpdate 也隔帧
             if ((Time.frameCount & 1) == 0)
-                _cubismModel.ForceUpdateNow();
+                ForceUpdateModelNow();
         }
         else
         {
@@ -1226,7 +1255,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         {
             foreach (var kv in debugOffsets)
             {
-                var p = _cubismModel.Parameters.FindById(kv.Key);
+                var p = FindCachedParameter(kv.Key);
                 if (p != null)
                 {
                     float animVal = p.Value;                      // 动画已设置的值
@@ -1246,7 +1275,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             SetParameter("Param119", 1f);
 
             // ★ 调试偏移的第二次 ForceUpdate (无法合并，因为偏移值在第一次 ForceUpdate 后才读取到的 animVal)
-            _cubismModel.ForceUpdateNow();
+            ForceUpdateModelNow();
         }
 
         // ★ ForceUpdateNow 会触发 Cubism 更新管线，Physics 重新覆盖头发/衣服参数。
@@ -1278,7 +1307,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             if (_paramStore != null) _paramStore.SaveParameters();
             // ★ 2026-08-20 性能：法阵期也隔帧 ForceUpdate（每帧 3 次全量更新 → 减半）
             if ((Time.frameCount & 1) == 0)
-                _cubismModel.ForceUpdateNow();
+                ForceUpdateModelNow();
 
             // ★ ForceUpdateNow 触发了 Cubism 物理管线，Physics 重新计算了
             //   ParamBodyAngleX/ParamAngleX，覆盖了 UpdateMagicCircle() 中设置的
@@ -2604,7 +2633,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
                     renderer.OverrideFlagForDrawableScreenColors = false;
                 }
             }
-            _cubismModel.ForceUpdateNow();
+            ForceUpdateModelNow();
         }
 
         if (wasLocked)
@@ -3001,11 +3030,43 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         SetParameter("ParamAngleY", headBack);
     }
 
+    private void RebuildParameterCache()
+    {
+        _parameterCache.Clear();
+        _parameterCacheModel = _cubismModel;
+        if (_cubismModel == null || _cubismModel.Parameters == null) return;
+
+        foreach (var parameter in _cubismModel.Parameters)
+        {
+            if (parameter == null || string.IsNullOrEmpty(parameter.Id)) continue;
+            // 保留同 ID 的第一个参数，与 CubismParameters.FindById 的行为保持一致。
+            if (!_parameterCache.ContainsKey(parameter.Id))
+                _parameterCache.Add(parameter.Id, parameter);
+        }
+    }
+
+    private CubismParameter FindCachedParameter(string name)
+    {
+        if (_cubismModel == null || string.IsNullOrEmpty(name)) return null;
+        if (_parameterCacheModel != _cubismModel) RebuildParameterCache();
+        _parameterCache.TryGetValue(name, out var parameter);
+        return parameter;
+    }
+
     private void SetParameter(string name, float value)
     {
-        if (_cubismModel == null) return;
-        var param = _cubismModel.Parameters.FindById(name);
+        var param = FindCachedParameter(name);
         if (param != null) param.Value = value;
+    }
+
+    private void ForceUpdateModelNow()
+    {
+        if (_cubismModel == null) return;
+        ForceUpdateCountThisFrame++;
+        _forceUpdateCountThisSecond++;
+        if (ForceUpdateCountThisFrame > ForceUpdateMaxPerFrame)
+            ForceUpdateMaxPerFrame = ForceUpdateCountThisFrame;
+        _cubismModel.ForceUpdateNow();
     }
 
     /// <summary>
@@ -3259,7 +3320,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             // ★ 强制刷新网格，让 Cubism 用模型自身数据重算 ArtMesh 颜色
             //   不要调 ForceRefreshModelAfterFade() — 它会把 OverrideFlag=true 固化所有 Drawable 为白色，
             //   导致表情/预设再也无法控制 MultiplyColor，眼睛发白。
-            if (_cubismModel != null) _cubismModel.ForceUpdateNow();
+            ForceUpdateModelNow();
             // ★ 恢复宠物物理
             if (_pet != null)
             {
@@ -3295,7 +3356,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _actionLocked = false;
         // ★ 超时强制清理动作参数（含 Param132 眼睛白色覆盖层）
         ResetIdleAction();
-        if (_cubismModel != null) _cubismModel.ForceUpdateNow();
+        ForceUpdateModelNow();
         // ★ 注意：不要调 ForceRefreshModelAfterFade()，它会把 OverrideFlag=true 固化，
         //   导致表情系统再也无法控制 ArtMesh 颜色 → 眼睛发白。
         if (_pet != null)
@@ -4087,7 +4148,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     public float GetParameterValue(string name)
     {
         if (_cubismModel == null) return 0f;
-        var param = _cubismModel.Parameters.FindById(name);
+        var param = FindCachedParameter(name);
         return param != null ? param.Value : 0f;
     }
 
@@ -4095,7 +4156,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     public float GetParameterMin(string name)
     {
         if (_cubismModel == null) return 0f;
-        var param = _cubismModel.Parameters.FindById(name);
+        var param = FindCachedParameter(name);
         return param != null ? param.MinimumValue : 0f;
     }
 
@@ -4103,7 +4164,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     public float GetParameterMax(string name)
     {
         if (_cubismModel == null) return 0f;
-        var param = _cubismModel.Parameters.FindById(name);
+        var param = FindCachedParameter(name);
         return param != null ? param.MaximumValue : 0f;
     }
 

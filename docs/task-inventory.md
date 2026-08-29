@@ -19,6 +19,8 @@
 | ⚠️ | EditMode 新鲜测试结果 | 当前 `114/114` XML 仍按历史结果处理，不能冒充本次新鲜测试 |
 | ⚠️ | Tuanjie/Unity 构建复核 | 受限环境可能外层卡住；必须在本机权限下以新日志和 `[OK] Build succeeded!` 判定 |
 
+本轮实施（2026-08-29）：`Live2DRenderer` 已增加 `CubismParameter` 引用缓存，并统一 `ForceUpdateNow()` 统计入口；Quick、完整构建和隔离 `runtime_smoke.cjs --verbose` 均通过。实际 CPU/GPU 收益与可见播放器裁切效果仍待专项测量。
+
 ---
 
 ## 一、渲染系统

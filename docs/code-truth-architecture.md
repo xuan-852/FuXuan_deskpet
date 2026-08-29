@@ -29,7 +29,7 @@ code/desktop_unity/Assets/
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `Scripts/Live2DRenderer.cs` | **4,201** | Live2D 模型加载、参数、动作、交互与目标点式拖拽物理输入 |
+| `Scripts/Live2DRenderer.cs` | **4,262** | Live2D 模型加载、参数缓存、动作、交互与目标点式拖拽物理输入 |
 | `Scripts/Live2DRenderer.OverlayRendering.cs` | **294** | Live2D 局部叠加相机、RenderTexture、OnGUI 与性能档位 |
 | `Scripts/RuntimeInputSimulator.cs` | **191** | 测试模式 `@@sim`/`@@input` 运行时输入解析、调度与 Unity 截图 |
 | `RightPanel.cs` | **2,534** | 右键面板主逻辑；聊天区和子面板已拆到 partial 文件 |
@@ -100,7 +100,7 @@ flowchart TB
     end
 
     subgraph PHYS[物理渲染层]
-        E1[Live2DRenderer 3955行]
+        E1[Live2DRenderer 4262行]
         E2[WindowOverlay DWM透明窗]
         E3[HybridRenderer ★3D不可用]
         E4[Model3DRenderer ★黑底]
