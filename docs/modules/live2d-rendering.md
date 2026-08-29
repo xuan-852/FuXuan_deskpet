@@ -163,8 +163,9 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 ### 2.16 参数写入缓存与物理刷新观测（2026-08-29）
 
 - `Live2DRenderer` 在模型加载完成后建立 `参数 ID → CubismParameter` 缓存；运行时的 `SetParameter()`、调试偏移和参数范围查询均复用缓存，避免高频路径反复调用 `Parameters.FindById()`。
+- `Live2DParameterMapper` 现在也在映射加载或换模型时建立 `参数 ID → CubismParameter` 缓存；语义化动作的 `Set()`/`Get()` 复用该缓存，不再每帧重复 `FindById()`。换模型仍通过 `RefreshRanges()` 重建缓存，保持缺失参数和范围校验行为不变。
 - 所有 `ForceUpdateNow()` 入口统一经过 `ForceUpdateModelNow()`，保留原有调用条件和物理顺序，只增加本帧、上一帧、最近一秒和历史单帧峰值计数，供后续可见播放器性能观测使用。
-- 本轮不改变参数值、拖拽方向、物理频率或局部 RT 裁切策略；参数缓存与统计仅完成代码级验证，实际 CPU/GPU 收益仍需专项 Profiling 对照。
+- 本轮不改变参数值、拖拽方向、物理频率或局部 RT 裁切策略；参数缓存与统计完成代码级和运行时链路验证，实际 CPU/GPU 收益仍需专项 Profiling 对照。
 - `build.ps1 -Quick`、完整构建和隔离 `runtime_smoke.cjs --verbose` 已通过；EditMode XML 仍沿用项目现有的新鲜度规则单独判断。
 
 ### 2.17 局部 RT 取景单次更新（2026-08-29）
@@ -187,6 +188,7 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 | 2026-08-29 | 2026-08-29 | 降低拖拽物理/衣物/头发/视觉滞后的响应增益，并让手臂、腿部、身体挣扎随拖拽强度渐进；使用 `@@sim:screenshot` 完成左右拖动与镜像后方向回归 |
 | 2026-08-29 | 2026-08-29 | 缓存 Live2D 参数引用，并统一 `ForceUpdateNow()` 统计入口；不改变视觉参数和物理条件，Quick/完整构建/隔离冒烟通过，性能收益待专项测量 |
 | 2026-08-29 | 2026-08-29 | 局部 RT 取景改为物理完成后的每帧单次更新；拖拽/点击锁定提前返回路径补齐取景同步，避免普通帧重复遍历 Renderer 包围盒 |
+| 2026-08-29 | 2026-08-29 | `Live2DParameterMapper` 增加语义参数对象缓存，减少普通动作 `Set/Get` 的重复查找；Quick/完整构建/隔离冒烟通过，普通动作模板迁移仍继续 |
 
 ## 四、编写注意事项
 

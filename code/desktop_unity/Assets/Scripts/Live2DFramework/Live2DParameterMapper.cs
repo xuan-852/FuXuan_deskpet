@@ -27,6 +27,8 @@ public class Live2DParameterMapper
     private Dictionary<string, string> _idToSemantic;   // 参数 ID → 语义名（反向查询）
     private Dictionary<string, float> _defaultValues;   // 参数 ID → 默认值
     private Dictionary<string, ParameterRange> _ranges; // 参数 ID → 范围
+    // 语义动作会在每帧调用 Set/Get；参数对象只在加载映射或换模型时解析一次。
+    private Dictionary<string, CubismParameter> _parameterCache; // 参数 ID → CubismParameter
     private HashSet<string> _missingParams;             // 映射了但模型中不存在的参数
     private HashSet<string> _unknownWarned;              // 已报过警的未知语义名（防刷屏）
 
@@ -62,6 +64,7 @@ public class Live2DParameterMapper
         _idToSemantic = new Dictionary<string, string>();
         _defaultValues = new Dictionary<string, float>();
         _ranges = new Dictionary<string, ParameterRange>();
+        _parameterCache = new Dictionary<string, CubismParameter>();
         _missingParams = new HashSet<string>();
         _unknownWarned = new HashSet<string>();
         ModelName = "Unknown";
@@ -144,6 +147,7 @@ public class Live2DParameterMapper
         if (_model == null) return;
         _defaultValues.Clear();
         _ranges.Clear();
+        _parameterCache.Clear();
         _missingParams.Clear();
 
         foreach (var kv in _semanticToId)
@@ -152,6 +156,7 @@ public class Live2DParameterMapper
             var param = _model.Parameters.FindById(paramId);
             if (param != null)
             {
+                _parameterCache[paramId] = param;
                 _ranges[paramId] = new ParameterRange
                 {
                     Min = param.MinimumValue,
@@ -215,8 +220,7 @@ public class Live2DParameterMapper
             return;
         }
 
-        var param = _model.Parameters.FindById(paramId);
-        if (param == null) return;
+        if (!_parameterCache.TryGetValue(paramId, out var param) || param == null) return;
 
         // 钳制到有效范围
         if (_ranges.TryGetValue(paramId, out var range))
@@ -237,8 +241,8 @@ public class Live2DParameterMapper
         if (!_semanticToId.TryGetValue(semanticName, out string paramId))
             return 0f;
 
-        var param = _model.Parameters.FindById(paramId);
-        return param != null ? param.Value : 0f;
+        return _parameterCache.TryGetValue(paramId, out var param) && param != null
+            ? param.Value : 0f;
     }
 
     /// <summary>批量设置参数值</summary>
