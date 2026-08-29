@@ -168,5 +168,11 @@ public class HybridRenderer : MonoBehaviour, IPetRenderer
             petVx, petVy, onGround, isDragging, isPaused);
     }
 
+    public void OnDragPointer(Vector2 screenPosition, Vector2 delta)
+    {
+        live2DRenderer.OnDragPointer(screenPosition, delta);
+        model3DRenderer.OnDragPointer(screenPosition, delta);
+    }
+
     #endregion
 }

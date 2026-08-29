@@ -29,7 +29,7 @@ code/desktop_unity/Assets/
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `Scripts/Live2DRenderer.cs` | **3,955** | Live2D 模型加载、参数、动作与交互逻辑 |
+| `Scripts/Live2DRenderer.cs` | **4,037** | Live2D 模型加载、参数、动作、交互与目标点式拖拽物理输入 |
 | `Scripts/Live2DRenderer.OverlayRendering.cs` | **294** | Live2D 局部叠加相机、RenderTexture、OnGUI 与性能档位 |
 | `Scripts/RuntimeInputSimulator.cs` | **163** | 测试模式 `@@sim`/`@@input` 运行时输入解析与调度 |
 | `RightPanel.cs` | **2,534** | 右键面板主逻辑；聊天区和子面板已拆到 partial 文件 |

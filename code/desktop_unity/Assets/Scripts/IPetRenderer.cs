@@ -25,6 +25,9 @@ public interface IPetRenderer
     void OnPetUpdate(int petX, int petY, int petWidth, int petHeight,
                      int petVx, int petVy, bool onGround, bool isDragging, bool isPaused);
 
+    /// <summary>拖拽指针输入（屏幕左上角原点）。用于把目标位置/速度送入 Live2D 物理链路。</summary>
+    void OnDragPointer(Vector2 screenPosition, Vector2 delta);
+
     /// <summary>屏幕边缘碰撞反弹动画</summary>
     /// <param name="direction">碰撞方向：-1=左墙, 1=右墙</param>
     void ShowWallHitPose(int direction);

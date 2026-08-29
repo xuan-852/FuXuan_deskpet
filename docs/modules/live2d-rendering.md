@@ -1,4 +1,4 @@
-# Live2D 渲染管道 — 渲染、参数映射与硬编码迁移
+﻿# Live2D 渲染管道 — 渲染、参数映射与硬编码迁移
 
 > **文档作用**: 本模块文档描述桌宠「Live2D 渲染」子系统的**代码真相**——模型加载双保险、80+ 参数映射、Perlin 噪声微动、天气↔表情联动、以及 `Live2DRenderer.cs` 约 427 处 `SetParameter`/`SetParameterValue` 匹配的迁移清单（P0-P4 分级）。改渲染/表情/动作参数相关代码前必读。
 > **基本架构**: `HybridRenderer` → `Live2DRenderer`（恒走 Live2D，3D 分支不可用）→ Cubism SDK 5-r.4。模型加载：AssetDatabase → Resources.Load("Fuxuan") 降级。参数映射：`Live2DParameterMapper`（语义名 ↔ Cubism 参数 ID）双向映射，核心入口 `Live2DRenderer.SetParameterValue(string, float)`。渲染器现由 `Live2DRenderer.cs`（模型加载、动作与参数）+ `Live2DRenderer.OverlayRendering.cs`（置顶叠加相机、RT、OnGUI 和性能档位）组成同一 partial 类。执行顺序：DesktopPet.Update（0）→ CubismPhysicsController.LateUpdate（800）→ Live2DRenderer.LateUpdate（801，覆盖物理重置参数）。
@@ -149,6 +149,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 - `@@sim:status` 输出位置/尺寸/拖动候选/拖动状态/速度/暂停状态；`@@sim:click:x,y`、`@@sim:click:center` 复用真实点击姿势和事件回调；`@@sim:drag:x1,y1->x2,y2[,steps]` 与 `@@sim:drag:offset:dx,dy[,steps]` 按帧推进拖动，默认 12 步；`@@sim:reset`/`@@sim:release` 中止并清理模拟输入。
 - `DragHandler` 在按下后保持透明层接收输入，避免鼠标离开动态宠物矩形后丢失 MouseDrag/MouseUp；位置改为浮点累积后取整，并限制在屏幕内。窗口失焦会中止拖动，避免卡在 `isDragging`。
 - `Live2DRenderer` 的挣扎速度每帧只采样一次，即使 `OnPetUpdate` 和 `LateUpdate` 都覆盖姿态也不会把速度重复衰减；速度平滑和左臂幅度已修正为可见、可跟手的范围。
+- `DragHandler` 通过 `IPetRenderer.OnDragPointer` 把屏幕指针位置与位移传给 Live2D；`Live2DRenderer.Update()` 在 CubismPhysics 前用目标速度 + 加速度限幅写入真实物理输入 `ParamAngleX/Y/Z`、`ParamBodyAngleX/Y/Z`，停手后输入逐步衰减。拖拽相对角色中心的位置还会提供抓取点偏置，物理输出再驱动头发、衣服和手臂，形成方向相关的滞后/回弹。
 
 测试模式下可用 PowerShell 写入隔离 `inbox.txt`：
 
@@ -167,6 +168,7 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 | 2026-08-26 | 2026-08-26 | 将 Live2D 叠加渲染与性能档位入口拆至 `Live2DRenderer.OverlayRendering.cs`；行为不变，完整构建与隔离冒烟通过 |
 | 2026-08-29 | 2026-08-29 | 叠加层改为模型包围盒局部 RT + 局部正交相机 + 局部 IMGUI 绘制；原生透明窗口保持全屏以兼容现有交互；目标帧率调整为 High/Normal/Low = 60/45/30，Quick/完整构建/隔离冒烟通过 |
 | 2026-08-29 | 2026-08-29 | 增加 `@@sim`/`@@input` 测试输入链路；修复透明层导致的拖动中途丢输入、拖动越界和失焦残留；修复挣扎速度重复采样与明显迟滞；Quick/完整构建/隔离冒烟通过 |
+| 2026-08-29 | 2026-08-29 | 对照官方 CubismTargetPoint 接入拖拽目标速度/加速度限幅；通过 `IPetRenderer.OnDragPointer` 将位移和抓取点送入 physics3 输入链路，移除 `OnPetUpdate` 中物理前的重复姿态覆盖；Quick/完整构建/隔离冒烟通过，真实观感仍需可见播放器确认 |
 
 ## 四、编写注意事项
 

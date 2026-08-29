@@ -191,6 +191,16 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     const float DRAG_HEAD_BOB         = 1f;    // 头部上下抖动幅度
     const float DRAG_HEAD_BOB_FREQ    = 2.0f;  // 头部上下抖动频率
 
+    // -- 目标点式拖拽输入（先写入物理输入，再由 Cubism physics 输出头发/衣服）--
+    const float DRAG_TARGET_SPEED_SCALE = 1000f; // 像素/秒归一化，约 1000px/s 达到满输入
+    const float DRAG_TARGET_ACCEL        = 8f;    // 归一化输入的加速度（模拟官方 TargetPoint）
+    const float DRAG_INPUT_BODY_X       = 10f;   // 垂直拖动→身体前后倾
+    const float DRAG_INPUT_BODY_Y       = 12f;   // 水平拖动→身体转体
+    const float DRAG_INPUT_BODY_Z       = 16f;   // 水平拖动→身体旋转
+    const float DRAG_INPUT_HEAD_X       = 22f;   // 水平拖动→头部滞后
+    const float DRAG_INPUT_HEAD_Y       = 8f;    // 垂直拖动→头部滞后
+    const float DRAG_INPUT_HEAD_Z       = 16f;   // 水平拖动→头部旋转
+
     // -- 表情 --
     const float DRAG_EYE_OPEN         = 1.1f;  // 眼睛睁开幅度（1=正常，>1=睁大）
     const float DRAG_MOUTH_AMP        = 0.5f;  // 嘴巴张开基值
@@ -515,6 +525,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private int _dragVelocityFrame = -1;
     private float _dragFrameVelocity = 0f;
     private bool _dragInited = false;
+    // 拖拽输入目标与当前速度：对应官方 CubismTargetPoint 的 target/current velocity 思路。
+    private Vector2 _dragPointerScreen;
+    private Vector2 _dragPointerDelta;
+    private Vector2 _dragTargetVelocity;
+    private Vector2 _dragInputVelocity;
+    private bool _dragPointerReceived = false;
     // 平滑眼睛跟随（防突变）
     private float _eyeSmoothX = 0f;
     private float _eyeSmoothY = 0f;
@@ -814,6 +830,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _walkBounceOffset = 0f;
             UpdateModelPosition();
             UpdateOverlayFraming();
+            // DesktopPet.Update 在本脚本之前执行；这里是 CubismPhysics 的 LateUpdate 之前，
+            // 适合把鼠标拖动速度写入 ParamAngle/ParamBody 输入，让物理产生滞后和回弹。
+            ApplyDragPhysicsInput();
             return;
         }
 
@@ -3449,6 +3468,13 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     #region IPetRenderer
 
+    public void OnDragPointer(Vector2 screenPosition, Vector2 delta)
+    {
+        _dragPointerScreen = screenPosition;
+        _dragPointerDelta += delta;
+        _dragPointerReceived = true;
+    }
+
     public void ShowDragPose()
     {
         SetParameter("ParamBodyAngleX", 0f);
@@ -3461,6 +3487,10 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _dragSmoothHeadZ = 0f;
         _dragVelocityFrame = -1;
         _dragFrameVelocity = 0f;
+        _dragPointerDelta = Vector2.zero;
+        _dragTargetVelocity = Vector2.zero;
+        _dragInputVelocity = Vector2.zero;
+        _dragPointerReceived = false;
         _dragInited = true;
     }
 
@@ -3608,9 +3638,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         if (isDragging)
         {
-            // ⭐4 拖拽挣扎（LateUpdate 中也会调用以覆盖物理）
-            UpdateDragStruggle();
-            if (_cubismModel != null) _cubismModel.ForceUpdateNow();
+            // 拖拽输入在本组件 Update 中、CubismPhysics LateUpdate 前写入。
+            // 这里不提前写最终挣扎姿态，避免同一帧在物理前后重复覆盖造成抖动。
             return;
         }
 
@@ -3635,8 +3664,59 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     /// <summary>
     /// ⭐4 拖拽挣扎动画 — 手脚交替划水 + 身体扭动 + 慌张表情
-    /// 从 OnPetUpdate 抽出，供 LateUpdate 在物理之后重新覆盖
+    /// 供 LateUpdate 在物理之后重新覆盖最终的手脚/表情姿态；物理输入在 Update 中提前写入。
     /// </summary>
+    private void ApplyDragPhysicsInput()
+    {
+        float dt = Mathf.Clamp(Time.deltaTime, 0.008f, 0.05f);
+        Vector2 frameDelta = _dragPointerDelta;
+        bool hasPointerInput = _dragPointerReceived;
+        _dragPointerDelta = Vector2.zero;
+
+        if (hasPointerInput)
+        {
+            // 将鼠标每帧位移转换成归一化目标速度，避免固定“正弦摆臂”与实际拖动脱节。
+            _dragTargetVelocity = Vector2.ClampMagnitude(
+                frameDelta / Mathf.Max(1f, dt * DRAG_TARGET_SPEED_SCALE), 1f);
+        }
+        else
+        {
+            _dragTargetVelocity = Vector2.zero;
+        }
+        // 加速度限幅：快速移动时有滞后，停下时不会瞬间归零，形成被拽住后的回弹感。
+        _dragInputVelocity = Vector2.MoveTowards(
+            _dragInputVelocity,
+            _dragTargetVelocity,
+            DRAG_TARGET_ACCEL * dt);
+
+        float vx = _dragInputVelocity.x;
+        float vy = _dragInputVelocity.y;
+
+        // 鼠标相对角色中心的位置是“抓住哪里”的信息：抓住侧边时身体会向另一侧
+        // 让开，抓住头顶/脚部时会产生轻微纵向偏转。这是拖拽目标位置的保留量，
+        // 不依赖窗口是否已经跟随鼠标移动。
+        float holdX = 0f;
+        float holdY = 0f;
+        if (hasPointerInput && _pet != null)
+        {
+            float halfWidth = Mathf.Max(1f, _pet.petWidth * 0.5f);
+            float halfHeight = Mathf.Max(1f, _pet.petHeight * 0.5f);
+            float centerX = _pet.petX + halfWidth;
+            float centerY = _pet.petY + halfHeight;
+            holdX = Mathf.Clamp((_dragPointerScreen.x - centerX) / halfWidth, -1f, 1f);
+            holdY = Mathf.Clamp((_dragPointerScreen.y - centerY) / halfHeight, -1f, 1f);
+        }
+
+        // 这些是 physics3.json 中真实存在的输入参数；头发、衣服和手臂的物理输出
+        // 会在接下来的 CubismPhysicsController(800) 中自然计算，而不是直接硬写输出。
+        SetParameter("ParamBodyAngleX", Mathf.Clamp(vy * DRAG_INPUT_BODY_X + holdY * 4f, -12f, 12f));
+        SetParameter("ParamBodyAngleY", Mathf.Clamp(vx * DRAG_INPUT_BODY_Y - holdX * 6f, -14f, 14f));
+        SetParameter("ParamBodyAngleZ", Mathf.Clamp(-vx * DRAG_INPUT_BODY_Z + holdX * 5f, -18f, 18f));
+        SetParameter("ParamAngleX", Mathf.Clamp(-vx * DRAG_INPUT_HEAD_X - holdX * 6f, -24f, 24f));
+        SetParameter("ParamAngleY", Mathf.Clamp(vy * DRAG_INPUT_HEAD_Y + holdY * 3f, -10f, 10f));
+        SetParameter("ParamAngleZ", Mathf.Clamp(vx * DRAG_INPUT_HEAD_Z + holdX * 4f, -18f, 18f));
+    }
+
     private void UpdateDragStruggle()
     {
         float t = Time.time;

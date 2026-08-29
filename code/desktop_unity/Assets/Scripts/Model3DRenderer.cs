@@ -245,6 +245,11 @@ public class Model3DRenderer : MonoBehaviour, IPetRenderer
         // 3D 模型暂不实现
     }
 
+    public void OnDragPointer(Vector2 screenPosition, Vector2 delta)
+    {
+        // 3D 模型暂不实现；接口保留给 Live2D 物理输入链路。
+    }
+
     public void OnPetUpdate(int petX, int petY, int petWidth, int petHeight,
                             int petVx, int petVy, bool onGround, bool isDragging, bool isPaused)
     {

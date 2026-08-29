@@ -370,6 +370,7 @@ public class DragHandler : MonoBehaviour
         _velocityFrames = 0;
         _velocitySampleIndex = 0;
         _velocitySampleCount = 0;
+        _renderer?.OnDragPointer(mousePos, Vector2.zero);
         lastInteractionTime = Time.time;
 
         // 按下后锁住输入接收，避免鼠标刚一离开宠物矩形就把窗口重新设为穿透。
@@ -403,6 +404,7 @@ public class DragHandler : MonoBehaviour
         else if (moveDelta.x < 0f) _pet.petVx = -1;
 
         AddVelocitySample(moveDelta);
+        _renderer?.OnDragPointer(mousePos, moveDelta);
         _lastMousePos = mousePos;
     }
 
