@@ -48,6 +48,21 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.StartsWith("screenshot", StringComparison.OrdinalIgnoreCase))
+        {
+            string suffix = body.Length > "screenshot".Length
+                ? body.Substring("screenshot".Length).TrimStart(':', ' ', '\t')
+                : "drag";
+            string safeName = SanitizeScreenshotName(suffix);
+            string dir = System.IO.Path.Combine(DataPathConfig.DataRoot, "test_screenshots");
+            System.IO.Directory.CreateDirectory(dir);
+            string path = System.IO.Path.Combine(dir,
+                $"{safeName}_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
+            ScreenCapture.CaptureScreenshot(path);
+            Debug.Log("[TestInbox] screenshot queued: " + path);
+            return true;
+        }
+
         if (body.Equals("reset", StringComparison.OrdinalIgnoreCase)
             || body.Equals("release", StringComparison.OrdinalIgnoreCase))
         {
@@ -154,6 +169,19 @@ public static class RuntimeInputSimulator
     {
         return float.TryParse(raw.Trim(), NumberStyles.Float,
             CultureInfo.InvariantCulture, out value);
+    }
+
+    private static string SanitizeScreenshotName(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "drag";
+        var chars = raw.Trim().ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+        {
+            if (!char.IsLetterOrDigit(chars[i]) && chars[i] != '-' && chars[i] != '_')
+                chars[i] = '_';
+        }
+        string result = new string(chars).Trim('_');
+        return string.IsNullOrEmpty(result) ? "drag" : result;
     }
 
     private static void WarnFormat(string command, string value, string expected)

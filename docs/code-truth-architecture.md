@@ -29,9 +29,9 @@ code/desktop_unity/Assets/
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `Scripts/Live2DRenderer.cs` | **4,037** | Live2D 模型加载、参数、动作、交互与目标点式拖拽物理输入 |
+| `Scripts/Live2DRenderer.cs` | **4,201** | Live2D 模型加载、参数、动作、交互与目标点式拖拽物理输入 |
 | `Scripts/Live2DRenderer.OverlayRendering.cs` | **294** | Live2D 局部叠加相机、RenderTexture、OnGUI 与性能档位 |
-| `Scripts/RuntimeInputSimulator.cs` | **163** | 测试模式 `@@sim`/`@@input` 运行时输入解析与调度 |
+| `Scripts/RuntimeInputSimulator.cs` | **191** | 测试模式 `@@sim`/`@@input` 运行时输入解析、调度与 Unity 截图 |
 | `RightPanel.cs` | **2,534** | 右键面板主逻辑；聊天区和子面板已拆到 partial 文件 |
 | `ChatManager.cs` | **1,775** | AI 请求协程、历史裁剪与请求状态收尾 |
 | `ChatManager.RequestLifecycle.cs` | **121** | ChatManager 请求发送、排队、取消、状态通知与意图分类入口 |
@@ -147,7 +147,7 @@ flowchart TB
 - **`CoreToolSubset`** = {play_action, set_expression, stop_action, generate_motion, get_system_info, get_mouse_pos}
 - **`InjectMultiActionCapability()`**（N40 T7）：一次预测 2-3 步工具调用（UFO² Speculative Multi-Action）
 - **`IsTestMode`**：存在 `D:\DesktopPetData\.test_mode` 标记文件时为测试模式（跳过睡眠判断等）
-- **`DeveloperCommandSet`**：桌宠本地开发模式指令入口；支持 `/mode set test`、`/mode set normality`、`/tell mode`，在 `ChatManager` 写历史/启动 LLM 前处理，回执只进入当前 UI 动态日志。`RuntimeInputSimulator` 是测试模式 inbox 输入模拟入口，支持 `@@sim`/`@@input`，自身不调用 OS 鼠标 API；点击/拖动仍会复用真实交互回调
+- **`DeveloperCommandSet`**：桌宠本地开发模式指令入口；支持 `/mode set test`、`/mode set normality`、`/tell mode`，在 `ChatManager` 写历史/启动 LLM 前处理，回执只进入当前 UI 动态日志。`RuntimeInputSimulator` 是测试模式 inbox 输入模拟入口，支持 `@@sim`/`@@input`，自身不调用 OS 鼠标 API；点击/拖动仍会复用真实交互回调，并可用 `@@sim:screenshot[:name]` 通过 Unity 保存当前帧
 - **`HISTORY_CHAR_BUDGET = 15000`**（N40 T5）+ 旧消息 Ollama 本地摘要【旧事纪要】
 
 ### 3.2 系统 Prompt 注入链（真实）

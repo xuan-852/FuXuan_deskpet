@@ -147,9 +147,11 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 
 - `RightPanel.CheckTestInbox()` 将 `@@sim:`（兼容别名 `@@input:`）交给 `RuntimeInputSimulator`；命令只在 `.test_mode` 下生效，不调用 OS 鼠标 API。命令本身不直接发起 LLM 请求，但点击/拖动会复用真实事件回调，可能触发 AutoChat；测试模式阻止生产持久化与云端调用。
 - `@@sim:status` 输出位置/尺寸/拖动候选/拖动状态/速度/暂停状态；`@@sim:click:x,y`、`@@sim:click:center` 复用真实点击姿势和事件回调；`@@sim:drag:x1,y1->x2,y2[,steps]` 与 `@@sim:drag:offset:dx,dy[,steps]` 按帧推进拖动，默认 12 步；`@@sim:reset`/`@@sim:release` 中止并清理模拟输入。
+- `@@sim:screenshot[:name]` 在测试模式下调用 Unity `ScreenCapture` 保存当前渲染帧到 `DataRoot/test_screenshots/`。拖拽方向回归必须至少执行右拖截图、左拖截图，并在角色已镜像后重复一次，不能只看参数符号或编译结果。
 - `DragHandler` 在按下后保持透明层接收输入，避免鼠标离开动态宠物矩形后丢失 MouseDrag/MouseUp；位置改为浮点累积后取整，并限制在屏幕内。窗口失焦会中止拖动，避免卡在 `isDragging`。
 - `Live2DRenderer` 的挣扎速度每帧只采样一次，即使 `OnPetUpdate` 和 `LateUpdate` 都覆盖姿态也不会把速度重复衰减；速度平滑和左臂幅度已修正为可见、可跟手的范围。
 - `DragHandler` 通过 `IPetRenderer.OnDragPointer` 把屏幕指针位置与位移传给 Live2D；`Live2DRenderer.Update()` 在 CubismPhysics 前用目标速度 + 加速度限幅写入真实物理输入 `ParamAngleX/Y/Z`、`ParamBodyAngleX/Y/Z`，停手后输入逐步衰减。拖拽相对角色中心的位置还会提供抓取点偏置，物理输出再驱动头发、衣服和手臂，形成方向相关的滞后/回弹。
+- 2026-08-29 追加拖拽响应降幅：降低鼠标位移到物理输入、衣物/头发直接输出和整体视觉滞后的增益；手臂、腿部和身体挣扎改为随拖拽强度渐进，避免轻微拖动时大幅甩动，同时保留快速拖动的挣扎反馈。Quick/完整构建通过，并用 Unity 截图闭环完成左右拖动及镜像后方向回归；GPU/帧率和裁切仍待专项测量。
 
 测试模式下可用 PowerShell 写入隔离 `inbox.txt`：
 
@@ -169,6 +171,7 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 | 2026-08-29 | 2026-08-29 | 叠加层改为模型包围盒局部 RT + 局部正交相机 + 局部 IMGUI 绘制；原生透明窗口保持全屏以兼容现有交互；目标帧率调整为 High/Normal/Low = 60/45/30，Quick/完整构建/隔离冒烟通过 |
 | 2026-08-29 | 2026-08-29 | 增加 `@@sim`/`@@input` 测试输入链路；修复透明层导致的拖动中途丢输入、拖动越界和失焦残留；修复挣扎速度重复采样与明显迟滞；Quick/完整构建/隔离冒烟通过 |
 | 2026-08-29 | 2026-08-29 | 对照官方 CubismTargetPoint 接入拖拽目标速度/加速度限幅；通过 `IPetRenderer.OnDragPointer` 将位移和抓取点送入 physics3 输入链路，移除 `OnPetUpdate` 中物理前的重复姿态覆盖；Quick/完整构建/隔离冒烟通过，真实观感仍需可见播放器确认 |
+| 2026-08-29 | 2026-08-29 | 降低拖拽物理/衣物/头发/视觉滞后的响应增益，并让手臂、腿部、身体挣扎随拖拽强度渐进；使用 `@@sim:screenshot` 完成左右拖动与镜像后方向回归 |
 
 ## 四、编写注意事项
 

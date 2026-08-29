@@ -370,6 +370,7 @@ Assets/
 - `@@sim:click:x,y` / `@@sim:click:center` → 模拟屏幕左上角坐标点击，复用真实点击姿势与事件回调；
 - `@@sim:drag:x1,y1->x2,y2[,steps]` → 模拟按住左键拖动，默认 12 步；
 - `@@sim:drag:offset:dx,dy[,steps]` → 从当前宠物中心相对拖动，适合不依赖固定分辨率的测试；
+- `@@sim:screenshot[:name]` → 由 Unity 在当前渲染帧保存截图到隔离数据目录 `test_screenshots/`，用于拖动方向和视觉回归；
 - `@@sim:reset` / `@@sim:release` → 中止模拟输入并清理拖动状态，不产生抛掷。
 
 真实拖动在按下后会锁住透明层输入，鼠标离开当前宠物矩形不会丢失 MouseDrag/MouseUp；窗口失焦会中止拖动。模拟命令用于验证同一套状态机和挣扎动画，不代表真实鼠标/DWM 命中测试已经被替代。

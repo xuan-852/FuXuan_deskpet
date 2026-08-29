@@ -130,8 +130,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     // ===================================================================
     // -- 双臂 --
     const float DRAG_ARM_FREQ         = 4.5f;  // 摆臂频率（越大越急促）
-    const float DRAG_RIGHT_AMP        = 3f;   // 右臂摆动幅度 (Param94 主驱动)
-    const float DRAG_LEFT_AMP         = 1.8f;   // 左臂摆动幅度（与右臂形成可见交替）
+    const float DRAG_RIGHT_AMP        = 5f;     // 右臂摆动幅度 (Param94 主驱动)
+    const float DRAG_LEFT_AMP         = 2.8f;   // 左臂摆动幅度（与右臂形成可见交替）
     const float DRAG_JITTER1_FREQ     = 2f;  // 抖动1 频率
     const float DRAG_JITTER1_AMP      = 0.2f; // 抖动1 幅度（占幅度比例）
     const float DRAG_JITTER2_FREQ     = 1f; // 抖动2 频率
@@ -160,46 +160,57 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     // -- 双腿 --
     const float DRAG_LEG_FREQ         = 5.0f;  // 踏步频率
-    const float DRAG_LEG_SWING        = 12f;   // 腿前后摆幅 (Param126/129)
-    const float DRAG_LEG_BEND         = 6f;    // 腿弯曲幅度 (Param127/131)
-    const float DRAG_LEG_LIFT         = 8f;    // 抬腿幅度 (Param165/164)
+    const float DRAG_LEG_SWING        = 6f;    // 腿前后摆幅 (Param126/129)
+    const float DRAG_LEG_BEND         = 3f;    // 腿弯曲幅度 (Param127/131)
+    const float DRAG_LEG_LIFT         = 4f;    // 抬腿幅度 (Param165/164)
 
     // -- 身体/头部（鼠标速度驱动 → 物理自然推导头发/法盘/裙子）--
-    const float DRAG_TURN_ANGLE       = 10f;   // 拖拽转身角度 (ParamBodyAngleY, +朝右转)
+    const float DRAG_TURN_ANGLE       = 4f;    // 拖拽转身角度 (ParamBodyAngleY, +朝右转)
     const float DRAG_TURN_SMOOTH      = 0.1f;  // 转身平滑速度（越大反应越快）
-    const float DRAG_BODY_SWAY        = 5f;    // 身体左右扭动幅度 (ParamBodyAngleX)
+    const float DRAG_BODY_SWAY        = 1.5f;  // 身体左右扭动幅度 (ParamBodyAngleX)
     const float DRAG_BODY_FREQ        = 2.0f;  // 身体扭动频率
     // -- 速度→输入参数 + 直接驱动裙子/法盘（全部同方向，参考走路物理方向）--
-    const float DRAG_VEL_LERP       = 0.18f;  // 速度平滑（越小越滑；原 0.01 会导致明显滞后）
-    const float DRAG_VEL_MAX        = 3f;      // 原始速度上限（防瞬冲，越大响应越快）
-    const float DRAG_BODY_Z_SCALE   = 3f;     // 速度→ParamBodyAngleZ（给物理）
-    const float DRAG_BODY_Z_MAX     = 12f;
-    const float DRAG_DIRECT_SCALE   = 4f;     // 速度→直接驱动 Param82/87/84/49/51/57/60
-    const float DRAG_DIRECT_MAX     = 35f;    // 直接驱动最大值
-    const float DRAG_HEAD_X_SCALE   = 1.8f;   // 速度→ParamAngleX
-    const float DRAG_HEAD_X_MAX     = 22f;
-    const float DRAG_HEAD_Z_SCALE   = 1.2f;   // 速度→ParamAngleZ
-    const float DRAG_HEAD_Z_MAX     = 16f;
+    const float DRAG_VEL_LERP       = 0.14f;  // 速度平滑（越小越滑；原 0.01 会导致明显滞后）
+    const float DRAG_VEL_MAX        = 1.5f;   // 原始速度上限（防瞬冲，越大响应越快）
+    const float DRAG_BODY_Z_SCALE   = 1.2f;   // 速度→ParamBodyAngleZ（给物理）
+    const float DRAG_BODY_Z_MAX     = 5f;
+    const float DRAG_DIRECT_SCALE   = 1.2f;   // 速度→直接驱动 Param82/87/84/49/51/57/60
+    const float DRAG_DIRECT_MAX     = 10f;    // 直接驱动最大值
+    const float DRAG_HEAD_X_SCALE   = 0.7f;   // 速度→ParamAngleX
+    const float DRAG_HEAD_X_MAX     = 8f;
+    const float DRAG_HEAD_Z_SCALE   = 0.5f;   // 速度→ParamAngleZ
+    const float DRAG_HEAD_Z_MAX     = 6f;
     // -- 头发直接驱动参数（物理 Delay 太高，直接接管）--
-    const float DRAG_HAIR_SCALE     = 0.8f;   // 速度→头发（相对于 d 的比例）
-    const float DRAG_HAIR_MAX       = 20f;    // 头发驱动最大值
-    const float DRAG_HAIR169_SCALE  = 0.6f;   // Param169 饰品头饰驱动
-    const float DRAG_HAIR169_MAX    = 15f;
-    const float DRAG_HEAD_SHAKE       = 5f;    // 头部左右摆动幅度 (ParamAngleX)
+    const float DRAG_HAIR_SCALE     = 0.22f;  // 速度→头发（相对于 d 的比例）
+    const float DRAG_HAIR_MAX       = 6f;     // 头发驱动最大值
+    const float DRAG_HAIR169_SCALE  = 0.18f;  // Param169 饰品头饰驱动
+    const float DRAG_HAIR169_MAX    = 5f;
+    const float DRAG_HEAD_SHAKE       = 1.5f; // 头部左右摆动幅度 (ParamAngleX)
     const float DRAG_HEAD_SHAKE_FREQ  = 3.5f;  // 头部摆动频率
     const float DRAG_HEAD_TILT        = -2f;   // 头部后仰基准 (ParamAngleY，正=抬头)
     const float DRAG_HEAD_BOB         = 1f;    // 头部上下抖动幅度
     const float DRAG_HEAD_BOB_FREQ    = 2.0f;  // 头部上下抖动频率
 
     // -- 目标点式拖拽输入（先写入物理输入，再由 Cubism physics 输出头发/衣服）--
-    const float DRAG_TARGET_SPEED_SCALE = 1000f; // 像素/秒归一化，约 1000px/s 达到满输入
-    const float DRAG_TARGET_ACCEL        = 8f;    // 归一化输入的加速度（模拟官方 TargetPoint）
-    const float DRAG_INPUT_BODY_X       = 10f;   // 垂直拖动→身体前后倾
-    const float DRAG_INPUT_BODY_Y       = 12f;   // 水平拖动→身体转体
-    const float DRAG_INPUT_BODY_Z       = 16f;   // 水平拖动→身体旋转
-    const float DRAG_INPUT_HEAD_X       = 22f;   // 水平拖动→头部滞后
-    const float DRAG_INPUT_HEAD_Y       = 8f;    // 垂直拖动→头部滞后
-    const float DRAG_INPUT_HEAD_Z       = 16f;   // 水平拖动→头部旋转
+    const float DRAG_TARGET_SPEED_SCALE = 1600f; // 像素/秒归一化，降低单位鼠标位移的输入强度
+    const float DRAG_TARGET_ACCEL        = 3.5f;  // 归一化输入的加速度（模拟官方 TargetPoint）
+    const float DRAG_INPUT_BODY_X       = 4f;    // 垂直拖动→身体前后倾
+    const float DRAG_INPUT_BODY_Y       = 5f;    // 水平拖动→身体转体
+    const float DRAG_INPUT_BODY_Z       = 6f;    // 水平拖动→身体旋转
+    const float DRAG_INPUT_HEAD_X       = 8f;    // 水平拖动→头部滞后
+    const float DRAG_INPUT_HEAD_Y       = 3f;    // 垂直拖动→头部滞后
+    const float DRAG_INPUT_HEAD_Z       = 6f;    // 水平拖动→头部旋转
+    const float DRAG_RESPONSE_SIGN      = -1f;  // 符玄模型校准：拖动方向→姿态滞后方向
+    // 三类可见拖拽物理输出单独校准。当前模型的参数正值会让可见部件向右，
+    // 因此右拖时写入负值，才能让衣物、头发向左滞后；
+    // 不再复用身体/头部的 response sign，避免某一类参数反向时牵连全部效果。
+    const float DRAG_CLOTH_SIGN         = -1f;  // 披风、裙摆、法盘
+    const float DRAG_HAIR_SIGN          = -1f;  // 刘海、后发、鬓发
+    const float DRAG_ORNAMENT_SIGN      = -1f;  // 头饰、发饰
+    const float DRAG_VISUAL_LAG_PX      = 7f;     // 角色整体相对窗口的滞后像素
+    const float DRAG_VISUAL_BOB_PX      = 1.5f;   // 持续挣扎的整体上下抖动
+    const float DRAG_VISUAL_ROTATION    = 2f;     // 角色整体滞后旋转幅度
+    const float DRAG_VISUAL_SMOOTH      = 0.12f;  // 整体滞后平滑时间
 
     // -- 表情 --
     const float DRAG_EYE_OPEN         = 1.1f;  // 眼睛睁开幅度（1=正常，>1=睁大）
@@ -531,6 +542,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private Vector2 _dragTargetVelocity;
     private Vector2 _dragInputVelocity;
     private bool _dragPointerReceived = false;
+    private Vector2 _dragVisualOffset;
+    private Vector2 _dragVisualOffsetVelocity;
+    private float _dragVisualRotation;
+    private float _dragVisualRotationVelocity;
+    private Quaternion _dragBaseLocalRotation = Quaternion.identity;
+    private bool _dragBaseRotationInitialized = false;
     // 平滑眼睛跟随（防突变）
     private float _eyeSmoothX = 0f;
     private float _eyeSmoothY = 0f;
@@ -833,6 +850,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             // DesktopPet.Update 在本脚本之前执行；这里是 CubismPhysics 的 LateUpdate 之前，
             // 适合把鼠标拖动速度写入 ParamAngle/ParamBody 输入，让物理产生滞后和回弹。
             ApplyDragPhysicsInput();
+            UpdateDragVisualTransform();
             return;
         }
 
@@ -3477,6 +3495,11 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     public void ShowDragPose()
     {
+        if (_modelRoot != null && !_dragBaseRotationInitialized)
+        {
+            _dragBaseLocalRotation = _modelRoot.transform.localRotation;
+            _dragBaseRotationInitialized = true;
+        }
         SetParameter("ParamBodyAngleX", 0f);
         SetParameter("ParamAngleX", 0f);
         _poseLocked = false;
@@ -3491,6 +3514,10 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _dragTargetVelocity = Vector2.zero;
         _dragInputVelocity = Vector2.zero;
         _dragPointerReceived = false;
+        _dragVisualOffset = Vector2.zero;
+        _dragVisualOffsetVelocity = Vector2.zero;
+        _dragVisualRotation = 0f;
+        _dragVisualRotationVelocity = 0f;
         _dragInited = true;
     }
 
@@ -3636,6 +3663,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         if (!_loaded || _cubismModel == null) return;
 
+        if (!isDragging)
+            ResetDragVisualTransform();
+
         if (isDragging)
         {
             // 拖拽输入在本组件 Update 中、CubismPhysics LateUpdate 前写入。
@@ -3666,6 +3696,63 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// ⭐4 拖拽挣扎动画 — 手脚交替划水 + 身体扭动 + 慌张表情
     /// 供 LateUpdate 在物理之后重新覆盖最终的手脚/表情姿态；物理输入在 Update 中提前写入。
     /// </summary>
+    private void UpdateDragVisualTransform()
+    {
+        if (_modelRoot == null) return;
+
+        if (!_dragBaseRotationInitialized)
+        {
+            _dragBaseLocalRotation = _modelRoot.transform.localRotation;
+            _dragBaseRotationInitialized = true;
+        }
+
+        float dt = Mathf.Clamp(Time.deltaTime, 0.008f, 0.05f);
+        float intensity = Mathf.Clamp01(_dragInputVelocity.magnitude);
+        intensity = Mathf.Max(0.35f, intensity);
+        float t = Time.time;
+
+        // 窗口跟随鼠标，但角色本体略微落后；这是“被抓住后挣扎”的整体视觉锚点。
+        Vector2 targetOffset = new Vector2(
+            -_dragInputVelocity.x * DRAG_VISUAL_LAG_PX,
+            -_dragInputVelocity.y * (DRAG_VISUAL_LAG_PX * 0.7f));
+        targetOffset += new Vector2(
+            Mathf.Sin(t * 11f) * DRAG_VISUAL_BOB_PX * intensity,
+            Mathf.Cos(t * 8.5f) * DRAG_VISUAL_BOB_PX * 0.55f * intensity);
+
+        _dragVisualOffset = Vector2.SmoothDamp(
+            _dragVisualOffset, targetOffset, ref _dragVisualOffsetVelocity,
+            DRAG_VISUAL_SMOOTH, Mathf.Infinity, dt);
+
+        float targetRotation = _dragInputVelocity.x * DRAG_VISUAL_ROTATION
+            + Mathf.Sin(t * 10f) * 1.5f * intensity;
+        _dragVisualRotation = Mathf.SmoothDamp(
+            _dragVisualRotation, targetRotation, ref _dragVisualRotationVelocity,
+            DRAG_VISUAL_SMOOTH, Mathf.Infinity, dt);
+
+        Camera cam = Camera.main;
+        if (cam != null)
+        {
+            Vector3 baseScreen = cam.WorldToScreenPoint(_modelRoot.transform.position);
+            Vector3 shifted = cam.ScreenToWorldPoint(new Vector3(
+                baseScreen.x + _dragVisualOffset.x,
+                baseScreen.y - _dragVisualOffset.y,
+                baseScreen.z));
+            _modelRoot.transform.position = shifted;
+        }
+        _modelRoot.transform.localRotation = _dragBaseLocalRotation
+            * Quaternion.Euler(0f, 0f, _dragVisualRotation);
+    }
+
+    private void ResetDragVisualTransform()
+    {
+        _dragVisualOffset = Vector2.zero;
+        _dragVisualOffsetVelocity = Vector2.zero;
+        _dragVisualRotation = 0f;
+        _dragVisualRotationVelocity = 0f;
+        if (_modelRoot != null && _dragBaseRotationInitialized)
+            _modelRoot.transform.localRotation = _dragBaseLocalRotation;
+    }
+
     private void ApplyDragPhysicsInput()
     {
         float dt = Mathf.Clamp(Time.deltaTime, 0.008f, 0.05f);
@@ -3707,19 +3794,38 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             holdY = Mathf.Clamp((_dragPointerScreen.y - centerY) / halfHeight, -1f, 1f);
         }
 
+        // 参数是在模型局部坐标中定义的，而角色会根据行走方向用 scale.x 镜像。
+        // 先把输入换算到屏幕方向，避免角色朝左时同一套参数符号再次反转。
+        float screenDirectionSign = GetDragScreenDirectionSign();
+        float screenVx = vx * screenDirectionSign;
+        float screenHoldX = holdX * screenDirectionSign;
+        float responseVx = screenVx * DRAG_RESPONSE_SIGN;
+        float responseHoldX = screenHoldX * DRAG_RESPONSE_SIGN;
+        float hairInputVx = screenVx * DRAG_HAIR_SIGN;
+        float hairInputHoldX = screenHoldX * DRAG_HAIR_SIGN;
+
         // 这些是 physics3.json 中真实存在的输入参数；头发、衣服和手臂的物理输出
         // 会在接下来的 CubismPhysicsController(800) 中自然计算，而不是直接硬写输出。
-        SetParameter("ParamBodyAngleX", Mathf.Clamp(vy * DRAG_INPUT_BODY_X + holdY * 4f, -12f, 12f));
-        SetParameter("ParamBodyAngleY", Mathf.Clamp(vx * DRAG_INPUT_BODY_Y - holdX * 6f, -14f, 14f));
-        SetParameter("ParamBodyAngleZ", Mathf.Clamp(-vx * DRAG_INPUT_BODY_Z + holdX * 5f, -18f, 18f));
-        SetParameter("ParamAngleX", Mathf.Clamp(-vx * DRAG_INPUT_HEAD_X - holdX * 6f, -24f, 24f));
-        SetParameter("ParamAngleY", Mathf.Clamp(vy * DRAG_INPUT_HEAD_Y + holdY * 3f, -10f, 10f));
-        SetParameter("ParamAngleZ", Mathf.Clamp(vx * DRAG_INPUT_HEAD_Z + holdX * 4f, -18f, 18f));
+        SetParameter("ParamBodyAngleX", Mathf.Clamp(vy * DRAG_INPUT_BODY_X - holdY * 2f, -8f, 8f));
+        SetParameter("ParamBodyAngleY", Mathf.Clamp(responseVx * DRAG_INPUT_BODY_Y - responseHoldX * 3f, -9f, 9f));
+        // 衣物要表现为“被窗口拖走后落在后面”，方向必须跟窗口位移同向输入。
+        // 之前这里复用了 responseVx（-vx），实际会让披风继续跟着鼠标向右。
+        // 这个输入必须在 Physics 步进前写入，才能让物理输出从本帧开始反向滞后。
+        SetParameter("ParamBodyAngleZ", Mathf.Clamp(
+            (screenVx * DRAG_CLOTH_SIGN) * DRAG_INPUT_BODY_Z
+                + (screenHoldX * DRAG_CLOTH_SIGN) * 2f, -11f, 11f));
+        SetParameter("ParamAngleX", Mathf.Clamp(hairInputVx * DRAG_INPUT_HEAD_X
+            + hairInputHoldX * 3f, -15f, 15f));
+        SetParameter("ParamAngleY", Mathf.Clamp(vy * DRAG_INPUT_HEAD_Y - holdY * 2f, -6f, 6f));
+        SetParameter("ParamAngleZ", Mathf.Clamp(hairInputVx * DRAG_INPUT_HEAD_Z
+            + hairInputHoldX * 2f, -11f, 11f));
     }
 
     private void UpdateDragStruggle()
     {
         float t = Time.time;
+        float struggleIntensity = Mathf.Lerp(0.35f, 1f,
+            Mathf.Clamp01(_dragInputVelocity.magnitude * 1.25f));
 
         // 初始化拖拽速度追踪（防第一帧跳变）
         if (!_dragInited)
@@ -3736,9 +3842,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         float swing = Mathf.Sin(phase);
         float jitter = Mathf.Sin(t * DRAG_JITTER1_FREQ) * DRAG_JITTER1_AMP
                      + Mathf.Sin(t * DRAG_JITTER2_FREQ) * DRAG_JITTER2_AMP;
-        float rightBase = swing * DRAG_RIGHT_AMP * (1f + jitter);
+        float rightBase = swing * DRAG_RIGHT_AMP * (1f + jitter) * struggleIntensity;
         // 左臂同相位（模型坐标系下右正=向前，左负=向前，同相位=真正交替）
-        float leftBase = swing * DRAG_LEFT_AMP;
+        float leftBase = swing * DRAG_LEFT_AMP * struggleIntensity;
 
         // 右臂关节
         float rMag = Mathf.Clamp01((rightBase + DRAG_RIGHT_AMP) / (DRAG_RIGHT_AMP * 2f));
@@ -3768,15 +3874,17 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         float legPhase = t * DRAG_LEG_FREQ;
         float legSwing = Mathf.Sin(legPhase);
         float rightLeg = -legSwing;
-        SetParameter("Param126", legSwing * DRAG_LEG_SWING);
-        SetParameter("Param127", Mathf.Abs(legSwing) * DRAG_LEG_BEND);
-        SetParameter("Param129", rightLeg * DRAG_LEG_SWING);
-        SetParameter("Param131", Mathf.Abs(rightLeg) * DRAG_LEG_BEND);
-        SetParameter("Param165", legSwing * DRAG_LEG_LIFT);
-        SetParameter("Param164", rightLeg * DRAG_LEG_LIFT);
+        SetParameter("Param126", legSwing * DRAG_LEG_SWING * struggleIntensity);
+        SetParameter("Param127", Mathf.Abs(legSwing) * DRAG_LEG_BEND * struggleIntensity);
+        SetParameter("Param129", rightLeg * DRAG_LEG_SWING * struggleIntensity);
+        SetParameter("Param131", Mathf.Abs(rightLeg) * DRAG_LEG_BEND * struggleIntensity);
+        SetParameter("Param165", legSwing * DRAG_LEG_LIFT * struggleIntensity);
+        SetParameter("Param164", rightLeg * DRAG_LEG_LIFT * struggleIntensity);
 
         // 身体晃动（带平滑转身：鼠标方向决定 ParamBodyAngleY，不做 scale.x 硬翻转）
-        float targetBodyY = _pet != null ? (_pet.petVx > 0 ? DRAG_TURN_ANGLE : -DRAG_TURN_ANGLE) : 0f;
+        float targetBodyY = _pet != null
+            ? (_pet.petVx > 0 ? DRAG_RESPONSE_SIGN * DRAG_TURN_ANGLE : -DRAG_RESPONSE_SIGN * DRAG_TURN_ANGLE)
+            : 0f;
         _dragSmoothBodyY = Mathf.Lerp(_dragSmoothBodyY, targetBodyY, DRAG_TURN_SMOOTH);
         SetParameter("ParamBodyAngleY", _dragSmoothBodyY);
 
@@ -3793,12 +3901,19 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         float v = _dragSmoothBodyZ;
 
         // ---- 输入参数（给物理系统，聊胜于无）----
-        float bodyZ = Mathf.Clamp(-v * DRAG_BODY_Z_SCALE, -DRAG_BODY_Z_MAX, DRAG_BODY_Z_MAX);
+        float screenDirectionSign = GetDragScreenDirectionSign();
+        float screenV = v * screenDirectionSign;
+        float responseV = screenV * DRAG_RESPONSE_SIGN;
+        // 衣物、头发、头饰都以屏幕方向计算，再映射到当前模型局部坐标。
+        // 这样 scale.x=-1 时不会把右拖错误地重新变成右摆。
+        float clothV = screenV * DRAG_CLOTH_SIGN;
+        float bodyZ = Mathf.Clamp(clothV * DRAG_BODY_Z_SCALE, -DRAG_BODY_Z_MAX, DRAG_BODY_Z_MAX);
         SetParameter("ParamBodyAngleZ", bodyZ);
-        SetParameter("ParamBodyAngleX", Mathf.Sin(t * DRAG_BODY_FREQ) * DRAG_BODY_SWAY);
+        SetParameter("ParamBodyAngleX", Mathf.Sin(t * DRAG_BODY_FREQ)
+            * DRAG_BODY_SWAY * struggleIntensity);
 
         // ---- 直接驱动裙子/法盘/帘子（与鼠标方向相反）----
-        float d = Mathf.Clamp(-v * DRAG_DIRECT_SCALE, -DRAG_DIRECT_MAX, DRAG_DIRECT_MAX);
+        float d = Mathf.Clamp(clothV * DRAG_DIRECT_SCALE, -DRAG_DIRECT_MAX, DRAG_DIRECT_MAX);
         SetParameter("Param82", d);
         SetParameter("Param87", d);
         SetParameter("Param84", d * 0.6f);
@@ -3806,9 +3921,11 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         SetParameter("Param51", d);
         SetParameter("Param57", d);
         SetParameter("Param60", d);
+        ApplyDragClothOutput(d);
 
         // ---- 直接驱动头发（物理 Delay 太高，同方向驱动）----
-        float h = Mathf.Clamp(-v * DRAG_HAIR_SCALE, -DRAG_HAIR_MAX, DRAG_HAIR_MAX);
+        float hairV = screenV * DRAG_HAIR_SIGN;
+        float h = Mathf.Clamp(hairV * DRAG_HAIR_SCALE, -DRAG_HAIR_MAX, DRAG_HAIR_MAX);
         // 刘海
         SetParameter("Param5", h);
         SetParameter("Param7", h);
@@ -3834,13 +3951,14 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         SetParameter("Param74", h);
         SetParameter("Param89", h);
         // 头饰（Param169 单独小幅度）
-        float h169 = Mathf.Clamp(-v * DRAG_HAIR169_SCALE, -DRAG_HAIR169_MAX, DRAG_HAIR169_MAX);
+        float ornamentV = screenV * DRAG_ORNAMENT_SIGN;
+        float h169 = Mathf.Clamp(ornamentV * DRAG_HAIR169_SCALE, -DRAG_HAIR169_MAX, DRAG_HAIR169_MAX);
         SetParameter("Param169", h169);
 
-        float headX = Mathf.Clamp(-v * DRAG_HEAD_X_SCALE, -DRAG_HEAD_X_MAX, DRAG_HEAD_X_MAX);
+        float headX = Mathf.Clamp(hairV * DRAG_HEAD_X_SCALE, -DRAG_HEAD_X_MAX, DRAG_HEAD_X_MAX);
         float headXShake = headX + Mathf.Sin(t * DRAG_HEAD_SHAKE_FREQ) * DRAG_HEAD_SHAKE;
         SetParameter("ParamAngleX", headXShake);
-        float headZ = Mathf.Clamp(v * DRAG_HEAD_Z_SCALE, -DRAG_HEAD_Z_MAX, DRAG_HEAD_Z_MAX);
+        float headZ = Mathf.Clamp(-hairV * DRAG_HEAD_Z_SCALE, -DRAG_HEAD_Z_MAX, DRAG_HEAD_Z_MAX);
         SetParameter("ParamAngleZ", headZ);
         SetParameter("ParamAngleY", DRAG_HEAD_TILT + Mathf.Sin(t * DRAG_HEAD_BOB_FREQ) * DRAG_HEAD_BOB);
 
@@ -3850,6 +3968,54 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         SetParameter("ParamMouthOpenY", DRAG_MOUTH_AMP + Mathf.Sin(t * DRAG_MOUTH_FREQ + DRAG_MOUTH_PHASE) * DRAG_MOUTH_PULSE);
         SetParameter("ParamBrowL", DRAG_BROW);
         SetParameter("ParamBrowR", DRAG_BROW);
+    }
+
+    private float GetDragScreenDirectionSign()
+    {
+        return _smoothScaleX < 0f ? -1f : 1f;
+    }
+
+    /// <summary>
+    /// 统一覆盖 physics3.json 中所有衣物输出组。
+    /// 只覆盖衣物/裙摆参数，不覆盖身体输入和手脚参数，避免未覆盖的物理组
+    /// 在同一帧继续沿旧方向摆动，造成“披风反了但裙摆没反”的混合视觉结果。
+    /// </summary>
+    private void ApplyDragClothOutput(float d)
+    {
+        // 上身衣摆/披风组
+        SetParameter("Param47", d * 0.85f);
+        SetParameter("Param140", d * 0.85f);
+        SetParameter("Param142", d * 0.85f);
+        SetParameter("Param38", d * 0.85f);
+        SetParameter("Param46", d * 0.75f);
+        SetParameter("Param141", d * 0.75f);
+        SetParameter("Param143", d * 0.75f);
+        SetParameter("Param39", d * 0.75f);
+
+        // 左右披风/裙摆的多段物理输出
+        SetParameter("Param52", d);
+        SetParameter("Param144", d);
+        SetParameter("Param145", d);
+        SetParameter("Param58", d);
+        SetParameter("Param147", d);
+        SetParameter("Param152", d);
+        SetParameter("Param148", d);
+        SetParameter("Param146", d);
+        SetParameter("Param151", d);
+        SetParameter("Param61", d * 0.7f);
+        SetParameter("Param72", d * 0.7f);
+        SetParameter("Param48", d * 0.7f);
+        SetParameter("Param76", d);
+        SetParameter("Param80", d);
+        SetParameter("Param78", d);
+        SetParameter("Param77", d * 0.8f);
+        SetParameter("Param81", d * 0.8f);
+        SetParameter("Param79", d * 0.8f);
+        SetParameter("Param59", d * 0.8f);
+        SetParameter("Param75", d * 0.8f);
+        SetParameter("Param83", d * 0.8f);
+        SetParameter("Param86", d * 0.8f);
+        SetParameter("Param85", d * 0.8f);
     }
 
     private float GetDragFrameVelocity()

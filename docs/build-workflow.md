@@ -41,6 +41,11 @@ node scripts/test/runtime_smoke.cjs
 
 # 5. 启动桌宠人工验证（继承用户环境变量）
 Start-Process .\Build\DesktopPet.exe
+
+#    Live2D 拖拽视觉回归：测试模式写入隔离数据根目录 inbox.txt
+#    @@sim:drag:offset:180,0,12
+#    @@sim:screenshot:right_drag
+#    再执行左拖及镜像后的左右拖动，比较 test_screenshots/ 中的 Unity 截图
 ```
 
 ## 三、构建卡死处理（重点：2026-08-17 多次遇到）
