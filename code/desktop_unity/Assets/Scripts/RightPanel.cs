@@ -871,6 +871,10 @@ public partial class RightPanel : MonoBehaviour
         try { System.IO.File.WriteAllText(inboxPath, ""); }
         catch { return; }
 
+        // ★ AI 调试运行时输入：@@sim / @@input 只在 .test_mode 下模拟桌宠内部输入，
+        //    不移动开发者真实鼠标；必须在普通聊天和 UI 命令前消费。
+        if (RuntimeInputSimulator.TryHandle(content)) return;
+
         // ★ 配对质量测试：@@case:chat_001 设置后续遥测的案例编号；@@case: 清除。
         if (content.StartsWith("@@case:"))
         {

@@ -143,6 +143,20 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 - 主相机为非正交投影时自动回退全屏 RT；局部取景只对当前正交相机路径生效。
 - 性能档位目标帧率调整为 High/Normal/Low = 60/45/30。代码构建和隔离冒烟已通过，但实际 GPU 占用、真实帧率和视觉裁切仍需在可见播放器中测量，不能仅以冒烟通过宣称性能收益。
 
+### 2.15 AI 调试输入与拖动挣扎修复（2026-08-29）
+
+- `RightPanel.CheckTestInbox()` 将 `@@sim:`（兼容别名 `@@input:`）交给 `RuntimeInputSimulator`；命令只在 `.test_mode` 下生效，不调用 OS 鼠标 API。命令本身不直接发起 LLM 请求，但点击/拖动会复用真实事件回调，可能触发 AutoChat；测试模式阻止生产持久化与云端调用。
+- `@@sim:status` 输出位置/尺寸/拖动候选/拖动状态/速度/暂停状态；`@@sim:click:x,y`、`@@sim:click:center` 复用真实点击姿势和事件回调；`@@sim:drag:x1,y1->x2,y2[,steps]` 与 `@@sim:drag:offset:dx,dy[,steps]` 按帧推进拖动，默认 12 步；`@@sim:reset`/`@@sim:release` 中止并清理模拟输入。
+- `DragHandler` 在按下后保持透明层接收输入，避免鼠标离开动态宠物矩形后丢失 MouseDrag/MouseUp；位置改为浮点累积后取整，并限制在屏幕内。窗口失焦会中止拖动，避免卡在 `isDragging`。
+- `Live2DRenderer` 的挣扎速度每帧只采样一次，即使 `OnPetUpdate` 和 `LateUpdate` 都覆盖姿态也不会把速度重复衰减；速度平滑和左臂幅度已修正为可见、可跟手的范围。
+
+测试模式下可用 PowerShell 写入隔离 `inbox.txt`：
+
+```powershell
+Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:status'
+Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12'
+```
+
 ## 三、开发历史迭代
 
 | 版本 | 日期 | 变更 |
@@ -152,6 +166,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 | N40 | 2026-08-08 | 空闲动作 9 种 JSON 配置驱动确认；迁移路线图阶段 2-5 待执行 |
 | 2026-08-26 | 2026-08-26 | 将 Live2D 叠加渲染与性能档位入口拆至 `Live2DRenderer.OverlayRendering.cs`；行为不变，完整构建与隔离冒烟通过 |
 | 2026-08-29 | 2026-08-29 | 叠加层改为模型包围盒局部 RT + 局部正交相机 + 局部 IMGUI 绘制；原生透明窗口保持全屏以兼容现有交互；目标帧率调整为 High/Normal/Low = 60/45/30，Quick/完整构建/隔离冒烟通过 |
+| 2026-08-29 | 2026-08-29 | 增加 `@@sim`/`@@input` 测试输入链路；修复透明层导致的拖动中途丢输入、拖动越界和失焦残留；修复挣扎速度重复采样与明显迟滞；Quick/完整构建/隔离冒烟通过 |
 
 ## 四、编写注意事项
 

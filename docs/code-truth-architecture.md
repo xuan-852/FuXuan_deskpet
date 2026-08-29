@@ -1,7 +1,7 @@
 # 代码真相架构文档（Code-Truth Architecture）
 
 > **审计方式**: 全部结论以 `code/desktop_unity/Assets/Scripts/` 下真实代码为准（2026-08-26 快照，含本地工具路由/运行时就绪检查、安装器相关迭代，以及此前 N39-N44 修复）
-> **审计范围**: **121 个 .cs 文件**（2026-08-29 复核，含 Editor、Live2DFramework、ActionAgent、ActionPresets、ToolEngine 及 Preferences/TaskTemplate/TaskTrajectory 等）
+> **审计范围**: **122 个 .cs 文件**（2026-08-29 复核，含 Editor、Live2DFramework、ActionAgent、ActionPresets、ToolEngine 及 Preferences/TaskTemplate/TaskTrajectory 等）
 > **重要声明**: 本项目的 md 文档（README / docs / 各类方案文档）**部分已过时**，存在多处与代码不符的陈述。本文档即为"唯一可信"的架构参照。
 > **引擎**: 团结引擎 Tuanjie 2022.3.62t7（Unity 派生版）+ Live2D Cubism SDK 5-r.4
 > **版本基准**: N38 审计（2026-08-02）→ N39 代码修复（2026-08-02）→ N40 Token 优化（2026-08-07，T1-T8 全部完成）→ 2026-08-12 任务可视化/审批/并行化/65 工具 → N41/N42（像素表情、搜索/日志修复）→ 2026-08-17~22 外置窗口、输入、模型路由与安装包迭代 → 2026-08-25 LaTeX/PDF/本地模型保护 → 2026-08-27 当前工作区审计
@@ -23,15 +23,16 @@ code/desktop_unity/Assets/
 └── Resources/                        # 运行时资源
 ```
 
-> **实测统计（2026-08-29）**: 顶层 Scripts 66 + Editor 6 + Live2DFramework 8 + ActionAgent 15 + ActionPresets 6 + ToolEngine 20 = **121 个 .cs 文件**。
+> **实测统计（2026-08-29）**: 顶层 Scripts 67 + Editor 6 + Live2DFramework 8 + ActionAgent 15 + ActionPresets 6 + ToolEngine 20 = **122 个 .cs 文件**。
 
 ### 1.2 文件规模 TOP 榜（按行数）
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `Scripts/Live2DRenderer.cs` | **3,501** | Live2D 模型加载、参数、动作与交互逻辑 |
-| `Scripts/Live2DRenderer.OverlayRendering.cs` | **256** | Live2D 局部叠加相机、RenderTexture、OnGUI 与性能档位 |
-| `RightPanel.cs` | **2,530** | 右键面板主逻辑；聊天区和子面板已拆到 partial 文件 |
+| `Scripts/Live2DRenderer.cs` | **3,955** | Live2D 模型加载、参数、动作与交互逻辑 |
+| `Scripts/Live2DRenderer.OverlayRendering.cs` | **294** | Live2D 局部叠加相机、RenderTexture、OnGUI 与性能档位 |
+| `Scripts/RuntimeInputSimulator.cs` | **163** | 测试模式 `@@sim`/`@@input` 运行时输入解析与调度 |
+| `RightPanel.cs` | **2,534** | 右键面板主逻辑；聊天区和子面板已拆到 partial 文件 |
 | `ChatManager.cs` | **1,775** | AI 请求协程、历史裁剪与请求状态收尾 |
 | `ChatManager.RequestLifecycle.cs` | **121** | ChatManager 请求发送、排队、取消、状态通知与意图分类入口 |
 | `ChatManager.ContextBuilder.cs` | **144** | ChatManager SystemPrompt 上下文注入与预算截断 |
@@ -99,7 +100,7 @@ flowchart TB
     end
 
     subgraph PHYS[物理渲染层]
-        E1[Live2DRenderer 3466行]
+        E1[Live2DRenderer 3955行]
         E2[WindowOverlay DWM透明窗]
         E3[HybridRenderer ★3D不可用]
         E4[Model3DRenderer ★黑底]
@@ -146,7 +147,7 @@ flowchart TB
 - **`CoreToolSubset`** = {play_action, set_expression, stop_action, generate_motion, get_system_info, get_mouse_pos}
 - **`InjectMultiActionCapability()`**（N40 T7）：一次预测 2-3 步工具调用（UFO² Speculative Multi-Action）
 - **`IsTestMode`**：存在 `D:\DesktopPetData\.test_mode` 标记文件时为测试模式（跳过睡眠判断等）
-- **`DeveloperCommandSet`**：桌宠本地开发指令唯一入口；支持 `/mode set test`、`/mode set normality`、`/tell mode`，在 `ChatManager` 写历史/启动 LLM 前处理，回执只进入当前 UI 动态日志
+- **`DeveloperCommandSet`**：桌宠本地开发模式指令入口；支持 `/mode set test`、`/mode set normality`、`/tell mode`，在 `ChatManager` 写历史/启动 LLM 前处理，回执只进入当前 UI 动态日志。`RuntimeInputSimulator` 是测试模式 inbox 输入模拟入口，支持 `@@sim`/`@@input`，自身不调用 OS 鼠标 API；点击/拖动仍会复用真实交互回调
 - **`HISTORY_CHAR_BUDGET = 15000`**（N40 T5）+ 旧消息 Ollama 本地摘要【旧事纪要】
 
 ### 3.2 系统 Prompt 注入链（真实）
@@ -280,7 +281,7 @@ flowchart TB
 | `HybridRenderer` 3D 模式可用 | **3D 模式不可用** — TODO 注释，强制走 Live2D |
 | `Model3DRenderer` 绿幕抠像（Color Key） | **实际设置纯黑背景**（黑色=透明，供 DWM 玻璃层抠像；代码注释已说明该设计，非矛盾，2026-08-14 澄清） |
 | `VisualHeartbeat` 默认表情 "curious" | **实际默认 "surprise"** |
-| README "36 个核心脚本" | **实际顶层 66 + 子目录 55（共 121 个 .cs，2026-08-29 复核）** |
+| README "36 个核心脚本" | **实际顶层 67 + 子目录 55（共 122 个 .cs，2026-08-29 复核）** |
 | `PerformanceMonitor.GetResolutionScale()` 动态降分辨率 | **恒返回 1.0f**（仅性能档位调节目标帧率；Live2D 已改用角色局部 RT，局部区域仍保持全分辨率，防放大马赛克） |
 | `WindowOverlay.isMultiMonitor` 支持多屏 | **已真实实现（P4.4，2026-08-12）**：`SM_CXVIRTUALSCREEN` 差值法（`virtualW > w || virtualH > h`），供 AI 感知注入；主屏窗口定位仍用 `SM_CXSCREEN`（此前"恒 false"为过时结论） |
 
@@ -298,7 +299,7 @@ flowchart TB
 | `AutoChat` | 监听 `DragHandler.OnPetClicked/OnDragEnded` → `*戳额头*`；混淆关键词 → `ForceAction("confuse")` |
 | `ChatBubble` | 消息优先级 Low/Normal/High，高优先抢占 |
 | `RightPanel` | `~` 键（BackQuote）打开；**含 Pogget 启动按钮** |
-| `DragHandler` | 5 帧投掷缓冲；`eyeFollowDistance = 150` |
+| `DragHandler` | 5 样本投掷缓冲；拖动期间锁定透明层输入、屏幕边界约束、失焦中止；`eyeFollowDistance = 150` |
 | `SystemTrayManager` | `Shell_NotifyIcon` + `HKCU\Run` 自启 |
 | `MainThreadDispatcher` | ConcurrentQueue |
 | `ChatConfig.cs` | 仅环境变量，**提供 .cs.example 模板**（防泄漏） |

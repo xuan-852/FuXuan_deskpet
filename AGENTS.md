@@ -14,7 +14,7 @@ Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣
 
 | 层 | 位置 | 语言 |
 |----|------|------|
-| Unity 桌宠 | `code/desktop_unity/Assets/Scripts/` | C#（121 文件，架构见 `docs/code-truth-architecture.md`） |
+| Unity 桌宠 | `code/desktop_unity/Assets/Scripts/` | C#（122 文件，架构见 `docs/code-truth-architecture.md`） |
 | 桥接服务器 | `code/desktop_unity/openclaw_bridge.js` | Node.js，端口 19876，PM2 管理（进程名 `openclaw-bridge`） |
 | 工具系统 | `Assets/Scripts/ToolEngine/` | `IPetTool` → `AsyncToolBase` → 反射自动发现，危险工具需审批 |
 | Python 生成器 | `scripts/office/` 等 | python-pptx / python-docx / openpyxl |
@@ -62,7 +62,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 1. **测试必须无记忆隔离**：优先用 `FU_XUAN_DATA` 指向临时目录启动桌宠（`node scripts/test/runtime_smoke.cjs` 已内置：隔离数据目录 + 生产记忆 mtime 零污染断言）；手动测试时至少建空文件 `.test_mode`（防污染 pet_memory/pet_personality/motion_memory/activity/validation），测后删 + 如污染则 `node scripts/backup_memory.cjs --all` 留底并清理。测试前可先备份：`node scripts/backup_memory.cjs`（保留生产记忆至少一份安全副本）
 2. **禁止空参数遍历调用所有工具**：`lock_screen` 真锁屏、`file_delete` 真删文件、`set_volume` 真改音量；空参测试只限只读白名单（`get_system_info`/`get_mouse_pos`/`get_clipboard`）
 3. **测试中日志**：预期日志用 `LogAssert.Expect(LogType.Warning, "...")` 声明（Unity 把 Error/Warning 计为失败）
-4. **UI 测试不靠模拟鼠标点击**：坐标难定位、视觉模型不可靠。必须用终端链路触发——写 `DataPathConfig.InboxFile`（测试模式启用，手动测试可用 `FU_XUAN_DATA` 指向临时目录）：`@@view:settings|reminders|report|chat|list|back|open|close` 切页、`@@emote:xxx` 注入表情。新 UI 状态必须预留等价命令（规范见 `development-standards.md` §6.6）
+4. **UI 测试不靠模拟鼠标点击**：坐标难定位、视觉模型不可靠。必须用终端链路触发——写 `DataPathConfig.InboxFile`（测试模式启用，手动测试可用 `FU_XUAN_DATA` 指向临时目录）：`@@view:settings|reminders|report|chat|list|back|open|close` 切页、`@@emote:xxx` 注入表情、`@@sim:status|click:center|drag:offset:dx,dy[,steps]` 模拟桌宠输入。新 UI 状态必须预留等价命令（规范见 `development-standards.md` §6.6）
 5. **密钥不入库**：环境变量读取，模板用 `.example`；日志/输出禁含 Token
 6. **PM2 进程勿手动 kill/start**：改桥接后 `pm2 restart openclaw-bridge --update-env`
 7. **PS 5.1 写 JSON 会带 BOM**：Python 读文件用 `utf-8-sig`；中文路径验证用 `cmd /c dir /b`

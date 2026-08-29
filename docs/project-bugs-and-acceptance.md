@@ -46,6 +46,7 @@
 | 退出崩溃增长 | OnDestroy 释放顺序错误 | `2cad357` | 见 P1/P5 |
 | ⧉ 按钮图标不可见 | mono 字体缺 U+29C9 字形 | `7945cc3` | 图标用 `UiTextureFactory.GenExtWindowTex` 像素生成，勿依赖字形 |
 | 消耗面板数据重启丢失 | UsageStats 仅内存 | `08494dd` | 已由 UsageLogger JSONL 持久化 + 启动回灌解决 |
+| 桌宠拖动中途停止/挣扎迟滞 | 点击穿透按当前宠物矩形刷新导致拖动丢输入；速度平滑过低且同一帧重复采样 | 本轮优化 | 拖动期间保持输入接收；位置边界约束；失焦中止；挣扎速度每帧只采样一次 |
 
 ## 三、重要验收点（改完代码按此验收）
 
@@ -87,7 +88,7 @@ node scripts/test/runtime_smoke.cjs   # 隔离目录 + .test_mode + 生产记忆
 
 ### 3.5 测试铁律（违反出事故）
 1. **测试必须无记忆隔离**：`FU_XUAN_DATA` 指向临时目录（smoke 已内置）或至少建 `.test_mode`；测后删 + 污染则 `node scripts/backup_memory.cjs --all` 留底清理
-2. **UI 测试不靠模拟鼠标点击**：用 inbox 终端链路（`@@view:...`/`@@emote:`/`@@approval:`/`@@view:extclick:x,y`）；新 UI 状态必须预留等价命令
+2. **UI 测试不靠模拟鼠标点击**：用 inbox 终端链路（`@@view:...`/`@@emote:`/`@@approval:`/`@@view:extclick:x,y`/`@@sim:*`）；新 UI 状态必须预留等价命令
 3. **禁止空参数遍历调用所有工具**：只限只读白名单（get_system_info/get_mouse_pos/get_clipboard）
 4. **密钥不入库**：环境变量读取，日志/输出禁含 token
 5. **PS 5.1 写 JSON 带 BOM**：Python 读 `utf-8-sig`；`.cs`/`.ps1`/`.cmd` 带 BOM，其余 UTF-8 无 BOM

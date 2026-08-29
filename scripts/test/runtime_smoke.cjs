@@ -69,6 +69,9 @@ function killDesktopPet() {
 }
 
 const COMMANDS = [
+    ['@@sim:status', '[TestInbox] 模拟输入状态:'],
+    ['@@sim:drag:offset:120,20,8', '[DragHandler] 模拟拖动开始'],
+    ['@@sim:status', 'petDragging=False'],
     ['@@view:open', '[TestInbox] @@view 命令: open'],
     ['@@view:chat', '[TestInbox] @@view 命令: chat'],
     ['@@view:settings', '[TestInbox] @@view 命令: settings'],

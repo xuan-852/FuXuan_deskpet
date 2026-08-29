@@ -131,7 +131,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     // -- 双臂 --
     const float DRAG_ARM_FREQ         = 4.5f;  // 摆臂频率（越大越急促）
     const float DRAG_RIGHT_AMP        = 3f;   // 右臂摆动幅度 (Param94 主驱动)
-    const float DRAG_LEFT_AMP         = 0.1f;   // 左臂摆动幅度
+    const float DRAG_LEFT_AMP         = 1.8f;   // 左臂摆动幅度（与右臂形成可见交替）
     const float DRAG_JITTER1_FREQ     = 2f;  // 抖动1 频率
     const float DRAG_JITTER1_AMP      = 0.2f; // 抖动1 幅度（占幅度比例）
     const float DRAG_JITTER2_FREQ     = 1f; // 抖动2 频率
@@ -154,9 +154,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     const float DRAG_LAYER108         = 0.8f;
     const float DRAG_LAYER119         = 0.8f;
     // 左臂关节目录系数（乘以 leftBase，负号自行在方法中用）
-    const float DRAG_LPARAM34         = 0.1f;  // 左臂L1
-    const float DRAG_LPARAM36         = 0.1f;  // 左臂L2
-    const float DRAG_LPARAM37         = 0.1f;  // 左臂L3
+    const float DRAG_LPARAM34         = 0.25f; // 左臂L1
+    const float DRAG_LPARAM36         = 0.18f; // 左臂L2
+    const float DRAG_LPARAM37         = 0.12f; // 左臂L3
 
     // -- 双腿 --
     const float DRAG_LEG_FREQ         = 5.0f;  // 踏步频率
@@ -170,7 +170,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     const float DRAG_BODY_SWAY        = 5f;    // 身体左右扭动幅度 (ParamBodyAngleX)
     const float DRAG_BODY_FREQ        = 2.0f;  // 身体扭动频率
     // -- 速度→输入参数 + 直接驱动裙子/法盘（全部同方向，参考走路物理方向）--
-    const float DRAG_VEL_LERP       = 0.01f;  // 速度平滑（越小越滑）
+    const float DRAG_VEL_LERP       = 0.18f;  // 速度平滑（越小越滑；原 0.01 会导致明显滞后）
     const float DRAG_VEL_MAX        = 3f;      // 原始速度上限（防瞬冲，越大响应越快）
     const float DRAG_BODY_Z_SCALE   = 3f;     // 速度→ParamBodyAngleZ（给物理）
     const float DRAG_BODY_Z_MAX     = 12f;
@@ -512,6 +512,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private float _dragSmoothHeadX = 0f;   // 头左右输入
     private float _dragSmoothHeadZ = 0f;   // 头旋转输入
     private int _lastDragPetX = 0;
+    private int _dragVelocityFrame = -1;
+    private float _dragFrameVelocity = 0f;
     private bool _dragInited = false;
     // 平滑眼睛跟随（防突变）
     private float _eyeSmoothX = 0f;
@@ -3457,6 +3459,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _dragSmoothBodyZ = 0f;
         _dragSmoothHeadX = 0f;
         _dragSmoothHeadZ = 0f;
+        _dragVelocityFrame = -1;
+        _dragFrameVelocity = 0f;
         _dragInited = true;
     }
 
@@ -3697,9 +3701,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         SetParameter("ParamBodyAngleY", _dragSmoothBodyY);
 
         // ★ 帧间速度 → 输入参数 + 直接驱动裙子/法盘（全部同方向）
-        float rawVel = _pet != null ? (_pet.petX - _lastDragPetX) : 0f;
-        _lastDragPetX = _pet != null ? _pet.petX : 0;
-        rawVel = Mathf.Clamp(rawVel, -DRAG_VEL_MAX, DRAG_VEL_MAX); // ← 限幅防瞬冲
+        // DesktopPet.OnPetUpdate 与 LateUpdate 都会覆盖一次姿态：速度只能在每帧采样一次，
+        // 否则第二次调用会读到 0，把本帧真实拖动速度立刻冲淡，表现为挣扎迟滞。
+        float rawVel = GetDragFrameVelocity();
 
         // 平滑滤波
         _dragSmoothBodyZ = Mathf.Lerp(_dragSmoothBodyZ, rawVel, DRAG_VEL_LERP);
@@ -3766,6 +3770,22 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         SetParameter("ParamMouthOpenY", DRAG_MOUTH_AMP + Mathf.Sin(t * DRAG_MOUTH_FREQ + DRAG_MOUTH_PHASE) * DRAG_MOUTH_PULSE);
         SetParameter("ParamBrowL", DRAG_BROW);
         SetParameter("ParamBrowR", DRAG_BROW);
+    }
+
+    private float GetDragFrameVelocity()
+    {
+        if (_dragVelocityFrame == Time.frameCount) return _dragFrameVelocity;
+        _dragVelocityFrame = Time.frameCount;
+        if (_pet == null)
+        {
+            _dragFrameVelocity = 0f;
+            return _dragFrameVelocity;
+        }
+
+        float rawVel = _pet.petX - _lastDragPetX;
+        _lastDragPetX = _pet.petX;
+        _dragFrameVelocity = Mathf.Clamp(rawVel, -DRAG_VEL_MAX, DRAG_VEL_MAX);
+        return _dragFrameVelocity;
     }
 
     private void ListAllChildren(GameObject go, int depth)

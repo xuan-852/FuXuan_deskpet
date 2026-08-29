@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
@@ -59,8 +60,13 @@ public class DragHandler : MonoBehaviour
     private bool _isClickCandidate = false;
     private Vector2 _dragStartMouse;
     private Vector2 _lastMousePos;
+    private Vector2 _dragPosition;
     private Vector2 _velocityBuffer;
     private int _velocityFrames;
+    private readonly Vector2[] _velocitySamples = new Vector2[5];
+    private int _velocitySampleIndex;
+    private int _velocitySampleCount;
+    private Coroutine _simulatedDragRoutine;
 
     // 公开事件（供 AutoChat 监听）
     public System.Action OnPetClicked;
@@ -186,13 +192,7 @@ public class DragHandler : MonoBehaviour
             Vector2 mousePos = GetMousePos();
             if (IsPointInPet(mousePos))
             {
-                _isClickCandidate = true;
-                _isDragging = false;
-                _pet.isDragging = false;
-                _dragStartMouse = mousePos;
-                _lastMousePos = mousePos;
-                _velocityBuffer = Vector2.zero;
-                _velocityFrames = 0;
+                BeginPointerInteraction(mousePos);
             }
         }
 
@@ -201,75 +201,13 @@ public class DragHandler : MonoBehaviour
         {
             lastInteractionTime = Time.time;
             Vector2 mousePos = GetMousePos();
-            Vector2 delta = mousePos - _dragStartMouse;
-
-            if (delta.magnitude >= dragThreshold && !_isDragging)
-            {
-                _isDragging = true;
-                _pet.isDragging = true;
-                if (_renderer != null) _renderer.ShowDragPose();
-            }
-
-            if (_isDragging)
-            {
-                // 不移动窗口！窗口始终全屏固定在 (0,0)
-                // 只更新宠物的渲染坐标 (petX/petY)
-                Vector2 moveDelta = mousePos - _lastMousePos;
-                _pet.petX += (int)moveDelta.x;
-                _pet.petY += (int)moveDelta.y;
-
-                // v1 行为：拖拽中更新 petVx 方向 → 渲染器切换左右的拖拽图
-                if (moveDelta.x > 0)
-                    _pet.petVx = 1;   // 朝右 → 显示 right 文件夹的 3.png
-                else if (moveDelta.x < 0)
-                    _pet.petVx = -1;  // 朝左 → 显示 left 文件夹的 3.png
-
-                // 记录速度
-                _velocityBuffer += (mousePos - _lastMousePos);
-                _velocityFrames++;
-                if (_velocityFrames > 5)
-                {
-                    _velocityBuffer -= _velocityBuffer * 0.5f;
-                    _velocityFrames = 5;
-                }
-
-                _lastMousePos = mousePos;
-            }
+            ApplyPointerPosition(mousePos);
         }
 
         // ========== 5. 鼠标左键释放 ==========
         if (Input.GetMouseButtonUp(0))
         {
-            if (_isDragging)
-            {
-                _pet.isDragging = false;
-                Vector2 avgVelocity = _velocityFrames > 0
-                    ? _velocityBuffer / _velocityFrames
-                    : Vector2.zero;
-
-                int vx = Mathf.RoundToInt(Mathf.Clamp(avgVelocity.x * throwScale,
-                    -maxThrowSpeed, maxThrowSpeed));
-                int vy = Mathf.RoundToInt(Mathf.Clamp(avgVelocity.y * throwScale,
-                    -maxThrowSpeed, maxThrowSpeed));
-
-                _pet.ApplyDragVelocity(vx, vy);
-                Debug.Log($"[DragHandler] 抛掷: ({vx}, {vy})");
-                OnDragEnded?.Invoke();
-            }
-            else if (_isClickCandidate)
-            {
-                // ★ 传递鼠标屏幕位置给渲染器，由渲染器做精确射线检测
-                Vector2 clickPos = _dragStartMouse;
-                // 转换为 Unity 屏幕坐标（左下角原点，Y 向上）
-                Vector2 unityScreenPos = new Vector2(clickPos.x, Screen.height - clickPos.y);
-                if (_renderer != null) _renderer.ShowClickPose(unityScreenPos);
-                _pet.Pause(clickPauseDuration);
-                Debug.Log($"[DragHandler] 轻击宠物 pos=({unityScreenPos.x:F0},{unityScreenPos.y:F0})");
-                OnPetClicked?.Invoke();
-            }
-
-            _isDragging = false;
-            _isClickCandidate = false;
+            EndPointerInteraction(true);
         }
 
         // ========== 6. 眼睛跟随鼠标（鼠标靠近宠物时眼睛看鼠标方向）==========
@@ -325,6 +263,216 @@ public class DragHandler : MonoBehaviour
         _mouseOverPet = false; // 强制下一帧 UpdateClickThrough 重新评估
     }
 
+    /// <summary>
+    /// 供测试命令使用的宠物屏幕区域（左上角原点，与 inbox 坐标一致）。
+    /// </summary>
+    public Rect GetDebugPetRect()
+    {
+        if (_pet == null) return new Rect();
+        return new Rect(_pet.petX, _pet.petY, _pet.petWidth, _pet.petHeight);
+    }
+
+    /// <summary>
+    /// 供测试命令使用的状态快照。只读，不写入记忆或 PlayerPrefs。
+    /// </summary>
+    public string GetDebugState()
+    {
+        if (_pet == null) return "pet=uninitialized";
+        return $"pet=({_pet.petX},{_pet.petY},{_pet.petWidth},{_pet.petHeight}) "
+            + $"dragging={_isDragging} candidate={_isClickCandidate} "
+            + $"petDragging={_pet.isDragging} velocity=({_pet.petVx},{_pet.petVy}) "
+            + $"paused={_pet.isPaused}";
+    }
+
+    /// <summary>
+    /// 测试模式：模拟一次真实点击。坐标使用屏幕左上角原点。
+    /// </summary>
+    public bool SimulateClick(Vector2 screenPos)
+    {
+        if (_pet == null || _pet.isPaused)
+        {
+            Debug.LogWarning("[DragHandler] 模拟点击忽略：宠物未就绪或当前暂停");
+            return false;
+        }
+        if (!IsPointInPet(screenPos))
+        {
+            Debug.LogWarning($"[DragHandler] 模拟点击忽略：坐标不在宠物区域 ({screenPos.x:F0},{screenPos.y:F0})");
+            return false;
+        }
+
+        lastInteractionTime = Time.time;
+        ApplyClick(screenPos, true);
+        return true;
+    }
+
+    /// <summary>
+    /// 测试模式：模拟按住左键从 start 拖到 end。每一步让 Unity 有机会渲染，
+    /// 因而既能验证位置跟随，也能观察挣扎动画，而不是只改最终坐标。
+    /// </summary>
+    public bool SimulateDrag(Vector2 start, Vector2 end, int steps = 12)
+    {
+        if (_pet == null || _pet.isPaused)
+        {
+            Debug.LogWarning("[DragHandler] 模拟拖动忽略：宠物未就绪或当前暂停");
+            return false;
+        }
+        if (!IsPointInPet(start))
+        {
+            Debug.LogWarning($"[DragHandler] 模拟拖动忽略：起点不在宠物区域 ({start.x:F0},{start.y:F0})");
+            return false;
+        }
+
+        if (_simulatedDragRoutine != null)
+        {
+            StopCoroutine(_simulatedDragRoutine);
+            AbortPointerInteraction();
+        }
+
+        int safeSteps = Mathf.Clamp(steps, 2, 60);
+        _simulatedDragRoutine = StartCoroutine(SimulateDragRoutine(start, end, safeSteps));
+        Debug.Log($"[DragHandler] 模拟拖动开始: ({start.x:F0},{start.y:F0})→({end.x:F0},{end.y:F0}), steps={safeSteps}");
+        return true;
+    }
+
+    /// <summary>测试模式：中止模拟或丢失焦点后的拖动，不产生抛掷。</summary>
+    public void ResetInputSimulation()
+    {
+        if (_simulatedDragRoutine != null)
+        {
+            StopCoroutine(_simulatedDragRoutine);
+            _simulatedDragRoutine = null;
+        }
+        AbortPointerInteraction();
+        Debug.Log("[DragHandler] 模拟输入状态已重置");
+    }
+
+    private IEnumerator SimulateDragRoutine(Vector2 start, Vector2 end, int steps)
+    {
+        BeginPointerInteraction(start);
+        for (int i = 1; i <= steps; i++)
+        {
+            ApplyPointerPosition(Vector2.Lerp(start, end, i / (float)steps));
+            yield return null;
+        }
+        EndPointerInteraction(true);
+        _simulatedDragRoutine = null;
+    }
+
+    private void BeginPointerInteraction(Vector2 mousePos)
+    {
+        _isClickCandidate = true;
+        _isDragging = false;
+        _pet.isDragging = false;
+        _dragStartMouse = mousePos;
+        _lastMousePos = mousePos;
+        _dragPosition = new Vector2(_pet.petX, _pet.petY);
+        _velocityBuffer = Vector2.zero;
+        _velocityFrames = 0;
+        _velocitySampleIndex = 0;
+        _velocitySampleCount = 0;
+        lastInteractionTime = Time.time;
+
+        // 按下后锁住输入接收，避免鼠标刚一离开宠物矩形就把窗口重新设为穿透。
+        _window?.SetClickThrough(false);
+    }
+
+    private void ApplyPointerPosition(Vector2 mousePos)
+    {
+        if (!_isClickCandidate) return;
+
+        Vector2 deltaFromStart = mousePos - _dragStartMouse;
+        if (!_isDragging && deltaFromStart.magnitude >= dragThreshold)
+        {
+            _isDragging = true;
+            _pet.isDragging = true;
+            if (_renderer != null) _renderer.ShowDragPose();
+            Debug.Log("[DragHandler] 拖动已启动");
+        }
+
+        if (!_isDragging) return;
+
+        lastInteractionTime = Time.time;
+        Vector2 moveDelta = mousePos - _lastMousePos;
+        _dragPosition += moveDelta;
+        _dragPosition.x = Mathf.Clamp(_dragPosition.x, 0f, Mathf.Max(0f, Screen.width - _pet.petWidth));
+        _dragPosition.y = Mathf.Clamp(_dragPosition.y, 0f, Mathf.Max(0f, Screen.height - _pet.petHeight));
+        _pet.petX = Mathf.RoundToInt(_dragPosition.x);
+        _pet.petY = Mathf.RoundToInt(_dragPosition.y);
+
+        if (moveDelta.x > 0f) _pet.petVx = 1;
+        else if (moveDelta.x < 0f) _pet.petVx = -1;
+
+        AddVelocitySample(moveDelta);
+        _lastMousePos = mousePos;
+    }
+
+    private void AddVelocitySample(Vector2 delta)
+    {
+        _velocitySamples[_velocitySampleIndex] = delta;
+        _velocitySampleIndex = (_velocitySampleIndex + 1) % _velocitySamples.Length;
+        _velocitySampleCount = Mathf.Min(_velocitySampleCount + 1, _velocitySamples.Length);
+        _velocityBuffer = Vector2.zero;
+        for (int i = 0; i < _velocitySampleCount; i++) _velocityBuffer += _velocitySamples[i];
+        _velocityFrames = _velocitySampleCount;
+    }
+
+    private void EndPointerInteraction(bool applyThrow)
+    {
+        if (_isDragging)
+        {
+            _pet.isDragging = false;
+            if (applyThrow)
+            {
+                Vector2 avgVelocity = _velocityFrames > 0
+                    ? _velocityBuffer / _velocityFrames
+                    : Vector2.zero;
+                int vx = Mathf.RoundToInt(Mathf.Clamp(avgVelocity.x * throwScale,
+                    -maxThrowSpeed, maxThrowSpeed));
+                int vy = Mathf.RoundToInt(Mathf.Clamp(avgVelocity.y * throwScale,
+                    -maxThrowSpeed, maxThrowSpeed));
+                _pet.ApplyDragVelocity(vx, vy);
+                Debug.Log($"[DragHandler] 抛掷: ({vx}, {vy})");
+                OnDragEnded?.Invoke();
+            }
+        }
+        else if (_isClickCandidate && applyThrow)
+        {
+            ApplyClick(_dragStartMouse, false);
+        }
+
+        _isDragging = false;
+        _isClickCandidate = false;
+        _velocityBuffer = Vector2.zero;
+        _velocityFrames = 0;
+    }
+
+    private void ApplyClick(Vector2 screenPos, bool simulated)
+    {
+        Vector2 unityScreenPos = new Vector2(screenPos.x, Screen.height - screenPos.y);
+        if (_renderer != null) _renderer.ShowClickPose(unityScreenPos);
+        _pet.Pause(clickPauseDuration);
+        Debug.Log($"[DragHandler] {(simulated ? "模拟点击" : "轻击宠物")}: screen=({screenPos.x:F0},{screenPos.y:F0})");
+        OnPetClicked?.Invoke();
+    }
+
+    private void AbortPointerInteraction()
+    {
+        _pet.isDragging = false;
+        _isDragging = false;
+        _isClickCandidate = false;
+        _velocityBuffer = Vector2.zero;
+        _velocityFrames = 0;
+    }
+
+    private void OnApplicationFocus(bool hasFocus)
+    {
+        if (!hasFocus && (_isClickCandidate || _isDragging))
+        {
+            AbortPointerInteraction();
+            Debug.Log("[DragHandler] 窗口失去焦点，已中止拖动并恢复输入状态");
+        }
+    }
+
     private void UpdateClickThrough()
     {
         if (_window == null) return;
@@ -345,7 +493,10 @@ public class DragHandler : MonoBehaviour
         bool approvalDialogOpen = _rightPanel != null
             && _rightPanel.IsApprovalDialogOpen;
 
-        bool needInput = overPet || overPanel || overRightPanel || approvalDialogOpen;
+        // 点击候选/拖动期间必须保持接收输入，即使鼠标已经离开宠物当前矩形；
+        // 否则 WS_EX_TRANSPARENT 会在拖动中途吞掉后续 MouseDrag/MouseUp，表现为“挣扎/卡住”。
+        bool needInput = _isClickCandidate || _isDragging
+            || overPet || overPanel || overRightPanel || approvalDialogOpen;
 
         if (needInput != _mouseOverPet)
         {
