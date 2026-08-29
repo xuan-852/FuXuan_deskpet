@@ -17,7 +17,7 @@
 param(
     [switch]$SkipPack,
     [switch]$Test,
-    [string]$Version = "1.0.10",
+    [string]$Version = "1.0.12",
     # 正式发布时建议使用受信任 CA 签发的 PFX。密码只从环境变量读取，避免出现在命令历史/日志。
     [string]$SignPfx = "",
     [string]$SignPasswordEnv = "FUXUAN_SIGN_PASSWORD",

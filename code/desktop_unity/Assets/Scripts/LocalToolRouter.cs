@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
@@ -24,38 +24,67 @@ public static class LocalToolRouter
 {
     /// <summary>课程表 Web 看板地址。看板由 D:\C\小程序\server 提供。</summary>
     public const string ScheduleDashboardUrl = "http://localhost:3000";
+    /// <summary>转发给文档/外包工具的用户需求上限，避免本地模型或桥接请求无限膨胀。</summary>
+    public const int MaxForwardedTaskChars = 60000;
+
+    private static readonly HashSet<string> SafeLatexCompilers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "xelatex", "pdflatex", "lualatex"
+    };
 
     private static readonly string[] CommandTools =
     {
-        "open_app", "open_url", "open_folder", "search", "search_web", "openclaw_search",
-        "get_system_info", "get_mouse_pos", "get_clipboard", "set_clipboard", "notify",
-        "file_read", "search_files", "search_file", "run_command", "openclaw_task"
+        "launch_pogget", "pogget_agent", "open_app", "open_url", "open_folder",
+        "search", "search_web", "openclaw_search", "openclaw_task",
+        "lock_screen", "set_volume", "mute", "power",
+        "get_system_info", "get_mouse_pos", "list_files", "notify",
+        "get_clipboard", "set_clipboard", "take_screenshot",
+        "file_open", "file_move", "file_copy", "file_delete", "file_rename",
+        "file_info", "file_create", "dir_create", "file_read", "search_files",
+        "search_file", "run_command"
     };
 
     private static readonly string[] KnowledgeTools =
     {
-        "search", "search_web", "openclaw_search", "knowledge_search", "get_weather",
+        "search", "search_web", "openclaw_search", "openclaw_task", "open_url",
+        "knowledge_search", "knowledge_index", "get_weather",
         "query_reminders", "query_exams", "query_scores", "query_schedule", "query_user_status",
-        "open_url",
-        "generate_ppt", "generate_docx", "generate_xlsx", "compile_latex", "openclaw_task",
+        "query_preferences", "query_task_templates",
+        "inspect_motion_memory", "inspect_personality", "explore_body", "explore_body_vision",
+        "generate_ppt", "generate_docx", "generate_xlsx", "compile_latex",
+        "get_system_info", "get_mouse_pos", "get_clipboard", "list_files", "file_info",
         "file_read", "search_files", "search_file"
     };
 
     private static readonly string[] OperationTools =
     {
         "set_expression", "play_action", "stop_action", "generate_motion", "take_screenshot",
-        "get_system_info", "get_mouse_pos", "query_reminders", "set_reminder", "mark_reminder_done",
-        "delete_reminder", "generate_ppt", "generate_docx", "generate_xlsx", "compile_latex"
+        "control_body", "inspect_motion_memory", "inspect_personality",
+        "explore_body", "explore_body_vision", "run_verification", "vis_verify", "self_review",
+        "knowledge_index", "get_system_info", "get_mouse_pos", "query_reminders",
+        "set_reminder", "mark_reminder_done", "delete_reminder",
+        "set_preference", "query_preferences", "remove_preference",
+        "query_task_templates", "save_task_template", "remove_task_template",
+        "generate_ppt", "generate_docx", "generate_xlsx", "compile_latex"
     };
 
     private static readonly string[] FallbackTools =
     {
-        "open_app", "open_url", "open_folder", "search", "search_web", "get_system_info",
-        "get_clipboard", "notify", "file_read", "search_files", "search_file", "get_weather",
-        "set_expression", "play_action", "stop_action", "generate_motion", "take_screenshot",
-        "query_reminders", "query_exams", "query_scores", "query_schedule", "query_user_status",
-        "set_reminder", "generate_ppt", "generate_docx", "generate_xlsx",
-        "run_command", "openclaw_task"
+        "compile_latex", "control_body", "delete_reminder", "dir_create", "explore_body",
+        "explore_body_vision", "file_copy", "file_create", "file_delete", "file_info",
+        "file_move", "file_open", "file_read", "file_rename", "generate_docx",
+        "generate_motion", "generate_ppt", "generate_xlsx", "get_clipboard", "get_mouse_pos",
+        "get_system_info", "get_weather", "inspect_motion_memory", "inspect_personality",
+        "knowledge_index", "knowledge_search", "launch_pogget", "list_files", "mark_reminder_done",
+        "notify", "open_app", "open_folder", "open_url", "openclaw_search", "openclaw_task",
+        "play_action", "pogget_agent", "query_exams", "query_preferences", "query_reminders",
+        "query_schedule", "query_scores", "query_task_templates", "query_user_status",
+        "remove_preference", "remove_task_template", "run_command", "run_verification",
+        "save_task_template", "search", "search_file", "search_files", "search_web",
+        "self_review", "set_clipboard", "set_expression", "set_preference", "set_reminder",
+        "stop_action", "take_screenshot", "vis_verify", "generate_ppt", "generate_docx",
+        "generate_xlsx", "file_info", "file_read", "file_copy", "file_move", "file_rename",
+        "file_create", "dir_create", "set_volume", "mute", "lock_screen", "power"
     };
 
     private static readonly string[] ActionKeywords =
@@ -63,7 +92,10 @@ public static class LocalToolRouter
         "打开", "启动", "运行", "执行", "搜索", "查找", "查询", "读取", "查看",
         "创建", "生成", "设置提醒", "提醒我", "播放", "停止", "截图", "天气", "文件",
         "网页", "网址", "剪贴板", "复制", "整理", "锁屏", "关机", "重启", "命令",
-        "脚本", "联网", "PPT", "Word", "Excel", "LaTeX", "课表", "课程", "上课", "学业"
+        "脚本", "联网", "PPT", "Word", "Excel", "PDF", "LaTeX", "文档", "论文", "报告", "简历",
+        "课表", "课程", "上课", "学业",
+        "偏好", "习惯", "喜欢", "模板", "人格", "动作记忆", "身体", "姿势", "手势",
+        "验证动作", "视觉验证", "复盘", "自检", "索引", "知识库", "容器", "Pogget"
     };
 
     public static string[] GetAllowedTools(string intent)
@@ -102,6 +134,19 @@ public static class LocalToolRouter
     }
 
     /// <summary>
+    /// 判断是否需要质量优先的 8B 工具规划器。
+    /// 简单查询继续使用 3B；文档、办公和 OpenClaw 多步骤任务更看重参数完整性。
+    /// </summary>
+    public static bool ShouldUseQualityPlanner(string userMessage)
+    {
+        if (string.IsNullOrWhiteSpace(userMessage)) return false;
+        return ContainsAny(userMessage,
+            "PDF", "LaTeX", "论文", "报告", "简历", "文档", "章节", "参考文献", "排版",
+            "PPT", "Word", "Excel", "OpenClaw", "多步骤", "多步", "浏览器", "登录",
+            "填表", "持续监测", "调研", "研究", "外包", "网页操作", "任务流程");
+    }
+
+    /// <summary>
     /// 识别“打开课表”这类明确的网页导航请求。
     /// 这是高置信度路由：不让轻量模型在 open_url/query_schedule 之间猜测，
     /// 但仍然只返回计划，最终执行继续经过 ChatManager 的白名单和工具校验。
@@ -132,6 +177,75 @@ public static class LocalToolRouter
             if (string.Equals(allowed, toolName.Trim(), StringComparison.Ordinal)) return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// 对本地模型提出的任务参数做确定性加固。
+    /// 工具名仍由模型规划，但文档/外包任务正文优先使用用户原话，避免 3B 模型
+    /// 在摘要时漏掉章节、页数、格式等要求；最终执行仍由 ChatManager 负责白名单和审批。
+    /// </summary>
+    public static bool TryHardenPlanArguments(string toolName, string userMessage, string argumentsJson,
+        out string hardenedArgumentsJson, out string error)
+    {
+        hardenedArgumentsJson = string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson;
+        error = "";
+
+        string normalizedTool = (toolName ?? "").Trim();
+        bool needsOriginalRequest = normalizedTool == "compile_latex"
+            || normalizedTool == "generate_ppt"
+            || normalizedTool == "generate_docx"
+            || normalizedTool == "generate_xlsx"
+            || normalizedTool == "openclaw_task";
+        if (!needsOriginalRequest) return true;
+
+        string original = (userMessage ?? "").Trim();
+        if (string.IsNullOrEmpty(original))
+        {
+            error = "原始用户需求为空，已阻止向外部生成器发送空任务";
+            return false;
+        }
+        if (original.Length > MaxForwardedTaskChars)
+        {
+            error = $"原始用户需求过长（{original.Length} 字符），请分章节或分段提交";
+            return false;
+        }
+
+        JObject args;
+        try
+        {
+            args = JObject.Parse(hardenedArgumentsJson);
+        }
+        catch (System.Exception ex)
+        {
+            error = "工具参数不是合法 JSON 对象: " + ex.Message;
+            return false;
+        }
+
+        if (normalizedTool == "compile_latex"
+            || normalizedTool == "generate_ppt"
+            || normalizedTool == "generate_docx"
+            || normalizedTool == "generate_xlsx")
+        {
+            args["description"] = original;
+        }
+        else if (normalizedTool == "openclaw_task" && string.IsNullOrWhiteSpace(args["template"]?.ToString()))
+        {
+            args["task"] = original;
+        }
+
+        if (normalizedTool == "compile_latex")
+        {
+            string compiler = args["compiler"]?.ToString()?.Trim().ToLowerInvariant() ?? "";
+            if (!string.IsNullOrEmpty(compiler) && !SafeLatexCompilers.Contains(compiler))
+            {
+                error = "PDF 编译器只允许 xelatex、pdflatex 或 lualatex";
+                return false;
+            }
+            if (string.IsNullOrEmpty(compiler)) args["compiler"] = "xelatex";
+        }
+
+        hardenedArgumentsJson = args.ToString(Formatting.None);
+        return true;
     }
 
     /// <summary>
@@ -309,6 +423,14 @@ public static class LocalToolRouter
             else if (message.Contains("桌面")) folder = "Desktop";
             return AssignPlan(out plan, "open_folder",
                 JsonConvert.SerializeObject(new { path = folder }), "用户明确打开文件夹");
+        }
+
+        if (ContainsAny(message, "生成", "创建", "写", "制作", "导出", "做一个")
+            && ContainsAny(message, "PDF", "LaTeX", "论文", "报告", "简历", "文档"))
+        {
+            return AssignPlan(out plan, "compile_latex",
+                JsonConvert.SerializeObject(new { description = message, compiler = "xelatex" }),
+                "用户明确生成 PDF/LaTeX 文档");
         }
 
         if (ContainsAny(message, "生成", "创建", "做一个") && ContainsAny(message, "Excel", "xlsx", "表格"))

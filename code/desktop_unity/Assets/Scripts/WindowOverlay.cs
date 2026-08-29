@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -196,6 +196,8 @@ public class WindowOverlay : MonoBehaviour
     private IntPtr _hookedHwnd = IntPtr.Zero;
     private bool _externalHoleApplied;
     private RECT _externalHoleRect;
+    private float _nextTopMostRefreshRealtime = 0f;
+    private const float TOPMOST_REFRESH_INTERVAL_SECONDS = 2f;
 
     private void Start()
     {
@@ -210,6 +212,50 @@ public class WindowOverlay : MonoBehaviour
             if (backgroundRetryInterval > 0f)
                 StartCoroutine(BackgroundRetryLoop());
         }
+    }
+
+    /// <summary>
+    /// 持续维护桌宠窗口的可见性与置顶层级。
+    ///
+    /// 外置聊天窗口、系统托盘恢复、显卡/DWM 重置都可能改变 Unity 窗口的
+    /// Z 序或让旧句柄失效。这里使用不激活窗口的 SetWindowPos，避免桌宠
+    /// 抢走用户当前输入焦点，同时把窗口重新放回最顶层。
+    /// </summary>
+    private void Update()
+    {
+        if (Application.isEditor || _suspended) return;
+
+        float now = Time.unscaledTime;
+        if (now < _nextTopMostRefreshRealtime) return;
+        _nextTopMostRefreshRealtime = now + TOPMOST_REFRESH_INTERVAL_SECONDS;
+        EnsureTopMostAndVisible();
+    }
+
+    private void EnsureTopMostAndVisible()
+    {
+        if (_hwnd == IntPtr.Zero || !IsWindow(_hwnd))
+        {
+            IntPtr newHwnd = FindUnityWindow();
+            if (newHwnd == IntPtr.Zero) return;
+
+            _hwnd = newHwnd;
+            if (ApplyNow())
+                Log($"✅ 窗口句柄失效后已重新恢复置顶 (句柄={_hwnd.ToInt64():X8})");
+            return;
+        }
+
+        if (!IsWindowVisible(_hwnd))
+        {
+            ShowWindow(_hwnd, SW_SHOWNA);
+            Log("⚠️ 检测到桌宠窗口被隐藏，已恢复显示");
+        }
+
+        bool ok = SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        if (!ok)
+            LogError($"置顶看门狗 SetWindowPos 失败, error={Marshal.GetLastWin32Error()}");
+        else
+            _applied = true;
     }
 
     /// <summary>
@@ -699,12 +745,12 @@ public class WindowOverlay : MonoBehaviour
         {
             UnityEngine.Debug.Log("[WindowOverlay] ▶ 系统唤醒（OnApplicationPause），延迟2s重建窗口");
 
-            // ★ 安全模式检查：连续崩溃后跳过 DWM 重建
+            // ★ 安全模式检查：连续异常后延迟恢复 DWM，避免唤醒阶段直接操作 GPU
             if (UnityEngine.PlayerPrefs.GetString("_skip_dwm_rebuild", "") == "1")
             {
-                UnityEngine.Debug.Log("[WindowOverlay] 🛡 安全模式：跳过 DWM 玻璃层重建（唤醒）");
-                _suspended = false;
-                return;
+                // 安全模式也必须走延迟重建。睡眠/显卡恢复后，分层窗口可能
+                // 保留 alpha=0；直接 return 会导致进程还在但桌宠完全不可见。
+                UnityEngine.Debug.Log("[WindowOverlay] 🛡 安全模式：延迟恢复 DWM 玻璃层（唤醒）");
             }
 
             // ★ 不立即恢复，走延迟重建路径（与 OnResumeFromSleep 一致）
@@ -778,12 +824,11 @@ public class WindowOverlay : MonoBehaviour
     {
         if (!_suspended) return; // 可能已被 OnApplicationPause 处理过
 
-        // ★ 安全模式：连续崩溃后跳过 DWM 玻璃层重建（窗口黑底但不崩系统）
+        // ★ 安全模式：延迟恢复 DWM 玻璃层，不让分层窗口停留在全透明状态
         if (UnityEngine.PlayerPrefs.GetString("_skip_dwm_rebuild", "") == "1")
         {
-            UnityEngine.Debug.Log("[WindowOverlay] 🛡 安全模式：跳过 DWM 玻璃层重建");
-            _suspended = false;
-            return;
+            // 安全模式只调整重建时序，不跳过重建本身，避免透明层失效。
+            UnityEngine.Debug.Log("[WindowOverlay] 🛡 安全模式：延迟恢复 DWM 玻璃层");
         }
 
         UnityEngine.Debug.Log("[WindowOverlay] ▶ 时间间隙触发唤醒恢复，委托 RebuildAfterDelay");

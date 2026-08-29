@@ -61,6 +61,7 @@ for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v OFFICE_PYTHON 2^>nul
 rem GATEWAY_TOKEN from openclaw config (bridge normally auto-reads from ~/.openclaw)
 set "GATEWAY_TOKEN="
 for /f "usebackq delims=" %%t in (`powershell -NoProfile -Command "$p=Join-Path $env:USERPROFILE '.openclaw\openclaw.json'; if(Test-Path $p){try{$c=Get-Content $p -Raw -Encoding UTF8|ConvertFrom-Json; $c.gateway.auth.token}catch{}}"`) do set "GATEWAY_TOKEN=%%t"
+if not defined GATEWAY_TOKEN for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v OPENCLAW_GATEWAY_TOKEN 2^>nul ^| findstr /I "OPENCLAW_GATEWAY_TOKEN"') do set "GATEWAY_TOKEN=%%b"
 
 rem ---- generate bridge-env.cmd (env for the service process) ----
 > "%APP%bridge\bridge-env.cmd" echo @echo off
@@ -71,6 +72,7 @@ if defined OFFICE_SCRIPTS_DIR >>"%APP%bridge\bridge-env.cmd" echo set "OFFICE_SC
 if defined KNOWLEDGE_SCRIPTS_DIR >>"%APP%bridge\bridge-env.cmd" echo set "KNOWLEDGE_SCRIPTS_DIR=%KNOWLEDGE_SCRIPTS_DIR%"
 if defined OFFICE_PYTHON >>"%APP%bridge\bridge-env.cmd" echo set "OFFICE_PYTHON=%OFFICE_PYTHON%"
 if defined GATEWAY_TOKEN >>"%APP%bridge\bridge-env.cmd" echo set "GATEWAY_TOKEN=%GATEWAY_TOKEN%"
+if defined GATEWAY_TOKEN >>"%APP%bridge\bridge-env.cmd" echo set "OPENCLAW_GATEWAY_TOKEN=%GATEWAY_TOKEN%"
 if not defined BRIDGE_TOKEN echo [WARN] BRIDGE_TOKEN missing - bridge auth may fail
 
 rem ---- generate run-bridge-service.cmd (service entry) ----

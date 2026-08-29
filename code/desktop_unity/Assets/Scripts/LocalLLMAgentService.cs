@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -182,7 +182,7 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
     // ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// 让轻量本地模型从给定目录中选择一个工具，返回严格 JSON 计划。
+    /// 让本地规划模型从给定目录中选择一个工具，返回严格 JSON 计划。
     /// 该方法只负责规划，不直接执行任何工具；执行和危险确认由 ChatManager 完成。
     /// </summary>
     public void PlanLocalTool(string userMessage, string compactCatalog, Action<LocalToolPlan> onResult)
@@ -194,6 +194,15 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
         if (LocalToolRouter.TryBuildScheduleOpenPlan(userMessage, out LocalToolPlan schedulePlan))
         {
             onResult(schedulePlan);
+            return;
+        }
+
+        // 高置信度短指令先走确定性规则，避免 3B 模型把“复制到剪贴板”
+        // 误判成 file_copy、把天气查询误判成网页搜索等语义相近工具。
+        // 规则只生成计划，不直接执行；后续仍经过 ChatManager 白名单、参数保护和审批。
+        if (LocalToolRouter.TryBuildKeywordPlan("", userMessage, out LocalToolPlan keywordPlan))
+        {
+            onResult(keywordPlan);
             return;
         }
 
@@ -213,10 +222,16 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
 可用术式目录：
 " + (compactCatalog ?? "[]");
 
-        EnqueueTask(() => PlanLocalToolCoroutine(userMessage, systemPrompt, onResult), LocalLLMClient.ModelName);
+        string plannerModel = LocalToolRouter.ShouldUseQualityPlanner(userMessage)
+            ? LocalLLMClient.ChatModelName
+            : LocalLLMClient.ModelName;
+        if (string.IsNullOrWhiteSpace(plannerModel)) plannerModel = LocalLLMClient.ModelName;
+        Debug.Log($"[LocalLLMAgent] 工具规划模型: {plannerModel}");
+        EnqueueTask(() => PlanLocalToolCoroutine(userMessage, systemPrompt, plannerModel, onResult), plannerModel);
     }
 
-    private IEnumerator PlanLocalToolCoroutine(string userMessage, string systemPrompt, Action<LocalToolPlan> onResult)
+    private IEnumerator PlanLocalToolCoroutine(string userMessage, string systemPrompt,
+        string plannerModel, Action<LocalToolPlan> onResult)
     {
         LocalToolPlan plan = new LocalToolPlan
         {
@@ -233,9 +248,9 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
             plan = ok ? LocalToolRouter.ParsePlan(content) : plan;
             if (!ok && !string.IsNullOrEmpty(content))
                 plan.Error = content;
-        }, temperature: 0.1f, maxTokens: 320, timeout: 30, modelOverride: LocalLLMClient.ModelName);
+        }, temperature: 0.1f, maxTokens: 320, timeout: 30, modelOverride: plannerModel);
 
-        // 轻量模型偶尔会在 arguments 内输出坏 JSON。先用更短、更硬的格式提示重试一次，
+        // 规划模型偶尔会在 arguments 内输出坏 JSON。先用更短、更硬的格式提示重试一次，
         // 再交给受限关键词兜底，避免普通的“查看系统/搜索文件”被误判成闲聊。
         if (!plan.Success)
         {
@@ -258,10 +273,24 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
             {
                 if (ok) repaired = LocalToolRouter.ParsePlan(content);
                 else if (!string.IsNullOrEmpty(content)) repaired.Error = content;
-            }, temperature: 0f, maxTokens: 180, timeout: 25, modelOverride: LocalLLMClient.ModelName);
+            }, temperature: 0f, maxTokens: 180, timeout: 25, modelOverride: plannerModel);
 
             if (repaired.Success)
                 plan = repaired;
+        }
+
+        // 8B 未安装或暂不可用时，复杂任务仍允许降级到 3B；不能因为质量模型缺失
+        // 让整个本地工具链失效。降级仍经过同一 JSON、白名单和参数保护。
+        if (!plan.Success && !string.Equals(plannerModel, LocalLLMClient.ModelName,
+            System.StringComparison.OrdinalIgnoreCase))
+        {
+            Debug.LogWarning($"[LocalLLMAgent] 规划模型 {plannerModel} 不可用，降级到 {LocalLLMClient.ModelName}");
+            yield return LocalLLMClient.PromptAsync(systemPrompt, userMessage, (ok, content) =>
+            {
+                if (ok) plan = LocalToolRouter.ParsePlan(content);
+                else if (!string.IsNullOrEmpty(content)) plan.Error = content;
+            }, temperature: 0.1f, maxTokens: 320, timeout: 30,
+                modelOverride: LocalLLMClient.ModelName);
         }
 
         // 即使模型返回了合法的 action=none，也要对明确的“生成/搜索/打开”

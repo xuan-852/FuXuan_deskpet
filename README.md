@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![版本](https://img.shields.io/badge/版本-v1.0.10-blue)
+![版本](https://img.shields.io/badge/版本-v1.0.12-blue)
 ![引擎](https://img.shields.io/badge/引擎-团结引擎%20Tuanjie%202022.3.62t7-purple)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%2064位-green)
 ![Live2D](https://img.shields.io/badge/Live2D-Cubism%205--r.4-orange)
@@ -23,11 +23,11 @@
 
 [![下载最新版](https://img.shields.io/github/v/release/xuan-852/FuXuan_deskpet?label=%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88&style=for-the-badge)](https://github.com/xuan-852/FuXuan_deskpet/releases/latest)
 
-[下载 Windows 安装包 FuXuanSetup-1.0.10.exe](https://github.com/xuan-852/FuXuan_deskpet/releases/latest/download/FuXuanSetup-1.0.10.exe)<br>
-[备用 ZIP 下载（浏览器拦截 EXE 时使用）](https://github.com/xuan-852/FuXuan_deskpet/releases/latest/download/FuXuanSetup-1.0.10.zip)
+[下载 Windows 安装包 FuXuanSetup-1.0.12.exe](https://github.com/xuan-852/FuXuan_deskpet/releases/latest/download/FuXuanSetup-1.0.12.exe)<br>
+[备用 ZIP 下载（浏览器拦截 EXE 时使用）](https://github.com/xuan-852/FuXuan_deskpet/releases/latest/download/FuXuanSetup-1.0.12.zip)
 
-当前版本：`v1.0.10` · EXE SHA256：`7804F0992CAAB938E48501FC0FE41E4CF57F701F0BE0B53F23485800A5B1DC9A`<br>
-备用 ZIP SHA256：`FDC9E7E54B034FD73F225BCC6D002E900B07BC7E278910C7AC0A0AEC9375C3E7`
+当前版本：`v1.0.12` · EXE SHA256：`56FFDF40F96123D6834F2193145F0752E45D93E47D1C6274D2ACB6F96859DFF5`<br>
+备用 ZIP SHA256：`8A2F63B89EACBEC86F7B47DE5CDAFDFD44F4D449B9C63C6EAA1855EFBE41636D`
 
 > 首次发布的 Windows EXE 可能被 SmartScreen/浏览器提示“通常不会下载”。请优先从本仓库 Release 下载，并用对应 `.sha256` 文件校验；当前发布包尚未接入商业代码签名证书，正式签名接入后将减少此提示。
 
@@ -170,8 +170,8 @@ setx GLM_API_KEY "your-glm-key-here"
 setx FU_XUAN_LOCAL_CHAT_MODEL "qwen3:8b"
 # 动作/分类/摘要模型（默认 qwen2.5:3b）
 setx FU_XUAN_LOCAL_MODEL "qwen2.5:3b"
-# 用户数据根目录（默认 D:\DesktopPetData，安装器会优先复用已有目录）
-setx FU_XUAN_DATA "D:\DesktopPetData"
+# 用户数据根目录（默认 %LOCALAPPDATA%\FuXuan\DesktopPetData；安装器会优先复用已有目录）
+setx FU_XUAN_DATA "%LOCALAPPDATA%\FuXuan\DesktopPetData"
 # 和风天气（可选 — 默认 wttr.in，cityCode=Nanjing）
 setx QWEATHER_API_KEY "your-qweather-key-here"
 # OpenClaw Bridge 认证（可选 — 搜索/LaTeX/任务外包网关）
@@ -292,7 +292,7 @@ setx DESKTOP_TOKEN "your-server-token-here"
 | 记忆注入 | 本地与云端共用 | 按当前问题检索；本地最多 700 字符，云端最多 1400 字符，避免无关记忆污染回复 |
 | 反思 | ✅ 已接线 | CheckReflection → DoReflection（按可用模型提炼）→ CommitReflection |
 
-所有用户数据默认位于 `D:\DesktopPetData`，可由 `FU_XUAN_DATA` 覆盖。安装、升级和卸载不会默认删除忆境；
+所有用户数据默认位于 `%LOCALAPPDATA%\FuXuan\DesktopPetData`，可由 `FU_XUAN_DATA` 覆盖；安装器会优先复用已有的 C/D 盘旧目录。安装、升级和卸载不会默认删除忆境；
 卸载时选择“保留”会原地保留同一个数据目录，选择“删除”才清理已记录的专用目录，避免生成第二份活动数据。
 
 ### 🧬 人格演化系统
@@ -355,14 +355,14 @@ Desktop_per_pro/
 │   │   └── ...（感知/记忆/UI/物理 各子系统）
 │   └── openclaw_bridge.js       # Node.js 桥接服务器（:19876）
 ├── installer/                   # Inno Setup 安装包与组件脚本
-│   ├── dist/FuXuanSetup-1.0.10.exe # 当前发布安装包（GitHub Release Assets）
-│   └── dist/FuXuanSetup-1.0.10.zip # EXE 备用下载包
+│   ├── dist/FuXuanSetup-1.0.12.exe # 当前发布安装包（GitHub Release Assets）
+│   └── dist/FuXuanSetup-1.0.12.zip # EXE 备用下载包
 ├── scripts/office/              # Python 办公生成器（PPT/Word/Excel）
 ├── docs/                        # 权威文档（架构/规范/模块/路线图）
 │   ├── code-truth-architecture.md   # 代码真相架构审计
 │   ├── development-standards.md     # 开发规范（唯一权威）
 │   ├── desktop-assistant-roadmap.md # 演进路线图
-│   └── modules/                     # 9 份模块文档（四要素模板）
+│   └── modules/                     # 10 份模块文档（四要素模板）
 ├── tools/                       # 诊断/测试/清理脚本
 ├── build.ps1                    # 构建脚本（Quick/Full/Tests）
 ├── AGENTS.md                    # AI 协作快速入口（7 条铁律）
@@ -390,24 +390,24 @@ Desktop_per_pro/
 
 详见 [`docs/code-truth-architecture.md`](docs/code-truth-architecture.md) 与 [`docs/modules/tool-engine.md`](docs/modules/tool-engine.md)：
 
-1. 云端 API Key 目前只应通过安全配置提供；项目不把 Key 写入仓库、日志或公开示例
+1. 云端 API Key 目前只应通过安全配置提供；项目不把完整 Key 写入仓库、日志或公开示例，仅记录用于归属核对的短 `key_id`/哈希
 2. `qwen3:8b` 是质量优先的本地聊天模型，低端设备可切换到更小模型，但回复质量和长度会下降
 3. 动作/分类/摘要仍使用轻量本地模型，避免动作循环抢占聊天模型资源
-4. `isMultiMonitor` 目前为 false，跨屏行走仍是后续能力；3D 渲染分支也未作为当前版本功能承诺
-5. 云端消耗归属与官方账单存在采样延迟，运行期间应保留 `usage_log.jsonl`，不能只依赖实时后台读数
+4. `isMultiMonitor` 已能检测虚拟桌面范围，但跨屏行走策略仍是后续能力；3D 渲染分支也未作为当前版本功能承诺
+5. 此前约 ¥5/天异常已确认来自其他项目复用同一个用户级 `DEEPSEEK_API_KEY`，不归因于桌宠；运行期间仍应保留 `usage_log.jsonl`，并为不同项目使用独立 Key
 6. 开源分发前仍需确认符玄 Live2D 模型的授权范围
 
 ---
 
 ## 📜 版本历史
 
-完整历史见 [`CHANGELOG.md`](CHANGELOG.md)。当前发布版本 **v1.0.10**：
+完整历史见 [`CHANGELOG.md`](CHANGELOG.md)。当前发布版本 **v1.0.12**：
 
 | 版本 | 日期 | 亮点 |
 |------|------|------|
-| **v1.0.8** | 2026-08-21 | 本地优先聊天模型路由与模型设置页；忆境治理与只读管理页；统一 `D:\DesktopPetData` 数据目录；安装/升级/卸载保留与删除逻辑；发布 Windows 安装包 |
+| **v1.0.8** | 2026-08-21 | 本地优先聊天模型路由与模型设置页；忆境治理与只读管理页；统一用户数据目录；安装/升级/卸载保留与删除逻辑；发布 Windows 安装包 |
 | **v1.0.9** | 2026-08-22 | 本地模型工具规划与安全执行链路；自然语言触发系统信息、文件搜索、文件夹、剪贴板和办公工具；规划 JSON 容错与本地隔离验收 |
-| **v1.0.10** | 2026-08-22 | 外置输入长文本自动跟随、鼠标点击定位插入点；安装包增加 ZIP 备用下载、SHA256 校验和可选代码签名发布流程 |
+| **v1.0.12** | 2026-08-22 | Ollama 下载、安装、API 等待与模型拉取增加超时、独立日志和明确失败返回；安装器增加跨盘数据目录检测、可写性预检与旧目录复用 |
 | **2026-08-12** | — | 任务可视化（进度/审批弹窗）+ **exec 审批 E2E 打通** + 多任务并行（per-session 锁）+ 任务模板库/轨迹沉淀（65 工具）+ 办公文档生成 + 偏好系统 |
 | **N41** | 2026-08-09 | 像素表情包（9 种脸部表情帧）+ 颜文字禁绝（SystemPrompt + 代码兜底翻译为表情动作） |
 | N40 | 2026-08-05~08 | 安全加固（危险工具审批/Bridge 鉴权）+ Token 优化 T1-T8（缓存命中率 98.6%、成本降 60%） |
@@ -426,8 +426,8 @@ Desktop_per_pro/
 - ✅ 本地优先聊天：qwen3:8b 质量档与 qwen2.5 系列低占用档位
 - ✅ 模型设置页：按模型展示真实生成样例，不复用其他模型的假样例
 - ✅ 忆境治理：重要度/置信度/相关性闸门、容量控制、按问题选择性注入、忆境只读管理页
-- ✅ v1.0.10 安装与分发：数据目录复用、卸载保留/删除选择、EXE/ZIP Release 安装包与 SHA256 校验
-- 🔜 真实运行采样：对话质量、延迟、GPU/CPU 占用、动作状态切换与云端消耗归属
+- ✅ v1.0.12 安装与分发：跨盘数据目录检测、可写性预检、旧目录复用、卸载保留/删除选择、Ollama 依赖超时保护、EXE/ZIP Release 安装包与 SHA256 校验
+- 🔜 真实运行采样：对话质量、延迟、GPU/CPU 占用与动作状态切换
 - 🔜 多屏行走、3D 渲染模式、任务模板可视化画布
 
 ---

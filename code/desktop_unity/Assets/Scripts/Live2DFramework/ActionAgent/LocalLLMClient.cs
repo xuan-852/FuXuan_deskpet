@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
@@ -55,6 +55,9 @@ public static class LocalLLMClient
     /// 最后一次检查的结果描述
     /// </summary>
     public static string LastHealthMessage { get; private set; } = "";
+
+    private static DateTime _lastOllamaLaunchAttemptUtc = DateTime.MinValue;
+    private static readonly TimeSpan OllamaLaunchCooldown = TimeSpan.FromSeconds(60);
 
     /// <summary>
     /// 设置 API 地址
@@ -137,6 +140,50 @@ public static class LocalLLMClient
     public static IEnumerator CheckHealthAsync(Action<bool, string> onResult, string modelOverride = null)
     {
         string modelToCheck = string.IsNullOrWhiteSpace(modelOverride) ? ModelName : modelOverride;
+        bool firstOk = false;
+        bool firstServiceReachable = false;
+        string firstMessage = "";
+
+        yield return CheckHealthOnce(modelToCheck, (ok, message, serviceReachable) =>
+        {
+            firstOk = ok;
+            firstServiceReachable = serviceReachable;
+            firstMessage = message ?? "";
+        });
+
+        if (firstOk || firstServiceReachable)
+        {
+            onResult?.Invoke(firstOk, firstMessage);
+            yield break;
+        }
+
+        string launchMessage;
+        if (!TryStartOllama(out launchMessage))
+        {
+            onResult?.Invoke(false, firstMessage);
+            yield break;
+        }
+
+        Debug.LogWarning($"[LocalLLMClient] {launchMessage}，等待本地 API 就绪后重试");
+        yield return new WaitForSecondsRealtime(2f);
+
+        bool retryOk = false;
+        string retryMessage = "";
+        yield return CheckHealthOnce(modelToCheck, (ok, message, _) =>
+        {
+            retryOk = ok;
+            retryMessage = message ?? "";
+        });
+
+        if (!retryOk && !string.IsNullOrEmpty(launchMessage))
+            retryMessage = $"{retryMessage}；{launchMessage}";
+        onResult?.Invoke(retryOk, retryMessage);
+    }
+
+    private static IEnumerator CheckHealthOnce(
+        string modelToCheck,
+        Action<bool, string, bool> onResult)
+    {
         string url = BaseUrl.Replace("/v1", "") + "/api/tags";
         using (UnityWebRequest req = UnityWebRequest.Get(url))
         {
@@ -158,7 +205,7 @@ public static class LocalLLMClient
                     ? $"✅ 本地 LLM 就绪（{modelToCheck}）"
                     : $"⚠️ Ollama 在线，但模型「{modelToCheck}」未找到，需运行: ollama pull {modelToCheck}";
                 LastHealthMessage = msg;
-                onResult?.Invoke(modelFound, msg);
+                onResult?.Invoke(modelFound, msg, true);
             }
             else
             {
@@ -166,9 +213,91 @@ public static class LocalLLMClient
                     IsReady = false;
                 string err = $"❌ 本地 LLM 不可达: {req.error}（请确保 Ollama 已启动）";
                 LastHealthMessage = err;
-                onResult?.Invoke(false, err);
+                onResult?.Invoke(false, err, false);
             }
         }
+    }
+
+    /// <summary>
+    /// 在桌宠先于 Ollama 启动时拉起本机 Ollama。
+    /// 测试模式和 Unity Editor 禁止启动真实外部进程。
+    /// </summary>
+    private static bool TryStartOllama(out string message)
+    {
+        message = "";
+        if (Application.isEditor || ChatManager.IsTestMode)
+            return false;
+
+        DateTime now = DateTime.UtcNow;
+        if (now - _lastOllamaLaunchAttemptUtc < OllamaLaunchCooldown)
+            return false;
+        _lastOllamaLaunchAttemptUtc = now;
+
+        string executablePath = FindOllamaExecutable();
+        if (string.IsNullOrEmpty(executablePath))
+        {
+            message = "未找到 Ollama 可执行文件";
+            return false;
+        }
+
+        bool isApp = executablePath.EndsWith("ollama app.exe", StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = executablePath,
+                WorkingDirectory = System.IO.Path.GetDirectoryName(executablePath),
+                UseShellExecute = isApp,
+                CreateNoWindow = !isApp,
+                WindowStyle = isApp
+                    ? System.Diagnostics.ProcessWindowStyle.Minimized
+                    : System.Diagnostics.ProcessWindowStyle.Hidden
+            };
+            if (!isApp)
+                startInfo.Arguments = "serve";
+
+            System.Diagnostics.Process process = System.Diagnostics.Process.Start(startInfo);
+            process?.Dispose();
+            message = isApp ? "已启动 Ollama 应用" : "已启动 Ollama serve";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[LocalLLMClient] 启动 Ollama 失败: {ex.Message}");
+            message = "启动 Ollama 失败";
+            return false;
+        }
+    }
+
+    private static string FindOllamaExecutable()
+    {
+        string configured = Environment.GetEnvironmentVariable("OLLAMA_EXE");
+        string[] candidates =
+        {
+            configured,
+            CombineIfSet(Environment.GetEnvironmentVariable("LOCALAPPDATA"), "Programs", "Ollama", "ollama app.exe"),
+            CombineIfSet(Environment.GetEnvironmentVariable("LOCALAPPDATA"), "Programs", "Ollama", "ollama.exe"),
+            CombineIfSet(Environment.GetEnvironmentVariable("ProgramFiles"), "Ollama", "ollama app.exe"),
+            CombineIfSet(Environment.GetEnvironmentVariable("ProgramFiles"), "Ollama", "ollama.exe")
+        };
+
+        foreach (string candidate in candidates)
+        {
+            if (!string.IsNullOrWhiteSpace(candidate) && System.IO.File.Exists(candidate))
+                return candidate;
+        }
+        return null;
+    }
+
+    private static string CombineIfSet(string root, params string[] parts)
+    {
+        if (string.IsNullOrWhiteSpace(root))
+            return null;
+
+        string path = root;
+        foreach (string part in parts)
+            path = System.IO.Path.Combine(path, part);
+        return path;
     }
 
     // ──────────────────────────────────────────────

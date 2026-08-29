@@ -5,7 +5,7 @@
 ; 测试模式: /DPrivileges=lowest 编译后 setup.exe /VERYSILENT /SKIPENV /DIR=... 可本地静默验证
 ; ============================================================
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "1.0.12"
 #endif
 #ifndef OutputSuffix
   #define OutputSuffix ""
@@ -16,7 +16,7 @@
 #define MyAppName "符玄桌宠 FuXuan"
 #define MyAppExeName "DesktopPet.exe"
 #define MyAppMutex "FuXuanDesktopPetMutex"
-#define DefaultDataDir "D:\DesktopPetData"
+#define DefaultDataDir "{localappdata}\FuXuan\DesktopPetData"
 #define MyAppPublisher "xuan"
 
 [Setup]
@@ -46,8 +46,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Components]
 Name: "core"; Description: "桌宠本体 + 桥接服务器 + Python 脚本层（必选，约 500MB）"; Types: full compact custom; Flags: fixed
-Name: "openclaw"; Description: "OpenClaw Gateway 说明（桥接需网关运行在 127.0.0.1:18789；包已内置，网关服务见阶段3）"; Types: full compact
-Name: "ollama"; Description: "Ollama 本地模型 qwen2.5:3b（约 2.2GB，可选，建议勾选）"; Types: full; ExtraDiskSpaceRequired: 2400000000
+Name: "openclaw"; Description: "OpenClaw Gateway（已内置：自动初始化配置、注册服务并启动，免手动 npm 安装）"; Types: full compact
+Name: "ollama"; Description: "Ollama 本体 + qwen2.5:3b + nomic-embed-text（自动安装并下载约 2.2GB，建议勾选）"; Types: full; ExtraDiskSpaceRequired: 2400000000
 Name: "tex"; Description: "MiKTeX（compile_latex 需要，约 200MB，可选）"; Types: full
 Name: "extras"; Description: "Everything 便携版 / Pogget 收纳工具（可选）"; Types: full
 
@@ -62,14 +62,13 @@ Source: "portable\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs; 
 Name: "{group}\符玄桌宠"; Filename: "{app}\{#MyAppExeName}"; Components: core
 Name: "{group}\启动桥接"; Filename: "{app}\start-bridge.cmd"; Components: core
 Name: "{group}\停止桥接"; Filename: "{app}\stop-bridge.cmd"; Components: core
+Name: "{group}\检查运行环境"; Filename: "{app}\extras\components\verify-runtime.cmd"; Components: core
 Name: "{group}\卸载符玄桌宠"; Filename: "{uninstallexe}"; Components: core
 Name: "{autodesktop}\符玄桌宠"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; Components: core
 
 [Run]
 ; ── 阶段3 组件自动化（可按组件条件运行；/SKIPCOMPONENTS 时全部跳过，用于本地测试）──
 Filename: "{app}\extras\components\install-vcredist.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: core; Check: not SkipComps(); StatusMsg: "安装 VC++ 运行库..."
-Filename: "{app}\extras\components\install-openclaw.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: openclaw; Check: not SkipComps(); StatusMsg: "配置 OpenClaw Gateway..."
-Filename: "{app}\extras\components\install-ollama.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: ollama; Check: not SkipComps(); StatusMsg: "安装 Ollama 并拉取模型（可能数 GB，可跳过）..."
 Filename: "{app}\extras\components\install-miktex.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: tex; Check: not SkipComps(); StatusMsg: "安装 MiKTeX..."
 Filename: "{app}\extras\components\install-everything.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: extras; Check: not SkipComps(); StatusMsg: "配置 Everything 搜索..."
 Filename: "{app}\extras\components\install-service.cmd"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated skipifdoesntexist; Components: core; Check: not SkipComps(); StatusMsg: "注册桥接为 Windows 服务..."
@@ -90,6 +89,47 @@ var
   edDeepSeek: TNewEdit;
   edGlm: TNewEdit;
   BridgeToken: String;
+  GatewayToken: String;
+  RuntimeComponentsAttempted: Boolean;
+
+function RunRuntimeComponent(const ComponentName, ScriptName, DisplayName: String): Boolean;
+var
+  ScriptPath: String;
+  ResultCode: Integer;
+begin
+  Result := False;
+  ScriptPath := ExpandConstant('{app}\extras\components\' + ScriptName);
+  if not FileExists(ScriptPath) then
+  begin
+    Log('FuXuan runtime component missing: ' + ScriptPath);
+    MsgBox(DisplayName + '组件文件缺失：' + #13#10 + ScriptPath,
+      mbError, MB_OK);
+    exit;
+  end;
+
+  Log('FuXuan runtime component start: ' + ComponentName);
+  // .cmd 不是原生可执行文件。显式经由 cmd.exe 调用，才能保证
+  // ExecAsOriginalUser 等待脚本真正结束并拿到退出码。
+  if not ExecAsOriginalUser(ExpandConstant('{sys}\cmd.exe'),
+    '/d /c call "' + ScriptPath + '"', ExpandConstant('{app}'),
+    SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Log('FuXuan runtime component launch failed: ' + ComponentName);
+    MsgBox(DisplayName + '启动失败。' + #13#10 +
+      '请查看 %TEMP% 中对应的安装日志，然后重试安装。', mbError, MB_OK);
+    exit;
+  end;
+
+  Log('FuXuan runtime component exit: ' + ComponentName + ' code=' + IntToStr(ResultCode));
+  if ResultCode <> 0 then
+  begin
+    MsgBox(DisplayName + '安装未完成，退出码：' + IntToStr(ResultCode) + #13#10 +
+      '安装器不会把失败的组件当作成功。请根据日志修复网络或权限后重试。',
+      mbError, MB_OK);
+    exit;
+  end;
+  Result := True;
+end;
 
 function CmdLineParamExists(const Param: String): Boolean;
 var
@@ -159,23 +199,62 @@ begin
   Result := (P <> '\') and (B <> '\') and (Pos(B, P) = 1);
 end;
 
+function IsValidDataDir(const Value: String): Boolean; forward;
+
+function IsWritableDataDir(const Value: String): Boolean; forward;
+
 function GetDetectedDataDir: String;
 var
-  Configured, DefaultDir: String;
+  Configured, LegacyC, LegacyD, DefaultDir: String;
 begin
   Configured := NormalizeDataDir(GetExistingUserEnv('FU_XUAN_DATA'));
-  DefaultDir := NormalizeDataDir('{#DefaultDataDir}');
-  if (Configured <> '') and DirExists(Configured) then
+  DefaultDir := NormalizeDataDir(ExpandConstant('{#DefaultDataDir}'));
+  // 只复用有效且可写的已配置目录。
+  // 旧版本可能曾把 FU_XUAN_DATA 错误写成 C:\，不能仅凭 DirExists 直接复用磁盘根目录。
+  if (Configured <> '') and IsValidDataDir(Configured) and
+    DirExists(Configured) and IsWritableDataDir(Configured) then
   begin
     Result := Configured;
     exit;
   end;
-  if DirExists(DefaultDir) then
+  // 无有效环境变量时优先复用旧版目录，避免升级后产生第二份忆境。
+  LegacyC := NormalizeDataDir('C:\DesktopPetData');
+  LegacyD := NormalizeDataDir('D:\DesktopPetData');
+  if DirExists(LegacyC) and IsWritableDataDir(LegacyC) then
   begin
-    Result := DefaultDir;
+    Result := LegacyC;
     exit;
   end;
+  if DirExists(LegacyD) and IsWritableDataDir(LegacyD) then
+  begin
+    Result := LegacyD;
+    exit;
+  end;
+  // 配置不存在、失效或不可用时，回退到当前用户的默认数据目录。
+  // 安装完成后会用最终选中的目录覆盖 FU_XUAN_DATA，避免继续复用旧的错误路径。
   Result := DefaultDir;
+end;
+
+function IsWritableDataDir(const Value: String): Boolean;
+var
+  DataDir, ProbeFile: String;
+begin
+  Result := False;
+  DataDir := NormalizeDataDir(Value);
+  if not IsValidDataDir(DataDir) then
+    exit;
+  try
+    if (not DirExists(DataDir)) and (not ForceDirectories(DataDir)) then
+      exit;
+    ProbeFile := AddBackslash(DataDir) + '.fuxuan-write-test';
+    DeleteFile(ProbeFile);
+    if not SaveStringToFile(ProbeFile, 'write-test', False) then
+      exit;
+    DeleteFile(ProbeFile);
+    Result := True;
+  except
+    Result := False;
+  end;
 end;
 
 function IsValidDataDir(const Value: String): Boolean;
@@ -183,7 +262,12 @@ var
   DataDir, AppDir: String;
 begin
   DataDir := NormalizeDataDir(Value);
-  AppDir := NormalizeDataDir(ExpandConstant('{app}'));
+  // GetDetectedDataDir is called while the wizard is being initialized.  At
+  // that point {app} is not initialized yet, so expanding it raises a runtime
+  // error before the user can reach the install directory page.  The default
+  // install location is stable and is sufficient for the early safety check;
+  // the final component launch still uses {app} after ssPostInstall.
+  AppDir := NormalizeDataDir(ExpandConstant('{autopf}\FuXuan'));
   Result := (DataDir <> '') and (not IsDriveRoot(DataDir)) and
     (CompareText(DataDir, AppDir) <> 0) and
     (not IsSameOrChildPath(DataDir, AppDir)) and
@@ -197,7 +281,8 @@ begin
   // ── 数据目录页 ──
   DataDirPage := CreateInputDirPage(wpSelectComponents,
     '数据目录', '符玄的忆境/人格/文档等数据存放位置',
-    '默认 D:\DesktopPetData。目标机无 D 盘时请改为其他盘（写入 FU_XUAN_DATA 环境变量）。' + #13#10 +
+    '安装器会优先复用已有数据目录；新安装默认使用当前用户可写目录。' + #13#10 +
+    '安装前会检测目录是否可写，写入 FU_XUAN_DATA 环境变量。' + #13#10 +
     '卸载/升级不会删除该目录。',
     False, '');
   DataDirPage.Add('');
@@ -237,7 +322,14 @@ begin
     if not IsValidDataDir(DataDir) then
     begin
       MsgBox('数据目录无效：不能使用磁盘根目录，也不能放在安装目录内。' + #13#10 +
-        '请选一个专用的数据目录，例如 D:\DesktopPetData。', mbError, MB_OK);
+        '请选一个专用的数据目录，例如 %LOCALAPPDATA%\FuXuan\DesktopPetData。', mbError, MB_OK);
+      Result := False;
+      exit;
+    end;
+    if not IsWritableDataDir(DataDir) then
+    begin
+      MsgBox('数据目录不可写：' + #13#10 + DataDir + #13#10 +
+        '请确认磁盘已连接、有写入权限，或选择其他目录。', mbError, MB_OK);
       Result := False;
       exit;
     end;
@@ -262,8 +354,10 @@ begin
     if not SkipEnv then
     begin
       BridgeToken := GenerateToken;
+      GatewayToken := GenerateToken;
       SetUserEnv('FU_XUAN_DATA', DataDir);
       SetUserEnv('BRIDGE_TOKEN', BridgeToken);
+      SetUserEnv('OPENCLAW_GATEWAY_TOKEN', GatewayToken);
       SetUserEnv('OFFICE_SCRIPTS_DIR', ExpandConstant('{app}\scripts\office'));
       SetUserEnv('KNOWLEDGE_SCRIPTS_DIR', ExpandConstant('{app}\scripts\knowledge'));
       SetUserEnv('OPENCLAW_NODE_MODULES', ExpandConstant('{app}\bridge\node_modules'));
@@ -276,6 +370,16 @@ begin
         SetUserEnv('GLM_API_KEY', Trim(edGlm.Text));
       SaveStringToFile(ExpandConstant('{app}\.env-written'), '1', False);
     end;
+
+    // 依赖组件由安装器显式等待并检查退出码，避免 [Run] 的隐藏失败被误报为安装成功。
+    if (not SkipComps()) and (not RuntimeComponentsAttempted) then
+    begin
+      RuntimeComponentsAttempted := True;
+      if WizardIsComponentSelected('openclaw') then
+        RunRuntimeComponent('openclaw', 'install-openclaw.cmd', 'OpenClaw Gateway');
+      if WizardIsComponentSelected('ollama') then
+        RunRuntimeComponent('ollama', 'install-ollama.cmd', 'Ollama 与本地模型');
+    end;
     Log('FuXuan install done. DataDir=' + DataDir);
   end;
 end;
@@ -285,7 +389,7 @@ var
   S: String;
 begin
   S := GetExistingUserEnv('FU_XUAN_DATA');
-  if S = '' then S := '{#DefaultDataDir}';
+  if S = '' then S := ExpandConstant('{#DefaultDataDir}');
   Result := NormalizeDataDir(S);
 end;
 
@@ -329,10 +433,11 @@ begin
     if EnvWritten then
     begin
       // 保留数据时保留 FU_XUAN_DATA。自定义目录重装会被自动检测，
-      // 不会因环境变量被删而在 D:\DesktopPetData 再创建第二份记忆。
+      // 不会因环境变量被删而再创建第二份记忆。
       if (not KeepData) and DataRemoved then
         RegDeleteValue(HKCU, 'Environment', 'FU_XUAN_DATA');
       RegDeleteValue(HKCU, 'Environment', 'BRIDGE_TOKEN');
+      RegDeleteValue(HKCU, 'Environment', 'OPENCLAW_GATEWAY_TOKEN');
       RegDeleteValue(HKCU, 'Environment', 'OFFICE_SCRIPTS_DIR');
       RegDeleteValue(HKCU, 'Environment', 'KNOWLEDGE_SCRIPTS_DIR');
       RegDeleteValue(HKCU, 'Environment', 'OPENCLAW_NODE_MODULES');

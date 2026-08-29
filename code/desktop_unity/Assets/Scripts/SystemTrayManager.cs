@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using UnityEngine;
@@ -300,6 +300,11 @@ public class SystemTrayManager : MonoBehaviour
         // 读取当前开机自启状态
         _autoStartEnabled = ReadAutoStartRegistry();
         Log($"开机自启状态: {_autoStartEnabled}");
+
+        // 旧版本曾把 REG_SZ 写成 UTF-8。读取兼容值后立即用正确的
+        // UTF-16LE 重写，迁移不依赖窗口句柄或托盘初始化完成。
+        if (_autoStartEnabled)
+            SetAutoStart(true);
     }
 
     #region 公开接口
@@ -779,11 +784,7 @@ public class SystemTrayManager : MonoBehaviour
 
             if (type == REG_SZ)
             {
-                // 去掉末尾 null 终止符
-                string s = System.Text.Encoding.UTF8.GetString(buffer);
-                int nullIdx = s.IndexOf('\0');
-                if (nullIdx >= 0) s = s.Substring(0, nullIdx);
-                return s;
+                return DecodeRegistryString(buffer, cbData);
             }
             return null;
         }
@@ -806,7 +807,10 @@ public class SystemTrayManager : MonoBehaviour
 
         try
         {
-            byte[] data = System.Text.Encoding.UTF8.GetBytes(value + '\0');
+            // REG_SZ 是 Windows 原生 Unicode 字符串，必须使用 UTF-16LE。
+            // 旧实现写入 UTF-8 后，桌宠自身能读回乱码值，但 Windows Shell
+            // 无法把它解析成 HKCU\...\Run 的可执行命令。
+            byte[] data = System.Text.Encoding.Unicode.GetBytes(value + '\0');
             result = RegSetValueEx(hKey, valueName, 0, REG_SZ, data, data.Length);
             if (result != 0)
                 throw new Exception($"RegSetValueEx 失败, error={result}");
@@ -815,6 +819,43 @@ public class SystemTrayManager : MonoBehaviour
         {
             RegCloseKey(hKey);
         }
+    }
+
+    /// <summary>
+    /// 解码 REG_SZ，并兼容旧版本写入的 UTF-8 注册表值。
+    /// </summary>
+    private string DecodeRegistryString(byte[] buffer, int byteCount)
+    {
+        if (buffer == null || byteCount <= 0)
+            return null;
+
+        string unicode = System.Text.Encoding.Unicode.GetString(buffer, 0, byteCount);
+        unicode = TrimRegistryNull(unicode);
+        if (LooksLikeExecutableCommand(unicode))
+            return unicode;
+
+        // 迁移旧版本的 UTF-8 REG_SZ。成功读取后，DesktopPet.Start 会用
+        // SetAutoStart(true) 重写为正确的 UTF-16LE 格式。
+        string legacyUtf8 = System.Text.Encoding.UTF8.GetString(buffer, 0, byteCount);
+        return TrimRegistryNull(legacyUtf8);
+    }
+
+    private static string TrimRegistryNull(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        int nullIndex = value.IndexOf('\0');
+        return nullIndex >= 0 ? value.Substring(0, nullIndex) : value;
+    }
+
+    private static bool LooksLikeExecutableCommand(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        return value.IndexOf('\\') >= 0
+            && value.IndexOf(".exe", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     /// <summary>

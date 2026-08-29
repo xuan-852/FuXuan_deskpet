@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -8,14 +8,12 @@ using UnityEngine;
 /// <summary>
 /// 全量 AI 工具稳定性 & 快速性测试器（运行时）
 /// 触发：D:\DesktopPetData\.benchmark 开关文件存在时，场景加载后自动运行。
-/// 逐个调用 ToolRegistry 中全部 56 个工具（同步直调 / 异步协程），
+/// 逐个调用 ToolRegistry 中全部已注册工具（同步直调 / 异步协程），
 /// 记录每个工具的 参数 / 耗时(ms) / 返回结果 / 状态(OK|ERROR|TIMEOUT|SKIP|DANGER_GUARD)，
 /// 写入 D:\DesktopPetData\tool_benchmark_results.json，完成后删除开关文件。
 ///
 /// 安全设计：
-///  - 危险工具（file_delete/power/lock_screen/set_volume/mute/openclaw_task）绝不真执行，
-///    只验证 IsDangerous 标记 + 非法参数解析路径（必然返回 ❌）。
-///  - run_command 只测白名单只读命令(whoami) 与 高危命令拦截(format c:)。
+///  - 危险工具（含 run_command）绝不真执行，只验证 IsDangerous 标记 + 工具注册状态。
 ///  - 文件类工具使用 D:\DesktopPetData\_bench_* 临时路径，结束后自动清理。
 ///  - set_clipboard 先读原值，测试后还原。
 ///  - set_reminder 建 2099 年提醒，测试后 delete_reminder 删除。
@@ -86,6 +84,8 @@ public class ToolBenchmarkRunner : MonoBehaviour
         list.Add(new TestCase("search_files", "只读", "{\"query\": \"DesktopPet\", \"root\": \"D:\\\\Unity\"}", "", 60f));
         list.Add(new TestCase("search_file", "只读", "{\"query\": \"DesktopPet\", \"root\": \"D:\\\\Unity\"}", "", 60f));
         list.Add(new TestCase("query_reminders", "只读", "{}"));
+        list.Add(new TestCase("query_preferences", "只读", "{}"));
+        list.Add(new TestCase("query_task_templates", "只读", "{}"));
         list.Add(new TestCase("inspect_motion_memory", "只读", "{}"));
         list.Add(new TestCase("inspect_personality", "只读", "{}"));
         list.Add(new TestCase("knowledge_search", "只读", "{\"query\": \"测试\", \"top_k\": 3}", "", 30f));
@@ -115,6 +115,10 @@ public class ToolBenchmarkRunner : MonoBehaviour
         list.Add(new TestCase("mark_reminder_done", "文件写", "{\"id\": \"__BENCH_ID__\"}"));
         list.Add(new TestCase("delete_reminder", "文件写", "{\"id\": \"__BENCH_ID__\"}"));
         list.Add(new TestCase("set_clipboard", "文件写", "{\"text\": \"__BENCH_CLIP__\"}"));
+        list.Add(new TestCase("set_preference", "文件写", "{\"key\": \"__bench_preference__\", \"value\": \"bench\", \"source\": \"user\"}"));
+        list.Add(new TestCase("remove_preference", "文件写", "{\"key\": \"__bench_preference__\"}"));
+        list.Add(new TestCase("save_task_template", "文件写", "{\"name\": \"__bench_template__\", \"template\": \"测试任务 {value}\", \"description\": \"benchmark\", \"category\": \"测试\"}"));
+        list.Add(new TestCase("remove_task_template", "文件写", "{\"name\": \"__bench_template__\"}"));
 
         // ── C2. 打开窗口类（会弹出窗口，人工确认后关闭）──
         list.Add(new TestCase("open_url", "开窗", "{\"url\": \"https://example.com\"}"));
@@ -130,8 +134,7 @@ public class ToolBenchmarkRunner : MonoBehaviour
         list.Add(new TestCase("set_volume", "危险", "{\"level\": \"abc\"}", "DANGER_GUARD"));
         list.Add(new TestCase("mute", "危险", "{\"muted\": \"notabool\"}", "DANGER_GUARD"));
         list.Add(new TestCase("openclaw_task", "危险", "{\"task\": \"\"}", "DANGER_GUARD"));
-        list.Add(new TestCase("run_command", "危险", "{\"command\": \"whoami\"}", "", 15f));     // 白名单只读命令
-        list.Add(new TestCase("run_command", "危险", "{\"command\": \"format c:\"}", "", 15f)); // 高危拦截
+        list.Add(new TestCase("run_command", "危险", "{\"command\": \"whoami\"}", "DANGER_GUARD"));
 
         // ── E. 跳过组（弹窗/外部程序/分钟级，人工验证）────────
         list.Add(new TestCase("notify", "跳过", "{\"title\": \"t\", \"message\": \"m\"}", "SKIP"));
@@ -139,6 +142,9 @@ public class ToolBenchmarkRunner : MonoBehaviour
         list.Add(new TestCase("compile_latex", "跳过", "{}", "SKIP"));
         list.Add(new TestCase("vis_verify", "跳过", "{}", "SKIP"));
         list.Add(new TestCase("run_verification", "跳过", "{}", "SKIP"));
+        list.Add(new TestCase("generate_ppt", "跳过", "{}", "SKIP"));
+        list.Add(new TestCase("generate_docx", "跳过", "{}", "SKIP"));
+        list.Add(new TestCase("generate_xlsx", "跳过", "{}", "SKIP"));
 
         // ── F. 外部程序/桥组（实弹）──────────────────────────
         list.Add(new TestCase("pogget_agent", "外部", "{\"cmd\": \"ping\"}", "", 30f));
@@ -322,6 +328,10 @@ public class ToolBenchmarkRunner : MonoBehaviour
             if (cur == "__BENCH_CLIP__") ToolHelpers.SetClipboardText("");
         }
         catch { }
+
+        // 清理偏好与任务模板测试数据
+        try { ToolRegistry.Execute("remove_preference", "{\"key\": \"__bench_preference__\"}"); } catch { }
+        try { ToolRegistry.Execute("remove_task_template", "{\"name\": \"__bench_template__\"}"); } catch { }
         yield return null;
     }
 

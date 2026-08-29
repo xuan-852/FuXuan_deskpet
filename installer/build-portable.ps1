@@ -169,7 +169,9 @@ rem  FuXuan portable - environment setup (session only, idempotent)
 rem  Highest priority = pre-existing user env vars (never overwrite)
 rem ============================================================
 set "ROOT=%~dp0"
-if not defined FU_XUAN_DATA set "FU_XUAN_DATA=D:\DesktopPetData"
+if not defined FU_XUAN_DATA if exist "C:\DesktopPetData" set "FU_XUAN_DATA=C:\DesktopPetData"
+if not defined FU_XUAN_DATA if exist "D:\DesktopPetData" set "FU_XUAN_DATA=D:\DesktopPetData"
+if not defined FU_XUAN_DATA set "FU_XUAN_DATA=%LOCALAPPDATA%\FuXuan\DesktopPetData"
 if not defined OFFICE_SCRIPTS_DIR set "OFFICE_SCRIPTS_DIR=%ROOT%scripts\office"
 if not defined KNOWLEDGE_SCRIPTS_DIR set "KNOWLEDGE_SCRIPTS_DIR=%ROOT%scripts\knowledge"
 if exist "%ROOT%scripts\python\python.exe" if not defined OFFICE_PYTHON set "OFFICE_PYTHON=%ROOT%scripts\python\python.exe"
@@ -227,9 +229,10 @@ $readme = @"
 Version: $version
 
 ## 快速开始
-1. 启动桥接:  双击 start-bridge.cmd（需 OpenClaw Gateway 运行在 127.0.0.1:18789）
-2. 启动桌宠:  双击 start-pet.cmd
-3. 停止桥接:  双击 stop-bridge.cmd
+1. 使用正式安装器安装（推荐）：安装器会自动初始化 OpenClaw、安装 Ollama、下载模型并做健康检查。
+2. 便携模式：先运行 extras\components\install-openclaw.cmd，再运行 extras\components\install-ollama.cmd。
+3. 运行 extras\components\verify-runtime.cmd 确认依赖通过后，双击 start-bridge.cmd，再双击 start-pet.cmd。
+4. 停止桥接:  双击 stop-bridge.cmd
 
 ## 目录
 - DesktopPet.exe / DesktopPet_Data\  桌宠本体
@@ -240,16 +243,19 @@ Version: $version
 - set-env.cmd                        环境变量（FU_XUAN_DATA 等，会话级，不覆盖已有变量）
 
 ## 环境变量（可预先设置以覆盖默认值）
-- FU_XUAN_DATA           数据目录（默认 D:\DesktopPetData）
+- FU_XUAN_DATA           数据目录（默认 %LOCALAPPDATA%\FuXuan\DesktopPetData；兼容 C/D 盘旧目录）
 - BRIDGE_PORT            桥接端口（默认 19876）
 - OFFICE_PYTHON          办公脚本 Python（默认便携或系统 python）
 - OPENCLAW_NODE_MODULES  openclaw 包位置（默认便携内置）
 - POGGET_EXE             收纳工具路径（可选）
 
-## 依赖（目标机仍需）
-- OpenClaw Gateway（npm i -g openclaw + gateway start）
-- DeepSeek / GLM API 密钥（环境变量）
-- VC++ 2015-2022 x64 运行库（桌宠本体）
+## 依赖（正式安装器会自动处理）
+- OpenClaw Gateway：已随包内置，安装器会初始化配置并注册启动服务
+- Ollama：安装器会下载官方安装器、启动本地 API，并拉取 qwen2.5:3b 与 nomic-embed-text
+- DeepSeek / GLM API 密钥：安装向导收集并写入用户级环境变量
+- VC++ 2015-2022 x64 运行库：安装器自动检测/安装
+
+如果安装中断，先运行 `extras\components\verify-runtime.cmd` 查看缺失项，再重新运行对应安装脚本；模型下载支持断点续传。
 "@
 [System.IO.File]::WriteAllText((Join-Path $OutDir "README.md"), $readme, (New-Object System.Text.UTF8Encoding($false)))
 

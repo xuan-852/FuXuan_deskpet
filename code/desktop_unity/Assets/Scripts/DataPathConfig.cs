@@ -1,18 +1,20 @@
 /// <summary>
 /// 统一数据存储路径配置（唯一事实源）
 /// 所有持久化数据（知识库、忆境、人格、运动记忆、便签、活动日志、日志镜像等）
-/// 统一存储到 D:\DesktopPetData\，避免占用 C 盘空间，重装系统不丢失。
+/// 优先使用安装器写入的 FU_XUAN_DATA；新安装默认存储在当前用户可写目录。
 /// 各模块禁止自行硬编码路径，一律从这里取值（AGENTS.md 铁律）。
 /// </summary>
 public static class DataPathConfig
 {
     /// <summary>默认数据根目录。安装器和运行时共享这一事实源。</summary>
-    public const string DefaultDataRoot = @"D:\DesktopPetData";
+    public static string DefaultDataRoot => System.IO.Path.Combine(
+        System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+        "FuXuan", "DesktopPetData");
 
     /// <summary>
     /// 数据根目录。
-    /// 既有配置优先；配置失效但默认目录已有数据时回退到默认目录，避免重装产生第二份数据。
-    /// 两者都不存在时才使用配置目标或默认目录，首次启动再创建。
+    /// 既有配置优先；没有配置时扫描旧版 C/D 目录，避免重装产生第二份数据。
+    /// 两者都不存在时使用当前用户目录，首次启动再创建。
     /// </summary>
     public static string DataRoot => ResolveDataRoot();
 
@@ -51,11 +53,14 @@ public static class DataPathConfig
         if (!string.IsNullOrEmpty(configured) && System.IO.Directory.Exists(configured))
             return configured;
 
-        var defaultRoot = Normalize(DefaultDataRoot);
-        if (!string.IsNullOrEmpty(configured) && System.IO.Directory.Exists(defaultRoot))
-            return defaultRoot;
+        var legacyC = Normalize(@"C:\DesktopPetData");
+        if (System.IO.Directory.Exists(legacyC))
+            return legacyC;
+        var legacyD = Normalize(@"D:\DesktopPetData");
+        if (System.IO.Directory.Exists(legacyD))
+            return legacyD;
 
-        return string.IsNullOrEmpty(configured) ? defaultRoot : configured;
+        return string.IsNullOrEmpty(configured) ? Normalize(DefaultDataRoot) : configured;
     }
 
     private static string Normalize(string value)

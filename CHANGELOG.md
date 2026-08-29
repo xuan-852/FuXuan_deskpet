@@ -2,6 +2,27 @@
 
 > 版本命名：`N<数字>` 为迭代号，`v<数字>` 为早期版本。
 
+## 1.0.12 (2026-08-22)
+
+### 安装器数据目录回退
+- 修复旧版本遗留 `FU_XUAN_DATA=C:\` 时被误判为可复用目录的问题。
+- 安装器现在按“有效且可写的已配置目录 → 可写的旧版 C/D 目录 → 当前用户默认目录”自动选择，避免因失效配置阻塞安装或产生错误数据目录。
+
+### 依赖下载与失败反馈
+- Ollama 安装包下载增加官方源、国内回退源、重定向跟随、重试、文件大小和签名检查，并写入分步日志。
+- OpenClaw/Ollama 组件改由安装器显式等待并检查退出码；组件失败时会提示用户，不再静默结束。
+- 运行环境检查将缺失 Ollama 或必需模型视为失败状态。
+
+### 安装依赖稳定性
+
+- Ollama 官方安装包下载增加超时与错误日志。
+- Ollama 安装、API 启动等待和模型拉取增加明确的超时边界，避免安装器无限等待。
+- 模型拉取输出保存到独立日志，失败时提示可重新运行并利用 Ollama 的断点续传。
+- 安装器数据目录改为跨盘检测：优先复用已有配置和旧版 C/D 盘目录，新安装默认使用当前用户可写目录，并在安装前执行写入预检。
+- 发布脚本、README 和安装计划同步到 v1.0.12。
+
+---
+
 ## 1.0.10 (2026-08-22)
 
 ### 输入与安装包分发
@@ -150,7 +171,7 @@
 - 天气源：**默认 wttr.in**（cityCode="Nanjing"），QWeather 为可选
 - 反射机制：`OnReflectRequest` 回调恒 null，反思未驱动
 - `KnowledgeBaseManager.GetFormattedContext()` 为 STUB 恒返回 ""
-- `isMultiMonitor` 恒 false；`GetResolutionScale` 恒 1.0f；3D 渲染不可用；`AutoMotionCollector` 死代码
+- （N38 历史审计时点）`isMultiMonitor` 恒 false；后续 P4.4 已实现多屏检测。`GetResolutionScale` 恒 1.0f；3D 渲染不可用；`AutoMotionCollector` 死代码
 
 **已确认 9 个 Bug**（BUG-1~BUG-9，详见审计文档第 5 节）：
 1. BUG-1 `MotionAgent.IsSleepTime()` L369 硬编码 `return false`

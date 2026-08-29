@@ -1,4 +1,5 @@
-using NUnit.Framework;
+﻿using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 public class LocalToolRouterTests
 {
@@ -111,5 +112,92 @@ public class LocalToolRouterTests
         Assert.IsTrue(LocalToolRouter.IsAllowed("open_url", "knowledge"));
 
         Assert.IsFalse(LocalToolRouter.TryBuildScheduleOpenPlan("我今天有什么课", out plan));
+    }
+
+    [Test]
+    public void EveryRegisteredToolHasANaturalLanguageRoute()
+    {
+        ToolRegistry.Initialize();
+        JObject[] tools = JArray.Parse(ToolRegistry.GetToolsJson())
+            .ToObject<JObject[]>();
+        var unrouted = new System.Collections.Generic.List<string>();
+
+        foreach (JObject item in tools)
+        {
+            string name = item["function"]?["name"]?.ToString();
+            bool routed = LocalToolRouter.IsAllowed(name, "command")
+                || LocalToolRouter.IsAllowed(name, "knowledge")
+                || LocalToolRouter.IsAllowed(name, "operation");
+            if (!routed) unrouted.Add(name);
+        }
+
+        Assert.IsEmpty(unrouted,
+            "以下已注册工具没有进入任何自然语言意图目录: "
+            + string.Join(", ", unrouted));
+    }
+
+    [Test]
+    public void NaturalLanguageKeywordsCoverPreferencesTemplatesAndMotionReview()
+    {
+        Assert.IsTrue(LocalToolRouter.ShouldAttempt("chat", "请记住我喜欢无糖咖啡"));
+        Assert.IsTrue(LocalToolRouter.ShouldAttempt("chat", "请记住这个任务模板"));
+        Assert.IsTrue(LocalToolRouter.ShouldAttempt("chat", "请复盘并验证这个动作"));
+        Assert.IsTrue(LocalToolRouter.IsAllowed("set_preference", "operation"));
+        Assert.IsTrue(LocalToolRouter.IsAllowed("save_task_template", "operation"));
+        Assert.IsTrue(LocalToolRouter.IsAllowed("run_verification", "operation"));
+    }
+
+    [Test]
+    public void DocumentPlanUsesOriginalUserRequestAndSafeCompiler()
+    {
+        const string original = "帮我写一份中文 PDF：8 页，包含摘要、目录、三章正文和参考文献，排版正式。";
+        string hardened;
+        string error;
+        bool ok = LocalToolRouter.TryHardenPlanArguments(
+            "compile_latex", original,
+            "{\"description\":\"模型缩写后的需求\",\"compiler\":\"xelatex\",\"title\":\"报告\"}",
+            out hardened, out error);
+
+        Assert.IsTrue(ok, error);
+        JObject args = JObject.Parse(hardened);
+        Assert.AreEqual(original, args["description"]?.ToString());
+        Assert.AreEqual("xelatex", args["compiler"]?.ToString());
+    }
+
+    [Test]
+    public void DocumentPlanRejectsUnsafeCompilerAndOversizedRequest()
+    {
+        string hardened;
+        string error;
+        Assert.IsFalse(LocalToolRouter.TryHardenPlanArguments(
+            "compile_latex", "生成 PDF", "{\"compiler\":\"cmd.exe\"}",
+            out hardened, out error));
+        Assert.IsTrue(error.Contains("编译器"));
+
+        Assert.IsFalse(LocalToolRouter.TryHardenPlanArguments(
+            "compile_latex", new string('a', LocalToolRouter.MaxForwardedTaskChars + 1), "{}",
+            out hardened, out error));
+        Assert.IsTrue(error.Contains("过长"));
+    }
+
+    [Test]
+    public void PdfNaturalLanguageFallbackKeepsFullRequest()
+    {
+        const string message = "请帮我写一份 PDF 报告，主题是本地模型安全，包含摘要、目录和参考文献。";
+        LocalToolPlan plan;
+        Assert.IsTrue(LocalToolRouter.TryBuildKeywordPlan("knowledge", message, out plan));
+        Assert.AreEqual("compile_latex", plan.ToolName);
+        StringAssert.Contains(message, plan.ArgumentsJson);
+    }
+
+    [Test]
+    public void ComplexTasksUseQualityPlannerAndSimpleQueriesStayLightweight()
+    {
+        Assert.IsTrue(LocalToolRouter.ShouldUseQualityPlanner(
+            "请写一份包含摘要、目录、参考文献和正式排版的 PDF 报告"));
+        Assert.IsTrue(LocalToolRouter.ShouldUseQualityPlanner(
+            "请让 OpenClaw 登录网站，完成多步骤调研并汇总结果"));
+        Assert.IsFalse(LocalToolRouter.ShouldUseQualityPlanner("请查看当前系统信息"));
+        Assert.IsFalse(LocalToolRouter.ShouldUseQualityPlanner("今天天气怎么样"));
     }
 }
