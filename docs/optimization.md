@@ -50,6 +50,7 @@
 | O-13 | AI 运行时输入模拟与拖动挣扎修复 | ✅ | — | `@@sim:*` 隔离命令覆盖；目标点/速度提前写入 Cubism physics 输入；Unity 截图闭环已验证左右拖动及镜像后方向，响应增益已降幅 |
 | O-14 | Live2D 参数写入缓存与物理刷新观测 | ✅ | O-08/O-12 | 模型加载后缓存 `CubismParameter`；所有 `ForceUpdateNow()` 统一统计入口；不改变视觉/物理条件，实际 CPU/GPU 收益待 Profiling |
 | O-15 | IMGUI 星空动画更新边界 | ✅ | — | `StarField` 状态更新移至 `RightPanel.Update()`，`OnGUI` 仅绘制；Quick/完整构建/隔离冒烟通过，实际性能收益待 Profiling |
+| O-16 | 局部 RT 取景重复计算收敛 | ✅ | O-12 | `UpdateOverlayFraming()` 普通帧只在物理完成后的 `LateUpdate()` 执行一次；拖拽/点击提前返回路径补齐同步；Quick/完整构建/隔离冒烟通过，实际 CPU/GPU 收益待 Profiling |
 | O-09 | 外置窗口真实可见多轮回归 | ⏳ | O-01 | 启动/隐藏/恢复/关闭记录 |
 | O-10 | EditMode 结果文件新鲜度治理 | ⏳ | 构建脚本 | 新鲜 XML 或独立结果摘要 |
 | O-11 | bridge/Gateway/Ollama 启动依赖治理 | ⏳ | 安装器现状确认 | 四种安装/启动场景验证 |

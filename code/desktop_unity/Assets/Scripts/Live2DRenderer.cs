@@ -875,7 +875,6 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _walkPhase = 0f;
             _walkBounceOffset = 0f;
             UpdateModelPosition();
-            UpdateOverlayFraming();
             // DesktopPet.Update 在本脚本之前执行；这里是 CubismPhysics 的 LateUpdate 之前，
             // 适合把鼠标拖动速度写入 ParamAngle/ParamBody 输入，让物理产生滞后和回弹。
             ApplyDragPhysicsInput();
@@ -904,7 +903,6 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
 
         UpdateModelPosition();
-        UpdateOverlayFraming();
 
         // ★ 体态提前给物理用：Physics 在 CubismUpdateController.LateUpdate(0)
         //   中读取 ParamBodyAngleX/Y/Z 来驱动衣服。我们在 Update() 中先设好
@@ -972,6 +970,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             // 平滑转身（_dragSmoothBodyY 在 UpdateDragStruggle 中更新）
             UpdateDragStruggle();
             ForceUpdateModelNow();
+            // 物理和拖拽参数已完成后再更新取景，避免同一帧在 Update 阶段重复计算。
+            UpdateOverlayFraming();
             return;
         }
 
@@ -982,6 +982,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             foreach (var kv in _clickSavedParams)
                 SetParameter(kv.Key, kv.Value);
             ForceUpdateModelNow();
+            // 点击锁定同样提前返回，仍需在最终姿态完成后更新局部 RT 取景。
+            UpdateOverlayFraming();
             return;
         }
 

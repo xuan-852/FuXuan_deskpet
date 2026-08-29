@@ -167,6 +167,12 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 - 本轮不改变参数值、拖拽方向、物理频率或局部 RT 裁切策略；参数缓存与统计仅完成代码级验证，实际 CPU/GPU 收益仍需专项 Profiling 对照。
 - `build.ps1 -Quick`、完整构建和隔离 `runtime_smoke.cjs --verbose` 已通过；EditMode XML 仍沿用项目现有的新鲜度规则单独判断。
 
+### 2.17 局部 RT 取景单次更新（2026-08-29）
+
+- `UpdateOverlayFraming()` 会遍历模型 Renderer 包围盒、计算局部 RT 尺寸并同步叠加相机；普通帧现在只在 `LateUpdate()` 的最终姿态完成后执行一次，不再在 `Update()` 阶段重复计算。
+- 拖拽和点击姿态锁定会提前从 `LateUpdate()` 返回，因此这两条路径在 `ForceUpdateModelNow()` 后显式补做一次取景更新，保证局部 RT 跟随最终模型姿态。
+- `OnGUI()` 只保留首次无效矩形时的兜底更新和 RT 绘制，不把包围盒计算绑定到 IMGUI 绘制事件；本轮 Quick、完整构建和隔离运行时冒烟通过，实际 CPU/GPU 收益仍待可见播放器 Profiling。
+
 ## 三、开发历史迭代
 
 | 版本 | 日期 | 变更 |
@@ -180,6 +186,7 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 | 2026-08-29 | 2026-08-29 | 对照官方 CubismTargetPoint 接入拖拽目标速度/加速度限幅；通过 `IPetRenderer.OnDragPointer` 将位移和抓取点送入 physics3 输入链路，移除 `OnPetUpdate` 中物理前的重复姿态覆盖；Quick/完整构建/隔离冒烟通过，真实观感仍需可见播放器确认 |
 | 2026-08-29 | 2026-08-29 | 降低拖拽物理/衣物/头发/视觉滞后的响应增益，并让手臂、腿部、身体挣扎随拖拽强度渐进；使用 `@@sim:screenshot` 完成左右拖动与镜像后方向回归 |
 | 2026-08-29 | 2026-08-29 | 缓存 Live2D 参数引用，并统一 `ForceUpdateNow()` 统计入口；不改变视觉参数和物理条件，Quick/完整构建/隔离冒烟通过，性能收益待专项测量 |
+| 2026-08-29 | 2026-08-29 | 局部 RT 取景改为物理完成后的每帧单次更新；拖拽/点击锁定提前返回路径补齐取景同步，避免普通帧重复遍历 Renderer 包围盒 |
 
 ## 四、编写注意事项
 

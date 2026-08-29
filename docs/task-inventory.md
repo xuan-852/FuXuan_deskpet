@@ -23,6 +23,8 @@
 
 本轮第二步（2026-08-29）：星空运动状态已从 IMGUI 绘制流程移至 `RightPanel.Update()`，`OnGUI` 仅绘制，避免 `Layout`/`Repaint` 多事件导致动画速度不稳定；Quick、完整构建和隔离运行时冒烟均通过。
 
+本轮第三步（2026-08-29）：局部 RT 的 `UpdateOverlayFraming()` 已从普通 `Update()`/`LateUpdate()` 双重计算收敛为物理完成后的单次更新，并补齐拖拽/点击锁定提前返回路径；Quick、完整构建和隔离运行时冒烟均通过，实际 CPU/GPU 收益待专项测量。
+
 ---
 
 ## 一、渲染系统
