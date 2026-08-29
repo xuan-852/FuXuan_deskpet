@@ -106,7 +106,7 @@ public sealed class RuntimeReadinessService : MonoBehaviour
             CloudMessage = "未配置 DEEPSEEK_API_KEY";
         }
 
-        string bridgeToken = Environment.GetEnvironmentVariable("BRIDGE_TOKEN");
+        string bridgeToken = OpenClawBridge.ConfiguredBridgeToken;
         if (string.IsNullOrWhiteSpace(bridgeToken))
         {
             BridgeState = CheckState.Warning;

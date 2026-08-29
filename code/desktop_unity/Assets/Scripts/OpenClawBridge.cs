@@ -21,19 +21,30 @@ public static class OpenClawBridge
     /// 只读环境变量 BRIDGE_TOKEN（与 JS 端同源配置）。
     /// 缺省时不使用任何内置默认值（历史版本的内置 Token 已泄漏并轮换），直接返回空串禁用桥接。
     /// </summary>
-    private static string BridgeToken
+    public static string ConfiguredBridgeToken
     {
         get
         {
             var env = System.Environment.GetEnvironmentVariable("BRIDGE_TOKEN");
-            if (string.IsNullOrEmpty(env))
+            if (!string.IsNullOrEmpty(env)) return env;
+
+            // Inno Setup writes HKCU\Environment while its own process is still alive;
+            // read the registry as a startup fallback so the first launch does not
+            // depend on Explorer/logon broadcasting a refreshed environment block.
+            try
             {
-                Debug.LogWarning("[OpenClawBridge] ⚠️ 环境变量 BRIDGE_TOKEN 未配置，桥接鉴权将被拒绝。请设置 BRIDGE_TOKEN（与 openclaw_bridge.js / PM2 的 BRIDGE_TOKEN 一致）。");
-                return "";
+                var registered = System.Environment.GetEnvironmentVariable(
+                    "BRIDGE_TOKEN", EnvironmentVariableTarget.User);
+                if (!string.IsNullOrEmpty(registered)) return registered;
             }
-            return env;
+            catch (Exception ex) { Debug.LogWarning($"[OpenClawBridge] 读取用户环境变量失败: {ex.Message}"); }
+
+            Debug.LogWarning("[OpenClawBridge] ⚠️ BRIDGE_TOKEN 未配置，桥接鉴权将被拒绝。请设置 BRIDGE_TOKEN。");
+            return "";
         }
     }
+
+    private static string BridgeToken => ConfiguredBridgeToken;
 
     /// <summary>桥接服务器是否可用（最近一次健康检查结果）</summary>
     public static bool IsAvailable { get; private set; } = false;

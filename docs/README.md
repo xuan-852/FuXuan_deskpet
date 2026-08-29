@@ -98,3 +98,6 @@
 3. **修改顶层文档**：确认是否影响索引（标题/路径/作用变化时同步更新）
 4. **文档优先级**（AI 读取顺序）：`AGENTS.md` → `development-standards.md` → `code-truth-architecture.md` → `token-cost-testing.md` → `token-saving-architecture.md` → 对应模块文档
 5. **数据真实性**：模块文档中的组件名/工具数/行号必须以代码为准（参考 `code-truth-architecture.md` 的审计方法），禁止沿用过时描述
+## 2026-08-30 文档同步
+
+安装包/OpenClaw 桥接链路已完成一轮实现收敛，详见 [`installer-plan.md`](installer-plan.md) 与 [`modules/bridge-communication.md`](modules/bridge-communication.md)。本轮代码和安装产物均已通过对应验证；任务状态已同步到 [`task-inventory.md`](task-inventory.md)。

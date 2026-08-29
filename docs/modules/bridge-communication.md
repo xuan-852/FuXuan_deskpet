@@ -129,3 +129,10 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 7. **Token 安全**：密钥只从环境变量读取（模板用 .example）；日志/输出禁含 Token；内置默认 Token 仅兜底并告警
 8. **验证命令**：`node --check code/desktop_unity/openclaw_bridge.js`（JS 语法）；`curl http://127.0.0.1:19876/health`（健康检查）
 9. **超时选择**：search 180s / compile_latex 1800s（分块生成 10-20 分钟）/ generate_office 300s（AI 组织 + 本地渲染 10-60s）/ extract_pdf 180s（大 PDF 提取可能超 60s）；新端点按实际耗时给足余量
+## 2026-08-30 安装包桥接实现状态
+
+- 桥接启动现在允许 OpenClaw 动态导入失败后继续提供 `/health`，返回 `503` 和结构化错误，避免服务静默退出。
+- `/health` 为免鉴权诊断端点；其他端点仍必须携带 `x-bridge-token`。
+- `OPENCLAW_NODE_MODULES` 支持包根目录和 `node_modules` 父目录；LaTeX 默认输出跟随 `FU_XUAN_DATA/Documents`，不再固定到 D 盘。
+- 安装包服务 wrapper 固定使用内置 OpenClaw 包根目录；安装/升级会校验服务启动与健康状态，C# 首次启动可读取用户级环境变量。
+- 本轮验证：`node --check`、full-access `build.ps1 -Quick`、便携目录重打包、隔离端口 `/health` 和 Inno 编译/静默安装卸载均通过。

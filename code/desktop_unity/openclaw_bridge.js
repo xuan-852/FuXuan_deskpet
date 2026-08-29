@@ -17,7 +17,10 @@
 // ─── OpenClaw 库动态解析（阶段0 移植改造：不再硬编码 D:/openclaw 与构建哈希文件名，换机/升级不再断）───
 function resolveOpenClawGatewayEntry() {
     const candidates = [];
-    if (process.env.OPENCLAW_NODE_MODULES) candidates.push(process.env.OPENCLAW_NODE_MODULES);
+    if (process.env.OPENCLAW_NODE_MODULES) {
+        candidates.push(process.env.OPENCLAW_NODE_MODULES);
+        candidates.push(join(process.env.OPENCLAW_NODE_MODULES, 'openclaw'));
+    }
     candidates.push(join(dirname(fileURLToPath(import.meta.url)), 'node_modules', 'openclaw'));
     try {
         const npmRoot = execSync('npm root -g', { encoding: 'utf8', windowsHide: true }).trim();
@@ -33,7 +36,6 @@ function resolveOpenClawGatewayEntry() {
     }
     throw new Error('[Bridge] 无法定位 openclaw dist/gateway-chat-*.js：请设置 OPENCLAW_NODE_MODULES 或全局安装 openclaw（npm i -g openclaw）');
 }
-const { GatewayChatClient } = await import(resolveOpenClawGatewayEntry());
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
@@ -41,6 +43,15 @@ import { writeFileSync, unlinkSync, existsSync, mkdirSync, mkdtempSync, readFile
 import { dirname, basename, extname, join, resolve, relative, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+
+let GatewayChatClient = null;
+let openClawResolveError = null;
+try {
+    ({ GatewayChatClient } = await import(resolveOpenClawGatewayEntry()));
+} catch (err) {
+    openClawResolveError = err.message;
+    console.error(`[Bridge] OpenClaw package initialization failed: ${err.message}`);
+}
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 const GATEWAY_URL     = process.env.GATEWAY_URL     || 'ws://127.0.0.1:18789';
@@ -73,7 +84,9 @@ const BRIDGE_TOKEN    = process.env.BRIDGE_TOKEN   || GATEWAY_TOKEN;
 const BRIDGE_PORT     = parseInt(process.env.BRIDGE_PORT || '19876', 10);
 const SESSION_KEY     = process.env.SESSION_KEY     || 'agent:main:main';
 const CHAT_TIMEOUT_MS = parseInt(process.env.CHAT_TIMEOUT_MS || '180000', 10);
-const LATEX_DOCUMENTS_ROOT = resolve('D:\\DesktopPetData\\Documents');
+const DEFAULT_DATA_ROOT = process.env.FU_XUAN_DATA
+    || join(process.env.LOCALAPPDATA || process.env.TEMP || '.', 'FuXuan', 'DesktopPetData');
+const LATEX_DOCUMENTS_ROOT = resolve(process.env.LATEX_DOCUMENTS_ROOT || join(DEFAULT_DATA_ROOT, 'Documents'));
 const MAX_COMPILE_BODY_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LATEX_COMPILERS = new Set(['xelatex', 'pdflatex', 'lualatex']);
 
@@ -96,6 +109,9 @@ const requestChains = new Map();
 // ─── Gateway Connection ──────────────────────────────────────────────────────
 async function connect_() {
     try {
+        if (!GatewayChatClient) {
+            throw new Error(`OpenClaw package unavailable: ${openClawResolveError || 'GatewayChatClient export missing'}`);
+        }
         chatClient = await GatewayChatClient.connect({
             url: GATEWAY_URL,
             token: GATEWAY_TOKEN,
@@ -1018,8 +1034,23 @@ function checkMissingExternalRefs(tex, baseDir) {
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 function startHttpServer() {
     const server = createServer(async (req, res) => {
-        // 🔒 鉴权：除 /health 外所有请求必须携带 x-bridge-token，防止任意网页/进程滥用
-        //   （避免 CSRF：网页 JS 无法跨域携带自定义头，且下面移除了 CORS 通配头）
+        const u = new URL(req.url, `http://${req.headers.host}`);
+        const path = u.pathname;
+
+        if (path === '/health') {
+            const ready = Boolean(GatewayChatClient) && connected;
+            res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                status: ready ? 'ok' : 'error',
+                connected,
+                openclaw_ready: Boolean(GatewayChatClient),
+                error: connectError || openClawResolveError,
+            }));
+            return;
+        }
+
+        // 🔒 除 /health 外所有请求必须携带 x-bridge-token，防止任意网页/进程滥用。
+        // 不设置任何 CORS 头：浏览器跨域页面将无法读取响应。
         const authToken = req.headers['x-bridge-token'];
         if (authToken !== BRIDGE_TOKEN) {
             res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -1027,17 +1058,7 @@ function startHttpServer() {
             return;
         }
 
-        // 不设置任何 CORS 头：浏览器跨域页面将无法读取响应（Unity 原生客户端不受 CORS 限制，不受影响）
         if (req.method === 'OPTIONS') { res.writeHead(405, { 'Content-Type': 'application/json' }); res.end(); return; }
-
-        const u = new URL(req.url, `http://${req.headers.host}`);
-        const path = u.pathname;
-
-        if (path === '/health') {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ status: connected ? 'ok' : 'error', connected, error: connectError }));
-            return;
-        }
 
         if (path === '/search') {
             const query = u.searchParams.get('q') || u.searchParams.get('query') || '';

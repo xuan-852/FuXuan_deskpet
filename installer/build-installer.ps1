@@ -192,6 +192,13 @@ if ($Test) {
         @("scripts\knowledge", "$testDir\scripts\knowledge\pdf_extract.py"),
         @("openclaw 包", "$testDir\bridge\node_modules\openclaw\dist\gateway-chat-BW6uyvQL.js")
     )
+    # OpenClaw gateway-chat 文件名带版本哈希，按通配符验证，避免升级后误报。
+    $checks = @($checks | Where-Object { $_[1] -notlike '*gateway-chat-BW6uyvQL.js' })
+    $openClawDist = Join-Path $testDir 'bridge\node_modules\openclaw\dist'
+    $gatewayChatEntry = if (Test-Path $openClawDist) { Get-ChildItem $openClawDist -Filter 'gateway-chat-*.js' | Select-Object -First 1 } else { $null }
+    $gatewayChatPath = if ($gatewayChatEntry) { $gatewayChatEntry.FullName } else { $openClawDist }
+    $checks += ,@('openclaw gateway-chat entry', $gatewayChatPath)
+
     $ok = $true
     foreach ($c in $checks) {
         if (Test-Path $c[1]) { Write-Host "    [OK] $($c[0])" } else { Write-Host "    [FAIL] $($c[0]) 缺失: $($c[1])"; $ok = $false }

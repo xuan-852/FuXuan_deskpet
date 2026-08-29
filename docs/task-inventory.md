@@ -1099,3 +1099,8 @@ vis_verify
 >
 > **N34 首跑结果 — 2026-07-07 00:31，6/10 通过 (60%), 平均分 2.8/5.0, LLM 触发率 100%。4 个动作⭐⭐⭐⭐「基本是」。7 个 Bug 已全部修复，需重跑验证。**
 
+### 2026-08-30 Bridge/installer iteration
+
+| 状态 | 任务 | 验证依据 |
+|------|------|---------|
+| ✅ | OpenClaw 安装包桥接链路收敛：服务注册错误检查、升级刷新、便携 OpenClaw 路径、健康检查与动态 gateway-chat 文件名验收 | `node --check`、full-access `build.ps1 -Quick`、Inno Setup 编译、静默安装/卸载验收、隔离端口 `/health` 通过 |

@@ -316,3 +316,12 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 - Ollama 安装器优先使用官方地址，失败后尝试国内备用地址；下载过程写入 `%TEMP%\fuxuan-ollama-install.log`，并检查文件大小与签名。备用地址可通过 `FU_OLLAMA_MIRROR_URL` 覆盖。
 - 虚拟机实测曾发现安装器在数据目录预检阶段提前展开 `{app}`，导致安装向导启动即报错；现已改为使用默认安装目录进行早期校验，重新构建后需继续完成 OpenClaw/Ollama 的干净环境验收。
 - 当前 1.0.12 产物：EXE SHA256 `56FFDF40F96123D6834F2193145F0752E45D93E47D1C6274D2ACB6F96859DFF5`；ZIP SHA256 `8A2F63B89EACBEC86F7B47DE5CDAFDFD44F4D449B9C63C6EAA1855EFBE41636D`。
+## 2026-08-30 安装包桥接迭代结果
+
+本轮已完成并验证安装包到 OpenClaw 桥接的关键闭环：
+
+- `build-portable.ps1` 支持 `-OpenClawSource`、`OPENCLAW_SOURCE`、`OPENCLAW_NODE_MODULES` 和全局 npm 根目录探测，不再依赖固定 `D:\openclaw`；生成环境变量指向实际 `bridge\node_modules\openclaw` 包根目录。
+- `install-service.cmd` 的 `/CHECK` 只读且不下载；正常安装会校验 NSSM 每一步、刷新已有服务、检查 Node/包/token，并等待桥接 `/health`；服务 wrapper 的 token 文件收紧为 SYSTEM/Administrators 可读。
+- `verify-runtime.cmd` 增加 19876 端口、桥接 `/health` 和服务状态诊断；`verify-acceptance.cjs` 按 `gateway-chat-*.js` 动态匹配，不依赖版本哈希。
+- 桥接 `/health` 免鉴权并暴露 `openclaw_ready`；OpenClaw 动态导入失败不会阻止诊断服务启动；LaTeX 输出目录跟随 `FU_XUAN_DATA`。
+- 已验证：full-access `build.ps1 -Quick` 通过；Inno 生产/测试安装器编译、静默安装、动态入口检查、静默卸载通过；隔离端口桥接健康检查通过。

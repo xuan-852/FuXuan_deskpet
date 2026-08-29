@@ -458,3 +458,4 @@ Desktop_per_pro/
 ⭐ 如果符玄大人合您心意，欢迎 Star 支持！
 
 </div>
+> 2026-08-30：安装包/OpenClaw 桥接链路已完成一轮稳定性迭代：内置包路径可配置、服务注册失败可见、升级自动刷新、桥接 `/health` 可诊断，安装器编译与静默安装/卸载验收通过。详见 [`docs/installer-plan.md`](docs/installer-plan.md)。

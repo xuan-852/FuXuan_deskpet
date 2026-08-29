@@ -360,7 +360,7 @@ begin
       SetUserEnv('OPENCLAW_GATEWAY_TOKEN', GatewayToken);
       SetUserEnv('OFFICE_SCRIPTS_DIR', ExpandConstant('{app}\scripts\office'));
       SetUserEnv('KNOWLEDGE_SCRIPTS_DIR', ExpandConstant('{app}\scripts\knowledge'));
-      SetUserEnv('OPENCLAW_NODE_MODULES', ExpandConstant('{app}\bridge\node_modules'));
+      SetUserEnv('OPENCLAW_NODE_MODULES', ExpandConstant('{app}\bridge\node_modules\openclaw'));
       PyPath := ExpandConstant('{app}\scripts\python\python.exe');
       if FileExists(PyPath) then
         SetUserEnv('OFFICE_PYTHON', PyPath);

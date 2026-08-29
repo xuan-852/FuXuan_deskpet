@@ -24,7 +24,7 @@ const installDir = getArg('--dir') || 'C:\\Program Files\\FuXuan';
 const keepAlive = args.includes('--keep-alive');
 
 const PLAYER_LOG = path.join(os.homedir(), 'AppData', 'LocalLow', 'DefaultCompany', 'desktop pet', 'Player.log');
-const DATA_ROOT = process.env.FU_XUAN_DATA || 'D:\\DesktopPetData';
+const DATA_ROOT = process.env.FU_XUAN_DATA || path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'FuXuan', 'DesktopPetData');
 const TEST_DATA = path.join(os.tmpdir(), 'fuxuan_accept_test');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -89,6 +89,13 @@ async function main() {
 
     // ── 2. 环境变量 ──
     log('\n── 2. 环境变量（HKCU\Environment）──');
+    const openClawDir = path.join(installDir, 'bridge', 'node_modules', 'openclaw');
+    const openClawDist = path.join(openClawDir, 'dist');
+    const openClawEntries = fs.existsSync(openClawDist)
+        ? fs.readdirSync(openClawDist).filter(n => /^gateway-chat-.*\\.js$/.test(n)) : [];
+    check('openclaw gateway-chat entry', openClawEntries.length > 0,
+        openClawEntries.length ? openClawEntries[0] : openClawDist);
+
     const envNames = ['FU_XUAN_DATA', 'BRIDGE_TOKEN', 'OFFICE_SCRIPTS_DIR', 'KNOWLEDGE_SCRIPTS_DIR', 'OPENCLAW_NODE_MODULES'];
     for (const n of envNames) { const v = regEnv(n); check(`环境变量 ${n}`, v !== '', v ? v : '未设置'); }
 

@@ -12,6 +12,7 @@
 .USAGE
     .\installer\build-portable.ps1                    # 默认全量（含 openclaw 包）
     .\installer\build-portable.ps1 -SkipOpenClaw      # 跳过 300MB openclaw 包（目标机需已装 openclaw）
+    .\installer\build-portable.ps1 -OpenClawSource C:\path\to\node_modules\openclaw
     .\installer\build-portable.ps1 -IncludeNode       # 额外下载便携 Node（~30MB，网络需可用）
     .\installer\build-portable.ps1 -IncludePython     # 额外下载 Python embeddable + pip 装 7 包（~60MB）
 .NOTES
@@ -22,6 +23,7 @@ param(
     [switch]$IncludeNode,        # 下载便携 Node 运行时到 bridge\node
     [switch]$IncludePython,      # 下载 Python embeddable 到 scripts\python 并 pip 安装 7 包
     [switch]$SkipOpenClaw,       # 跳过拷贝 openclaw npm 包（省 300MB）
+    [string]$OpenClawSource = $env:OPENCLAW_SOURCE, # openclaw 包目录；也可从 OPENCLAW_NODE_MODULES 读取
     [string]$OutDir = "$PSScriptRoot\portable",
     [string]$NodeVersion = "v22.22.3",   # ⚠️ 必须 ≥22.22.3：OpenClaw 要求 SQLite 3.51.3+，旧版 Node 内置 3.47.2 有 WAL 损坏 bug（2026-08-14 实测 v22.14.0 启动报错）
     [string]$PythonVersion = "3.12.10"   # 便携 Python 版本（不存在则回退 3.12.8）
@@ -59,6 +61,29 @@ function Copy-Tree([string]$src, [string]$dst) {
     Write-Host "[OK] $src -> $dst"
 }
 
+function Resolve-OpenClawPackage {
+    param([string]$ConfiguredSource)
+
+    $candidates = @()
+    if ($ConfiguredSource) { $candidates += $ConfiguredSource }
+    if ($env:OPENCLAW_NODE_MODULES) { $candidates += $env:OPENCLAW_NODE_MODULES }
+    if ($env:OPENCLAW_SOURCE) { $candidates += $env:OPENCLAW_SOURCE }
+    try {
+        $npmRoot = (& npm root -g 2>$null | Select-Object -First 1).Trim()
+        if ($npmRoot) { $candidates += (Join-Path $npmRoot 'openclaw') }
+    } catch { }
+
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if (-not $candidate) { continue }
+        $resolved = [System.IO.Path]::GetFullPath($candidate)
+        if (Test-Path (Join-Path $resolved 'openclaw.mjs')) { return $resolved }
+        $nested = Join-Path $resolved 'openclaw'
+        if (Test-Path (Join-Path $nested 'openclaw.mjs')) { return $nested }
+    }
+
+    throw '未找到 OpenClaw 包。请使用 -OpenClawSource，或设置 OPENCLAW_SOURCE / OPENCLAW_NODE_MODULES。'
+}
+
 # ── 1. 校验前置 ──
 $exe = Join-Path $BuildDir "DesktopPet.exe"
 if (-not (Test-Path $exe)) {
@@ -79,7 +104,9 @@ Write-Host "`n── 桥接层 ──"
 Copy-Tree (Join-Path $ProjectDir "openclaw_bridge.js") (Join-Path $OutDir "bridge")
 # openclaw npm 包（桥接运行依赖，目标机免全局安装）
 if (-not $SkipOpenClaw) {
-    Copy-Tree "D:\openclaw\node_modules\openclaw" (Join-Path $OutDir "bridge\node_modules\openclaw")
+    $openClawPackage = Resolve-OpenClawPackage $OpenClawSource
+    Write-Host "[OK] 使用 OpenClaw 包: $openClawPackage"
+    Copy-Tree $openClawPackage (Join-Path $OutDir "bridge\node_modules\openclaw")
 } else {
     Write-Host "[SKIP] 未拷贝 openclaw 包（-SkipOpenClaw）"
 }
@@ -175,7 +202,7 @@ if not defined FU_XUAN_DATA set "FU_XUAN_DATA=%LOCALAPPDATA%\FuXuan\DesktopPetDa
 if not defined OFFICE_SCRIPTS_DIR set "OFFICE_SCRIPTS_DIR=%ROOT%scripts\office"
 if not defined KNOWLEDGE_SCRIPTS_DIR set "KNOWLEDGE_SCRIPTS_DIR=%ROOT%scripts\knowledge"
 if exist "%ROOT%scripts\python\python.exe" if not defined OFFICE_PYTHON set "OFFICE_PYTHON=%ROOT%scripts\python\python.exe"
-if exist "%ROOT%bridge\node_modules" if not defined OPENCLAW_NODE_MODULES set "OPENCLAW_NODE_MODULES=%ROOT%bridge\node_modules"
+if exist "%ROOT%bridge\node_modules\openclaw\openclaw.mjs" if not defined OPENCLAW_NODE_MODULES set "OPENCLAW_NODE_MODULES=%ROOT%bridge\node_modules\openclaw"
 if not defined BRIDGE_PORT set "BRIDGE_PORT=19876"
 "@
 Write-CmdFile (Join-Path $OutDir "set-env.cmd") $setEnv
