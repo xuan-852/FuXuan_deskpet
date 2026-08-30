@@ -106,4 +106,4 @@
 
 本轮 Live2D/问候修复已同步到 [`modules/live2d-rendering.md`](modules/live2d-rendering.md)、[`modules/ai-chat-system.md`](modules/ai-chat-system.md)、[`project-bugs-and-acceptance.md`](project-bugs-and-acceptance.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：停走物理收敛、自动问候时段守卫和 ILPP PID 身份校验已通过 Quick、完整构建和隔离运行时冒烟；可见播放器观感仍待人工确认。
 
-本轮节日适配（2026-08-30）已同步到 [`modules/chat-ui.md`](modules/chat-ui.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：仅为 17×24 像素符玄和聊天窗口/气泡增加可切换的新春红金主题，使用程序化像素帽，不修改 Live2D；Quick、完整构建、隔离冒烟和开启/关闭主题截图闭环均通过。
+本轮节日适配（2026-08-30）已同步到 [`modules/chat-ui.md`](modules/chat-ui.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：以完整 `ThemeSkin` 管理 17×24 像素符玄、聊天窗口、气泡和子面板的新春红金皮肤，程序化像素帽使用独立透明层，不修改 Live2D；Quick、完整构建、隔离冒烟和开启/关闭主题截图闭环均通过。

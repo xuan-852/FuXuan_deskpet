@@ -114,25 +114,14 @@ public class ChatBubble : MonoBehaviour
         if (_holidayThemeRevision == revision) return;
         _holidayThemeRevision = revision;
 
-        if (HolidayThemeRuntime.IsHolidayActive)
-        {
-            // 春节气泡：保持原有结构，只替换颜色和装饰，避免改变气泡布局。
-            bgColor = new Color(0.28f, 0.06f, 0.08f, 0.97f);
-            borderColor = new Color(0.44f, 0.08f, 0.10f, 0.98f);
-            accentColor = new Color(0.98f, 0.58f, 0.20f, 1f);
-            textColor = new Color(1.00f, 0.92f, 0.82f, 1f);
-            ornamentColor = new Color(0.95f, 0.45f, 0.18f, 0.70f);
-            starColor = new Color(1.00f, 0.75f, 0.30f, 1f);
-        }
-        else
-        {
-            bgColor = new Color(0.16f, 0.13f, 0.20f);
-            borderColor = new Color(0.10f, 0.08f, 0.14f);
-            accentColor = new Color(0.72f, 0.48f, 0.84f);
-            textColor = new Color(0.95f, 0.92f, 0.97f);
-            ornamentColor = new Color(0.72f, 0.48f, 0.84f, 0.60f);
-            starColor = new Color(0.85f, 0.65f, 0.95f, 1.0f);
-        }
+        HolidayThemeRuntime.ThemeSkin skin = HolidayThemeRuntime.Active.Skin;
+        // 气泡也是完整皮肤的一部分：不再由 default/CNY 两套散落颜色互相覆盖。
+        bgColor = skin.BubbleFxBottom;
+        borderColor = skin.BubbleFxBorder;
+        accentColor = skin.Accent;
+        textColor = skin.TextMain;
+        ornamentColor = new Color(skin.DecorationSecondary.r, skin.DecorationSecondary.g, skin.DecorationSecondary.b, 0.70f);
+        starColor = skin.StarTintB;
         _needsRebuild = true;
     }
 

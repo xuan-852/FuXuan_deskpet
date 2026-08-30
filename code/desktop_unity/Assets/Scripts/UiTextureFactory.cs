@@ -11,13 +11,14 @@ public static class UiTextureFactory
     public static void DrawPixelRect(Rect rect, Color color)
     {
         Color prev = GUI.color;
-        GUI.color = color;
+        GUI.color = HolidayThemeRuntime.ResolveLegacyUiColor(color);
         GUI.DrawTexture(rect, Texture2D.whiteTexture);
         GUI.color = prev;
     }
 
     public static Texture2D MakeTex(int w, int h, Color color)
     {
+        color = HolidayThemeRuntime.ResolveLegacyUiColor(color);
         Texture2D tex = new Texture2D(w, h, TextureFormat.ARGB32, false);
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
@@ -29,6 +30,7 @@ public static class UiTextureFactory
     /// <summary>创建圆形纹理（用于按钮背景）</summary>
     public static Texture2D MakeCircleTex(int size, Color color)
     {
+        color = HolidayThemeRuntime.ResolveLegacyUiColor(color);
         size = Mathf.Max(size, 4);
         Texture2D tex = new Texture2D(size, size, TextureFormat.ARGB32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
@@ -52,6 +54,7 @@ public static class UiTextureFactory
     /// <summary>生成圆角矩形纹理（复刻 ChatBubble 风格，用于输入框胶囊背景）</summary>
     public static Texture2D GenRoundedRect(int w, int h, float r, Color c)
     {
+        c = HolidayThemeRuntime.ResolveLegacyUiColor(c);
         var tex = new Texture2D(w, h, TextureFormat.ARGB32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         Color t = new Color(0, 0, 0, 0);
@@ -139,6 +142,7 @@ public static class UiTextureFactory
     /// <summary>创建角落云纹图案（复刻 ChatBubble 风格）</summary>
     public static Texture2D GenCornerOrnament(int size, Color c, bool topLeft)
     {
+        c = HolidayThemeRuntime.ResolveLegacyUiColor(c);
         var tex = new Texture2D(size, size, TextureFormat.ARGB32, false);
         Color t = new Color(0, 0, 0, 0);
 
@@ -213,11 +217,18 @@ public static class UiTextureFactory
     /// <summary>星云斑块：3 个随机大斑块（冷蓝/淡紫/暖紫三色按权重混合）低频雾，打破渐变色带，克制不抢星</summary>
     public static Texture2D MakeNebulaTex(int w, int h, int seed)
     {
+        return MakeNebulaTex(w, h, seed,
+            new Color(0.30f, 0.45f, 0.85f), new Color(0.52f, 0.36f, 0.74f), new Color(0.68f, 0.50f, 0.80f));
+    }
+
+    /// <summary>生成主题化星云；颜色从皮肤传入，避免节日主题残留蓝紫星云。</summary>
+    public static Texture2D MakeNebulaTex(int w, int h, int seed, Color colorA, Color colorB, Color colorC)
+    {
         var tex = new Texture2D(w, h, TextureFormat.ARGB32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         var rng = new System.Random(seed);
         float[] bx = new float[3], by = new float[3], br = new float[3], bi = new float[3];
-        Color[] cols = { new Color(0.30f, 0.45f, 0.85f), new Color(0.52f, 0.36f, 0.74f), new Color(0.68f, 0.50f, 0.80f) };
+        Color[] cols = { colorA, colorB, colorC };
         for (int i = 0; i < 3; i++)
         {
             bx[i] = (float)rng.NextDouble();
@@ -251,6 +262,12 @@ public static class UiTextureFactory
     /// <summary>星点光晕：中心白过曝 → 边缘淡紫，柔和幂次衰减（光晕铺开更自然）</summary>
     public static Texture2D MakeStarGlowTex(int size)
     {
+        return MakeStarGlowTex(size, new Color(0.80f, 0.70f, 1f, 0f));
+    }
+
+    /// <summary>生成主题化星点光晕；中心仍为白色，边缘色由皮肤提供。</summary>
+    public static Texture2D MakeStarGlowTex(int size, Color edgeColor)
+    {
         var tex = new Texture2D(size, size, TextureFormat.ARGB32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         float c = (size - 1) / 2f;
@@ -261,7 +278,7 @@ public static class UiTextureFactory
                 float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c)) / c;
                 float a = Mathf.Clamp01(1f - d);
                 a = Mathf.Pow(a, 1.9f) * 0.85f;   // 光晕收敛（中心亮芯+淡边缘），不抢白芯主次
-                Color col = Color.Lerp(Color.white, new Color(0.80f, 0.70f, 1f, 0f), Mathf.Clamp01(d * 1.05f));
+                Color col = Color.Lerp(Color.white, edgeColor, Mathf.Clamp01(d * 1.05f));
                 tex.SetPixel(x, y, new Color(col.r, col.g, col.b, a));
             }
         }
@@ -328,14 +345,20 @@ public static class UiTextureFactory
     /// <summary>生成太极图（黑白双鱼，发送按钮）</summary>
     public static Texture2D MakeTaijiTex(int size)
     {
+        return MakeTaijiTex(size, new Color(0.13f, 0.10f, 0.17f, 0.96f), new Color(0.93f, 0.89f, 0.98f, 0.96f));
+    }
+
+    /// <summary>生成主题化太极图；保留无参颜色版本兼容旧调用。</summary>
+    public static Texture2D MakeTaijiTex(int size, Color dark, Color light)
+    {
         var tex = new Texture2D(size, size, TextureFormat.ARGB32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         float c = (size - 1) / 2f;
         float R = c - 0.5f;          // 外圆半径
         float r = R / 2f;            // 鱼身小圆半径
         float eye = r / 2.6f;        // 鱼眼半径
-        Color black = new Color(0.13f, 0.10f, 0.17f, 0.96f);
-        Color white = new Color(0.93f, 0.89f, 0.98f, 0.96f);
+        Color black = dark;
+        Color white = light;
         Color clear = new Color(0, 0, 0, 0);
 
         for (int y = 0; y < size; y++)

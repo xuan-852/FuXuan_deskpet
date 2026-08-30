@@ -180,6 +180,6 @@
 
 | 状态 | 优化项 | 实际落点与验证 |
 |------|--------|----------------|
-| ✅ | 新春像素主题 | `HolidayThemeRuntime` 为 17×24 像素符玄叠加程序化红金帽饰，`RightPanel` 与 `ChatBubble` 同步主题色；Quick、完整构建、隔离冒烟及开启/关闭截图闭环通过 |
+| ✅ | 新春像素主题 | `ThemeSkin` 完整管理 RightPanel/子面板/ChatBubble 的红金皮肤；17×24 像素符玄使用独立透明帽饰层；Quick、完整构建、隔离冒烟及开启/关闭截图闭环通过 |
 | ✅ | AI 调试入口 | `@@sim:holiday:cn_new_year/off/auto/status/list` 接入现有测试 Inbox；运行时日志确认切换、截图和完整退出 |
 | ✅ | Live2D 边界 | 本轮未修改 Live2D 模型、参数、物理或 RT 渲染链路 |

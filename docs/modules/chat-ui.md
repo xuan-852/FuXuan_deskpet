@@ -2,7 +2,7 @@
 
 > **2026-08-16 验证记录**：审批弹窗现统一在 `DrawPanelContent` 的视图分发之后绘制，因此会覆盖会话列表、设置、便签、报告和消耗等外置视图；`ExternalChatWindow.Shutdown()` 通过窗口线程消息执行 `DestroyWindow`，并用 `PostQuitMessage` 结束消息循环，避免 Unity 主线程跨线程销毁窗口。`WindowOverlay` 会按 `FuXuanChatWindowClass` 排除外置窗口，防止延迟重试误加全屏透明置顶样式。`build.ps1 -Quick`、完整构建、EditMode 测试 78/78 和隔离冒烟测试已通过；真实退出崩溃仍需后续运行时观察。
 
-> **2026-08-30 节日适配验证**：新增 `HolidayThemeRuntime`，以运行时程序化方式为 17×24 像素符玄叠加新春帽，并将 RightPanel、ChatBubble 的配色切换为红金主题；`@@sim:holiday:*` 命令可在测试模式切换/查询主题。最终构建和隔离冒烟通过，手动开启/关闭主题各完成一次截图闭环。Live2D 渲染链路未修改。
+> **2026-08-30 节日适配验证**：新增 `HolidayThemeRuntime.ThemeSkin` 完整皮肤槽位，以运行时程序化方式为 17×24 像素符玄叠加新春帽，并将 RightPanel、ChatBubble 及子面板的配色切换为独立红金主题；`@@sim:holiday:*` 命令可在测试模式切换/查询主题。最终构建和隔离冒烟通过，手动开启/关闭主题各完成一次截图闭环。Live2D 渲染链路未修改。
 
 > **文档作用**: 本模块文档描述桌宠「交互界面」子系统的**代码真相**——纯 IMGUI 架构（无 UGUI/无 Prefab）、四类界面元素（悬浮球/BallPanel/RightPanel/ChatBubble）、对话核心事件链，以及 17×24 像素符玄 × 对话界面的开源方案可移植汇总（换字体/换头像/加表情差分三件事）。改任何 UI 相关代码前必读。
 > **基本架构**: 全部界面为 **IMGUI**（`OnGUI`/`GUI.DrawTexture`，无 UGUI、无 Prefab、无美术贴图管线），视觉元素（圆角气泡/云纹/星点/CRT 扫描线/像素边框）均运行时 `Texture2D.SetPixel` 程序生成。核心：`RightPanel.cs`（终端窗）、`ChatBubble.cs`（头顶气泡）、`ChatManager.cs`（Entry 历史 + SplitSentences 逐句事件）、`AutoChat.cs`（气泡驱动）。2026-08-12 起 RightPanel 支持 OpenClaw 任务进度可视化：标题栏状态区（思考中部位）步骤显示 + 模态审批弹窗（todo 5/6）。
@@ -352,9 +352,10 @@
 
 ## 十四、像素符玄节日主题（2026-08-30）
 
-- `HolidayThemeRuntime` 统一维护主题状态、主题色和测试命令；当前提供 `default` 与 `cn_new_year`，另支持 `auto`、`status`、`list`。
+- `HolidayThemeRuntime` 统一维护主题状态、完整 `ThemeSkin` 颜色槽位和测试命令；当前提供 `default` 与 `cn_new_year`，另支持 `auto`、`status`、`list`。
 - 新春主题不新增贴图依赖：在加载 17×24 像素符玄后，用确定性的 17×24 像素遮罩叠加红色帽体、金色帽檐/绒球和流苏，再按原有整数倍 Point 采样放大。
-- `RightPanel` 在主题 revision 变化时重建程序生成的背景、边框、输入栏、按钮、标题和像素头像纹理；`ChatBubble` 同步切换红金气泡配色。
+- `RightPanel` 在主题 revision 变化时全量重建程序生成的背景、星云、星点、边框、输入栏、按钮、标题、子面板和像素头像纹理；终端按钮背景强制透明，避免 Unity 默认 skin 叠色；`ChatBubble` 同步切换红金气泡配色。
+- `UiTextureFactory` 保留旧颜色绘制点的兼容映射，但新代码必须直接使用 `ThemeSkin`；透明色不会参与映射，防止透明按钮变成实体色块。
 - 适配边界明确为像素符玄与聊天窗口/气泡，Live2D 模型、参数映射、物理和渲染 RT 均不参与节日主题。
 
 ### 测试命令

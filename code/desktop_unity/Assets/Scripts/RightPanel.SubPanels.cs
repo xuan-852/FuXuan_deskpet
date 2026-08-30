@@ -1315,4 +1315,34 @@ public partial class RightPanel
         };
         _subScrollStyle = GUIStyle.none;
     }
+
+    /// <summary>主题切换时完整刷新子面板皮肤，避免设置/便签/报告继续显示旧紫色。</summary>
+    private void RefreshHolidaySubPanelStyles(HolidayThemeRuntime.ThemeSkin skin)
+    {
+        if (!_subStylesReady) return;
+        ReplaceTexture(ref _subBtnBg, UiTextureFactory.MakeTex(1, 1, new Color(skin.DecorationSecondary.r, skin.DecorationSecondary.g, skin.DecorationSecondary.b, 0.85f)));
+        ReplaceTexture(ref _subBtnHoverBg, UiTextureFactory.MakeTex(1, 1, new Color(skin.AccentHover.r, skin.AccentHover.g, skin.AccentHover.b, 0.95f)));
+        ReplaceTexture(ref _subInputBg, UiTextureFactory.MakeTex(1, 1, skin.ModalSurface));
+        ReplaceTexture(ref _subSectionBg, UiTextureFactory.MakeTex(1, 1, new Color(skin.InputBarBackground.r, skin.InputBarBackground.g, skin.InputBarBackground.b, 0.55f)));
+
+        _subBtnStyle.normal.background = _subBtnBg;
+        _subBtnStyle.normal.textColor = skin.TextMain;
+        _subBtnStyle.hover.background = _subBtnHoverBg;
+        _subBtnStyle.active.background = _subBtnHoverBg;
+        _subLabelStyle.normal.textColor = skin.TextMain;
+        _subSectionStyle.normal.background = _subSectionBg;
+        _subSectionStyle.normal.textColor = skin.DecorationGold;
+        _modelButtonStyle.normal.background = _subBtnBg;
+        _modelButtonStyle.hover.background = _subBtnHoverBg;
+        _modelButtonStyle.normal.textColor = skin.TextMain;
+        _modelBodyStyle.normal.textColor = skin.TextMain;
+        _modelSectionStyle.normal.background = _subSectionBg;
+        _modelSectionStyle.normal.textColor = skin.DecorationGold;
+        _subInputStyle.normal.background = _subInputBg;
+        _subInputStyle.focused.background = _subInputBg;
+        _subInputStyle.active.background = _subInputBg;
+        _subInputStyle.normal.textColor = skin.TextMain;
+        _subInputStyle.focused.textColor = skin.TextMain;
+        _subInputStyle.active.textColor = skin.TextMain;
+    }
 }

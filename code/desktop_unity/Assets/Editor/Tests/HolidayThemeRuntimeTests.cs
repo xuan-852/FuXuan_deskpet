@@ -72,4 +72,37 @@ public class HolidayThemeRuntimeTests
         Assert.GreaterOrEqual(minY, 17);
         Assert.LessOrEqual(maxY, 23);
     }
+
+    [Test]
+    public void ChineseNewYearSkinIsIndependentFromDefaultPurplePalette()
+    {
+        string ignored;
+        HolidayThemeRuntime.TrySetTheme("off", out ignored);
+        Color defaultAccent = HolidayThemeRuntime.Active.Skin.Accent;
+
+        HolidayThemeRuntime.TrySetTheme("cn_new_year", out ignored);
+        var skin = HolidayThemeRuntime.Active.Skin;
+
+        Assert.AreNotEqual(defaultAccent, skin.Accent);
+        Assert.Less(skin.PanelTop.b, skin.PanelTop.r);
+        Assert.Greater(skin.DecorationGold.r, skin.DecorationGold.b);
+        Assert.AreNotEqual(defaultAccent, skin.StarTintC);
+    }
+
+    [Test]
+    public void PixelAccessoryUsesSeparateLayerWithoutMutatingBaseFrame()
+    {
+        string ignored;
+        HolidayThemeRuntime.TrySetTheme("cn_new_year", out ignored);
+        var basePixels = new Color32[17 * 24];
+        for (int i = 0; i < basePixels.Length; i++) basePixels[i] = new Color32(12, 34, 56, 255);
+
+        var layer = HolidayThemeRuntime.CreatePixelAccessoryLayer(17, 24);
+        var composed = HolidayThemeRuntime.ComposePixelFrame(basePixels, 17, 24);
+
+        Assert.AreEqual(basePixels.Length, layer.Length);
+        Assert.AreEqual(new Color32(12, 34, 56, 255), basePixels[0]);
+        Assert.AreNotEqual(basePixels[8 + 23 * 17], composed[8 + 23 * 17]);
+        Assert.AreEqual(0, layer[0].a);
+    }
 }

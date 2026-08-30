@@ -31,15 +31,57 @@ public class StarField
     private List<Vector2>[] _midTrail;   // 中星尾迹
     private List<Vector2>[] _smallTrail; // 小星尾迹
     private float _trailTimer;            // 尾迹采样计时（时间累积，每 0.1s 推一个采样点，帧率无关）
+    private Color _starTintA = Color.white;
+    private Color _starTintB = new Color(1f, 0.85f, 0.55f);
+    private Color _starTintC = new Color(0.85f, 0.70f, 1f);
+    private Color _starEdge = new Color(0.80f, 0.70f, 1f, 0f);
 
     /// <summary>一次性初始化：创建星点纹理 + 生成分层星点（固定种子）</summary>
     public void Init(int seed)
     {
-        _starGlowTex = UiTextureFactory.MakeStarGlowTex(36);
-        _midGlowTex = UiTextureFactory.MakeStarGlowTex(24);
+        Init(seed, Color.white, new Color(1f, 0.85f, 0.55f), new Color(0.85f, 0.70f, 1f), new Color(0.80f, 0.70f, 1f, 0f));
+    }
+
+    /// <summary>按主题初始化星点纹理与固定位置。</summary>
+    public void Init(int seed, Color tintA, Color tintB, Color tintC, Color edgeColor)
+    {
+        SetThemeColors(tintA, tintB, tintC, edgeColor);
+        _starGlowTex = UiTextureFactory.MakeStarGlowTex(36, _starEdge);
+        _midGlowTex = UiTextureFactory.MakeStarGlowTex(24, _starEdge);
         _starDotTex = UiTextureFactory.MakeStarDotTex(5);
         _starCoreTex = UiTextureFactory.MakeTex(5, 5, Color.white);
         InitStarPositions(seed);
+    }
+
+    /// <summary>主题切换时只重建星点纹理，保留位置、运动和尾迹状态。</summary>
+    public void ApplyTheme(Color tintA, Color tintB, Color tintC, Color edgeColor)
+    {
+        SetThemeColors(tintA, tintB, tintC, edgeColor);
+        if (_starGlowTex != null) UnityEngine.Object.Destroy(_starGlowTex);
+        if (_midGlowTex != null) UnityEngine.Object.Destroy(_midGlowTex);
+        _starGlowTex = UiTextureFactory.MakeStarGlowTex(36, _starEdge);
+        _midGlowTex = UiTextureFactory.MakeStarGlowTex(24, _starEdge);
+    }
+
+    private void SetThemeColors(Color tintA, Color tintB, Color tintC, Color edgeColor)
+    {
+        _starTintA = tintA;
+        _starTintB = tintB;
+        _starTintC = tintC;
+        _starEdge = edgeColor;
+    }
+
+    /// <summary>释放星点纹理。</summary>
+    public void Dispose()
+    {
+        if (_starGlowTex != null) UnityEngine.Object.Destroy(_starGlowTex);
+        if (_midGlowTex != null) UnityEngine.Object.Destroy(_midGlowTex);
+        if (_starDotTex != null) UnityEngine.Object.Destroy(_starDotTex);
+        if (_starCoreTex != null) UnityEngine.Object.Destroy(_starCoreTex);
+        _starGlowTex = null;
+        _midGlowTex = null;
+        _starDotTex = null;
+        _starCoreTex = null;
     }
 
     /// <summary>初始化分层星点（固定种子，银河带结构：5 星群沿右上→左下斜带聚集，其余真空；群内高斯散布+最小间距防堆叠）</summary>
@@ -171,7 +213,7 @@ public class StarField
         if (_starGlowTex == null || _bigStars == null) return;
         Color prev = GUI.color;
         float t = Time.time;
-        Color[] tints = { Color.white, new Color(1f, 0.85f, 0.55f), new Color(0.85f, 0.70f, 1f) };
+        Color[] tints = { _starTintA, _starTintB, _starTintC };
         // 大星：拖尾（4px 方块渐隐）→ 34px 光晕 + 7px 白芯（点状亮星），明显呼吸
         for (int i = 0; i < _bigStars.Length; i++)
         {

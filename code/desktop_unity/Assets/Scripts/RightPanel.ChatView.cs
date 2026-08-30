@@ -93,6 +93,7 @@ public partial class RightPanel
     /// <summary>第二级聊天区整体绘制（终端标题栏 + 消息列表 + 输入栏；由 OnGUI 在右移 SIDEBAR_W 后调用）</summary>
     private void DrawChatArea(float px, float py, float pw, float ph, Vector2 mp)
     {
+        HolidayThemeRuntime.ThemeSkin skin = HolidayThemeRuntime.Active.Skin;
         // ═══════════════════════════════════════
         //  终端标题栏 — [像素符玄] 符玄@太卜司:~ + 状态 + 时间 + ✕
         // ═══════════════════════════════════════
@@ -129,17 +130,17 @@ public partial class RightPanel
             // 任务执行中 → 金色 ⚙ + 步骤（工具名+摘要），呼吸提示运转中
             float taskPulse = 0.65f + 0.35f * Mathf.Sin(Time.time * 2.2f);
             statusText = "⚙ " + OpenClawBridge.ActiveStepLabel;
-            statusC = new Color(0.95f, 0.78f, 0.40f, taskPulse);
+            statusC = new Color(skin.StatusTask.r, skin.StatusTask.g, skin.StatusTask.b, taskPulse);
         }
         else if (waiting)
         {
             statusText = "● 思考中…";
-            statusC = new Color(0.72f, 0.55f, 0.95f, statusPulse);   // 思考中 → 紫
+            statusC = new Color(skin.StatusBusy.r, skin.StatusBusy.g, skin.StatusBusy.b, statusPulse);
         }
         else
         {
             statusText = "● 就绪";
-            statusC = new Color(0.45f, 0.85f, 0.55f, 1f);  // 就绪 → 绿
+            statusC = skin.StatusReady;  // 就绪
         }
 
         if (waiting && _chat != null && !string.IsNullOrEmpty(_chat.RequestStatusText))
