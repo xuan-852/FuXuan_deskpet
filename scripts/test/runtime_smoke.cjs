@@ -74,6 +74,11 @@ const COMMANDS = [
     ['@@sim:status', 'petDragging=False'],
     ['@@view:open', '[TestInbox] @@view 命令: open'],
     ['@@view:chat', '[TestInbox] @@view 命令: chat'],
+    // 节日主题闭环：只验证像素符玄/聊天 UI，不触碰 Live2D 参数或资源。
+    ['@@sim:holiday:cn_new_year', '[TestInbox] 当前节日主题: 新春主题'],
+    ['@@sim:screenshot:holiday_smoke_on', 'screenshot queued'],
+    ['@@sim:holiday:off', '[TestInbox] 当前节日主题: 默认主题'],
+    ['@@sim:screenshot:holiday_smoke_off', 'screenshot queued'],
     ['@@view:settings', '[TestInbox] @@view 命令: settings'],
     ['@@view:model', '[TestInbox] @@view 命令: model'],
     ['@@view:back', '子面板返回 → Settings'],
@@ -202,6 +207,11 @@ async function main() {
     for (const m of EXT_MARKERS) {
         if (!content.includes(m)) fails.push(`缺少独立窗口标记: ${m}`);
     }
+    const holidayShotDir = path.join(TEST_DATA_ROOT, 'test_screenshots');
+    const holidayShots = fs.existsSync(holidayShotDir)
+        ? fs.readdirSync(holidayShotDir).filter(name => name.endsWith('.png'))
+        : [];
+    if (holidayShots.length < 2) fails.push(`节日主题截图不足（实际 ${holidayShots.length} 张，期望开启/关闭各 1 张）`);
     const nre = (content.match(/NullReferenceException/g) || []).length;
     const otherExc = (content.match(/Exception:/g) || []).length - nre;
     if (nre > 0) fails.push(`Player.log 发现 ${nre} 次 NullReferenceException（面板渲染中断，见堆栈）`);

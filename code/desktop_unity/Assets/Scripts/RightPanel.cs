@@ -434,6 +434,7 @@ public partial class RightPanel : MonoBehaviour
     private Texture2D _titleBarPixelTex;   // 标题栏像素渐变背景
     private Texture2D _inputBarPixelTex;   // 输入栏像素背景
     private Texture2D _transparentTex;     // 输入控件样式透明底，避免 GUI 默认黑底
+    private int _holidayThemeRevision = -1; // 节日主题变更沿：只在切换时重建主题纹理
 
     // ==================== 装饰状态 ====================
     private string _timeDisplay = "";
@@ -1272,6 +1273,8 @@ public partial class RightPanel : MonoBehaviour
     void OnGUI()
     {
         InitStyles();
+        HolidayThemeRuntime.EnsureInitialized();
+        RefreshHolidayThemeVisuals();
         RefreshRefs();
 
         if (!_isOpen) return;
@@ -1302,6 +1305,124 @@ public partial class RightPanel : MonoBehaviour
     }
 
     /// <summary>
+    /// 主题切换后的统一刷新入口。
+    /// 主题纹理只在 Revision 变化时重建，避免在 IMGUI 每次 Layout/Repaint 中分配纹理。
+    /// </summary>
+    private void RefreshHolidayThemeVisuals()
+    {
+        int revision = HolidayThemeRuntime.Revision;
+        if (_holidayThemeRevision == revision) return;
+        _holidayThemeRevision = revision;
+
+        HolidayThemeRuntime.Theme theme = HolidayThemeRuntime.Active;
+
+        ReplaceTexture(ref _bgTex, UiTextureFactory.MakeGradientTex(64, 64,
+            theme.PanelTop, theme.PanelBottom, true));
+        if (_panelStyle != null) _panelStyle.normal.background = _bgTex;
+        ReplaceTexture(ref _bgGlowTex, UiTextureFactory.MakeGlowTex(256, theme.PanelGlow, 1.0f, new Vector2(0.08f, 0.10f)));
+        if (_panelBorderStyle != null)
+        {
+            Texture2D oldBorder = _panelBorderStyle.normal.background;
+            Texture2D newBorder = UiTextureFactory.GenRoundedBorderTex(64, 16f, 2.5f, theme.PanelBorder);
+            _panelBorderStyle.normal.background = newBorder;
+            if (oldBorder != null) Destroy(oldBorder);
+        }
+
+        ReplaceTexture(ref _inputBgTex, UiTextureFactory.GenRoundedRect(64, 48, 10, theme.InputBackground));
+        ReplaceTexture(ref _inputHoverBgTex, UiTextureFactory.GenRoundedRect(64, 48, 10, theme.InputHover));
+        ReplaceTexture(ref _inputGlowTex, UiTextureFactory.GenGlowRoundedRect(64, 48, 10,
+            new Color(theme.Accent.r, theme.Accent.g, theme.Accent.b, 0.42f)));
+        if (_inputStyle != null)
+        {
+            _inputStyle.normal.background = _inputBgTex;
+            _inputStyle.hover.background = _inputHoverBgTex;
+            _inputStyle.focused.background = _inputHoverBgTex;
+        }
+
+        ReplaceTexture(ref _bubbleFxTex, UiTextureFactory.GenBubbleTex(64, 48, 10,
+            theme.BubbleFxTop, theme.BubbleFxBottom, theme.BubbleFxBorder));
+        ReplaceTexture(ref _bubbleUserTex, UiTextureFactory.GenBubbleTex(64, 48, 10,
+            theme.BubbleUserTop, theme.BubbleUserBottom, theme.BubbleUserBorder));
+        if (_bubbleFxStyle != null)
+        {
+            _bubbleFxStyle.normal.background = _bubbleFxTex;
+            _bubbleFxStyle.normal.textColor = theme.TextMain;
+        }
+        if (_bubbleUserStyle != null)
+        {
+            _bubbleUserStyle.normal.background = _bubbleUserTex;
+            _bubbleUserStyle.normal.textColor = theme.TextMain;
+        }
+
+        ReplaceTexture(ref _titleBarPixelTex, MakeHolidayTitleTexture(theme));
+        ReplaceTexture(ref _inputBarPixelTex, UiTextureFactory.MakeTex(1, 1, theme.InputBackground));
+        ReplaceTexture(ref _separatorTex, UiTextureFactory.MakeTex(1, 1,
+            new Color(theme.Accent.r, theme.Accent.g, theme.Accent.b, 0.25f)));
+        ReplaceTexture(ref _accentLineTex, UiTextureFactory.MakeTex(1, 1, theme.Accent));
+        if (_separatorStyle != null) _separatorStyle.normal.background = _separatorTex;
+
+        ReplaceTexture(ref _toolTex, UiTextureFactory.MakeCircleTex(34,
+            new Color(theme.Accent.r, theme.Accent.g, theme.Accent.b, 0.18f)));
+        ReplaceTexture(ref _toolHoverTex, UiTextureFactory.MakeCircleTex(34,
+            new Color(theme.AccentHover.r, theme.AccentHover.g, theme.AccentHover.b, 0.40f)));
+        ReplaceTexture(ref _sendBtnTex, UiTextureFactory.MakeCircleTex(30,
+            new Color(theme.Accent.r, theme.Accent.g, theme.Accent.b, 0.30f)));
+        ReplaceTexture(ref _sendBtnHoverTex, UiTextureFactory.MakeCircleTex(30,
+            new Color(theme.AccentHover.r, theme.AccentHover.g, theme.AccentHover.b, 0.65f)));
+        if (_toolBtnStyle != null) _toolBtnStyle.normal.background = _toolTex;
+        if (_toolBtnHoverStyle != null) _toolBtnHoverStyle.normal.background = _toolHoverTex;
+        if (_sendBtnStyle != null)
+        {
+            _sendBtnStyle.normal.background = _sendBtnTex;
+            _sendBtnStyle.hover.background = _sendBtnHoverTex;
+        }
+        if (_sendBtnHoverStyle != null)
+        {
+            _sendBtnHoverStyle.normal.background = _sendBtnHoverTex;
+            _sendBtnHoverStyle.hover.background = _sendBtnHoverTex;
+        }
+
+        if (_termTitleStyle != null) _termTitleStyle.normal.textColor = theme.TextTitle;
+        if (_termLogStyle != null) _termLogStyle.normal.textColor = theme.TextMain;
+        if (_termLogUserStyle != null) _termLogUserStyle.normal.textColor = theme.TextMain;
+        if (_termPromptStyle != null) _termPromptStyle.normal.textColor = theme.Accent;
+        if (_termToolBtnStyle != null) _termToolBtnStyle.normal.textColor = theme.TextMain;
+        if (_termToolBtnHoverStyle != null) _termToolBtnHoverStyle.normal.textColor = theme.TextMain;
+
+        RefreshHolidayMascotTextures();
+    }
+
+    private static Texture2D MakeHolidayTitleTexture(HolidayThemeRuntime.Theme theme)
+    {
+        var tex = new Texture2D(1, 4, TextureFormat.ARGB32, false);
+        tex.filterMode = FilterMode.Point;
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.SetPixel(0, 0, theme.TitleTop);
+        tex.SetPixel(0, 1, theme.TitleMid);
+        tex.SetPixel(0, 2, Color.Lerp(theme.TitleMid, theme.TitleBottom, 0.55f));
+        tex.SetPixel(0, 3, theme.TitleBottom);
+        tex.Apply();
+        return tex;
+    }
+
+    private static void ReplaceTexture(ref Texture2D field, Texture2D replacement)
+    {
+        if (field != null && field != replacement) Destroy(field);
+        field = replacement;
+    }
+
+    private void RefreshHolidayMascotTextures()
+    {
+        foreach (var kv in _mascotEmoteTex)
+            if (kv.Value != null) Destroy(kv.Value);
+        _mascotEmoteTex.Clear();
+        if (_mascotOpenTex != null) Destroy(_mascotOpenTex);
+        if (_mascotBlinkTex != null) Destroy(_mascotBlinkTex);
+        _mascotOpenTex = LoadMascot(true);
+        _mascotBlinkTex = LoadMascot(false);
+    }
+
+    /// <summary>
     /// 面板内容统一绘制（屏幕模式与外置 RT 模式共用）：
     /// 背景质感分层 → 四角角饰 → 视图分发（会话列表/子面板/聊天）→ 审批模态弹窗。
     /// 外部模式渲染时 px/py 传 0（RT 原点），mp 传独立窗口回传坐标（无回传时 Vector2.zero）。
@@ -1323,6 +1444,18 @@ public partial class RightPanel : MonoBehaviour
         // 圆角细边框（SDF 九宫格，替代原 2px 硬边 + 四角方块）
         if (_panelBorderStyle != null)
             GUI.Box(bgRect, GUIContent.none, _panelBorderStyle);
+
+        // 节日主题只增加轻量 UI 装饰；不进入 Live2D，也不覆盖聊天内容区域。
+        if (HolidayThemeRuntime.IsHolidayActive)
+        {
+            HolidayThemeRuntime.Theme holiday = HolidayThemeRuntime.Active;
+            GUI.color = _panelTint;
+            UiTextureFactory.DrawPixelRect(new Rect(px + 3f, py + 3f, pw - 6f, 2f), holiday.Accent);
+            UiTextureFactory.DrawPixelRect(new Rect(px + 12f, py + 12f, 5f, 5f), holiday.AccentHover);
+            UiTextureFactory.DrawPixelRect(new Rect(px + pw - 17f, py + 12f, 5f, 5f), holiday.AccentHover);
+            UiTextureFactory.DrawPixelRect(new Rect(px + 12f, py + ph - 17f, 5f, 5f), holiday.AccentHover);
+            UiTextureFactory.DrawPixelRect(new Rect(px + pw - 17f, py + ph - 17f, 5f, 5f), holiday.AccentHover);
+        }
 
         // 四角云纹角饰（太卜司星纹，半透明叠加）
         Color ornamentA = new Color(1f, 1f, 1f, 0.35f);
@@ -2072,6 +2205,9 @@ public partial class RightPanel : MonoBehaviour
                     return null;
             }
 
+            // 表情差分完成后再叠加节日配件，保证帽子不会被脸部重绘覆盖。
+            HolidayThemeRuntime.ApplyPixelAccessory(px, w, h);
+
             // ×4 放大（与 LoadMascot 一致，Point 锐利）
             int uw = w * MASCOT_UPSCALE, uh = h * MASCOT_UPSCALE;
             var tex = new Texture2D(uw, uh, TextureFormat.ARGB32, false);
@@ -2114,6 +2250,7 @@ public partial class RightPanel : MonoBehaviour
                 px[12 * w + 5] = line;  // 左眼闭眼缝线
                 px[12 * w + 9] = line;  // 右眼闭眼缝线
             }
+            HolidayThemeRuntime.ApplyPixelAccessory(px, w, h);
             int uw = w * MASCOT_UPSCALE, uh = h * MASCOT_UPSCALE;
             var tex = new Texture2D(uw, uh, TextureFormat.ARGB32, false);
             tex.filterMode = FilterMode.Point;

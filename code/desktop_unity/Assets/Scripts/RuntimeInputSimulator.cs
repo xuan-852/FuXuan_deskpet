@@ -35,6 +35,25 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        // 节日主题是像素符玄/UI 的本地状态，不依赖 DragHandler；必须在查找拖拽组件前处理。
+        if (body.StartsWith("holiday:", StringComparison.OrdinalIgnoreCase))
+        {
+            string theme = body.Substring("holiday:".Length).Trim();
+            string result;
+            bool ok = HolidayThemeRuntime.TrySetTheme(theme, out result);
+            if (ok) Debug.Log("[TestInbox] " + result);
+            else Debug.LogWarning("[TestInbox] " + result);
+            return true;
+        }
+
+        if (body.Equals("holidays", StringComparison.OrdinalIgnoreCase))
+        {
+            string result;
+            HolidayThemeRuntime.TrySetTheme("list", out result);
+            Debug.Log("[TestInbox] " + result);
+            return true;
+        }
+
         DragHandler drag = UnityEngine.Object.FindObjectOfType<DragHandler>();
         if (drag == null)
         {
@@ -102,7 +121,7 @@ public static class RuntimeInputSimulator
         }
 
         Debug.LogWarning("[TestInbox] 未知模拟输入: " + body
-            + "（支持 status/reset/release/click:x,y/click:center/drag:x1,y1->x2,y2[,steps]/drag:offset:dx,dy[,steps]）");
+            + "（支持 status/reset/release/holiday:list/holiday:status/holiday:cn_new_year/holiday:off/holiday:auto/click:x,y/click:center/drag:x1,y1->x2,y2[,steps]/drag:offset:dx,dy[,steps]）");
         return true;
     }
 
