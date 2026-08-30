@@ -99,10 +99,14 @@ Stop-Process -Name Tuanjie.Licensing.Client -Force -ErrorAction SilentlyContinue
 1. **构建必须在沙箱 `danger-full-access` 下执行**：`Start-Process Tuanjie.exe` 被 workspace-write 沙箱拒绝（`Access is denied`）。首次被拒后**同命令升级重试一次**。
 2. **`build.ps1 -Quick` 只验证编译，不更新 `Build/DesktopPet.exe`**——需要真机时**必须跑完整 `.\build.ps1`**，否则运行的是旧 exe（2026-08-17 实测踩过）。
 3. **退出码读取**：`Start-Process -NoNewWindow` 下 `$proc.ExitCode` 偶发读取为空（宿主交互限制）——以 `-logFile` 是否存在 + 内容判定，不要当成构建失败。
-4. **ILPP 陈旧 PID**：强杀 Tuanjie 后若 `Library\ilpp.pid` 仍存在，先确认其中 PID 已不存在；新版 `build.ps1` 会自动安全清理，活动 PID 则拒绝删除。
-4. **32 位进程无 `SetWindowLongPtrW/GetWindowLongPtrW`**（`EntryPointNotFoundException` 杀线程）——P/Invoke 用 `SetWindowLongW/GetWindowLongW`。
-5. **PS 5.1 无 `?:` 三元运算符**——脚本里避免（构建脚本本身已兼容）。
-6. **`direct_compile.log` 留痕**：诊断脚本在 `logs/build/direct_compile.log` 留下最近一次试编译日志，作为判断依据。
+4. **ILPP 陈旧 PID**：强杀 Tuanjie 后若 `Library\ilpp.pid` 仍存在，新版 `build.ps1` 会校验进程身份和启动时间；已退出、PID 复用的标记会安全清理，活动或身份不明且无法证明复用的进程则拒绝删除。
+5. **32 位进程无 `SetWindowLongPtrW/GetWindowLongPtrW`**（`EntryPointNotFoundException` 杀线程）——P/Invoke 用 `SetWindowLongW/GetWindowLongW`。
+6. **PS 5.1 无 `?:` 三元运算符**——脚本里避免（构建脚本本身已兼容）。
+7. **`direct_compile.log` 留痕**：诊断脚本在 `logs/build/direct_compile.log` 留下最近一次试编译日志，作为判断依据。
+
+### ILPP PID 标记的身份校验
+
+`Library\ilpp.pid` 只记录 PID，Windows 进程退出后该 PID 可能被无关进程（常见为 `conhost`）复用。因此 `build.ps1` 不再把“PID 仍存在”直接当作活动 ILPP：进程身份匹配 ILPP/Bee/UnityLinker/IL2CPP 时阻止构建；若进程启动时间明显晚于标记写入时间，则判定为 PID 复用并安全清理；身份不明且无法证明复用时仍保守阻止，避免两个编辑器并发操作同一 `Library`。
 
 ## 四、验证闭环与验收门槛
 

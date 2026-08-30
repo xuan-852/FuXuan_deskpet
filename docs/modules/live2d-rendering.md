@@ -174,6 +174,12 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 - 拖拽和点击姿态锁定会提前从 `LateUpdate()` 返回，因此这两条路径在 `ForceUpdateModelNow()` 后显式补做一次取景更新，保证局部 RT 跟随最终模型姿态。
 - `OnGUI()` 只保留首次无效矩形时的兜底更新和 RT 绘制，不把包围盒计算绑定到 IMGUI 绘制事件；本轮 Quick、完整构建和隔离运行时冒烟通过，实际 CPU/GPU 收益仍待可见播放器 Profiling。
 
+### 2.18 走路停止时的物理收敛（2026-08-30）
+
+- 走路刚停止的 `IDLE_BLEND_DURATION` 期间，`LateUpdate()` 不再额外调用普通路径的 `ForceUpdateModelNow()`；此时 `Update()` 已在 Cubism Physics（800）前把停止输入归零，避免同一帧再次推进物理导致头部/后发在走路姿态与空闲姿态之间抖动。
+- 该保护只覆盖“停止收敛”窗口，正常行走、稳定空闲，以及星辉（#4）/法阵（#7）专用刷新路径不变；`Live2DRenderer` 仍保持 801 晚于 Cubism Physics 800。
+- 本轮 Quick、完整构建和隔离运行时冒烟均通过；停走瞬间的头部稳定性仍需在可见播放器中人工确认，不能仅以自动化冒烟替代视觉验收。
+
 ## 三、开发历史迭代
 
 | 版本 | 日期 | 变更 |
@@ -190,6 +196,7 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 | 2026-08-29 | 2026-08-29 | 局部 RT 取景改为物理完成后的每帧单次更新；拖拽/点击锁定提前返回路径补齐取景同步，避免普通帧重复遍历 Renderer 包围盒 |
 | 2026-08-29 | 2026-08-29 | `Live2DParameterMapper` 增加语义参数对象缓存，减少普通动作 `Set/Get` 的重复查找；Quick/完整构建/隔离冒烟通过，普通动作模板迁移仍继续 |
 | 2026-08-29 | 2026-08-29 | 普通空闲动作配置改用语义参数名；修复 `JsonUtility` 无法读取 `Dictionary` 导致目标为空；复用目标/冷却缓冲并修复重复尾段的 `star_spin.json`；Quick/完整构建、隔离冒烟和 `@@idle:1` 截图闭环通过 |
+| 2026-08-30 | 2026-08-30 | 走路停止过渡期间跳过普通路径的额外 `ForceUpdateNow()`，避免物理重复推进造成停下瞬间头部剧烈抖动；Quick/完整构建/隔离冒烟通过，真实观感待可见播放器确认 |
 
 ## 四、编写注意事项
 

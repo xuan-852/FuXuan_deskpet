@@ -195,6 +195,8 @@ setx DESKTOP_TOKEN "your-server-token-here"
 .\Build\DesktopPet.exe   # 启动桌面宠物
 ```
 
+> 构建 Tuanjie/Unity 需要本机 full-access 权限；受限沙箱中可能卡在授权或原生子进程阶段。以本次新日志中的 `[OK] Build succeeded!` 判断，不要把无输出直接当成 C# 编译失败。
+
 > 首次运行后可从系统托盘右键菜单启用开机自启。ESC 隐藏到托盘。
 
 ---

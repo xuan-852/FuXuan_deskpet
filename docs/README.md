@@ -1,6 +1,6 @@
 # 📚 docs/ 文档总索引
 
-> **索引状态**: 2026-08-29 复核；代码改动完成并通过相应验证后，必须同步更新模块文档与受影响的顶层文档。
+> **索引状态**: 2026-08-30 复核；代码改动完成并通过相应验证后，必须同步更新模块文档与受影响的顶层文档。
 > **文档作用**: 本文件是 `docs/` 目录的**导航地图**——告诉 AI 与开发者每份文档的作用、归属模块、阅读优先级，以及统一的文档编写模板。
 > **基本架构**: 三层结构——① 顶层权威文档（架构/规范/路线图/清单）→ ② `modules/` 模块文档（每模块一份，四要素）→ ③ 构建产物（report.* 等，勿手改）。
 > **开发历史迭代**: 2026-08-12 由「平铺 14 份文档」重构为「索引 + 模块化」结构，全部模块文档统一四要素模板；当前 `modules/` 共 10 份模块文档。
@@ -16,7 +16,7 @@
 | 文档 | 作用 | 阅读时机 |
 |------|------|---------|
 | [`README.md`](../README.md) | GitHub 项目介绍（特性亮点/架构图/快速上手/展示，**GitHub 默认渲染页**） | 访客首次了解项目 |
-| [`AGENTS.md`](../AGENTS.md) | AI 协作快速入口（7 条铁律） | **每次开工前** |
+| [`AGENTS.md`](../AGENTS.md) | AI 协作快速入口（9 条铁律） | **每次开工前** |
 | [`development-standards.md`](development-standards.md) | 唯一权威开发规范（9 章） | 写任何代码前 |
 | [`build-workflow.md`](build-workflow.md) | **编译工作流（AI 必读）**（构建入口/卡死处理/验证闭环/坑清单） | **改 C# 后构建、或构建卡死时** |
 | [`token-cost-testing.md`](token-cost-testing.md) | **Token 消耗与测试指南**（生产 vs 测试区别、消耗铁律、痛点状态） | **涉及云端调用/测试/排查烧钱前** |
@@ -96,10 +96,12 @@
 1. **新增模块**：在 `modules/` 新建文档 → 套用四要素模板 → 在 1.2 节加一行 → 更新 `AGENTS.md` 技术栈表
 2. **修改模块文档**：功能级改动**测试通过后**再更新对应 `modules/` 文档（先代码后文档），并核对 1.2 节索引表
 3. **修改顶层文档**：确认是否影响索引（标题/路径/作用变化时同步更新）
-4. **文档优先级**（AI 读取顺序）：`AGENTS.md` → `development-standards.md` → `code-truth-architecture.md` → `token-cost-testing.md` → `token-saving-architecture.md` → 对应模块文档
+4. **文档优先级**（AI 读取顺序）：`AGENTS.md` → `docs/README.md` → `development-standards.md` → `build-workflow.md` → `code-truth-architecture.md` → `token-cost-testing.md` → `token-saving-architecture.md` → 质量测试指南 → `project-bugs-and-acceptance.md` → 对应模块文档
 5. **数据真实性**：模块文档中的组件名/工具数/行号必须以代码为准（参考 `code-truth-architecture.md` 的审计方法），禁止沿用过时描述
 ## 2026-08-30 文档同步
 
 安装包/OpenClaw 桥接链路已完成一轮实现收敛，详见 [`installer-plan.md`](installer-plan.md) 与 [`modules/bridge-communication.md`](modules/bridge-communication.md)。本轮代码和安装产物均已通过对应验证；任务状态已同步到 [`task-inventory.md`](task-inventory.md)。
 
 本轮安全修复已通过 `node --check` 与 full-access `build.ps1 -Quick`：Bridge/Gateway Token 分离，本地文件路径和重解析点受限，文件内容/剪贴板/截图读取需确认，桥接请求与任务资源有上限；安装组件拒绝令牌复用、固定使用内置 Node.js，并在执行 Ollama/MiKTeX/VC++ 外部安装器前验证 Authenticode。安装服务最小权限、安装包签名和依赖哈希仍未完成发布验收。
+
+本轮 Live2D/问候修复已同步到 [`modules/live2d-rendering.md`](modules/live2d-rendering.md)、[`modules/ai-chat-system.md`](modules/ai-chat-system.md)、[`project-bugs-and-acceptance.md`](project-bugs-and-acceptance.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：停走物理收敛、自动问候时段守卫和 ILPP PID 身份校验已通过 Quick、完整构建和隔离运行时冒烟；可见播放器观感仍待人工确认。

@@ -127,18 +127,50 @@ foreach ($lockPath in $UnityLockPaths) {
 }
 
 # IL post-processing also leaves a PID marker after a forcibly terminated
-# editor.  Only remove it when the recorded PID is no longer alive; an active
-# marker is left untouched so two editors cannot run against the same Library.
+# editor.  A PID can be reused by an unrelated process (and on Windows the
+# marker may point at a short-lived conhost wrapper), so a live PID alone is
+# not enough to prove that ILPP is still running.  Keep a marker only when the
+# recorded process identifies itself as an ILPP/Bee post-processor.
 $IlppPidPath = Join-Path $ProjectDir "Library\ilpp.pid"
 if (Test-Path -LiteralPath $IlppPidPath) {
     $IlppPidText = (Get-Content -LiteralPath $IlppPidPath -Raw -ErrorAction Stop).Trim()
     $IlppPid = 0
     if ([int]::TryParse($IlppPidText, [ref]$IlppPid)) {
-        if (-not (Get-Process -Id $IlppPid -ErrorAction SilentlyContinue)) {
+        $IlppProc = Get-Process -Id $IlppPid -ErrorAction SilentlyContinue
+        $IlppInfo = $null
+        try {
+            $IlppInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$IlppPid" -ErrorAction Stop
+        } catch {
+            # Process metadata is best-effort; the process-name check below
+            # still handles the normal case on older PowerShell installations.
+        }
+        $IlppIdentity = @(
+            if ($IlppProc) { [string]$IlppProc.ProcessName }
+            if ($IlppInfo) { [string]$IlppInfo.Name; [string]$IlppInfo.CommandLine }
+        ) -join " "
+        $IsKnownIlpp = $IlppIdentity -match '(?i)(ilpp|bee\.backend|unitylinker|il2cpp)'
+        $IsPidReused = $false
+        try {
+            $MarkerTime = (Get-Item -LiteralPath $IlppPidPath -ErrorAction Stop).LastWriteTime
+            $ProcessStartTime = $IlppProc.StartTime
+            # A process started well after the marker cannot be the process
+            # that created it.  The margin avoids clock-resolution races.
+            $IsPidReused = $ProcessStartTime -gt $MarkerTime.AddSeconds(5)
+        } catch {
+            # If timestamps are unavailable, retain the conservative block.
+        }
+
+        if (-not $IlppProc) {
             Remove-Item -LiteralPath $IlppPidPath -Force -ErrorAction Stop
             Write-Host "[BUILD] Removed stale ILPP PID marker: $IlppPidPath (PID $IlppPid not running)"
-        } else {
+        } elseif ($IsPidReused) {
+            Remove-Item -LiteralPath $IlppPidPath -Force -ErrorAction Stop
+            Write-Host "[WARN] Removed stale ILPP PID marker: PID $IlppPid was reused by '$IlppIdentity' after the marker was written" -ForegroundColor Yellow
+        } elseif ($IsKnownIlpp) {
             Write-Host "[ERROR] Active ILPP process found (PID $IlppPid); refusing to remove marker" -ForegroundColor Red
+            exit 1
+        } else {
+            Write-Host "[ERROR] Live ILPP marker points to an unidentified process (PID ${IlppPid}: '$IlppIdentity'); refusing to remove marker" -ForegroundColor Red
             exit 1
         }
     } else {

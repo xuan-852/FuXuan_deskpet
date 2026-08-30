@@ -1164,8 +1164,13 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         //   缓解"法阵期每帧 4+ 次 ForceUpdateNow → 帧率暴跌 → deltaTime 膨胀 → 动作拉长"恶性循环。
         // ★ 法阵/星辰分支内部已有自己的刷新路径；其他状态按历史稳定节奏
         //   隔帧刷新，避免物理链路被 LateUpdate 的额外刷新重复推进。
+        // 走路刚停止时，Physics 正在从走路输入回到静止状态。
+        // 此时再次 ForceUpdateNow 会在同一帧重复推进物理，令头部/后发在
+        // “走路姿态 → 空闲姿态”之间来回取值，表现为停下瞬间剧烈抖动。
+        // 等 IDLE_BLEND_DURATION 淡出完成后再恢复普通隔帧刷新。
+        bool locomotionSettling = !isWalking && (_walkBlendRemaining > 0f || _wasWalkingLastFrame);
         if (_currentIdleAction != 7 && _currentIdleAction != 4
-            && (Time.frameCount & 1) == 0)
+            && !locomotionSettling && (Time.frameCount & 1) == 0)
             ForceUpdateModelNow();
 
         // ============================================================

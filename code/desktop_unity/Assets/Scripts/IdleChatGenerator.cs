@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
@@ -40,6 +40,7 @@ public class IdleChatGenerator : MonoBehaviour
     private float _lastGreetingGenTime = -999f;
     private bool _isIdleGenerating = false;
     private bool _isGreetingGenerating = false;
+    private int _greetingGenerationVersion = 0;
 
     // 问候缓存对应的时间段标签（如 "上午"、"中午"、"下午"）
     // 跨时段时自动清空旧缓存，防止上午的问候出现在中午
@@ -59,6 +60,7 @@ public class IdleChatGenerator : MonoBehaviour
         _lastGreetingGenTime = -999f;
         _isIdleGenerating = false;
         _isGreetingGenerating = false;
+        _greetingGenerationVersion++;
         _greetingTimePeriod = "";
         _idleTimePeriod = "";
         Debug.Log("[IdleChatGenerator] 🧹 已清空所有缓存（系统挂起）");
@@ -251,13 +253,16 @@ public class IdleChatGenerator : MonoBehaviour
         // ⚠️ 检测时间段是否变化 — 如果变了，清空旧缓存
         // 防止上午生成的 "早安~" 在中午被取出
         string currentPeriod = ExtractTimePeriod(timeContext);
-        if (_greetingCache.Count > 0
-            && currentPeriod != _greetingTimePeriod
+        if (currentPeriod != _greetingTimePeriod
             && !string.IsNullOrEmpty(_greetingTimePeriod))
         {
             Debug.Log($"[IdleChatGenerator] ⏰ 时间段变化：'{_greetingTimePeriod}' → '{currentPeriod}'，清空问候缓存");
             _greetingCache.Clear();
             _lastGreetingGenTime = -999f; // 允许立即重新生成
+            // 使旧时间段的异步协程结果失效，不能回写到新时间段缓存。
+            _greetingGenerationVersion++;
+            // 允许新时段立即启动生成；旧协程的回调会因代际不匹配而被忽略。
+            _isGreetingGenerating = false;
         }
 
         // 缓存不足 → 后台触发生成
@@ -287,12 +292,14 @@ public class IdleChatGenerator : MonoBehaviour
         if (IsSuppressed()) return;
 
         // 记录本次生成对应的时间段（用于后续跨时段检测）
-        _greetingTimePeriod = ExtractTimePeriod(context);
+        string generationPeriod = ExtractTimePeriod(context);
+        _greetingTimePeriod = generationPeriod;
+        int generationVersion = _greetingGenerationVersion;
 
-        StartCoroutine(GenerateGreetingCoroutine(context));
+        StartCoroutine(GenerateGreetingCoroutine(context, generationPeriod, generationVersion));
     }
 
-    private IEnumerator GenerateGreetingCoroutine(string context)
+    private IEnumerator GenerateGreetingCoroutine(string context, string generationPeriod, int generationVersion)
     {
         _isGreetingGenerating = true;
         _lastGreetingGenTime = Time.time;
@@ -327,49 +334,85 @@ public class IdleChatGenerator : MonoBehaviour
                 (ok, content) => { localOk = ok; localText = content ?? ""; }, 0.9f, 500);
             if (localOk && !string.IsNullOrWhiteSpace(localText))
             {
-                int added = 0;
-                string[] lines = localText.Split(new string[] { "|||" }, System.StringSplitOptions.RemoveEmptyEntries);
-                foreach (string line in lines)
+                if (IsCurrentGreetingGeneration(generationPeriod, generationVersion))
                 {
-                    string trimmed = line.Trim().TrimStart('1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '.', '、', '，', ' ');
-                    if (trimmed.Length > 0 && trimmed.Length <= 50) { _greetingCache.Enqueue(trimmed); added++; }
+                    int added = EnqueueGreetingLines(localText, generationPeriod);
+                    Debug.Log($"[IdleChatGenerator] 🏠 本地模型生成问候（免 API），新增 {added} 条");
+                    _isGreetingGenerating = false;
                 }
-                Debug.Log($"[IdleChatGenerator] 🏠 本地模型生成问候（免 API），新增 {added} 条");
-                _isGreetingGenerating = false;
                 yield break;
             }
             Debug.LogWarning("[IdleChatGenerator] 本地模型失败，回退 DeepSeek");
         }
         yield return StartCoroutine(
             ApiClient.PostRequest(apiUrl, ApiKey, jsonBody, 30,
-                json => HandleGreetingResponse(json),
-                err => { Debug.LogWarning($"[IdleChatGenerator] ⚠️ {err}"); _isGreetingGenerating = false; },
+                json => HandleGreetingResponse(json, generationPeriod, generationVersion),
+                err =>
+                {
+                    Debug.LogWarning($"[IdleChatGenerator] ⚠️ {err}");
+                    if (IsCurrentGreetingGeneration(generationPeriod, generationVersion))
+                        _isGreetingGenerating = false;
+                },
                 "idle"));
     }
 
-    private void HandleGreetingResponse(string responseJson)
+    private void HandleGreetingResponse(string responseJson, string generationPeriod, int generationVersion)
     {
-        if (responseJson != null)
+        if (IsCurrentGreetingGeneration(generationPeriod, generationVersion) && responseJson != null)
         {
             string content = ApiClient.ExtractContent(responseJson);
             if (!string.IsNullOrEmpty(content))
             {
-                string[] lines = content.Split(new string[] { "|||" },
-                    System.StringSplitOptions.RemoveEmptyEntries);
-                int added = 0;
-                foreach (string line in lines)
-                {
-                    string trimmed = line.Trim().TrimStart('1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '.', '、', '，', ' ');
-                    if (trimmed.Length > 0 && trimmed.Length <= 50)
-                    {
-                        _greetingCache.Enqueue(trimmed);
-                        added++;
-                    }
-                }
+                int added = EnqueueGreetingLines(content, generationPeriod);
                 Debug.Log($"[IdleChatGenerator] ✅ 问候生成完成，新增 {added} 条");
             }
         }
-        _isGreetingGenerating = false;
+        if (IsCurrentGreetingGeneration(generationPeriod, generationVersion))
+            _isGreetingGenerating = false;
+    }
+
+    private bool IsCurrentGreetingGeneration(string generationPeriod, int generationVersion)
+    {
+        return generationVersion == _greetingGenerationVersion
+            && generationPeriod == _greetingTimePeriod;
+    }
+
+    private int EnqueueGreetingLines(string content, string generationPeriod)
+    {
+        int added = 0;
+        string[] lines = content.Split(new string[] { "|||" },
+            System.StringSplitOptions.RemoveEmptyEntries);
+        foreach (string line in lines)
+        {
+            string trimmed = line.Trim().TrimStart('1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '.', '、', '，', ' ');
+            if (trimmed.Length <= 0 || trimmed.Length > 50) continue;
+            if (!IsGreetingTimeCompatible(trimmed, generationPeriod))
+            {
+                Debug.LogWarning($"[IdleChatGenerator] ⏰ 丢弃与当前时段不符的问候（时段={generationPeriod}）");
+                continue;
+            }
+            _greetingCache.Enqueue(trimmed);
+            added++;
+        }
+        return added;
+    }
+
+    private static bool IsGreetingTimeCompatible(string greeting, string period)
+    {
+        bool morning = period.Contains("清晨") || period.Contains("上午");
+        bool noon = period.Contains("中午");
+        bool afternoon = period.Contains("下午");
+        bool evening = period.Contains("傍晚") || period.Contains("夜晚") || period.Contains("深夜");
+
+        if ((greeting.Contains("早安") || greeting.Contains("早上") || greeting.Contains("早晨") || greeting.Contains("早啊")) && !morning)
+            return false;
+        if ((greeting.Contains("中午") || greeting.Contains("午安")) && !noon)
+            return false;
+        if (greeting.Contains("下午") && !afternoon)
+            return false;
+        if ((greeting.Contains("晚上") || greeting.Contains("晚安") || greeting.Contains("夜晚") || greeting.Contains("夜里")) && !evening)
+            return false;
+        return true;
     }
 
     // ==================================================================

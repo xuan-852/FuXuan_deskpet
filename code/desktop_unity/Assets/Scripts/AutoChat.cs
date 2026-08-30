@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections.Generic;
 
 /// <summary>
@@ -37,6 +37,7 @@ public class AutoChat : MonoBehaviour
     private DragHandler _drag;
     private Live2DRenderer _renderer;
     private IdleChatGenerator _idleGen;
+    private TimeWeatherController _timeController;
     private float _lastGreetingTime = -999f;
     private float _lastInteractionTime = -999f;
 
@@ -46,6 +47,7 @@ public class AutoChat : MonoBehaviour
         _bubble = GetComponent<ChatBubble>();
         if (_bubble == null) _bubble = gameObject.AddComponent<ChatBubble>();
         _renderer = GetComponent<Live2DRenderer>();
+        _timeController = GetComponent<TimeWeatherController>();
 
         // 监听拖拽事件
         _drag = GetComponent<DragHandler>();
@@ -231,9 +233,13 @@ public class AutoChat : MonoBehaviour
     private string PickGreeting()
     {
         // 构建场景上下文
-        int hour = System.DateTime.Now.Hour;
-        bool isWeekend = System.DateTime.Now.DayOfWeek == System.DayOfWeek.Saturday
-                      || System.DateTime.Now.DayOfWeek == System.DayOfWeek.Sunday;
+        System.DateTime now = System.DateTime.Now;
+        // 与昼夜/天气控制器共用调试小时，避免测试或运行时出现两套时间。
+        int hour = (_timeController != null && _timeController.debugHourOverride >= 0
+            && _timeController.debugHourOverride <= 23)
+            ? _timeController.debugHourOverride : now.Hour;
+        bool isWeekend = now.DayOfWeek == System.DayOfWeek.Saturday
+                      || now.DayOfWeek == System.DayOfWeek.Sunday;
 
         string timeKey;
         if (isWeekend && hour >= 8 && hour < 12)
