@@ -13,6 +13,23 @@ using UnityEngine;
 /// </summary>
 public static class ToolHelpers
 {
+    /// <summary>日志脱敏：工具参数/结果不得把凭据或隐私内容写入 Player.log。</summary>
+    public static string SanitizeLogValue(string toolName, string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+        if (string.Equals(toolName, "file_read", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "get_clipboard", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "take_screenshot", StringComparison.OrdinalIgnoreCase))
+            return "[sensitive content omitted]";
+
+        string redacted = System.Text.RegularExpressions.Regex.Replace(
+            value,
+            @"(?i)(token|password|passwd|secret|api[_-]?key|authorization)(\s*[:=]\s*)[^,;\s}]+",
+            "$1$2[REDACTED]");
+        if (redacted.Length > 400) redacted = redacted.Substring(0, 400) + "…";
+        return redacted;
+    }
+
     // ================================================================
     //  P/Invoke 声明
     // ================================================================
@@ -830,8 +847,20 @@ public static class ToolHelpers
 
     public static bool IsPathAllowed(string path)
     {
-        if (string.IsNullOrEmpty(path)) return true;
-        string full = Path.GetFullPath(path);
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        string full;
+        try { full = Path.GetFullPath(path); }
+        catch { return false; }
+        if (full.IndexOf('\0') >= 0) return false;
+
+        bool IsSameOrChild(string candidate, string root)
+        {
+            if (string.IsNullOrWhiteSpace(root)) return false;
+            string normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return string.Equals(candidate, normalizedRoot, StringComparison.OrdinalIgnoreCase)
+                || candidate.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || candidate.StartsWith(normalizedRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
 
         // 禁止操作系统关键目录（含 Program Files / 用户 AppData — 装删系统组件/配置文件）
         string[] deniedPrefixes = {
@@ -845,7 +874,7 @@ public static class ToolHelpers
         };
         foreach (var denied in deniedPrefixes)
         {
-            if (!string.IsNullOrEmpty(denied) && full.StartsWith(denied, StringComparison.OrdinalIgnoreCase))
+            if (IsSameOrChild(full, denied))
                 return false;
         }
 
@@ -859,9 +888,28 @@ public static class ToolHelpers
             };
             foreach (var sub in deniedSubs)
             {
-                if (full.StartsWith(rootPath + sub, StringComparison.OrdinalIgnoreCase))
+                if (IsSameOrChild(full, Path.Combine(rootPath, sub)))
                     return false;
             }
+        }
+
+        // Junction / symbolic link may point an apparently safe path into a protected tree.
+        string probe = full;
+        while (!string.IsNullOrEmpty(probe))
+        {
+            try
+            {
+                if ((File.Exists(probe) || Directory.Exists(probe))
+                    && (File.GetAttributes(probe) & FileAttributes.ReparsePoint) != 0)
+                    return false;
+            }
+            catch { return false; }
+
+            string parent;
+            try { parent = Path.GetDirectoryName(probe); }
+            catch { return false; }
+            if (string.IsNullOrEmpty(parent) || string.Equals(parent, probe, StringComparison.OrdinalIgnoreCase)) break;
+            probe = parent;
         }
         return true;
     }

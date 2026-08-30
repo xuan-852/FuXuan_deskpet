@@ -142,7 +142,7 @@ flowchart LR
 | 命名 | `ToolName` 用 snake_case（如 `generate_ppt`、`openclaw_task`） |
 | 描述 | `ToolDescription` 用【分类】开头（【办公】/【系统】/【网络】…），说明用途、输出位置、参数含义 |
 | 参数 | `ToolParametersJson = ToolSchema.Schema(Req/Opt)`，`Req` 必填、`Opt` 可选 |
-| 危险工具 | 加入 `ToolRegistry.DangerousTools` 清单，触发 `ToolConfirmManager` 审批 |
+| 危险工具 | 加入 `ToolRegistry.DangerousTools` 清单，触发 `ToolConfirmManager` 审批；涉及文件内容、剪贴板或截图外发的工具同样必须确认 |
 | 错误返回 | 统一 `❌ 描述 + 具体错误`；成功返回含 `✅` 与关键结果的中文消息 |
 | 自动打开 | 生成文件类工具成功后 `Process.Start(new ProcessStartInfo(path){UseShellExecute=true})` 打开 |
 
@@ -219,6 +219,13 @@ Assets/
 | 目录 | snake_case（`code/desktop_unity` 是历史例外，勿改） |
 
 ---
+
+### 3.3 本地文件与隐私边界
+
+- 文件读取、文件信息、列目录、搜索、打开和重命名必须先经过 `ToolHelpers.IsPathAllowed`；拒绝系统目录、保留目录、重解析点/符号链接及路径穿越。
+- `file_read`、`get_clipboard`、`take_screenshot` 属于需确认工具；测试不得用空参数静默执行，日志只能记录脱敏摘要。
+- 桥接层的 `BRIDGE_TOKEN` 与 Gateway 的 `GATEWAY_TOKEN` 必须独立配置；缺少 Bridge Token 时业务端点拒绝请求，不得增加默认 Token 回退。
+- 安装器执行外部 `.exe` 前必须检查 Authenticode 状态为 `Valid`；桥接服务必须使用随安装包提供的 Node.js，不得从机器 PATH 回退；安装脚本发现 Bridge/Gateway 令牌相同时必须拒绝注册。
 
 ## 四、代码风格规范
 

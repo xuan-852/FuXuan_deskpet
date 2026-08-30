@@ -199,6 +199,7 @@ public class OpenFolderTool : IPetTool
         string path = ToolHelpers.JsonRead(argsJson, "path");
         if (string.IsNullOrEmpty(path)) path = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
         path = Environment.ExpandEnvironmentVariables(path);
+        if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统或受保护路径，不可打开";
         if (!Directory.Exists(path))
         {
             // 试试常见简写
@@ -381,6 +382,7 @@ public class ListFilesTool : IPetTool
         path = Environment.ExpandEnvironmentVariables(path);
 
         if (path.Length <= 3 && path.EndsWith(":")) path += "\\";
+        if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统或受保护路径，不可列出";
         if (!Directory.Exists(path)) return $"❌「{path}」此路不通";
 
         try

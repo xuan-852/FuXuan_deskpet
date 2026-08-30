@@ -183,7 +183,7 @@ setx DESKTOP_TOKEN "your-server-token-here"
 > ⚠ 设完后需**重启 VS Code / 重新登录**使环境变量生效。
 > 密钥一律环境变量读取（`ChatConfig.cs`，附 `.cs.example` 模板），**不入库**。
 > 本地聊天不需要 API Key；选择云端模型前才需要配置 `DEEPSEEK_API_KEY`。
-> 环境变量名以代码为准：OpenClaw Bridge 用 `BRIDGE_TOKEN`（fallback 自动读 `GATEWAY_TOKEN`）；
+> 环境变量名以代码为准：OpenClaw Bridge 用独立的 `BRIDGE_TOKEN`，不会回退到 `GATEWAY_TOKEN`；
 > `DESKTOP_TOKEN` 仅用于 ServerPollService 便签轮询（`localhost:3000`）。
 
 ### 构建 & 运行
@@ -241,7 +241,7 @@ setx DESKTOP_TOKEN "your-server-token-here"
 - **本地质量护栏**：短角色卡、相关忆境、最近两轮历史、回复后处理和确定性句数约束共同控制低能力模型的输出
 - **本地工具路由**：普通闲聊不额外规划；明确操作时只注入相关工具目录，危险术式仍走统一确认，不把 65 个 schema 全塞给本地模型
 - **Token 优化（N40 T1-T8）**：时间戳挪尾部（缓存命中率 98.6%）、body schema 裁剪、max_tokens:1200+thinking 禁用、历史 15000 字符预算 + Ollama 摘要、SystemPrompt -41%、Speculative Multi-Action（一次多 tool_call）
-- **危险工具审批**：7 个危险工具（file_delete/power/lock_screen/run_command/set_volume/mute/openclaw_task）走 `ToolConfirmManager` 确认
+- **危险工具审批**：10 个危险工具（含 file_read/get_clipboard/take_screenshot，以及 file_delete/power/lock_screen/run_command/set_volume/mute/openclaw_task）走 `ToolConfirmManager` 确认
 - **看门狗**：单次请求总超时 600s；任务外包有心跳熔断（无进展自动取消）+ 成本熔断（不可重试错误禁重复调用）
 - **自动重试**：最多 3 次，400/401/403 不重试
 - **打字机逐句显示**（2.5s 间隔）、**消息队列**（等待时不丢输入）
@@ -459,3 +459,4 @@ Desktop_per_pro/
 
 </div>
 > 2026-08-30：安装包/OpenClaw 桥接链路已完成一轮稳定性迭代：内置包路径可配置、服务注册失败可见、升级自动刷新、桥接 `/health` 可诊断，安装器编译与静默安装/卸载验收通过。详见 [`docs/installer-plan.md`](docs/installer-plan.md)。
+> 2026-08-30：继续完成安装器安全收敛：Bridge/Gateway 令牌禁止复用，桥接服务固定使用内置 Node.js，Ollama/MiKTeX/VC++ 外部安装器执行前强制验证 Authenticode；服务最小权限、发布签名和依赖哈希仍待目标机/发布流程验收。

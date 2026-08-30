@@ -89,7 +89,7 @@ node scripts/test/runtime_smoke.cjs   # 隔离目录 + .test_mode + 生产记忆
 ### 3.5 测试铁律（违反出事故）
 1. **测试必须无记忆隔离**：`FU_XUAN_DATA` 指向临时目录（smoke 已内置）或至少建 `.test_mode`；测后删 + 污染则 `node scripts/backup_memory.cjs --all` 留底清理
 2. **UI 测试不靠模拟鼠标点击**：用 inbox 终端链路（`@@view:...`/`@@emote:`/`@@approval:`/`@@view:extclick:x,y`/`@@sim:*`）；新 UI 状态必须预留等价命令
-3. **禁止空参数遍历调用所有工具**：只限只读白名单（get_system_info/get_mouse_pos/get_clipboard）
+3. **禁止空参数遍历调用所有工具**：只限低风险只读白名单（get_system_info/get_mouse_pos）；剪贴板、文件内容和截图工具必须显式确认
 4. **密钥不入库**：环境变量读取，日志/输出禁含 token
 5. **PS 5.1 写 JSON 带 BOM**：Python 读 `utf-8-sig`；`.cs`/`.ps1`/`.cmd` 带 BOM，其余 UTF-8 无 BOM
 

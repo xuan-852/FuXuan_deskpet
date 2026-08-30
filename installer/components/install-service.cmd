@@ -55,10 +55,13 @@ set "BRIDGE_PORT="
 for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v BRIDGE_PORT 2^>nul ^| findstr /I "BRIDGE_PORT"') do set "BRIDGE_PORT=%%b"
 if not defined BRIDGE_PORT set "BRIDGE_PORT=19876"
 
-rem LocalSystem cannot read the installing user's OpenClaw config.
+rem Read the Gateway token independently from the Bridge token. Prefer the
+rem installer-written environment value; LocalSystem cannot read the user's
+rem OpenClaw config after service startup, so copy only this token into the
+rem protected service environment file.
 set "GATEWAY_TOKEN="
-for /f "usebackq delims=" %%t in (`powershell -NoProfile -Command "$p=Join-Path $env:USERPROFILE '.openclaw\openclaw.json'; if(Test-Path $p){try{$c=Get-Content $p -Raw -Encoding UTF8^|ConvertFrom-Json; $c.gateway.auth.token}catch{}}"`) do set "GATEWAY_TOKEN=%%t"
-if not defined GATEWAY_TOKEN for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v OPENCLAW_GATEWAY_TOKEN 2^>nul ^| findstr /I "OPENCLAW_GATEWAY_TOKEN"') do set "GATEWAY_TOKEN=%%b"
+for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v OPENCLAW_GATEWAY_TOKEN 2^>nul ^| findstr /I "OPENCLAW_GATEWAY_TOKEN"') do set "GATEWAY_TOKEN=%%b"
+if not defined GATEWAY_TOKEN for /f "usebackq delims=" %%t in (`powershell -NoProfile -Command "$p=Join-Path $env:USERPROFILE '.openclaw\openclaw.json'; if(Test-Path $p){try{$c=Get-Content $p -Raw -Encoding UTF8^|ConvertFrom-Json; $c.gateway.auth.token}catch{}}"`) do set "GATEWAY_TOKEN=%%t"
 
 if not defined BRIDGE_TOKEN (
     echo [ERROR] BRIDGE_TOKEN is missing from HKCU\Environment; service was not registered
@@ -67,6 +70,13 @@ if not defined BRIDGE_TOKEN (
 if not defined GATEWAY_TOKEN (
     echo [ERROR] OpenClaw Gateway token is missing; service was not registered
     exit /b 12
+)
+if defined BRIDGE_TOKEN (
+    powershell -NoProfile -Command "if ([string]::Equals($env:GATEWAY_TOKEN,$env:BRIDGE_TOKEN,[StringComparison]::Ordinal)) { exit 1 } else { exit 0 }" >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] BRIDGE_TOKEN and Gateway token must be different; service was not registered
+        exit /b 12
+    )
 )
 if not exist "%BRIDGE%\openclaw_bridge.js" (
     echo [ERROR] Bridge entrypoint is missing: "%BRIDGE%\openclaw_bridge.js"
@@ -94,7 +104,6 @@ if defined OFFICE_PYTHON >>"%BRIDGE%\bridge-env.cmd" echo set "OFFICE_PYTHON=%OF
 >>"%BRIDGE%\run-bridge-service.cmd" echo cd /d "%%~dp0"
 >>"%BRIDGE%\run-bridge-service.cmd" echo call "%%~dp0bridge-env.cmd"
 >>"%BRIDGE%\run-bridge-service.cmd" echo set "NODE=%%~dp0node\node.exe"
->>"%BRIDGE%\run-bridge-service.cmd" echo if not exist "%%NODE%%" for /f "delims=" %%%%N in ^('where node 2^>nul^'^) do if not defined NODE set "NODE=%%%%N"
 >>"%BRIDGE%\run-bridge-service.cmd" echo if not exist "%%NODE%%" ^(
 >>"%BRIDGE%\run-bridge-service.cmd" echo   echo [ERROR] Node.js runtime not found 1^>^>"%%~dp0service.err.log"
 >>"%BRIDGE%\run-bridge-service.cmd" echo   exit /b 20

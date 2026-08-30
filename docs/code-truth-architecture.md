@@ -195,7 +195,7 @@ flowchart TB
 | `LatexCompileTool.cs` ★文档未列 | **compile_latex** → OpenClawBridge.CompileLatexAsync，输出 `DataPathConfig.DocumentsDir` |
 | `AsyncToolBase.cs` | 异步工具基类（含 `ToolName` 虚属性，`search_web` 等 override 于此） |
 | `IPetTool.cs` | 工具接口（ToolName / ToolDescription / ToolParametersJson / IsAsync / Execute / ExecuteAsync） |
-| `ToolRegistry.cs` | 反射自动发现 IPetTool（AppDomain.GetAssemblies）；DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, **openclaw_task**} |
+| `ToolRegistry.cs` | 反射自动发现 IPetTool（AppDomain.GetAssemblies）；DangerousTools = {file_read, get_clipboard, take_screenshot, file_delete, power, lock_screen, run_command, set_volume, mute, **openclaw_task**} |
 | `ToolSchema.cs` | JSON Schema 构建器 |
 | `ToolHelpers.cs` | 工具辅助函数 |
 | `ToolConfirmManager.cs` | 危险工具确认管理 |
@@ -313,7 +313,7 @@ flowchart TB
 - HTTP 端口 **19876**：`/health`（免鉴权）、`/search`、`/task`（POST 提交任务）、`/task/{id}`（GET 轮询）、`/task/{id}/cancel`（取消）、`/task/{id}/approve`（审批回执）、`/compile_latex`、`/generate_office`（2026-08-12 起 `/task` 系列已实现并 E2E 打通）
 - **exec 审批（2026-08-12）**：OpenClaw 侧 `exec.approval.resolve` RPC 回执，`decision` ∈ `allow-once / allow-always / deny`；pendingApproval 按 kind 分流（exec / plugin）；`tools.exec.mode=ask` 已配置，危险命令须用户审批
 - WebSocket 网关：`ws://127.0.0.1:18789`
-- **认证（N39 后改为环境变量）**：请求头 `x-bridge-token`，取值优先 `BRIDGE_TOKEN` 环境变量（系统级，64 字符），fallback `GATEWAY_TOKEN`；`GATEWAY_TOKEN` 自动从 `C:\Users\25295\.openclaw\openclaw.json` 读取（含 BOM strip）
+- **认证**：请求头 `x-bridge-token` 只接受独立的 `BRIDGE_TOKEN` 环境变量（缺失时拒绝业务请求）；Gateway 连接单独使用 `GATEWAY_TOKEN`，必要时从 `~/.openclaw/openclaw.json` 读取（含 BOM strip），两者不互相回退
 - C# 侧 `OpenClawBridge.cs`：`BASE_URL = http://127.0.0.1:19876`，`BridgeToken` 同样读环境变量 `BRIDGE_TOKEN`（未配置则返回空串禁用鉴权并打 Warning）
 - **进程管理**：PM2 管理（进程名 `openclaw-bridge`），`ecosystem.config.js` 配置
 - **并行锁（N40 后重构）**：`requestChains = new Map()`（per-sessionKey 串行链，防止并发覆盖 waiter），180s 超时

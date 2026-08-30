@@ -48,6 +48,14 @@ if not defined OLLAMA (
         echo [ERROR] Ollama installer download failed. See "%LOG%".
         exit /b 30
     )
+    set "FU_OLLAMA_SETUP=%SETUP%"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=Get-AuthenticodeSignature -LiteralPath $env:FU_OLLAMA_SETUP; if($s.Status -ne 'Valid'){ exit 1 }" >>"%LOG%" 2>&1
+    if errorlevel 1 (
+        >>"%LOG%" echo [ERROR] Ollama installer Authenticode signature is invalid.
+        echo [ERROR] Ollama installer signature is invalid; refusing to execute. See "%LOG%".
+        del /q "%SETUP%" >nul 2>&1
+        exit /b 30
+    )
     echo [INFO] Installing Ollama (timeout: %DOWNLOAD_TIMEOUT_SEC%s)...
     >>"%LOG%" echo [INFO] launching Ollama installer with /VERYSILENT.
     set "FU_OLLAMA_SETUP=%SETUP%"

@@ -151,7 +151,7 @@
 **验收**: ✅ 「每天 8:00 打开某应用」可配置（`set_reminder` + `action_type=local_tool`）、到期真实执行（`TriggerReminder` → `ExecuteReminderAction`）、失败有通知（气泡 ⚠️ + `result` 写入提醒）。
 
 **P2 落地说明（2026-08-12）**:
-- **安全规则（重要）**: 到时执行**不静默跑危险动作**。local_tool 若在 `ToolRegistry.DangerousTools`（file_delete/power/run_command/lock_screen/set_volume/mute/openclaw_task）→ 弹 `ToolConfirmManager` 确认（点宠物=允许 / ESC=拒绝 / 60s 超时拒绝）；`openclaw_task` **一律确认**；`HasPending` 被占用时跳过本次执行（防抢占）
+- **安全规则（重要）**: 到时执行**不静默跑危险动作**。local_tool 若在 `ToolRegistry.DangerousTools`（file_read/get_clipboard/take_screenshot/file_delete/power/run_command/lock_screen/set_volume/mute/openclaw_task）→ 弹 `ToolConfirmManager` 确认（点宠物=允许 / ESC=拒绝 / 60s 超时拒绝）；`openclaw_task` **一律确认**；`HasPending` 被占用时跳过本次执行（防抢占）
 - **执行结果**: `FinishAction` 写回 `action.result`/`lastRunAt` + `Save()`，气泡显示「✅/⚠️ 定时动作执行完成：…」（截断 60 字符）
 - **测试**: `ToolEngineTests` 新增 7 用例（旧数据兼容 / local_tool 序列化往返 / openclaw_task 序列化往返 / 危险判定对齐 ToolRegistry / BuildAction 解析三态）——2026-08-12 EditMode 全过（46 总 45 过，唯一失败为预存在的异步工具 WaitForSeconds 限制）
 
@@ -192,7 +192,7 @@
 | `run_command` 白名单**不放开** | ToolHelpers.cs 的安全设计是正确决策；OpenClaw 的 `exec` 走其自身审批流，桥接层**不透传任意命令** |
 | 危险动作确认 | `openclaw_task` 中隐含的浏览器提交/命令执行 → 必须走 `ToolConfirmManager`（点击宠物允许 / ESC 拒绝 / 60s 超时拒绝） |
 | 串行锁保留 | 桥 `requestChain` 同一时刻一个在途任务；桌宠侧 `IsBusy` 时排队或拒绝 |
-| 令牌 | `BRIDGE_TOKEN` / `GATEWAY_TOKEN` 环境变量，不留默认值（历史已轮换过） |
+| 令牌 | `BRIDGE_TOKEN` / `GATEWAY_TOKEN` 独立配置，不留默认值，不允许相互回退（历史令牌已轮换过） |
 | 登录态浏览器 | `profile="user"` 操作需用户明示同意（高风险能力，默认关） |
 
 ---

@@ -27,6 +27,13 @@ if not exist "%DEST%" (
     echo [WARN] MiKTeX download failed - skipping
     exit /b 0
 )
+set "FU_MIKTEX_SETUP=%DEST%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=Get-AuthenticodeSignature -LiteralPath $env:FU_MIKTEX_SETUP; if($s.Status -ne 'Valid'){ exit 1 }" >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] MiKTeX installer signature is invalid; refusing to execute "%DEST%"
+    del /q "%DEST%" >nul 2>&1
+    exit /b 40
+)
 "%DEST%" --unattended --auto-install=yes --auto-admin=yes
 echo [OK] MiKTeX install finished (exit=%errorlevel%)
 goto :eof

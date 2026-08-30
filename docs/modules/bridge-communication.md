@@ -32,7 +32,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | 项 | 值 | 说明 |
 |----|-----|------|
 | `BRIDGE_PORT` | 19876 | env `BRIDGE_PORT`，默认 19876 |
-| `BRIDGE_TOKEN` | env `BRIDGE_TOKEN` || GATEWAY_TOKEN | Unity 必须带 `x-bridge-token` 头 |
+| `BRIDGE_TOKEN` | 仅 env `BRIDGE_TOKEN` | Unity 必须带 `x-bridge-token` 头；不再回退到 Gateway Token |
 | `GATEWAY_TOKEN` | env `GATEWAY_TOKEN` || 自动从 `~/.openclaw/openclaw.json` 读取（strip BOM） | 跟随 gateway token 轮换，避免 8/5 认证失败 |
 | `GATEWAY_URL` | `ws://127.0.0.1:18789` | OpenClaw Gateway WebSocket |
 | `SESSION_KEY` | `agent:main:main` | Gateway 会话键 |
@@ -54,7 +54,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | `/generate_office` | POST | ✅ | `{type: ppt/docx/xlsx, description, title?, theme?}` | `{success, path?, title?, folder_path?, error?}` | C# 300s |
 | `/extract_pdf` | POST | ✅ | `{path, max_chars?}` | `{success, text?, pages?, chars?, is_scanned?, error?}` | C# 180s |
 
-> ⚠️ `/health` 鉴权注：代码中鉴权检查（`authToken !== BRIDGE_TOKEN`）在路径分发**之前**，即 `/health` 实际也要求 `x-bridge-token`（实测 401）——与早期文档「免鉴权」描述不符，已按代码真相修正。
+> `/health` 为本机免鉴权诊断端点；其他端点在路径分发前校验 `x-bridge-token`。Bridge Token 与 Gateway Token 必须分离。
 > ⚠️ `steps` 字段：工具调用轨迹数组 `[{tool, summary, ts}]`，桥接层实时事件（`stream: "tool"` phase start/result）按 `toolCallId` 去重收集，上限 `MAX_TASK_STEPS=200`。
 > ⚠️ `pendingApproval` 字段：`{kind, id, slug, command, cwd, host, createdAtMs, expiresAtMs}`，`kind` ∈ `exec`（exec.approval.requested 独立事件）/ `plugin`（agent 事件 approval 流）；来自 Gateway `stream: "approval"` 事件（phase requested/resolved）与 `exec.approval.requested` 独立事件；任务完成/取消后自动清空。
 > ⚠️ 失败统一返回 `{success:false, error:"..."}`；404 兜底文案：`{error: 'Not found. Use /search?q=, /compile_latex, /generate_office, /extract_pdf, /task[...], or /health'}`。
@@ -66,6 +66,9 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | **请求锁** `requestChains`（per-session） | run#7 曾因并发请求互相覆盖 waiter 发生响应错位，当时用全局 `requestChain` 串行；2026-08-12 升级为 per-sessionKey 锁 Map：同一 sessionKey 串行、不同 sessionKey 并行（任务用独立 sessionKey `agent:main:task-<id>`，多任务实测并行启动差 88ms）；`sendChatAndWait(query, timeoutMs, onActivity, sessionKey)` 按 sessionKey 取/放锁 |
 | **任务心跳** `lastActivityAt` | 任何 chat 中间事件（工具调用/增量输出/进度汇报）都算 agent 活跃；桌宠轮询「有进展就重置，连续无进展才熔断」 |
 | **不可重试错误分类** `classifyTaskError` | 连接类/超时类/元数据异常 → `fatal: true`；C# 侧见 `FATAL_PREFIX = "❌ [不可重试]"`，LLM 不再换说法反复重调（烧 token 元凶） |
+| **Token 隔离** | Bridge 仅读取 `BRIDGE_TOKEN`；Gateway 仅使用 `GATEWAY_TOKEN` 或配置文件中的 `gateway.auth.token`，两者不互相回退 |
+| **请求体/任务限额** | 普通 POST 请求体上限 256 KiB；任务文本上限 60,000 字符；同时运行/排队任务最多 4 个；`maxSteps` 上限 200 |
+| **文件边界** | `/extract_pdf` 只接受绝对路径，并拒绝系统目录、重解析点和符号链接路径 |
 | **GATEWAY_TOKEN 自动轮换** | 优先 env，否则读 openclaw.json（strip BOM 防 JSON.parse 失败） |
 | **BOM 防护** | PowerShell Set-Content 写 BOM → `.replace(/^\uFEFF/, '')`（8/7 复现根因） |
 | **任务预算** | `buildTaskPrompt` 步骤预算（maxSteps 默认 20）+ 长任务心跳汇报规则 |
@@ -118,6 +121,13 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | 2026-08-27 | **任务取消与错误分类收敛**：退出流程新增非阻塞取消请求；取消接口校验响应 `success`；轮询网络错误正确标记 `LastTaskWasFatal`；新增网络错误分类测试。 |
 | 2026-08-27 | **C# 请求入口收敛**：搜索、健康、LaTeX、办公、PDF、任务和审批请求统一经 `ConfigureRequest()` 配置鉴权与请求头；各端点 timeout 数值保持不变，完整构建和隔离冒烟通过。 |
 
+### 2026-08-30 安全加固
+
+- 服务启动先监听 HTTP，再异步连接 Gateway；Gateway 连接慢或失败时 `/health` 仍可返回状态。
+- 普通 POST 请求体上限 256 KiB，任务文本上限 60,000 字符，同时运行/排队任务最多 4 个，`maxSteps` 上限 200；请求头/请求体读取也有超时。
+- `/extract_pdf` 只接受绝对 `.pdf` 路径，并拒绝系统目录、重解析点和符号链接路径。
+- 隔离负向验证：未带 Bridge Token 的 `/search` 返回 401，超大 `/task` 请求返回 413，Gateway 不可用时 `/health` 返回 503。
+
 ## 四、编写注意事项
 
 1. **新增端点标准流程**：Python 脚本 → 桥接端点（**curl 验证**）→ OpenClawBridge.cs 方法 → ToolEngine 工具类 → `build.ps1 -Quick` → 测试 → 更新文档 → 提交（development-standards.md 第九章）
@@ -126,7 +136,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 4. **PM2 铁律**：进程勿手动 kill/start（EADDRINUSE）；改桥接后 `pm2 restart openclaw-bridge --update-env`
 5. **请求体收集**：Node 端必须 `Buffer.concat` 收集 body（`body += chunk` 会按 TCP 块截断中文）
 6. **BOM 坑**：PS 5.1 `Out-File -Encoding utf8` 写 BOM → Python 读 JSON 用 `utf-8-sig`；JS 读配置 strip BOM
-7. **Token 安全**：密钥只从环境变量读取（模板用 .example）；日志/输出禁含 Token；内置默认 Token 仅兜底并告警
+7. **Token 安全**：Bridge/Gateway 使用独立 Token；Bridge 缺少 `BRIDGE_TOKEN` 时拒绝业务请求；日志/输出禁含 Token，不得添加内置默认 Token
 8. **验证命令**：`node --check code/desktop_unity/openclaw_bridge.js`（JS 语法）；`curl http://127.0.0.1:19876/health`（健康检查）
 9. **超时选择**：search 180s / compile_latex 1800s（分块生成 10-20 分钟）/ generate_office 300s（AI 组织 + 本地渲染 10-60s）/ extract_pdf 180s（大 PDF 提取可能超 60s）；新端点按实际耗时给足余量
 ## 2026-08-30 安装包桥接实现状态
@@ -134,5 +144,5 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 - 桥接启动现在允许 OpenClaw 动态导入失败后继续提供 `/health`，返回 `503` 和结构化错误，避免服务静默退出。
 - `/health` 为免鉴权诊断端点；其他端点仍必须携带 `x-bridge-token`。
 - `OPENCLAW_NODE_MODULES` 支持包根目录和 `node_modules` 父目录；LaTeX 默认输出跟随 `FU_XUAN_DATA/Documents`，不再固定到 D 盘。
-- 安装包服务 wrapper 固定使用内置 OpenClaw 包根目录；安装/升级会校验服务启动与健康状态，C# 首次启动可读取用户级环境变量。
+- 安装包服务 wrapper 固定使用内置 Node.js 与 OpenClaw 包根目录，不回退到机器 PATH；安装/升级会校验服务启动与健康状态，并拒绝 Bridge/Gateway 令牌复用；C# 首次启动可读取用户级环境变量。
 - 本轮验证：`node --check`、full-access `build.ps1 -Quick`、便携目录重打包、隔离端口 `/health` 和 Inno 编译/静默安装卸载均通过。

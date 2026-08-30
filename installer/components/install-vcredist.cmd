@@ -30,6 +30,13 @@ if not exist "%DEST%" (
     echo [WARN] VC++ download failed - skipping (pet may fail to start)
     exit /b 0
 )
+set "FU_VCREDIST_SETUP=%DEST%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=Get-AuthenticodeSignature -LiteralPath $env:FU_VCREDIST_SETUP; if($s.Status -ne 'Valid'){ exit 1 }" >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] VC++ installer signature is invalid; refusing to execute "%DEST%"
+    del /q "%DEST%" >nul 2>&1
+    exit /b 40
+)
 "%DEST%" /install /quiet /norestart
 echo [OK] VC++ install finished (exit=%errorlevel%)
 exit /b 0

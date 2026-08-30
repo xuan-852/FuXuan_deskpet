@@ -101,3 +101,5 @@
 ## 2026-08-30 文档同步
 
 安装包/OpenClaw 桥接链路已完成一轮实现收敛，详见 [`installer-plan.md`](installer-plan.md) 与 [`modules/bridge-communication.md`](modules/bridge-communication.md)。本轮代码和安装产物均已通过对应验证；任务状态已同步到 [`task-inventory.md`](task-inventory.md)。
+
+本轮安全修复已通过 `node --check` 与 full-access `build.ps1 -Quick`：Bridge/Gateway Token 分离，本地文件路径和重解析点受限，文件内容/剪贴板/截图读取需确认，桥接请求与任务资源有上限；安装组件拒绝令牌复用、固定使用内置 Node.js，并在执行 Ollama/MiKTeX/VC++ 外部安装器前验证 Authenticode。安装服务最小权限、安装包签名和依赖哈希仍未完成发布验收。

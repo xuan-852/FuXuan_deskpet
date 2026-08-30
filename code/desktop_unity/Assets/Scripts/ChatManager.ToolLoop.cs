@@ -152,7 +152,7 @@ public partial class ChatManager
             {
                 SetRequestStatus($"执行：{call.name}", RequestStage.RunningTool);
                 OnToolCalled?.Invoke(call.name);
-                Debug.Log($"[ChatManager] ⚡ 施法: {call.name}({call.arguments})");
+                Debug.Log($"[ChatManager] ⚡ 施法: {call.name}({ToolHelpers.SanitizeLogValue(call.name, call.arguments)})");
 
                 // ★ 成本熔断：openclaw_task 已因「不可重试错误」失败过一次，
                 //   本回合不再重复调用（防 LLM 换说法反复烧 token）
@@ -218,7 +218,7 @@ public partial class ChatManager
                         : "法阵未就绪";
                 }
 
-                Debug.Log($"[ChatManager] 📜 结果: {result}");
+                Debug.Log($"[ChatManager] 📜 结果: {ToolHelpers.SanitizeLogValue(call.name, result)}");
                 OnToolResult?.Invoke(call.name, result);
                 RecordMemoryForTool(call.name, call.arguments, result);
 

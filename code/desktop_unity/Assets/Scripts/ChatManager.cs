@@ -676,7 +676,7 @@ public partial class ChatManager : MonoBehaviour
         yield return StartCoroutine(toolInvoker.ExecuteCoroutine(plan.ToolName, plan.ArgumentsJson));
         if (_abortRequested) yield break;
         result = toolInvoker.GetCoroutineResult() ?? "❌ 本地术式没有返回结果";
-        Debug.Log($"[ChatManager] 🧭 本地术式结果: {plan.ToolName} → {result}");
+        Debug.Log($"[ChatManager] 🧭 本地术式结果: {plan.ToolName} → {ToolHelpers.SanitizeLogValue(plan.ToolName, result)}");
         OnToolResult?.Invoke(plan.ToolName, result);
         RecordMemoryForTool(plan.ToolName, plan.ArgumentsJson, result);
         onResult?.Invoke(result);

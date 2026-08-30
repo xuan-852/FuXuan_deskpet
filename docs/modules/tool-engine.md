@@ -1,9 +1,9 @@
 # 工具系统 ToolEngine — 65 工具插件架构与稳定性报告
 
 > **文档作用**: 本模块文档描述桌宠「工具系统」的**代码真相**——IPetTool 插件架构、ToolRegistry 反射自动发现、AsyncToolBase 异步基类、危险工具审批、12 个工具文件 65 个已注册工具的分类清单，以及 2026-08-08 全量稳定性测试报告（57 用例 0 真实 bug）。新增/修改/删除任何 AI 工具前必读。
-> **基本架构**: `IPetTool`（接口）+ `ToolSchema`（参数 Schema）→ 实现类（12 个工具文件 + 7 个基础设施 .cs）→ `ToolRegistry`（AppDomain 反射自动发现 + 调度）→ `AsyncToolBase`（异步/协程基类）→ `ChatManager` 调用。云端通过 Function Calling 进入该链路；本地通过 `LocalToolRouter` 输出 JSON 计划后进入同一 `ToolCallInvoker`，不复制第二套工具实现。危险工具清单 `DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}`，经 `ToolConfirmManager` 审批。关键文件：`Assets/Scripts/ToolEngine/`（20 个 .cs，含测试器 ToolBenchmarkRunner）。
+> **基本架构**: `IPetTool`（接口）+ `ToolSchema`（参数 Schema）→ 实现类（12 个工具文件 + 7 个基础设施 .cs）→ `ToolRegistry`（AppDomain 反射自动发现 + 调度）→ `AsyncToolBase`（异步/协程基类）→ `ChatManager` 调用。云端通过 Function Calling 进入该链路；本地通过 `LocalToolRouter` 输出 JSON 计划后进入同一 `ToolCallInvoker`，不复制第二套工具实现。危险工具清单 `DangerousTools = {file_read, get_clipboard, take_screenshot, file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}`，经 `ToolConfirmManager` 审批。关键文件：`Assets/Scripts/ToolEngine/`（20 个 .cs，含测试器 ToolBenchmarkRunner）。
 > **开发历史迭代**: N40 起工具数 40+→52→55（新增 Pogget/LaTeX 等）；2026-08-08 `9b94c09` 修复 4 类 benchmark 问题（emoji 误判、DANGER_GUARD 真执行、run_command GBK 崩溃、file_move 链式失败）；55 工具全量测试 44 OK / 6 DANGER_GUARD / 5 SKIP / 2 ERROR（均预期）；2026-08-12 P1 收尾 55→**59**（+OfficeTools 3 个补录 + openclaw_task 补录，任务外包 /task 端点落地）；2026-08-12 P4 新增 3 个偏好工具 → **62**（set_preference / query_preferences / remove_preference，PreferencesManager 配套）；2026-08-12 P5 新增 3 个任务模板工具 → **65**（query_task_templates / save_task_template / remove_task_template，TaskTemplateManager 配套）+ openclaw_task 支持 template/template_args + 轨迹记录（TaskTrajectoryManager，太卜手札）。
-> **编写注意事项**: ①测试**禁止空参数遍历调用所有工具**（lock_screen 真锁屏、file_delete 真删文件、set_volume 真改音量），空参测试只限只读白名单（get_system_info/get_mouse_pos/get_clipboard）；②新增工具自动被反射发现，无需手动注册；③工具执行须返回中文 ✅/❌ 前缀消息；④危险工具须入 DangerousTools 清单并走 ToolConfirmManager 审批；⑤run_command 输出必须 UTF-8 解码（`chcp 65001`），Unity Mono 无 I18N.CJK 会抛异常。
+> **编写注意事项**: ①测试**禁止空参数遍历调用所有工具**（lock_screen 真锁屏、file_delete 真删文件、set_volume 真改音量），空参测试只限低风险只读白名单（get_system_info/get_mouse_pos）；②新增工具自动被反射发现，无需手动注册；③工具执行须返回中文 ✅/❌ 前缀消息；④危险工具须入 DangerousTools 清单并走 ToolConfirmManager 审批；⑤run_command 输出必须 UTF-8 解码（`chcp 65001`），Unity Mono 无 I18N.CJK 会抛异常。
 
 ---
 
@@ -55,7 +55,7 @@ qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请�
 
 - 65 个已注册工具均至少出现在 `LocalToolRouter` 的一个自然语言意图目录中，并同步存在于 `ChatManager.IntentToolMap`；偏好、任务模板、动作复盘/验证、文件读写等此前容易漏路由的工具已补齐关键词和白名单。
 - `DesktopPet` 启动时自动挂载 `PreferencesManager` 与 `TaskTemplateManager`，确保 `set/query/remove_preference` 和 `query/save/remove_task_template` 不会因单例未初始化而失效。
-- 隔离运行时基准覆盖 65 个用例：42 个 OK、7 个 DANGER_GUARD、8 个 SKIP；7 个危险工具均只核验注册与危险标记，未执行真实副作用。文件写入在隔离目录中被 `ToolHelpers.IsPathAllowed` 按 Windows 安全策略拦截，知识库索引因测试目录不存在而返回预期错误，均不属于自然语言路由断链。
+- `ToolBenchmarkRunner` 当前定义 65 个用例，其中 10 个 DANGER_GUARD、8 个 SKIP；危险工具只核验注册与危险标记，未执行真实副作用。历史隔离运行记录中的文件写入由 `ToolHelpers.IsPathAllowed` 按 Windows 安全策略拦截，知识库索引因测试目录不存在而返回预期错误，均不属于自然语言路由断链。
 - 2026-08-25 的自然语言隔离验收为 5/5：系统信息、文件搜索、打开文件夹、剪贴板、Excel 均命中预期工具；其中剪贴板误路由曾被复现并由“高置信度规则先行”修复。
 - 文档/PDF/OpenClaw 任务不再完全依赖本地 3B 模型转述：原始用户需求由 `TryHardenPlanArguments` 确定性回填；`openclaw_bridge.js` 额外限制 LaTeX 请求体 2 MiB、编译器为 xelatex/pdflatex/lualatex，输出路径仅允许配置的数据根目录 `DataPathConfig.DocumentsDir`。
 - 规划模型按任务分层：轻量/普通歧义请求使用 `LocalLLMClient.ModelName`（默认 qwen2.5:3b），PDF、Office、OpenClaw 和多步骤请求使用 `LocalLLMClient.ChatModelName`（默认 qwen3:8b）；8B 不可用自动降级 3B，最终执行仍走同一白名单与审批链。
@@ -85,7 +85,7 @@ qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请�
 |------|------|
 | `IPetTool.cs` | 工具接口 |
 | `AsyncToolBase.cs` | 异步工具基类（ToolName 虚属性） |
-| `ToolRegistry.cs` | 反射自动发现 + 调度；`DangerousTools = {file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}` |
+| `ToolRegistry.cs` | 反射自动发现 + 调度；`DangerousTools = {file_read, get_clipboard, take_screenshot, file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}` |
 | `ToolSchema.cs` | JSON Schema 构建器 |
 | `ToolHelpers.cs` | 工具辅助函数 |
 | `ToolConfirmManager.cs` | 危险工具确认管理 |
@@ -102,7 +102,7 @@ qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请�
 
 ### 2.6 危险工具审批流程
 
-`DangerousTools`（7 个：file_delete / power / lock_screen / run_command / set_volume / mute / openclaw_task）→ `ToolConfirmManager` 弹确认 → 用户同意才执行。测试器验证时**只验证 IsDangerous/HasTool 标记，绝不执行**。
+`DangerousTools`（10 个：file_read / get_clipboard / take_screenshot / file_delete / power / lock_screen / run_command / set_volume / mute / openclaw_task）→ `ToolConfirmManager` 弹确认 → 用户同意才执行。测试器验证时**只验证 IsDangerous/HasTool 标记，绝不执行**。
 
 > ℹ️ `openclaw_task`（太卜神行法，`VisionKnowledgeTools.cs`）把复杂多步任务外包给 OpenClaw 智能体（浏览器/命令行），经 `OpenClawBridge.ExecuteTaskAndWaitAsync` 提交 + 心跳轮询（默认 300s 无进展判卡死自动取消）。ChatManager 侧有成本熔断：`_openclawTaskFatalSeen`——一旦任务返回不可重试错误（`❌ [不可重试]`），本轮禁止再次调用，防 LLM 换说法反复重试烧 token。参数：task（必填）/ mode（agent/browser）/ timeout_seconds / max_steps / heartbeat_seconds / max_idle_heartbeats / **template**（任务模板名，P5.3 优先于 task，从 `TaskTemplateManager` 展开占位符）/ **template_args**（模板占位符参数 JSON 字符串，如 `{"url":"https://example.com"}`）。P5.2 起执行完毕后自动记录轨迹到 `TaskTrajectoryManager`（task_trajectories.json，成功/失败/耗时/工具步数），下次同类任务提交前经 `BuildReferenceText` 附加「成功经验/失败教训」参考（成功 2 条 + 失败 1 条，referenceCount 计数），供 OpenClaw 借鉴。
 > 🎯 **工具步数回传**（2026-08-12 Phase B）：`RecordTrajectory` 签名追加 `int stepCount = 0`（`TaskTrajectoryEntry.stepCount` 字段，0=未知），成功路径传 `OpenClawBridge.LastTaskStepCount`（`ExecuteTaskAndWaitAsync` 结束时由 `ActiveStepCount` 快照）——任务执行了多少步工具调用会沉淀进轨迹库，供后续同类任务参考「这个任务用了几步」。配套 RightPanel 进度显示 + 审批弹窗（见 chat-ui.md）。
@@ -156,9 +156,15 @@ qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请�
 | 🚀 1–5s | 4 | 9% | run_command 1003ms、generate_motion 4029ms |
 | 🐢 >5s | 5 | 11% | openclaw_search 11s、search_web 16s（网络/GLM 固有） |
 
+### 2026-08-30 安全加固
+
+- `ToolHelpers.IsPathAllowed` 现在统一拒绝系统/保留目录、重解析点和符号链接路径；文件读取、文件信息、列目录、搜索、打开和重命名均在执行前检查。
+- `file_read`、`get_clipboard`、`take_screenshot` 纳入 `DangerousTools`，必须经过用户确认；`ToolBenchmarkRunner` 对三者只验证危险标记，不执行真实读取或截图。
+- `ChatManager` 工具参数/结果日志和本地工具结果统一脱敏，敏感工具直接省略内容，普通日志中的 token/password/secret 等字段替换为 `[REDACTED]`。
+
 ## 四、编写注意事项
 
-1. **测试禁止空参数遍历调用所有工具**：`lock_screen` 真锁屏、`file_delete` 真删文件、`set_volume` 真改音量、`mute` 真静音、`power` 真关机——**只读安全白名单**（get_system_info / get_mouse_pos / get_clipboard）才可空参测试
+1. **测试禁止空参数遍历调用所有工具**：`lock_screen` 真锁屏、`file_delete` 真删文件、`set_volume` 真改音量、`mute` 真静音、`power` 真关机——**低风险只读白名单**（get_system_info / get_mouse_pos）才可空参测试；剪贴板、文件内容和截图必须显式确认
 2. **新增工具三件套**：Python 脚本（如需）→ 桥接端点（curl 验证）→ OpenClawBridge.cs 方法 → ToolEngine 工具类 → `build.ps1 -Quick` → 测试 → 更新文档 → 提交（详见 development-standards.md 第八章）
 3. **反射自动发现**：工具类实现 `IPetTool` 即被 `ToolRegistry` 自动注册，无需手动注册表；但**旧文档中的工具名列表不会自动更新**——新增/改名后必须同步更新本文档与 report.md
 4. **返回值格式**：成功返回 `✅ <中文描述>`，失败返回 `❌ <中文描述>`（Unity Mono culture-sensitive StartsWith 陷阱已修复，但新判定代码仍须用 `StringComparison.Ordinal`）

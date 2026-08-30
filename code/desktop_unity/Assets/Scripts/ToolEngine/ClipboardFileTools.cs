@@ -107,16 +107,9 @@ public class FileOpenTool : IPetTool
         string path = ToolHelpers.JsonRead(argsJson, "path");
         if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
         path = ToolHelpers.DecodeFileUri(path);
+        if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统或受保护路径，不可打开";
         try
         {
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-            return $"✅ 已打开「{Path.GetFileName(path)}」";
-        }
-        catch { }
-        // 试试不转义
-        try
-        {
-            path = ToolHelpers.JsonRead(argsJson, "path");
             Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
             return $"✅ 已打开「{Path.GetFileName(path)}」";
         }
@@ -281,10 +274,14 @@ public class FileRenameTool : IPetTool
         string newName = ToolHelpers.JsonRead(argsJson, "new_name");
         if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(newName)) return "❌ 需指定文件和目标名";
         if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统要地，不可轻动";
+        if (Path.IsPathRooted(newName) || newName.Contains("\\") || newName.Contains("/")
+            || newName == "." || newName == "..")
+            return "❌ 新名称只能是当前目录下的文件名";
         try
         {
             string dir = Path.GetDirectoryName(path);
             string newPath = Path.Combine(dir ?? "", newName);
+            if (!ToolHelpers.IsPathAllowed(newPath)) return "❌ 新名称指向受保护路径，不可重命名";
             if (Directory.Exists(path)) Directory.Move(path, newPath);
             else if (File.Exists(path)) File.Move(path, newPath);
             else return $"❌ 找不到「{Path.GetFileName(path)}」";
@@ -313,6 +310,7 @@ public class FileInfoTool : IPetTool
     {
         string path = ToolHelpers.DecodeFileUri(ToolHelpers.JsonRead(argsJson, "path"));
         if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
+        if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统或受保护路径，不可读取信息";
         try
         {
             if (File.Exists(path))
@@ -419,6 +417,7 @@ public class FileReadTool : IPetTool
         if (!string.IsNullOrEmpty(offsetStr)) int.TryParse(offsetStr, out offset);
         if (offset < 0) offset = 0;
         if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
+        if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统或受保护路径，不可读取";
         try
         {
             if (!File.Exists(path)) return $"❌ 不见「{Path.GetFileName(path)}」踪迹";
@@ -499,6 +498,11 @@ public class SearchFilesTool : IPetTool
     {
         string query = ToolHelpers.JsonRead(argsJson, "query");
         string rootDir = ToolHelpers.JsonRead(argsJson, "root");
+        if (!string.IsNullOrEmpty(rootDir) && !ToolHelpers.IsPathAllowed(ToolHelpers.DecodeFileUri(rootDir)))
+        {
+            onResult?.Invoke("❌ 系统或受保护路径，不可搜索");
+            yield break;
+        }
         if (string.IsNullOrEmpty(query)) { onResult?.Invoke("❌ 未说要搜什么"); yield break; }
 
         // ★ 修复（2026-08-05）：递归搜索/进程等待必须移到后台线程，
@@ -582,6 +586,11 @@ public class SearchFileTool : IPetTool
     {
         string query = ToolHelpers.JsonRead(argsJson, "query");
         string rootDir = ToolHelpers.JsonRead(argsJson, "root");
+        if (!string.IsNullOrEmpty(rootDir) && !ToolHelpers.IsPathAllowed(ToolHelpers.DecodeFileUri(rootDir)))
+        {
+            onResult?.Invoke("❌ 系统或受保护路径，不可搜索");
+            yield break;
+        }
         if (string.IsNullOrEmpty(query)) { onResult?.Invoke("❌ 未说要搜什么"); yield break; }
 
         var task = System.Threading.Tasks.Task.Run(() => ToolHelpers.SearchFileByPython(query, rootDir));

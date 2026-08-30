@@ -37,9 +37,9 @@ function resolveOpenClawGatewayEntry() {
     throw new Error('[Bridge] 无法定位 openclaw dist/gateway-chat-*.js：请设置 OPENCLAW_NODE_MODULES 或全局安装 openclaw（npm i -g openclaw）');
 }
 import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { execSync } from 'node:child_process';
-import { writeFileSync, unlinkSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, copyFileSync, readdirSync } from 'node:fs';
+import { writeFileSync, unlinkSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, copyFileSync, readdirSync, lstatSync } from 'node:fs';
 import { dirname, basename, extname, join, resolve, relative, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -55,9 +55,8 @@ try {
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 const GATEWAY_URL     = process.env.GATEWAY_URL     || 'ws://127.0.0.1:18789';
-// 🔒 Gateway Token：优先从环境变量读取；否则自动从 OpenClaw 配置文件读取
-//   （跟随 gateway 的 token 轮换，避免内置默认值失效导致 8/5 认证失败的复现）；
-//   都拿不到才回退到旧默认值并警告。
+// 🔒 Gateway Token：优先从环境变量读取；否则自动从 OpenClaw 配置文件读取。
+//   两处都拿不到时拒绝连接，绝不回退到 Bridge Token 或内置默认值。
 const GATEWAY_TOKEN   = process.env.GATEWAY_TOKEN || (() => {
     const cfgPath = process.env.OPENCLAW_CONFIG
         || join(process.env.USERPROFILE || process.env.HOME || '', '.openclaw', 'openclaw.json');
@@ -76,11 +75,11 @@ const GATEWAY_TOKEN   = process.env.GATEWAY_TOKEN || (() => {
     } catch (e) {
         console.warn(`[Bridge] ⚠️ 读取 ${cfgPath} 失败: ${e.message}`);
     }
-    console.warn('[Bridge] ⚠️ GATEWAY_TOKEN 未配置且无法从配置文件读取，正在使用内置默认 Token。建议在 PM2/启动脚本中设置环境变量 GATEWAY_TOKEN 并轮换该 Token。');
-    return '367be203e32a4da345a6859d08298071dc058b78d4bcb203';
+    console.error('[Bridge] GATEWAY_TOKEN 未配置且无法从配置文件读取，拒绝连接 Gateway。');
+    return '';
 })();
 // 🔒 Bridge HTTP 鉴权 Token：Unity 客户端必须携带 x-bridge-token 头（与 GATEWAY_TOKEN 独立，可单独配置）
-const BRIDGE_TOKEN    = process.env.BRIDGE_TOKEN   || GATEWAY_TOKEN;
+const BRIDGE_TOKEN    = process.env.BRIDGE_TOKEN   || '';
 const BRIDGE_PORT     = parseInt(process.env.BRIDGE_PORT || '19876', 10);
 const SESSION_KEY     = process.env.SESSION_KEY     || 'agent:main:main';
 const CHAT_TIMEOUT_MS = parseInt(process.env.CHAT_TIMEOUT_MS || '180000', 10);
@@ -88,7 +87,16 @@ const DEFAULT_DATA_ROOT = process.env.FU_XUAN_DATA
     || join(process.env.LOCALAPPDATA || process.env.TEMP || '.', 'FuXuan', 'DesktopPetData');
 const LATEX_DOCUMENTS_ROOT = resolve(process.env.LATEX_DOCUMENTS_ROOT || join(DEFAULT_DATA_ROOT, 'Documents'));
 const MAX_COMPILE_BODY_BYTES = 2 * 1024 * 1024;
+const MAX_REQUEST_BODY_BYTES = 256 * 1024;
 const ALLOWED_LATEX_COMPILERS = new Set(['xelatex', 'pdflatex', 'lualatex']);
+
+function sanitizeLogText(value, maxChars = 100) {
+    const redacted = String(value ?? '').replace(
+        /((?:["']?)(?:token|password|passwd|secret|api[_-]?key|authorization)(?:["']?\s*[:=]\s*))(["'][^"']*["']|[^,;\s}]+)/gi,
+        '$1[REDACTED]'
+    );
+    return redacted.length > maxChars ? `${redacted.slice(0, maxChars)}...` : redacted;
+}
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let chatClient   = null;
@@ -109,6 +117,9 @@ const requestChains = new Map();
 // ─── Gateway Connection ──────────────────────────────────────────────────────
 async function connect_() {
     try {
+        if (!GATEWAY_TOKEN) {
+            throw new Error('GATEWAY_TOKEN 未配置，已拒绝连接 Gateway');
+        }
         if (!GatewayChatClient) {
             throw new Error(`OpenClaw package unavailable: ${openClawResolveError || 'GatewayChatClient export missing'}`);
         }
@@ -363,6 +374,8 @@ const taskStore = new Map();
 
 // ★ 步骤轨迹上限：超出截断最旧步骤，防止高频 tool.call 导致内存膨胀
 const MAX_TASK_STEPS = 200;
+const MAX_ACTIVE_TASKS = 4;
+const MAX_TASK_TEXT_CHARS = 60000;
 
 // ★ 活跃任务（全局兜底）：串行锁保证同一时刻至多一个 running 任务。
 //   Gateway 的独立事件（exec.approval.requested）不带 sessionKey，
@@ -1002,6 +1015,68 @@ function validateLatexOutputPath(outputPath) {
     return null;
 }
 
+function validatePdfInputPath(inputPath) {
+    if (!isAbsolute(inputPath)) return 'PDF path must be absolute';
+    const target = resolve(inputPath);
+    if (extname(target).toLowerCase() !== '.pdf') return 'PDF path must point to a .pdf file';
+    const protectedRoots = [
+        process.env.WINDIR || 'C:\\Windows',
+        process.env.ProgramFiles || 'C:\\Program Files',
+        process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+        process.env.ProgramData || 'C:\\ProgramData',
+        process.env.APPDATA,
+        process.env.LOCALAPPDATA,
+    ].filter(Boolean).map(resolve);
+    // The app's own data directory is an intentional import/export area.
+    const allowedDataRoot = resolve(DEFAULT_DATA_ROOT);
+    for (const root of protectedRoots) {
+        if (isPathInside(root, target) && !isPathInside(allowedDataRoot, target))
+            return 'PDF path points to a protected system or application-data directory';
+    }
+
+    // Reject symlink/junction-like components to prevent path policy bypasses.
+    let probe = target;
+    while (probe && probe !== dirname(probe)) {
+        try {
+            if (lstatSync(probe).isSymbolicLink()) return 'PDF path must not contain symbolic-link components';
+        } catch { /* missing parent is handled by the caller */ }
+        probe = dirname(probe);
+    }
+    return null;
+}
+
+function hasValidBridgeToken(actual) {
+    if (!BRIDGE_TOKEN || typeof actual !== 'string') return false;
+    const expected = Buffer.from(BRIDGE_TOKEN, 'utf8');
+    const supplied = Buffer.from(actual, 'utf8');
+    return expected.length === supplied.length && timingSafeEqual(expected, supplied);
+}
+
+function readRequestBody(req, maxBytes = MAX_REQUEST_BODY_BYTES) {
+    return new Promise((resolveBody, rejectBody) => {
+        const chunks = [];
+        let size = 0;
+        let rejected = false;
+        req.on('data', chunk => {
+            if (rejected) return;
+            size += chunk.length;
+            if (size > maxBytes) {
+                rejected = true;
+                const error = new Error(`请求体超过 ${maxBytes} 字节上限`);
+                error.statusCode = 413;
+                rejectBody(error);
+                req.resume();
+                return;
+            }
+            chunks.push(chunk);
+        });
+        req.on('end', () => {
+            if (!rejected) resolveBody(Buffer.concat(chunks).toString('utf8'));
+        });
+        req.on('error', rejectBody);
+    });
+}
+
 // ─── 编译前检查外部文件引用 ────────────────────────────────────────────────
 // AI 生成的文档可能引用不存在的代码/图片文件（如 \lstinputlisting{code/gpio_poll.c}），
 // 直接编译必然失败且报错晦涩。这里提前检查并给出明确提示。
@@ -1052,7 +1127,7 @@ function startHttpServer() {
         // 🔒 除 /health 外所有请求必须携带 x-bridge-token，防止任意网页/进程滥用。
         // 不设置任何 CORS 头：浏览器跨域页面将无法读取响应。
         const authToken = req.headers['x-bridge-token'];
-        if (authToken !== BRIDGE_TOKEN) {
+        if (!hasValidBridgeToken(authToken)) {
             res.writeHead(401, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Unauthorized: missing or invalid x-bridge-token header' }));
             return;
@@ -1078,7 +1153,7 @@ function startHttpServer() {
             }
 
             try {
-                console.log(`[Bridge] Search: "${query.substring(0, 100)}..."`);
+                console.log(`[Bridge] Search: "${sanitizeLogText(query)}"`);
                 const t0 = Date.now();
                 const text = await sendChatAndWait(query);
                 const elapsed = Date.now() - t0;
@@ -1099,15 +1174,25 @@ function startHttpServer() {
         // GET  /task/{id}       → 轮询 {status, result?, error?}
         // POST /task/{id}/cancel → 取消（排队任务直接跳过；在途任务中断等待）
         if (path === '/task' && req.method === 'POST') {
-            const bodyChunks = [];
-            req.on('data', chunk => bodyChunks.push(chunk));
-            req.on('end', async () => {
+            readRequestBody(req).then(async bodyText => {
                 try {
-                    const body = JSON.parse(Buffer.concat(bodyChunks).toString('utf-8') || '{}');
+                    const body = JSON.parse(bodyText || '{}');
                     const task = (body.task || '').trim();
                     if (!task) {
                         res.writeHead(400, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ success: false, error: '缺少 task 字段' }));
+                        return;
+                    }
+                    if (task.length > MAX_TASK_TEXT_CHARS) {
+                        res.writeHead(413, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: `task 超过 ${MAX_TASK_TEXT_CHARS} 字符上限` }));
+                        return;
+                    }
+                    const activeTasks = [...taskStore.values()]
+                        .filter(entry => entry.status === 'queued' || entry.status === 'running').length;
+                    if (activeTasks >= MAX_ACTIVE_TASKS) {
+                        res.writeHead(429, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: '当前任务队列已满，请等待已有任务完成' }));
                         return;
                     }
                     if (!connected) {
@@ -1122,14 +1207,23 @@ function startHttpServer() {
                             return;
                         }
                     }
-                    const entry = startTask(task, body.mode || 'agent', parseInt(body.timeoutMs || CHAT_TIMEOUT_MS, 10), parseInt(body.maxSteps || 0, 10));
-                    console.log(`[Bridge] Task ${entry.id} queued (mode=${entry.mode}, timeout=${entry.timeoutMs}ms, maxSteps=${entry.maxSteps}): "${task.substring(0, 80)}..."`);
+                    const requestedTimeout = parseInt(body.timeoutMs || CHAT_TIMEOUT_MS, 10);
+                    const requestedSteps = parseInt(body.maxSteps || 0, 10);
+                    const timeoutMs = Number.isFinite(requestedTimeout)
+                        ? Math.min(Math.max(requestedTimeout, 10000), 600000) : CHAT_TIMEOUT_MS;
+                    const maxSteps = Number.isFinite(requestedSteps)
+                        ? Math.min(Math.max(requestedSteps, 0), MAX_TASK_STEPS) : 0;
+                    const entry = startTask(task, body.mode || 'agent', timeoutMs, maxSteps);
+                    console.log(`[Bridge] Task ${entry.id} queued (mode=${entry.mode}, timeout=${entry.timeoutMs}ms, maxSteps=${entry.maxSteps}): "${sanitizeLogText(task, 80)}"`);
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: true, task_id: entry.id, status: entry.status }));
                 } catch (err) {
                     res.writeHead(500, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: false, error: err.message }));
                 }
+            }).catch(err => {
+                res.writeHead(err.statusCode || 400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, error: err.message }));
             });
             return;
         }
@@ -1175,11 +1269,9 @@ function startHttpServer() {
             // ★ 新增：审批回执 POST /task/{id}/approve {decision: 'allow-once'|'allow-always'|'deny'}
             //   把 Unity 侧的用户决定回执给 Gateway（exec.approval.resolve），命令才继续/中止。
             if (taskId && action === 'approve' && req.method === 'POST') {
-                const bodyChunks = [];
-                req.on('data', chunk => bodyChunks.push(chunk));
-                req.on('end', async () => {
+                readRequestBody(req).then(async bodyText => {
                     try {
-                        const body = JSON.parse(Buffer.concat(bodyChunks).toString('utf-8') || '{}');
+                        const body = JSON.parse(bodyText || '{}');
                         const entry = taskStore.get(taskId);
                         if (!entry) {
                             res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -1248,6 +1340,9 @@ function startHttpServer() {
                         res.writeHead(500, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ success: false, error: err.message }));
                     }
+                }).catch(err => {
+                    res.writeHead(err.statusCode || 400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: err.message }));
                 });
                 return;
             }
@@ -1306,7 +1401,7 @@ function startHttpServer() {
                         // 超长文档自动切分块模式（也可通过 mode: 'chunked' 显式指定）
                         const wantChunked = (mode === 'chunked')
                             || /超长|长文档|分块|分段|长篇幅|多章节|几十页|数十页|100页|50页|50 页/i.test(description);
-                        console.log(`[Bridge] Generating LaTeX via AI for: "${description.substring(0, 80)}..."${wantChunked ? ' [chunked]' : ''}`);
+                        console.log(`[Bridge] Generating LaTeX via AI for: "${sanitizeLogText(description, 80)}"${wantChunked ? ' [chunked]' : ''}`);
                         const t0 = Date.now();
                         let aiResponse, elapsed;
                         if (wantChunked) {
@@ -1554,10 +1649,7 @@ function startHttpServer() {
         // 办公文档生成：AI 组织内容 → 本地 Python 渲染成 .pptx/.docx/.xlsx
         // body: { type: "ppt"|"docx"|"xlsx", description, title?, theme? }
         if (path === '/generate_office' && req.method === 'POST') {
-            const bodyChunks = [];
-            req.on('data', chunk => bodyChunks.push(chunk));
-            req.on('end', async () => {
-                const body = Buffer.concat(bodyChunks).toString('utf-8');
+            readRequestBody(req).then(async body => {
                 try {
                     const { type, description, title, theme } = JSON.parse(body);
                     if (!type || !['ppt', 'docx', 'xlsx'].includes(type)) {
@@ -1572,7 +1664,7 @@ function startHttpServer() {
                     }
 
                     // 1) AI 生成结构化内容
-                    console.log(`[Bridge] Generating office content (${type}): "${description.substring(0, 80)}..."`);
+                    console.log(`[Bridge] Generating office content (${type}): "${sanitizeLogText(description, 80)}"`);
                     const t0 = Date.now();
                     const content = await generateOfficeContent(type, description.trim(), title, theme);
                     console.log(`[Bridge] AI generated office content in ${Date.now() - t0}ms`);
@@ -1580,7 +1672,7 @@ function startHttpServer() {
                     // 2) 确定输出目录（Documents 下按标题建文件夹；★数据目录跟随 FU_XUAN_DATA，禁止硬编码 D:\）
                     const docTitle = String(content.title || title || 'document').replace(/[<>:"\/\\|?*]/g, '_');
                     const folderName = `${docTitle}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}_${Date.now().toString(36)}`;
-                    const outRoot = process.env.FU_XUAN_DATA ? join(process.env.FU_XUAN_DATA, 'Documents') : 'D:\\DesktopPetData\\Documents';
+                    const outRoot = join(DEFAULT_DATA_ROOT, 'Documents');
                     const outDir = join(outRoot, folderName);
                     mkdirSync(outDir, { recursive: true });
 
@@ -1606,6 +1698,9 @@ function startHttpServer() {
                     res.writeHead(500, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: false, error: err.message }));
                 }
+            }).catch(err => {
+                res.writeHead(err.statusCode || 400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, error: err.message }));
             });
             return;
         }
@@ -1615,15 +1710,19 @@ function startHttpServer() {
         // body: { path: "D:\\xxx.pdf", max_chars?: 500000 }
         // 返回: { success, text?, pages?, chars?, is_scanned?, error? }
         if (path === '/extract_pdf' && req.method === 'POST') {
-            const bodyChunks = [];
-            req.on('data', chunk => bodyChunks.push(chunk));
-            req.on('end', () => {
-                const body = Buffer.concat(bodyChunks).toString('utf-8');
+            readRequestBody(req).then(body => {
                 try {
-                    const { path: pdfPath, max_chars } = JSON.parse(body);
-                    if (!pdfPath || typeof pdfPath !== 'string') {
+                    const { path: rawPdfPath, max_chars } = JSON.parse(body);
+                    if (!rawPdfPath || typeof rawPdfPath !== 'string') {
                         res.writeHead(400, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ success: false, error: '需要提供 path（PDF 文件路径）' }));
+                        return;
+                    }
+                    const pdfPath = rawPdfPath.trim();
+                    const pdfPathError = validatePdfInputPath(pdfPath);
+                    if (pdfPathError) {
+                        res.writeHead(403, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: pdfPathError }));
                         return;
                     }
                     if (!existsSync(pdfPath)) {
@@ -1660,7 +1759,8 @@ function startHttpServer() {
                         return;
                     }
 
-                    const maxChars = Number.isInteger(max_chars) && max_chars > 0 ? max_chars : 500000;
+                    const maxChars = Number.isInteger(max_chars) && max_chars > 0
+                        ? Math.min(max_chars, 500000) : 500000;
                     // 文件路径经 JSON 序列化传给 Python，避免命令行转义问题
                     const tmpJson = join(tmpdir(), `pdf_${Date.now().toString(36)}.json`);
                     writeFileSync(tmpJson, JSON.stringify({ path: pdfPath, max_chars: maxChars }), 'utf-8');
@@ -1698,6 +1798,9 @@ function startHttpServer() {
                     res.writeHead(500, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: false, error: err.message }));
                 }
+            }).catch(err => {
+                res.writeHead(err.statusCode || 400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, error: err.message }));
             });
             return;
         }
@@ -1706,6 +1809,11 @@ function startHttpServer() {
         res.end(JSON.stringify({ error: 'Not found. Use /search?q=, /compile_latex, /generate_office, /extract_pdf, /task[/{id}[/cancel|/approve]], or /health' }));
     });
 
+    // Bound the HTTP parser independently from the long-running Gateway/Python work.
+    // This limits slow-header/body connections without cutting off an accepted task.
+    server.requestTimeout = 30_000;
+    server.headersTimeout = 10_000;
+    server.keepAliveTimeout = 5_000;
     server.listen(BRIDGE_PORT, '127.0.0.1', () => {
         console.log(`[Bridge] HTTP server on http://127.0.0.1:${BRIDGE_PORT}`);
     });
@@ -1713,8 +1821,10 @@ function startHttpServer() {
 
 async function main() {
     console.log(`[Bridge] Starting...`);
-    try { await connect_(); } catch (e) { console.error(`[Bridge] Initial connect failed: ${e.message}`); }
+    // Start the local diagnostic surface first. Gateway/OpenClaw may take a while
+    // to resolve or connect; /health must remain available during that period.
     startHttpServer();
+    try { await connect_(); } catch (e) { console.error(`[Bridge] Initial connect failed: ${e.message}`); }
     process.on('SIGINT', () => { console.log('\n[Bridge] Shutdown'); chatClient?.stop(); process.exit(0); });
     process.on('SIGTERM', () => { console.log('\n[Bridge] Shutdown'); chatClient?.stop(); process.exit(0); });
     process.on('uncaughtException', (e) => { console.error(`[Bridge] Uncaught: ${e.message}`); });

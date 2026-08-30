@@ -23,6 +23,9 @@ public static class ToolRegistry
     // 这些工具会删除数据 / 控制系统 / 关机锁屏，AI 幻觉或 prompt 注入时不能静默执行
     private static readonly HashSet<string> DangerousTools = new HashSet<string>
     {
+        "file_read",
+        "get_clipboard",
+        "take_screenshot",
         "file_delete",     // 删除文件（permanent=true 永久删除）
         "power",           // 关机 / 重启 / 睡眠
         "lock_screen",     // 锁定屏幕
@@ -40,6 +43,9 @@ public static class ToolRegistry
     {
         switch (name)
         {
+            case "file_read": return "读取本地文件内容（可能包含密钥或私人数据）";
+            case "get_clipboard": return "读取剪贴板内容（可能包含密钥或私人数据）";
+            case "take_screenshot": return "截取屏幕并发送给云端视觉模型（可能包含私人数据）";
             case "file_delete": return "删除文件/文件夹（permanent=true 时不可恢复）";
             case "power":       return "关机 / 重启 / 睡眠";
             case "lock_screen": return "锁定电脑屏幕";

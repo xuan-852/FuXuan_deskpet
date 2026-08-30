@@ -78,7 +78,7 @@ public class ToolBenchmarkRunner : MonoBehaviour
         // ── A. 只读安全组（实弹）──────────────────────────────
         list.Add(new TestCase("get_system_info", "只读", "{}"));
         list.Add(new TestCase("get_mouse_pos", "只读", "{}"));
-        list.Add(new TestCase("get_clipboard", "只读", "{}"));
+        list.Add(new TestCase("get_clipboard", "隐私", "{}", "DANGER_GUARD"));
         list.Add(new TestCase("list_files", "只读", "{\"path\": \"" + JsonDataRoot + "\"}"));
         list.Add(new TestCase("file_info", "只读", "{\"path\": \"" + JsonDataRoot + "\"}"));
         list.Add(new TestCase("search_files", "只读", "{\"query\": \"DesktopPet\", \"root\": \"D:\\\\Unity\"}", "", 60f));
@@ -110,7 +110,6 @@ public class ToolBenchmarkRunner : MonoBehaviour
         list.Add(new TestCase("file_copy", "文件写", "{\"source\": \"" + BenchRoot + "_a.txt\", \"destination\": \"" + BenchRoot + "_b.txt\"}"));
         list.Add(new TestCase("file_rename", "文件写", "{\"path\": \"" + BenchRoot + "_b.txt\", \"new_name\": \"_bench_c.txt\"}"));
         list.Add(new TestCase("file_move", "文件写", "{\"source\": \"" + BenchRoot + "_c.txt\", \"destination\": \"" + BenchRoot + "_d.txt\"}"));
-        list.Add(new TestCase("file_read", "文件写", "{\"path\": \"" + BenchRoot + "_a.txt\"}"));
         list.Add(new TestCase("set_reminder", "文件写", "{\"text\": \"__BENCH_TEST__\", \"remind_at\": \"2099-01-01 00:00\"}"));
         list.Add(new TestCase("mark_reminder_done", "文件写", "{\"id\": \"__BENCH_ID__\"}"));
         list.Add(new TestCase("delete_reminder", "文件写", "{\"id\": \"__BENCH_ID__\"}"));
@@ -135,6 +134,7 @@ public class ToolBenchmarkRunner : MonoBehaviour
         list.Add(new TestCase("mute", "危险", "{\"muted\": \"notabool\"}", "DANGER_GUARD"));
         list.Add(new TestCase("openclaw_task", "危险", "{\"task\": \"\"}", "DANGER_GUARD"));
         list.Add(new TestCase("run_command", "危险", "{\"command\": \"whoami\"}", "DANGER_GUARD"));
+        list.Add(new TestCase("file_read", "隐私", "{\"path\": \"" + BenchRoot + "_a.txt\"}", "DANGER_GUARD"));
 
         // ── E. 跳过组（弹窗/外部程序/分钟级，人工验证）────────
         list.Add(new TestCase("notify", "跳过", "{\"title\": \"t\", \"message\": \"m\"}", "SKIP"));
@@ -150,7 +150,7 @@ public class ToolBenchmarkRunner : MonoBehaviour
         list.Add(new TestCase("pogget_agent", "外部", "{\"cmd\": \"ping\"}", "", 30f));
 
         // ── G. GLM 视觉/慢速组（实弹，注意耗时）───────────────
-        list.Add(new TestCase("take_screenshot", "GLM", "{}", "", SlowTimeout));
+        list.Add(new TestCase("take_screenshot", "隐私/GLM", "{}", "DANGER_GUARD", SlowTimeout));
         list.Add(new TestCase("generate_motion", "GLM", "{\"description\": \"点头微笑\"}", "", SlowTimeout));
         list.Add(new TestCase("explore_body_vision", "GLM", "{}", "", SlowTimeout));
         list.Add(new TestCase("self_review", "GLM", "{\"action\": \"wave\"}", "", SlowTimeout));

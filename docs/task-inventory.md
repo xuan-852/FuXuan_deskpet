@@ -260,7 +260,7 @@
 | ✅ | 180s 超时 | 健康检查 |
 | ✅ | 工具注册 | `openclaw_search` |
 | ✅ | PM2 统一管理 | server/ecosystem.config.js（进程名 openclaw-bridge） |
-| ✅ | 环境变量鉴权（N39+） | 请求头 `x-bridge-token`：优先 `BRIDGE_TOKEN`（系统级 64 字符），fallback `GATEWAY_TOKEN`（自动从 openclaw.json 读取，含 BOM strip）；C# 侧同源读取 |
+| ✅ | 环境变量鉴权（N39+） | 请求头 `x-bridge-token` 只接受独立 `BRIDGE_TOKEN`；Gateway 单独使用 `GATEWAY_TOKEN`（必要时从 openclaw.json 读取，含 BOM strip）；C# 侧同源读取 |
 | ✅ | 端点现状 | `/search`、`/health`、`/compile_latex`、`/generate_office`、`/extract_pdf`、`/task` 系列（POST 提交 / GET 轮询 / POST cancel / approve，含心跳 lastActivityAt 与 maxSteps 成本熔断） |
 | ✅ | 任务外包工具（P1） | `openclaw_task`（太卜神行法，VisionKnowledgeTools.cs）→ `OpenClawBridge.ExecuteTaskAndWaitAsync`：提交 + 心跳轮询（默认 300s 无进展自动取消）+ 不可重试错误 `❌ [不可重试]` 前缀 + ChatManager 成本熔断 `_openclawTaskFatalSeen` |
 
@@ -1104,3 +1104,10 @@ vis_verify
 | 状态 | 任务 | 验证依据 |
 |------|------|---------|
 | ✅ | OpenClaw 安装包桥接链路收敛：服务注册错误检查、升级刷新、便携 OpenClaw 路径、健康检查与动态 gateway-chat 文件名验收 | `node --check`、full-access `build.ps1 -Quick`、Inno Setup 编译、静默安装/卸载验收、隔离端口 `/health` 通过 |
+
+### 2026-08-30 Security hardening
+
+| 状态 | 任务 | 验证依据 |
+|------|------|---------|
+| ✅ | Bridge/Gateway Token 分离（安装组件也拒绝复用）；文件读取、文件信息、列目录、搜索、打开和重命名统一路径边界；截图/剪贴板/文件内容工具纳入确认；敏感参数和结果日志脱敏；普通桥接请求体、任务文本、并发任务和步骤数限额；安装服务固定使用内置 Node.js；Ollama/MiKTeX/VC++ 安装器执行前验证 Authenticode | `node --check`、安装组件 `/CHECK`、full-access `build.ps1 -Quick` 通过 |
+| ⚠️ | 安装服务账号最小权限、安装包签名与依赖哈希锁定 | 尚未完成目标机设计与发布流程验收 |

@@ -668,7 +668,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
   DEEPSEEK_API_KEY → ChatManager / IdleChatGenerator / MotionTranslator
   GLM_API_KEY       → ToolEngine / VisionMotionVerifier
   QWEATHER_API_KEY  → TimeWeatherController（可选，默认 wttr.in）
-  BRIDGE_TOKEN      → OpenClawBridge 鉴权（64 字符，fallback GATEWAY_TOKEN）
+  BRIDGE_TOKEN      → OpenClawBridge 鉴权（独立 Token，不回退 GATEWAY_TOKEN）
 
 JSON 持久化 (D:\DesktopPetData\):
   pet_config.json       pet_memory.json        reminders.json
