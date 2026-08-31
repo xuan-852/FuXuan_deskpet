@@ -117,7 +117,7 @@ public partial class RightPanel
         // 符玄头像（标题栏左侧，30×30，带深色描边以增强对比）
         float fxHeadSize = 38f;
         Rect fxHeadRect = new Rect(px + 54f, py + 6f, fxHeadSize, fxHeadSize);
-        GUI.DrawTexture(fxHeadRect, _pixelFxTex);
+        DrawMascotAvatar(fxHeadRect);
 
         bool waiting = _chat != null && _chat.IsWaiting;
         float statusPulse = waiting ? 0.55f + 0.45f * Mathf.Sin(Time.time * 3f) : 1f; // 思考中 → 紫色呼吸
@@ -392,7 +392,7 @@ public partial class RightPanel
                 // 符玄消息：靠左，头像在气泡左侧
                 avatarRect = new Rect(8f, yCursor + 2f, avatarSize, avatarSize);
                 bubbleRect = new Rect(avatarRect.xMax + 8f, yCursor, bubbleW, bubbleH);
-                GUI.DrawTexture(avatarRect, _pixelFxTex);
+                DrawMascotAvatar(avatarRect);
             }
             GUI.Label(bubbleRect, ln.text, bubble);
             yCursor += Mathf.Max(bubbleH, avatarSize) + 8f;
@@ -496,7 +496,7 @@ public partial class RightPanel
         // 符玄头像（输入框内最左，高清原图）★多模态资源：Resources/PixelFuXuan.png
         float fxSize = 40f;
         fxRect = new Rect(inputX, inputY + (inputBarHeight - fxSize) / 2f, fxSize, fxSize);
-        GUI.DrawTexture(fxRect, _pixelFxTex);
+        DrawMascotAvatar(fxRect);
 
         float tfH = 44f + _fontScaleLevel * 4f;
         float tfY = inputY + (inputBarHeight - tfH) / 2f;
@@ -777,7 +777,7 @@ public partial class RightPanel
         float headSize = 48f;
         Rect headRect = new Rect(px + 12f, py + (titleH - headSize) / 2f, headSize, headSize);
         UiTextureFactory.DrawPixelRect(new Rect(headRect.x - 2f, headRect.y - 2f, headRect.width + 4f, headRect.height + 4f), new Color(0f, 0f, 0f, 0.65f));
-        GUI.DrawTexture(headRect, _pixelFxTex);
+        DrawMascotAvatar(headRect);
         GUI.Label(new Rect(headRect.xMax + 12f, py + 9f, pw - 200f, 28f), "符玄·太卜司", _termTitleStyle);
         bool waiting = _chat != null && _chat.IsWaiting;
         GUI.Label(new Rect(headRect.xMax + 12f, py + 42f, pw - 200f, 22f), waiting ? "● 思考中…" : "● 就绪", _termStatusStyle);
@@ -881,7 +881,7 @@ public partial class RightPanel
             // 头像 60px 圆角方块
             float av = 60f;
             Rect avRect = new Rect(itemRect.x + 12f, itemRect.y + (itemH - 8f - av) / 2f, av, av);
-            GUI.DrawTexture(avRect, s.avatar ?? _pixelFxTex);
+            DrawMascotAvatar(avRect, s.avatar);
             // 名称（粗金）+ 时间（右上）
             GUI.Label(new Rect(avRect.xMax + 14f, itemRect.y + 10f, contentRect.width - av - 130f, 28f), s.name, _termTitleStyle);
             GUI.Label(new Rect(itemRect.x + itemRect.width - 96f, itemRect.y + 16f, 84f, 22f), s.lastTime, _termTimeStyle);
@@ -975,7 +975,7 @@ public partial class RightPanel
                 UiTextureFactory.DrawPixelRect(itemRect, new Color(0.50f, 0.35f, 0.80f, 0.15f));       // 悬停
             float av = 44f;
             Rect avRect = new Rect(itemRect.x + 12f, itemRect.y + (itemH - 8f - av) / 2f, av, av);
-            GUI.DrawTexture(avRect, s.avatar ?? _pixelFxTex);
+            DrawMascotAvatar(avRect, s.avatar);
             GUI.Label(new Rect(avRect.xMax + 12f, itemRect.y + 12f, w - av - 40f, 26f), s.name,
                 active ? _termToolBtnHoverStyle : _termTitleStyle);
             string msg = s.lastMsg ?? "";

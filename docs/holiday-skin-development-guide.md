@@ -1,0 +1,320 @@
+# 节日皮肤编写指南
+
+> **文档作用**：规定像素符玄节日皮肤的设计、实现、测试和交付方式，供 AI 编码代理、美术和维护者共同使用。
+> **适用范围**：像素符玄、RightPanel 聊天窗口、ChatBubble、子面板和节日动态背景。
+> **明确边界**：本规范不允许为了节日皮肤修改 Live2D 模型、Live2D 参数、物理、局部 RT 或渲染管线。
+> **当前实现基线**：`HolidayThemeRuntime` + `ThemeSkin` + `HolidayFireworksField` + `ComposePixelFrame`；当前已有 `default`、`cn_new_year`、`lantern_festival`、`dragon_boat`、`qixi`、`mid_autumn`、`halloween`、`christmas`、`new_year_day`。
+
+---
+
+## 一、设计目标
+
+节日皮肤不是简单换一套颜色，而是给同一套桌宠 UI 增加一个可识别、可切换、可验证的节日场景。每个主题必须同时满足：
+
+1. 一眼可识别：用户不看主题名称，也能从主视觉元素判断节日。
+2. 有空间层次：至少有背景层、中景装饰层和前景/动态层。
+3. 有完整覆盖：顶部标题栏、主体空白区、底部导航和气泡不能只保留默认紫色。
+4. 有动态感：至少包含一种环境运动和一种事件运动；静态截图也要能看出主题构成。
+5. 保持可用：聊天文字、按钮、符玄本体和关闭按钮始终清晰可操作。
+6. 保持轻量：动态效果只绘制在聊天面板区域，不做全屏高频粒子系统。
+7. 可回退：关闭主题后完整恢复默认主题，不残留节日颜色、贴图或动态状态。
+
+### 1.1 视觉占比建议
+
+这是设计约束，不是要求所有节日都堆满元素：
+
+| 区域 | 建议内容 | 目标 |
+|------|----------|------|
+| 顶部 0%～25% | 标题装饰、第一组主视觉或高处动态元素 | 建立第一眼识别 |
+| 中部 25%～70% | 主背景纹理、中景图案、主要动态效果 | 填补大面积空白 |
+| 底部 70%～100% | 地面/水波/彩灯/飘落元素和底部装饰 | 避免下半区空洞 |
+| 文字与按钮区域 | 低对比度纹理或透明装饰 | 不影响可读性 |
+
+建议背景有效填充率为 70%～85%，保留 15%～30% 的低干扰留白。元素应采用大、中、小三种尺寸，不能把所有图案画成相同大小和相同间距。
+
+### 1.2 三层空间模型
+
+每个主题至少按以下顺序设计：
+
+```text
+背景层：底色、渐变、低频纹理、低透明度环境粒子
+  ↓
+中景层：灯笼、月亮、水波、星桥、南瓜、彩灯等主装饰
+  ↓
+前景/事件层：飘落、闪烁、爆裂、尾迹、短时高亮
+```
+
+前景不能持续遮盖聊天文字和角色脸部；事件层必须有生命周期，不能把一次性爆炸画成永久固定图案。
+
+---
+
+## 二、主题数据结构
+
+### 2.1 主题 ID
+
+主题 ID 使用小写 ASCII `snake_case`，显示名称使用中文。ID 一旦发布，不要随意改名；需要兼容旧命令时，在 `Themes` 字典中增加别名。
+
+当前主题表：
+
+| ID | 显示名 | 像素配饰 | 动态主视觉 |
+|----|--------|----------|------------|
+| `cn_new_year` | 新春主题 | `cn_new_year_cap` | 红金烟花 |
+| `lantern_festival` | 元宵主题 | `lantern_festival_lantern` | 摇摆灯笼 |
+| `dragon_boat` | 端午主题 | `dragon_boat_leaf` | 水波与粽子 |
+| `qixi` | 七夕主题 | `qixi_star` | 星光与星桥 |
+| `mid_autumn` | 中秋主题 | `mid_autumn_rabbit` | 月亮、云朵与玉兔 |
+| `halloween` | 万圣节主题 | `halloween_hat` | 南瓜与蝙蝠 |
+| `christmas` | 圣诞主题 | `christmas_hat` | 飘雪与彩灯 |
+| `new_year_day` | 元旦主题 | `new_year_party` | 彩带与庆祝粒子 |
+
+### 2.2 `ThemeSkin` 字段分组
+
+新主题必须提供完整 `ThemeSkin`，禁止只改 `PanelTop`、`Accent` 等少数颜色后复用默认紫色纹理。
+
+| 字段组 | 字段 | 用途 |
+|--------|------|------|
+| 面板 | `PanelTop/PanelBottom/PanelGlow/PanelBorder` | 主面板底色、渐变、发光、边框 |
+| 氛围 | `NebulaA/NebulaB/NebulaC` | 背景星云或节日暗纹 |
+| 标题栏 | `TitleBar/TitleTop/TitleMid/TitleBottom` | 顶部栏和状态条 |
+| 输入区 | `InputBackground/InputHover/InputGlow/InputBarBackground` | 搜索框、输入框、发送区 |
+| 气泡 | `BubbleFx*`、`BubbleUser*` | AI 与用户消息气泡 |
+| 文字 | `TextTitle/TextMain/TextMuted/TextDim/TextPlaceholder`、`TextUser/TextPrompt/TextTooltip/TextStatus/TextTime` | 所有正文、提示、时间和状态文字 |
+| 装饰 | `DecorationPrimary/DecorationSecondary/DecorationGold/BorderPixel/LogRowAlt` | 角饰、分隔线、日志行、按钮装饰 |
+| 状态 | `StatusReady/StatusBusy/StatusTask/Warning/ModalSurface` | 运行状态、警告和模态层 |
+| 背景动态 | `StarTint*`、`FireworkPrimary/FireworkSecondary/FireworkSpark` | 默认星空或节日动态效果颜色 |
+| 特殊控件 | `AvatarBackground/AvatarText/TaijiDark/TaijiLight` | 头像、太极图和特殊按钮 |
+
+推荐的配色顺序是“背景暗色 → 主色 → 辅色 → 高亮色 → 文字色”。高亮色只承担边框、关键按钮和事件瞬间，不要让所有元素都使用最高亮度。
+
+### 2.3 使用构造辅助函数
+
+若多个节日具有同样的字段结构，可以使用 `CreateFestivalSkin(...)` 生成完整皮肤，再覆写少量节日专属色值。辅助函数必须给所有字段赋值；不能返回只填了几项的半初始化 `ThemeSkin`。
+
+新增 `Theme` 时优先使用基于 `ThemeSkin` 的构造重载，保证主题的公开字段和 `Skin` 字段来自同一份数据：
+
+```csharp
+private static readonly Theme ExampleTheme = new Theme(
+    "example_festival", "示例节日", "example_accessory", ExampleSkin);
+```
+
+---
+
+## 三、像素符玄配饰编写
+
+### 3.1 配饰边界
+
+- 配饰通过 `HolidayThemeRuntime.CreatePixelAccessoryLayer(width, height)` 创建独立透明层。
+- 基础像素帧不能被节日代码直接改写；通过 `ComposePixelFrame` 合成。
+- 当前像素头像基准为 17×24；坐标系统以现有 `Put`/`FillRow` 为准，不要假设 y 轴方向与普通纹理数组相同。
+- 默认主题必须返回全透明层。
+- 配饰不能覆盖眼睛、嘴部等核心识别区域，除非该主题确实需要帽檐跨过头发并经过截图确认。
+- 配饰应使用 2～4 个颜色层：轮廓、主体、装饰高光和可选阴影。
+
+### 3.2 配饰设计建议
+
+| 节日 | 推荐配饰 | 设计重点 |
+|------|----------|----------|
+| 新春 | 红帽、金色帽檐、流苏 | 红金对比，顶部轮廓清晰 |
+| 元宵 | 灯笼发饰、短穗 | 小面积红色主体，金色挂饰 |
+| 端午 | 竹叶/艾草发饰 | 绿色轮廓，避免覆盖脸部 |
+| 七夕 | 星形发簪 | 少量金色像素，保持精致 |
+| 中秋 | 玉兔耳饰 | 对称轮廓和米白高光 |
+| 万圣 | 尖帽 | 紫橙对比，帽檐不遮脸 |
+| 圣诞 | 圣诞帽 | 红帽、白边、绿色小点缀 |
+| 元旦 | 派对帽/彩带 | 蓝色主体和金色顶点 |
+
+### 3.3 禁止做法
+
+- 直接把节日颜色写入原始像素帧生成逻辑。
+- 在 `RightPanel` 中用硬编码坐标重复画头像配饰。
+- 通过半透明黑底替代真正透明层。
+- 为了“更明显”覆盖整个头像头部或改变 Live2D 角色。
+
+---
+
+## 四、动态背景编写
+
+当前所有节日动态层由 `HolidayFireworksField` 统一承载，类名暂保留历史名称；它根据 `HolidayThemeRuntime.ActiveId` 分发具体绘制逻辑。
+
+### 4.1 动态效果的两类运动
+
+每个主题至少实现一项：
+
+- 环境运动：飘雪、云朵平移、灯笼轻摆、水波起伏、星点闪烁。
+- 事件运动：烟花爆裂、蝙蝠飞过、彩带下落、灯笼短暂变亮等。
+
+动态效果必须由 `Time.time` 或由 `UpdateMotion` 驱动的状态计算，不得在 `OnGUI` 的多次 `Layout/Repaint` 事件中重复推进同一状态。现有 `RightPanel.Update()` 会调用 `_holidayFireworks.UpdateMotion()`，新增状态应放到统一更新路径。
+
+### 4.2 绘制规则
+
+1. 只接收面板绘制区域 `px/py/pw/ph`，不要读取屏幕全尺寸并做全屏粒子。
+2. 使用已有 `_sparkTex` 或 `UiTextureFactory` 生成的缓存纹理，不要每帧 `new Texture2D`。
+3. 动态层绘制前保存 `GUI.matrix` 和 `GUI.color`，结束时无条件恢复。
+4. 颜色 alpha 必须随生命周期变化；事件元素不能永久保持满 alpha。
+5. 效果数量要有硬上限；增加视觉密度时优先调整布局、尺寸和透明度，不先增加粒子数量。
+6. 背景元素不能遮挡文字、关闭按钮和角色脸部；必要时降低 alpha 或避开 UI 安全区。
+7. 需要随机时使用固定 seed，确保截图回归可重复。
+
+### 4.3 当前烟花的特别规则
+
+新春烟花使用升空、爆裂、抛体下坠和短尾迹：
+
+- 爆炸中心黄点只能是短暂闪光，不能在整个爆裂阶段固定保留。
+- 火星角度应有轻微扰动，避免规则齿轮状放射。
+- 火星使用初速和重力项形成抛物线，尾迹采用分段渐隐。
+- 爆点应上下分层，不能全部集中在上半区。
+- 大小应有层次，基准爆裂半径当前约为面板短边的 12%～20%。
+
+### 4.4 各主题动态元素建议
+
+| 主题 | 背景层 | 中景层 | 事件层 |
+|------|--------|--------|--------|
+| 新春 | 红色暗纹 | 分层烟花爆点 | 火星抛体、短闪光 |
+| 元宵 | 深红渐变 | 6 盏不同高度灯笼 | 灯笼轻摆、流苏摆动 |
+| 端午 | 青绿色渐变 | 多层水波、粽子 | 水波起伏、粽子轻浮 |
+| 七夕 | 深蓝紫星空 | 星桥与星群 | 星点闪烁、流星掠过 |
+| 中秋 | 靛蓝月夜 | 月亮、云朵、玉兔 | 云朵漂移、月光呼吸 |
+| 万圣 | 紫黑渐变 | 南瓜、蝙蝠 | 蝙蝠横向飞行、南瓜闪烁 |
+| 圣诞 | 冷绿夜色 | 彩灯或树枝 | 雪花下落、彩灯交替亮起 |
+| 元旦 | 蓝银渐变 | 彩带与分隔线 | 彩纸下落、亮片闪烁 |
+
+---
+
+## 五、聊天 UI 换肤
+
+主题刷新入口是 `RightPanel.RefreshHolidayThemeVisuals()`。主题 revision 变化时重建并替换缓存纹理，普通帧不能重复生成纹理。
+
+必须同步检查：
+
+- RightPanel 主背景、边框、星云/暗纹。
+- 标题栏、状态点、时间和关闭按钮。
+- 搜索框、输入框、工具按钮、发送按钮。
+- AI 气泡和用户气泡的顶部色、底部色、边框色。
+- 日志行、空状态、提示文本、模态审批层。
+- 底部导航和子面板。
+- `ChatBubble.RefreshHolidayTheme()` 中的气泡风格。
+
+如果旧 UI 绘制点暂时只能传入旧色值，只能通过 `ResolveLegacyUiColor` 兼容映射；新代码必须直接使用 `ThemeSkin`。任何透明背景不能被 legacy 映射成实体色块。
+
+### 5.1 可读性规则
+
+- 正文与面板底色必须有稳定对比；动态元素不能使用正文同级亮度。
+- 时间、状态、占位符可以降低 alpha，但不能与背景混成不可读。
+- 用户气泡和 AI 气泡必须一眼区分，不得只依靠边框。
+- 红色主题中，警告色必须仍能区别于节日主色；必要时使用亮度而非继续加红。
+- 主题切换后所有旧缓存纹理必须被替换或销毁，不能出现半套旧色。
+
+---
+
+## 六、测试命令与截图闭环
+
+### 6.1 测试前准备
+
+测试必须使用临时数据目录和 `.test_mode`：
+
+```powershell
+$testData = Join-Path $env:TEMP 'fuxuan_festival_manual'
+New-Item -ItemType Directory -Force -Path $testData | Out-Null
+New-Item -ItemType File -Force -Path (Join-Path $testData '.test_mode') | Out-Null
+$env:FU_XUAN_DATA = $testData
+Start-Process 'D:\Unity\projects\Desktop_per_pro\Build\DesktopPet.exe'
+```
+
+不要在生产数据目录中测试主题切换，不要把普通自然语言输入写入 Inbox。
+
+### 6.2 主题命令
+
+启动后先打开面板，再切换主题：
+
+```text
+@@view:open
+@@sim:holiday:cn_new_year
+@@sim:holiday:lantern_festival
+@@sim:holiday:dragon_boat
+@@sim:holiday:qixi
+@@sim:holiday:mid_autumn
+@@sim:holiday:halloween
+@@sim:holiday:christmas
+@@sim:holiday:new_year_day
+```
+
+辅助命令：
+
+```text
+@@sim:holiday:list
+@@sim:holiday:status
+@@sim:holiday:off
+@@sim:holiday:auto
+@@sim:screenshot:<label>
+@@test:quit
+```
+
+截图命令由 Unity 保存到隔离数据目录的 `test_screenshots/`，不能用桌面截图工具代替，因为需要确认当前渲染帧和测试数据路径。
+
+### 6.3 每个主题的最小截图序列
+
+每个主题至少保存 3 张：
+
+1. `static`：切换完成后立即检查配色、配饰和布局。
+2. `motion`：等待一个动态周期中段，检查粒子/装饰的位置和层次。
+3. `recovery`：切回 `off` 后检查默认主题恢复和节日元素清除。
+
+若动态效果较快，应在不同时间点重复发送 `@@sim:screenshot:<label>`；单张截图不能证明动画连续性。
+
+### 6.4 构建顺序
+
+修改 C# 后必须执行：
+
+```powershell
+.\build.ps1 -Quick
+.\build.ps1
+node scripts/test/runtime_smoke.cjs --verbose
+```
+
+完整构建需要本机/full-access 权限。构建被授权服务或辅助进程卡住时，按照 `build-workflow.md` 处理，不能把无输出直接判定为代码失败。
+
+---
+
+## 七、新增节日主题的标准流程
+
+1. 在主题表中确定 ID、显示名、自动日期窗口、配饰 ID 和动态效果名。
+2. 设计完整调色板，填写完整 `ThemeSkin`，确认没有默认紫色残留。
+3. 增加主题别名和 `TrySetTheme` 列表输出。
+4. 增加像素符玄独立配饰层，并验证 17×24 坐标。
+5. 在 `HolidayFireworksField` 中增加独立动态分支，设置粒子/元素上限。
+6. 更新 `RuntimeInputSimulator` 未知命令提示，保证 AI 能从日志发现支持列表。
+7. 用 `@@view:open` 后切换主题，完成静态、动态、恢复三组截图。
+8. 运行 Quick、完整构建和隔离冒烟测试。
+9. 测试通过后再更新模块文档、顶层文档、任务清单和路线图。
+10. 检查 `git diff --name-only`，确认所有受影响文档已同步，然后提交。
+
+### 7.1 提交前检查清单
+
+- [ ] 新主题 ID、显示名、别名和自动日期窗口已登记。
+- [ ] `ThemeSkin` 所有字段已赋值。
+- [ ] 配饰为独立透明层，默认主题不受影响。
+- [ ] 动态效果只绘制面板区域，不创建每帧纹理。
+- [ ] `GUI.matrix`/`GUI.color` 已恢复。
+- [ ] `@@sim:holiday:<id>`、`status`、`list` 可用。
+- [ ] 8 个（或当前全部）主题截图已保存并检查。
+- [ ] 关闭主题后默认界面、默认星空恢复。
+- [ ] Live2D 文件和参数没有修改。
+- [ ] Quick、完整构建、隔离冒烟均有结果。
+- [ ] 测试未污染生产记忆。
+- [ ] 测试通过后已更新文档。
+
+---
+
+## 八、常见错误
+
+| 错误 | 原因 | 修复 |
+|------|------|------|
+| 新主题仍是紫色 | 只改了主背景，旧纹理未重建 | 完整填写 `ThemeSkin` 并走 revision 刷新 |
+| 截图全黑 | 面板默认关闭 | 先发送 `@@view:open` |
+| 主题命令没有反应 | 没有 `.test_mode` 或数据目录不一致 | 检查 `FU_XUAN_DATA`、Inbox 和 Player.log |
+| 配饰覆盖脸部 | 像素 y 坐标方向判断错误 | 参照现有 `Put`/`FillRow` 并截图确认 |
+| 动态效果速度不稳定 | 在 OnGUI 中推进时间状态 | 将状态更新移到 `UpdateMotion`/`RightPanel.Update` |
+| 切换后残留旧色 | 纹理或 GUIStyle 没有替换 | 检查 `RefreshHolidayThemeVisuals` 全部纹理槽位 |
+| 构建无输出 | 本机授权或辅助进程阻塞 | 申请 full-access，查看本次新日志 |
+| 测试后生产记忆变化 | 使用了生产数据目录 | 立即停止测试，备份并清理，后续改用临时目录 |
+

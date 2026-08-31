@@ -117,6 +117,7 @@ public partial class RightPanel : MonoBehaviour
     private Texture2D _bgNebulaTex;      // 星云斑块（低频噪声，打破色带）
     private GUIStyle _panelBorderStyle;  // 圆角细边框（SDF 九宫格，替代 2px 硬边+四角方块）
     private StarField _starField = new StarField();  // 星空背景系统（2026-08-14 拆分自本文件，必须实例化否则 Init/DrawStars NRE）
+    private HolidayFireworksField _holidayFireworks = new HolidayFireworksField(); // 新春专属烟花背景；默认主题不绘制
     private Texture2D _taijiTex;         // 太极图（发送按钮）
     private Texture2D _hexagramTex;      // 卦象三爻装饰（标题栏）
     private Texture2D _extWindowIconTex; // 独立窗口图标（两窗方块，程序绘制，不依赖字形）
@@ -130,6 +131,7 @@ public partial class RightPanel : MonoBehaviour
     private bool _testExternalMouseOverride;
     private RenderTexture _chatRT;   // 面板渲染目标（独立窗口显示用，尺寸跟随当前视图）
     private float _lastExtCapture;   // 渲染/推送节流计时
+    private string _pendingTestScreenshotPath; // 测试模式面板截图请求（下一次 Repaint 完成取证）
     private float _lastExtReadStart; // 异步读回开始时间（超时兜底防冻结）
     // 输入变化时立即触发一次外置 RT 推送，避免固定 30 FPS 节流带来的字符滞后。
     // 非输入变化仍按普通动画频率推送，避免为降低输入延迟而长期增加 GPU/CPU 负载。
@@ -561,7 +563,11 @@ public partial class RightPanel : MonoBehaviour
 
         // IMGUI 一帧可能触发多次 Layout/Repaint；动画状态必须按帧更新，不能绑定绘制事件次数。
         if (_isOpen)
+        {
             _starField.UpdateStarMotion();
+            if (HolidayThemeRuntime.IsHolidayActive)
+                _holidayFireworks.UpdateMotion();
+        }
 
         // 外置输入框是不可见的原生键盘通道，文字由此同步到 Unity RT；
         // 不再让原生 EDIT 覆盖 IMGUI 输入框，避免黑框与真实输入框交替闪烁。
@@ -1295,13 +1301,170 @@ public partial class RightPanel : MonoBehaviour
         if (_externalMode)
         {
             DrawExternalPanelToTexture();
+            if (Event.current.type == EventType.Repaint)
+                CapturePendingTestScreenshotFromExternalTexture();
             GUI.color = Color.white;
             return;
         }
 
         DrawPanelContent(px, py, pw, ph, mp);
+        if (Event.current.type == EventType.Repaint)
+            CapturePendingTestScreenshotFromEmbeddedPanel();
 
         GUI.color = Color.white; // 恢复全局色，防止淡入淡出半透明残留影响其它 OnGUI
+    }
+
+    /// <summary>
+    /// 请求一张由 Unity 面板渲染结果生成的测试截图。
+    /// 透明桌宠窗口的屏幕回读可能只有黑色透明底，故截图必须在面板 Repaint 后从自身渲染目标取证。
+    /// </summary>
+    public bool RequestTestScreenshot(string path)
+    {
+        if (!ChatManager.IsTestMode || string.IsNullOrEmpty(path)) return false;
+        _pendingTestScreenshotPath = path;
+        if (_windowOverlay != null && _windowOverlay.RequestRepaint())
+        {
+            return true;
+        }
+        _pendingTestScreenshotPath = null;
+        if (!_externalMode && TrySavePanelRegionScreenshot(path))
+        {
+            Debug.Log($"[TestInbox] screenshot saved: {path} (panel region fallback)");
+            return true;
+        }
+        GUI.changed = true;
+        return true;
+    }
+
+    private bool TrySavePanelRegionScreenshot(string path)
+    {
+        if (!_isOpen || _panelRect.width <= 0f || _panelRect.height <= 0f) return false;
+        int windowX, windowY, windowWidth, windowHeight;
+        if (_windowOverlay == null || !_windowOverlay.TryGetWindowBounds(
+            out windowX, out windowY, out windowWidth, out windowHeight)) return false;
+        float scaleX = windowWidth / (float)Mathf.Max(1, Screen.width);
+        float scaleY = windowHeight / (float)Mathf.Max(1, Screen.height);
+        int x = windowX + Mathf.RoundToInt(_panelRect.x * scaleX);
+        int y = windowY + Mathf.RoundToInt(_panelRect.y * scaleY);
+        int width = Mathf.Max(64, Mathf.RoundToInt(_panelRect.width * scaleX));
+        int height = Mathf.Max(64, Mathf.RoundToInt(_panelRect.height * scaleY));
+        try
+        {
+            byte[] bgra = null;
+            IntPtr hwnd = _windowOverlay.WindowHandle;
+            bool captured = hwnd != IntPtr.Zero &&
+                WindowOverlay.TryCaptureWindowRegion(hwnd,
+                    Mathf.RoundToInt(_panelRect.x * scaleX),
+                    Mathf.RoundToInt(_panelRect.y * scaleY), width, height, out bgra);
+            if (!captured)
+                captured = WindowOverlay.TryCaptureScreenRegion(x, y, width, height, out bgra);
+            if (!captured) return false;
+            for (int i = 0; i + 3 < bgra.Length; i += 4)
+            {
+                byte blue = bgra[i];
+                bgra[i] = bgra[i + 2];
+                bgra[i + 2] = blue;
+                bgra[i + 3] = 255;
+            }
+            Texture2D snapshot = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            try
+            {
+                snapshot.LoadRawTextureData(bgra);
+                snapshot.Apply(false, false);
+                byte[] png = snapshot.EncodeToPNG();
+                if (png == null || png.Length == 0) return false;
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+                System.IO.File.WriteAllBytes(path, png);
+            }
+            finally
+            {
+                Destroy(snapshot);
+            }
+            return true;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[RightPanel] 面板区域截图兜底失败: {e.Message}");
+            return false;
+        }
+    }
+
+    private void CapturePendingTestScreenshotFromEmbeddedPanel()
+    {
+        if (string.IsNullOrEmpty(_pendingTestScreenshotPath) || !_isOpen) return;
+
+        int width = Mathf.Max(64, Mathf.RoundToInt(_panelRect.width));
+        int height = Mathf.Max(64, Mathf.RoundToInt(_panelRect.height));
+        RenderTexture target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32);
+        string path = _pendingTestScreenshotPath;
+        _pendingTestScreenshotPath = null;
+
+        RenderTexture previousTarget = RenderTexture.active;
+        Matrix4x4 previousMatrix = GUI.matrix;
+        Color previousColor = GUI.color;
+        bool previousExternalRender = _externalRender;
+        try
+        {
+            RenderTexture.active = target;
+            GL.Clear(true, true, new Color(0.06f, 0.05f, 0.10f, 1f));
+            GUI.matrix = Matrix4x4.identity;
+            GUI.color = _panelTint;
+            _externalRender = true;
+            _extHitZones.Clear();
+            _extTitleZones.Clear();
+            DrawPanelContent(0f, 0f, width, height, new Vector2(-10000f, -10000f));
+            SaveRenderTextureAsPng(target, path);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[RightPanel] Unity 面板截图失败: {e.Message}");
+        }
+        finally
+        {
+            _externalRender = previousExternalRender;
+            GUI.color = previousColor;
+            GUI.matrix = previousMatrix;
+            RenderTexture.active = previousTarget;
+            RenderTexture.ReleaseTemporary(target);
+        }
+    }
+
+    private void CapturePendingTestScreenshotFromExternalTexture()
+    {
+        if (string.IsNullOrEmpty(_pendingTestScreenshotPath) || _chatRT == null) return;
+        string path = _pendingTestScreenshotPath;
+        _pendingTestScreenshotPath = null;
+        try
+        {
+            SaveRenderTextureAsPng(_chatRT, path);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[RightPanel] Unity 外置面板截图失败: {e.Message}");
+        }
+    }
+
+    private static void SaveRenderTextureAsPng(RenderTexture source, string path)
+    {
+        if (source == null || !source.IsCreated()) throw new InvalidOperationException("渲染目标不可用");
+        RenderTexture previousTarget = RenderTexture.active;
+        Texture2D snapshot = new Texture2D(source.width, source.height, TextureFormat.RGBA32, false);
+        try
+        {
+            RenderTexture.active = source;
+            snapshot.ReadPixels(new Rect(0f, 0f, source.width, source.height), 0, 0, false);
+            snapshot.Apply(false, false);
+            byte[] png = snapshot.EncodeToPNG();
+            if (png == null || png.Length == 0) throw new InvalidOperationException("PNG 编码结果为空");
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+            System.IO.File.WriteAllBytes(path, png);
+            Debug.Log($"[TestInbox] screenshot saved: {path} ({png.Length} bytes)");
+        }
+        finally
+        {
+            RenderTexture.active = previousTarget;
+            Destroy(snapshot);
+        }
     }
 
     /// <summary>
@@ -1398,6 +1561,8 @@ public partial class RightPanel : MonoBehaviour
         if (_titleBarStyle != null) _titleBarStyle.normal.background = _titleBarPixelTex;
         if (_inputBarBgStyle != null) _inputBarBgStyle.normal.background = _inputBarPixelTex;
         if (_starField != null) _starField.ApplyTheme(skin.StarTintA, skin.StarTintB, skin.StarTintC, skin.StarEdge);
+        if (_holidayFireworks != null)
+            _holidayFireworks.Init(2026, skin.FireworkPrimary, skin.FireworkSecondary, skin.FireworkSpark);
 
         if (_termTitleStyle != null) _termTitleStyle.normal.textColor = skin.TextTitle;
         if (_termStatusStyle != null) _termStatusStyle.normal.textColor = skin.TextStatus;
@@ -1503,8 +1668,11 @@ public partial class RightPanel : MonoBehaviour
             GUI.DrawTexture(bgRect, _bgGlowTex, ScaleMode.StretchToFill);
         if (_bgNebulaTex != null)
             GUI.DrawTexture(bgRect, _bgNebulaTex, ScaleMode.StretchToFill);
-        // 分层星点：慢速漂移 + 方块拖尾（星尘），绝对像素尺寸不随面板缩放；大星呼吸微闪
-        _starField.DrawStars(px, py, pw, ph, _animAlpha);
+        // 默认主题使用星空/流星；新春主题切换为独立的烟花背景，避免两套语义叠加。
+        if (HolidayThemeRuntime.IsHolidayActive)
+            _holidayFireworks.DrawFireworks(px, py, pw, ph, _animAlpha);
+        else
+            _starField.DrawStars(px, py, pw, ph, _animAlpha);
         // 圆角细边框（SDF 九宫格，替代原 2px 硬边 + 四角方块）
         if (_panelBorderStyle != null)
             GUI.Box(bgRect, GUIContent.none, _panelBorderStyle);
@@ -2084,6 +2252,39 @@ public partial class RightPanel : MonoBehaviour
         return _mascotBlinking ? _mascotBlinkTex : _mascotOpenTex;
     }
 
+    /// <summary>头像统一入口：节日主题使用带配饰的像素帧，默认主题使用原头像资源。</summary>
+    private void DrawMascotAvatar(Rect rect, Texture2D fallback = null)
+    {
+        DrawMascotAvatarFrame(rect);
+        Texture2D texture = HolidayThemeRuntime.IsHolidayActive && _mascotOpenTex != null
+            ? _mascotOpenTex
+            : (fallback ?? _pixelFxTex);
+        if (texture != null)
+            GUI.DrawTexture(rect, texture, ScaleMode.ScaleToFit, true);
+    }
+
+    private void DrawMascotAvatarFrame(Rect rect)
+    {
+        if (!HolidayThemeRuntime.IsHolidayActive || HolidayThemeRuntime.ActiveId != "dragon_boat") return;
+        HolidayThemeRuntime.ThemeSkin skin = HolidayThemeRuntime.Active.Skin;
+        Color deep = new Color(skin.DecorationSecondary.r, skin.DecorationSecondary.g, skin.DecorationSecondary.b, 0.98f);
+        Color leaf = new Color(skin.DecorationPrimary.r, skin.DecorationPrimary.g, skin.DecorationPrimary.b, 0.98f);
+        Color gold = new Color(skin.DecorationGold.r, skin.DecorationGold.g, skin.DecorationGold.b, 0.98f);
+        float p = Mathf.Clamp(Mathf.Round(rect.width / 22f), 1f, 3f);
+        Rect outer = new Rect(rect.x - p * 2f, rect.y - p * 2f, rect.width + p * 4f, rect.height + p * 4f);
+
+        UiTextureFactory.DrawPixelRect(new Rect(outer.x, outer.y, outer.width, p), deep);
+        UiTextureFactory.DrawPixelRect(new Rect(outer.x, outer.yMax - p, outer.width, p), deep);
+        UiTextureFactory.DrawPixelRect(new Rect(outer.x, outer.y, p, outer.height), deep);
+        UiTextureFactory.DrawPixelRect(new Rect(outer.xMax - p, outer.y, p, outer.height), deep);
+        UiTextureFactory.DrawPixelRect(new Rect(outer.x, outer.y, p * 4f, p), leaf);
+        UiTextureFactory.DrawPixelRect(new Rect(outer.x, outer.y, p, p * 4f), leaf);
+        UiTextureFactory.DrawPixelRect(new Rect(outer.xMax - p * 4f, outer.y, p * 4f, p), gold);
+        UiTextureFactory.DrawPixelRect(new Rect(outer.xMax - p, outer.y, p, p * 4f), gold);
+        UiTextureFactory.DrawPixelRect(new Rect(outer.x + p * 3f, outer.yMax + p, outer.width - p * 6f, p), leaf);
+        UiTextureFactory.DrawPixelRect(new Rect(outer.x + p * 7f, outer.yMax + p * 2f, outer.width - p * 14f, p), gold);
+    }
+
     /// <summary>表情名 → 表情形象帧（惰性生成缓存）</summary>
     private Texture2D GetMascotEmoteTex(string expName)
     {
@@ -2449,6 +2650,7 @@ public partial class RightPanel : MonoBehaviour
         if (_ornamentBR != null) Destroy(_ornamentBR);
         if (_ornamentBL != null) Destroy(_ornamentBL);
         if (_starfieldTex != null) Destroy(_starfieldTex);
+        if (_holidayFireworks != null) _holidayFireworks.Dispose();
         if (_taijiTex != null) Destroy(_taijiTex);
         if (_hexagramTex != null) Destroy(_hexagramTex);
         if (_mascotSubscribed && _chat != null)

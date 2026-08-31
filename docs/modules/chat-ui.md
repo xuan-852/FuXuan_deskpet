@@ -2,7 +2,7 @@
 
 > **2026-08-16 验证记录**：审批弹窗现统一在 `DrawPanelContent` 的视图分发之后绘制，因此会覆盖会话列表、设置、便签、报告和消耗等外置视图；`ExternalChatWindow.Shutdown()` 通过窗口线程消息执行 `DestroyWindow`，并用 `PostQuitMessage` 结束消息循环，避免 Unity 主线程跨线程销毁窗口。`WindowOverlay` 会按 `FuXuanChatWindowClass` 排除外置窗口，防止延迟重试误加全屏透明置顶样式。`build.ps1 -Quick`、完整构建、EditMode 测试 78/78 和隔离冒烟测试已通过；真实退出崩溃仍需后续运行时观察。
 
-> **2026-08-30 节日适配验证**：新增 `HolidayThemeRuntime.ThemeSkin` 完整皮肤槽位，以运行时程序化方式为 17×24 像素符玄叠加新春帽，并将 RightPanel、ChatBubble 及子面板的配色切换为独立红金主题；`@@sim:holiday:*` 命令可在测试模式切换/查询主题。最终构建和隔离冒烟通过，手动开启/关闭主题各完成一次截图闭环。Live2D 渲染链路未修改。
+> **2026-08-30～31 节日适配验证**：`HolidayThemeRuntime.ThemeSkin` 统一管理 8 个节日主题，运行时为 17×24 像素符玄叠加独立配饰，并将 RightPanel、ChatBubble 及子面板切换到各自配色；`@@sim:holiday:*` 命令可在测试模式切换/查询主题。`HolidayFireworksField` 按主题绘制烟花、灯笼、水波、星桥、月兔、南瓜/蝙蝠、飘雪/彩灯和元旦彩带。前轮完成 8 个主题预检；正式验收按单节日推进，目前已完成元宵、端午人工审核，其他主题不提前签字。Live2D 渲染链路未修改。
 
 > **文档作用**: 本模块文档描述桌宠「交互界面」子系统的**代码真相**——纯 IMGUI 架构（无 UGUI/无 Prefab）、四类界面元素（悬浮球/BallPanel/RightPanel/ChatBubble）、对话核心事件链，以及 17×24 像素符玄 × 对话界面的开源方案可移植汇总（换字体/换头像/加表情差分三件事）。改任何 UI 相关代码前必读。
 > **基本架构**: 全部界面为 **IMGUI**（`OnGUI`/`GUI.DrawTexture`，无 UGUI、无 Prefab、无美术贴图管线），视觉元素（圆角气泡/云纹/星点/CRT 扫描线/像素边框）均运行时 `Texture2D.SetPixel` 程序生成。核心：`RightPanel.cs`（终端窗）、`ChatBubble.cs`（头顶气泡）、`ChatManager.cs`（Entry 历史 + SplitSentences 逐句事件）、`AutoChat.cs`（气泡驱动）。2026-08-12 起 RightPanel 支持 OpenClaw 任务进度可视化：标题栏状态区（思考中部位）步骤显示 + 模态审批弹窗（todo 5/6）。
@@ -352,19 +352,29 @@
 
 ## 十四、像素符玄节日主题（2026-08-30）
 
-- `HolidayThemeRuntime` 统一维护主题状态、完整 `ThemeSkin` 颜色槽位和测试命令；当前提供 `default` 与 `cn_new_year`，另支持 `auto`、`status`、`list`。
+- `HolidayThemeRuntime` 统一维护主题状态、完整 `ThemeSkin` 颜色槽位、节日配饰和测试命令；当前提供 `default`、`cn_new_year`、`lantern_festival`、`dragon_boat`、`qixi`、`mid_autumn`、`halloween`、`christmas`、`new_year_day`，另支持 `auto`、`status`、`list`。
 - 新春主题不新增贴图依赖：在加载 17×24 像素符玄后，用确定性的 17×24 像素遮罩叠加红色帽体、金色帽檐/绒球和流苏，再按原有整数倍 Point 采样放大。
 - `RightPanel` 在主题 revision 变化时全量重建程序生成的背景、星云、星点、边框、输入栏、按钮、标题、子面板和像素头像纹理；终端按钮背景强制透明，避免 Unity 默认 skin 叠色；`ChatBubble` 同步切换红金气泡配色。
+- 节日头像统一经 `DrawMascotAvatar` 取当前主题合成帧，覆盖聊天标题、会话列表、消息气泡和输入栏；新春截图已确认红金帽饰在这些位置可见，默认主题回退到原始像素帧。
+- `@@sim:screenshot:<label>` 优先请求 Unity 窗口重绘并从自身 RenderTexture 保存面板 PNG；透明层回读不可用时才使用窗口/面板区域兜底，禁止把桌面截图当正式视觉证据。
+- 端午主题保留原始像素符玄，不再合成头像叶饰；`DrawMascotAvatar` 在头像外绘制竹叶、金线和水波式头像框。`HolidayFireworksField` 绘制完整龙舟、龙头、旗帜、粽子、船桨、两侧艾草和低对比度端午诗句；龙舟往返时按运动方向水平翻转，船头不会倒着走。
+- 新春主题将默认的 `StarField` 星空/流星层替换为独立 `HolidayFireworksField`：低密度红金像素烟花依次升空、快速爆裂并渐隐，周期约 3～4 秒，爆点上下分层分布，单朵爆裂半径约为面板短边的 12%～20%；火星带轻微角度扰动，使用初速、重力项和分段短尾迹形成抛物线下坠，避免规则齿轮状放射。其余节日使用同一绘制入口切换到灯笼、水波、星桥、月兔、南瓜/蝙蝠、飘雪/彩灯或彩带动态层；每个主题都使用独立节日色槽，切回默认主题后恢复星空，避免两套背景叠加。
 - `UiTextureFactory` 保留旧颜色绘制点的兼容映射，但新代码必须直接使用 `ThemeSkin`；透明色不会参与映射，防止透明按钮变成实体色块。
 - 适配边界明确为像素符玄与聊天窗口/气泡，Live2D 模型、参数映射、物理和渲染 RT 均不参与节日主题。
 
 ### 测试命令
 
-在测试模式下通过 Inbox 发送：`@@sim:holiday:cn_new_year`、`@@sim:holiday:off`、`@@sim:holiday:auto`、`@@sim:holiday:status`、`@@sim:holiday:list`。截图仍使用 `@@sim:screenshot:<label>`，可将开启和关闭状态放入同一轮回归对照。
+在测试模式下通过 Inbox 发送：`@@sim:holiday:cn_new_year`、`@@sim:holiday:lantern_festival`、`@@sim:holiday:dragon_boat`、`@@sim:holiday:qixi`、`@@sim:holiday:mid_autumn`、`@@sim:holiday:halloween`、`@@sim:holiday:christmas`、`@@sim:holiday:new_year_day`、`@@sim:holiday:off`、`@@sim:holiday:auto`、`@@sim:holiday:status`、`@@sim:holiday:list`。截图仍使用 `@@sim:screenshot:<label>`，可将所有主题放入同一轮回归对照。
 
 ### 验证记录
 
-`build.ps1 -Quick`、完整构建、隔离 `runtime_smoke.cjs --verbose` 均通过；最终播放器在隔离数据目录中完成新春主题开启/关闭及各自截图，日志确认主题状态切换和测试命令完整退出。生产记忆目录未参与测试。
+`build.ps1 -Quick`、完整构建、隔离 `runtime_smoke.cjs --verbose` 均通过；端午主视觉重做后，`holiday_eval_drive.cjs --theme=dragon_boat --verbose` 通过，生成 static/motion/recovery 三张隔离截图并完成人工检查，确认主题切换、龙舟主视觉、头像框和默认恢复。元宵完成首轮人工检查，其他主题仅作为预检，后续必须逐个完成同样流程；所有测试均使用隔离数据目录，生产记忆目录未参与测试。
+### 端午最新复核补充（2026-09-01）
+
+- 龙舟按实际行进方向翻转，船头不会倒着走；船桨、龙须和艾草叶使用像素线段，避免出现飞出场景的黄线。
+- 端午诗词背景采用响应式字号、呼吸亮度和中文行楷/行书字体，小界面一行、大界面两行。
+- 最新端午单主题闭环测试和 static/motion/recovery 人工检查通过。
+
 ### IME 分层修复（2026-08-20）
 
 - 渲染字层：Unity 绘制已提交文本、组合文本和闪烁光标；光标横坐标由 `GUIStyle.CalcSize` 的文本末端计算，避免英文输入时跑到字符中间。

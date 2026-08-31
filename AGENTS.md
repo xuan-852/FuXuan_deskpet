@@ -4,7 +4,7 @@
 > 详细规范见 [`docs/development-standards.md`](docs/development-standards.md)（两者冲突时以详细版为准）。
 > 📚 **文档总索引**：[`docs/README.md`](docs/README.md)——顶层权威文档表 + 10 个模块文档（`docs/modules/`）。
 >
-> **AI 读文档优先级**：`AGENTS.md` → `docs/README.md` → `development-standards.md` → `build-workflow.md`（**改 C# 后构建 / 构建卡死时先读**）→ `code-truth-architecture.md` → `docs/token-cost-testing.md`（涉及云端调用/测试/排查烧钱时**必须先读**）→ `docs/token-saving-architecture.md`（设计/修改成本控制时**必须先读**）→ `docs/quality-measurement-test-guide.md`（编译后测量本地质量时**必须先读**）→ `docs/quality-comparison-test-guide.md`（本地/云端配对对照时**必须先读**）→ `docs/project-bugs-and-acceptance.md`（改外置窗口/渲染/退出/测试代码前**必须先读**）→ 对应 `docs/modules/<模块>.md`
+> **AI 读文档优先级**：`AGENTS.md` → `docs/README.md` → `development-standards.md` → `holiday-skin-development-guide.md`（**改节日皮肤前先读**）→ `holiday-skin-review-standard.md`（**节日皮肤验收前先读**）→ `build-workflow.md`（**改 C# 后构建 / 构建卡死时先读**）→ `code-truth-architecture.md` → `docs/token-cost-testing.md`（涉及云端调用/测试/排查烧钱时**必须先读**）→ `docs/token-saving-architecture.md`（设计/修改成本控制时**必须先读**）→ `docs/quality-measurement-test-guide.md`（编译后测量本地质量时**必须先读**）→ `docs/quality-comparison-test-guide.md`（本地/云端配对对照时**必须先读**）→ `docs/project-bugs-and-acceptance.md`（改外置窗口/渲染/退出/测试代码前**必须先读**）→ 对应 `docs/modules/<模块>.md`
 
 ## 项目是什么
 

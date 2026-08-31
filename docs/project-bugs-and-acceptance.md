@@ -38,6 +38,7 @@
 |-----|------|---------|-----------|
 | 外置窗口全黑 | IMGUI 仅 `EventType.Repaint` 提交 RT，非 Repaint 早退 | `7945cc3` | 渲染管线必须保持 Repaint 门控 |
 | 图像上下颠倒 | `SetDIBitsToDevice` biHeight 必须**正**（bottom-up），负值倒图 | `14727cf` | 改 SetBuffer/像素桥时勿改符号约定 |
+| 测试截图黑屏/截到宿主桌面 | 透明窗口的屏幕回读不等于 Unity IMGUI 绘制结果，且启动早期窗口句柄可能尚未可用 | 本轮修复 | `@@sim:screenshot:<label>` 优先触发窗口重绘并从 Unity 面板 RenderTexture 保存；不可回读时才走窗口/面板区域兜底，禁止以桌面截图替代正式证据 |
 | 颜色发橙 | RenderTexture 必须 **BGRA32**（ARGB32 通道序错） | `d1a5ee2` | AsyncGPUReadback→SetDIBitsToDevice 链路的 RT 格式锁死 BGRA32 |
 | 标题栏拖不动/中途停 | `WM_NCHITTEST` 返回 HTCAPTION 后未显式转发 `WM_NCLBUTTONDOWN` 到 DefWindowProc | `917e99a` | 命中区表与 MoveLoop 逻辑勿动 |
 | 标题栏按钮点击失效 | 拖动逻辑（LBUTTONDOWN 兜底）吞掉按钮事件 | `23bbb92` | 右上 68px 按钮区必须 HTCLIENT；勿加 LBUTTONDOWN 兜底 |

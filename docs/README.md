@@ -1,6 +1,6 @@
 # 📚 docs/ 文档总索引
 
-> **索引状态**: 2026-08-30 复核；代码改动完成并通过相应验证后，必须同步更新模块文档与受影响的顶层文档。
+> **索引状态**: 2026-08-31 复核；代码改动完成并通过相应验证后，必须同步更新模块文档与受影响的顶层文档。
 > **文档作用**: 本文件是 `docs/` 目录的**导航地图**——告诉 AI 与开发者每份文档的作用、归属模块、阅读优先级，以及统一的文档编写模板。
 > **基本架构**: 三层结构——① 顶层权威文档（架构/规范/路线图/清单）→ ② `modules/` 模块文档（每模块一份，四要素）→ ③ 构建产物（report.* 等，勿手改）。
 > **开发历史迭代**: 2026-08-12 由「平铺 14 份文档」重构为「索引 + 模块化」结构，全部模块文档统一四要素模板；当前 `modules/` 共 10 份模块文档。
@@ -35,6 +35,10 @@
 | [`data-directory-cleanup-manifest-2026-08-21.md`](data-directory-cleanup-manifest-2026-08-21.md) | 数据分类、整理映射与安装/卸载生命周期约定（默认根目录由 `DataPathConfig` 决定） | 整理用户数据或修改安装器前 |
 | [`task-inventory.md`](task-inventory.md) | 项目任务清单（N40+，65 工具） | 接任务/汇报进度时 |
 | [`optimization.md`](optimization.md) | 当前已验证优化、后续优先级与统一验收标准 | 规划重构、性能、稳定性或成本优化前 |
+| [`holiday-skin-development-guide.md`](holiday-skin-development-guide.md) | 节日皮肤设计、实现、测试与交付规范 | 新增或修改节日主题前 |
+| [`holiday-skin-review-standard.md`](holiday-skin-review-standard.md) | 节日皮肤视觉、功能、性能、安全与截图审核标准 | 节日主题验收、提交或发布前 |
+| [`holiday-skin-evaluation-2026-08-31.md`](holiday-skin-evaluation-2026-08-31.md) | 节日皮肤逐主题评价（**对照审核标准，真实抓图**，视觉均值 48.6/60） | 查看 8 主题逐项视觉评分与验收结论时 |
+| [`project-evaluation-2026-08-31.md`](project-evaluation-2026-08-31.md) | 当前项目工程治理与节日皮肤实现评价报告 | 查看本轮代码/文档评审结论时 |
 
 ### 1.2 模块文档（modules/，每份含四要素）
 
@@ -106,4 +110,4 @@
 
 本轮 Live2D/问候修复已同步到 [`modules/live2d-rendering.md`](modules/live2d-rendering.md)、[`modules/ai-chat-system.md`](modules/ai-chat-system.md)、[`project-bugs-and-acceptance.md`](project-bugs-and-acceptance.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：停走物理收敛、自动问候时段守卫和 ILPP PID 身份校验已通过 Quick、完整构建和隔离运行时冒烟；可见播放器观感仍待人工确认。
 
-本轮节日适配（2026-08-30）已同步到 [`modules/chat-ui.md`](modules/chat-ui.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：以完整 `ThemeSkin` 管理 17×24 像素符玄、聊天窗口、气泡和子面板的新春红金皮肤，程序化像素帽使用独立透明层，不修改 Live2D；Quick、完整构建、隔离冒烟和开启/关闭主题截图闭环均通过。
+本轮节日适配（2026-08-30～31）已同步到 [`modules/chat-ui.md`](modules/chat-ui.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：以完整 `ThemeSkin` 管理 17×24 像素符玄、聊天窗口、气泡和子面板的 8 个节日主题，独立配饰与动态背景不修改 Live2D；Quick、完整构建、隔离冒烟和 8 个主题截图闭环均通过。

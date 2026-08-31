@@ -4,7 +4,7 @@
 > **审计范围**: **122 个 .cs 文件**（2026-08-29 复核，含 Editor、Live2DFramework、ActionAgent、ActionPresets、ToolEngine 及 Preferences/TaskTemplate/TaskTrajectory 等）
 > **重要声明**: 本项目的 md 文档（README / docs / 各类方案文档）**部分已过时**，存在多处与代码不符的陈述。本文档即为"唯一可信"的架构参照。
 > **引擎**: 团结引擎 Tuanjie 2022.3.62t7（Unity 派生版）+ Live2D Cubism SDK 5-r.4
-> **版本基准**: N38 审计（2026-08-02）→ N39 代码修复（2026-08-02）→ N40 Token 优化（2026-08-07，T1-T8 全部完成）→ 2026-08-12 任务可视化/审批/并行化/65 工具 → N41/N42（像素表情、搜索/日志修复）→ 2026-08-17~22 外置窗口、输入、模型路由与安装包迭代 → 2026-08-25 LaTeX/PDF/本地模型保护 → 2026-08-27 当前工作区审计
+> **版本基准**: N38 审计（2026-08-02）→ N39 代码修复（2026-08-02）→ N40 Token 优化（2026-08-07，T1-T8 全部完成）→ 2026-08-12 任务可视化/审批/并行化/65 工具 → N41/N42（像素表情、搜索/日志修复）→ 2026-08-17~22 外置窗口、输入、模型路由与安装包迭代 → 2026-08-25 LaTeX/PDF/本地模型保护 → 2026-08-27 当前工作区审计 → 2026-08-30 新春烟花背景 → 2026-08-31 8 个节日主题
 
 ---
 
@@ -14,7 +14,7 @@
 
 ```
 code/desktop_unity/Assets/
-├── Scripts/                          # 主控与系统层（61 个 .cs 顶层文件）
+├── Scripts/                          # 主控与系统层（69 个 .cs 顶层文件）
 │   ├── Editor/                       # 编辑器工具（6 个，非运行时）
 │   ├── Live2DFramework/              # Live2D 参数框架（8 个 .cs：ParameterMapper/ModelAnalyzer 等）
 │   │   └── ActionAgent/              # 具身动作闭环（15 个文件，AutoMotionCollector 已于 N39 删除）
@@ -23,7 +23,7 @@ code/desktop_unity/Assets/
 └── Resources/                        # 运行时资源
 ```
 
-> **实测统计（2026-08-29）**: 顶层 Scripts 67 + Editor 6 + Live2DFramework 8 + ActionAgent 15 + ActionPresets 6 + ToolEngine 20 = **122 个 .cs 文件**。
+> **实测统计（2026-08-30）**: 顶层 Scripts 69 + Editor 6 + Live2DFramework 8 + ActionAgent 15 + ActionPresets 6 + ToolEngine 20 = **124 个 .cs 文件**。
 
 ### 1.2 文件规模 TOP 榜（按行数）
 
@@ -32,6 +32,7 @@ code/desktop_unity/Assets/
 | `Scripts/Live2DRenderer.cs` | **4,262** | Live2D 模型加载、参数缓存、动作、交互与目标点式拖拽物理输入 |
 | `Scripts/Live2DRenderer.OverlayRendering.cs` | **294** | Live2D 局部叠加相机、RenderTexture、OnGUI 与性能档位 |
 | `Scripts/RuntimeInputSimulator.cs` | **191** | 测试模式 `@@sim`/`@@input` 运行时输入解析、调度与 Unity 截图 |
+| `Scripts/HolidayFireworksField.cs` | **~360** | 8 个节日主题的低密度像素动态背景绘制 |
 | `RightPanel.cs` | **2,534** | 右键面板主逻辑；聊天区和子面板已拆到 partial 文件 |
 | `ChatManager.cs` | **1,775** | AI 请求协程、历史裁剪与请求状态收尾 |
 | `ChatManager.RequestLifecycle.cs` | **121** | ChatManager 请求发送、排队、取消、状态通知与意图分类入口 |

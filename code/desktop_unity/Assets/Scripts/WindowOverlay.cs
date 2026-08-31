@@ -67,6 +67,29 @@ public class WindowOverlay : MonoBehaviour
         public int cyBottomHeight;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAPINFOHEADER
+    {
+        public uint biSize;
+        public int biWidth;
+        public int biHeight;
+        public ushort biPlanes;
+        public ushort biBitCount;
+        public uint biCompression;
+        public uint biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public uint biClrUsed;
+        public uint biClrImportant;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAPINFO
+    {
+        public BITMAPINFOHEADER bmiHeader;
+        public uint bmiColors;
+    }
+
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 
@@ -89,6 +112,25 @@ public class WindowOverlay : MonoBehaviour
         int X, int Y, int cx, int cy, uint uFlags);
 
     [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool InvalidateRect(IntPtr hWnd, IntPtr lpRect, bool bErase);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UpdateWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetWindowDC(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -102,6 +144,29 @@ public class WindowOverlay : MonoBehaviour
 
     [DllImport("gdi32.dll", SetLastError = true)]
     private static extern bool DeleteObject(IntPtr obj);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int width, int height);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern bool DeleteDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest,
+        int nWidth, int nHeight, IntPtr hdcSrc, int nXSrc, int nYSrc, uint dwRop);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern int GetDIBits(IntPtr hdc, IntPtr hbmp, uint uStartScan,
+        uint cScanLines, [Out] byte[] lpvBits, ref BITMAPINFO lpbi, uint uUsage);
+
+    private const uint SRCCOPY = 0x00CC0020;
+    private const uint DIB_RGB_COLORS = 0;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetWindowTextLengthW(IntPtr hWnd);
@@ -531,6 +596,15 @@ public class WindowOverlay : MonoBehaviour
         }
     }
 
+    private static IntPtr FindCurrentProductWindow()
+    {
+        if (string.IsNullOrEmpty(Application.productName)) return IntPtr.Zero;
+        IntPtr candidate = FindWindow(null, Application.productName);
+        if (candidate == IntPtr.Zero || !IsWindow(candidate)) return IntPtr.Zero;
+        GetWindowThreadProcessId(candidate, out uint pid);
+        return pid == (uint)Process.GetCurrentProcess().Id ? candidate : IntPtr.Zero;
+    }
+
     /// <summary>
     /// 查找 Unity 主窗口句柄
     /// </summary>
@@ -540,6 +614,18 @@ public class WindowOverlay : MonoBehaviour
         string productName = Application.productName;
 
         Log($"本进程 PID={currentPid}, productName='{productName}'");
+
+        // Unity 启动早期 MainWindowHandle 可能暂时为零，且透明层尚未设为可见；
+        // 先按产品标题直查主窗口，避免后续五次尝试都错过初始化窗口。
+        if (!string.IsNullOrEmpty(productName))
+        {
+            IntPtr titled = FindCurrentProductWindow();
+            if (titled != IntPtr.Zero && IsWindow(titled) && !IsExternalChatWindow(titled))
+            {
+                Log($"FindWindow(productName) → {titled.ToInt64():X8}");
+                return titled;
+            }
+        }
 
         // ★ 方法1: 用 Process.MainWindowHandle — 最简单可靠
         try
@@ -698,6 +784,174 @@ public class WindowOverlay : MonoBehaviour
         //     第一次刷帧，第二次确保生效（有用户反馈单次 SWP_FRAMECHANGED 在某些 Win11 版本不够）。
         SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+
+    /// <summary>
+    /// 请求透明 Unity 窗口尽快派发一次重绘事件。
+    /// 透明窗口在没有鼠标/窗口消息时可能停留在上一帧，测试截图和外置 RT 需要显式唤醒。
+    /// </summary>
+    public bool RequestRepaint()
+    {
+        if (_suspended) return false;
+        IntPtr hwnd = _hwnd;
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
+        {
+            try { hwnd = Process.GetCurrentProcess().MainWindowHandle; }
+            catch { hwnd = IntPtr.Zero; }
+        }
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
+            hwnd = FindCurrentProductWindow();
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd)) return false;
+        InvalidateRect(hwnd, IntPtr.Zero, false);
+        UpdateWindow(hwnd);
+        return true;
+    }
+
+    /// <summary>
+    /// 读取屏幕上的指定区域，返回 Unity Texture2D 可消费的 BGRA 原始像素。
+    /// 仅作为透明窗口 backbuffer 不可读时的面板区域兜底，不读取整桌面。
+    /// </summary>
+    public static bool TryCaptureScreenRegion(int x, int y, int width, int height, out byte[] bgra)
+    {
+        bgra = null;
+        if (width <= 0 || height <= 0) return false;
+
+        IntPtr screenDc = GetDC(IntPtr.Zero);
+        if (screenDc == IntPtr.Zero) return false;
+        IntPtr memoryDc = IntPtr.Zero;
+        IntPtr bitmap = IntPtr.Zero;
+        IntPtr oldBitmap = IntPtr.Zero;
+        try
+        {
+            memoryDc = CreateCompatibleDC(screenDc);
+            bitmap = CreateCompatibleBitmap(screenDc, width, height);
+            if (memoryDc == IntPtr.Zero || bitmap == IntPtr.Zero) return false;
+            oldBitmap = SelectObject(memoryDc, bitmap);
+            if (oldBitmap == IntPtr.Zero) return false;
+            if (!BitBlt(memoryDc, 0, 0, width, height, screenDc, x, y, SRCCOPY)) return false;
+
+            bgra = new byte[width * height * 4];
+            BITMAPINFO info = new BITMAPINFO
+            {
+                bmiHeader = new BITMAPINFOHEADER
+                {
+                    biSize = (uint)Marshal.SizeOf(typeof(BITMAPINFOHEADER)),
+                    biWidth = width,
+                    biHeight = height,
+                    biPlanes = 1,
+                    biBitCount = 32,
+                    biCompression = 0,
+                    biSizeImage = (uint)bgra.Length
+                }
+            };
+            int lines = GetDIBits(memoryDc, bitmap, 0, (uint)height, bgra, ref info, DIB_RGB_COLORS);
+            if (lines != height)
+            {
+                bgra = null;
+                return false;
+            }
+            return true;
+        }
+        finally
+        {
+            if (oldBitmap != IntPtr.Zero && memoryDc != IntPtr.Zero)
+                SelectObject(memoryDc, oldBitmap);
+            if (bitmap != IntPtr.Zero) DeleteObject(bitmap);
+            if (memoryDc != IntPtr.Zero) DeleteDC(memoryDc);
+            ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+
+    /// <summary>
+    /// 从 Unity 窗口自身取图并裁剪面板区域。透明/分层窗口通过桌面 DC 回读时，
+    /// Windows 可能只返回其下方窗口；PrintWindow 能优先读取窗口自己的绘制结果。
+    /// 坐标原点为窗口左上角，输出仍保持 GetDIBits 的底部向上 BGRA 排列。
+    /// </summary>
+    public static bool TryCaptureWindowRegion(IntPtr hwnd, int x, int y, int width, int height, out byte[] bgra)
+    {
+        bgra = null;
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd) || width <= 0 || height <= 0) return false;
+        RECT rect;
+        if (!GetWindowRect(hwnd, out rect)) return false;
+        int fullWidth = rect.Right - rect.Left;
+        int fullHeight = rect.Bottom - rect.Top;
+        if (fullWidth <= 0 || fullHeight <= 0 || x < 0 || y < 0 || x + width > fullWidth || y + height > fullHeight)
+            return false;
+
+        IntPtr windowDc = GetWindowDC(hwnd);
+        IntPtr memoryDc = IntPtr.Zero;
+        IntPtr bitmap = IntPtr.Zero;
+        IntPtr oldBitmap = IntPtr.Zero;
+        try
+        {
+            if (windowDc == IntPtr.Zero) return false;
+            memoryDc = CreateCompatibleDC(windowDc);
+            bitmap = CreateCompatibleBitmap(windowDc, fullWidth, fullHeight);
+            if (memoryDc == IntPtr.Zero || bitmap == IntPtr.Zero) return false;
+            oldBitmap = SelectObject(memoryDc, bitmap);
+            if (oldBitmap == IntPtr.Zero) return false;
+
+            bool captured = PrintWindow(hwnd, memoryDc, 2u);
+            if (!captured) captured = BitBlt(memoryDc, 0, 0, fullWidth, fullHeight, windowDc, 0, 0, SRCCOPY);
+            if (!captured) return false;
+
+            byte[] fullBgra = new byte[fullWidth * fullHeight * 4];
+            BITMAPINFO info = new BITMAPINFO
+            {
+                bmiHeader = new BITMAPINFOHEADER
+                {
+                    biSize = (uint)Marshal.SizeOf(typeof(BITMAPINFOHEADER)),
+                    biWidth = fullWidth,
+                    biHeight = fullHeight,
+                    biPlanes = 1,
+                    biBitCount = 32,
+                    biCompression = 0,
+                    biSizeImage = (uint)fullBgra.Length
+                }
+            };
+            int lines = GetDIBits(memoryDc, bitmap, 0, (uint)fullHeight, fullBgra, ref info, DIB_RGB_COLORS);
+            if (lines != fullHeight) return false;
+
+            bgra = new byte[width * height * 4];
+            int rowBytes = width * 4;
+            for (int row = 0; row < height; row++)
+            {
+                int sourceRow = fullHeight - y - height + row;
+                Buffer.BlockCopy(fullBgra, (sourceRow * fullWidth + x) * 4, bgra, row * rowBytes, rowBytes);
+            }
+            return true;
+        }
+        finally
+        {
+            if (oldBitmap != IntPtr.Zero && memoryDc != IntPtr.Zero) SelectObject(memoryDc, oldBitmap);
+            if (bitmap != IntPtr.Zero) DeleteObject(bitmap);
+            if (memoryDc != IntPtr.Zero) DeleteDC(memoryDc);
+            ReleaseDC(hwnd, windowDc);
+        }
+    }
+
+    public bool TryGetWindowBounds(out int x, out int y, out int width, out int height)
+    {
+        x = 0;
+        y = 0;
+        width = 0;
+        height = 0;
+        IntPtr hwnd = _hwnd;
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
+        {
+            try { hwnd = Process.GetCurrentProcess().MainWindowHandle; }
+            catch { hwnd = IntPtr.Zero; }
+        }
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
+            hwnd = FindCurrentProductWindow();
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd)) hwnd = FindUnityWindow();
+        RECT rect;
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd) || !GetWindowRect(hwnd, out rect)) return false;
+        x = rect.Left;
+        y = rect.Top;
+        width = Mathf.Max(1, rect.Right - rect.Left);
+        height = Mathf.Max(1, rect.Bottom - rect.Top);
+        return true;
     }
 
     /// <summary>

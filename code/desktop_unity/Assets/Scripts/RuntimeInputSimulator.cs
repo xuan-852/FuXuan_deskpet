@@ -77,8 +77,16 @@ public static class RuntimeInputSimulator
             System.IO.Directory.CreateDirectory(dir);
             string path = System.IO.Path.Combine(dir,
                 $"{safeName}_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
-            ScreenCapture.CaptureScreenshot(path);
-            Debug.Log("[TestInbox] screenshot queued: " + path);
+            RightPanel panel = UnityEngine.Object.FindObjectOfType<RightPanel>();
+            if (panel == null)
+            {
+                Debug.LogWarning("[TestInbox] screenshot failed: 未找到 RightPanel");
+                return true;
+            }
+            if (panel.RequestTestScreenshot(path))
+                Debug.Log("[TestInbox] screenshot queued/requested: " + path);
+            else
+                Debug.LogWarning("[TestInbox] screenshot failed: Unity 面板尚未准备好");
             return true;
         }
 
@@ -121,7 +129,7 @@ public static class RuntimeInputSimulator
         }
 
         Debug.LogWarning("[TestInbox] 未知模拟输入: " + body
-            + "（支持 status/reset/release/holiday:list/holiday:status/holiday:cn_new_year/holiday:off/holiday:auto/click:x,y/click:center/drag:x1,y1->x2,y2[,steps]/drag:offset:dx,dy[,steps]）");
+            + "（支持 status/reset/release/holiday:list/holiday:status/holiday:cn_new_year/holiday:lantern_festival/holiday:dragon_boat/holiday:qixi/holiday:mid_autumn/holiday:halloween/holiday:christmas/holiday:new_year_day/holiday:off/holiday:auto/click:x,y/click:center/drag:x1,y1->x2,y2[,steps]/drag:offset:dx,dy[,steps]）");
         return true;
     }
 
