@@ -91,22 +91,26 @@ public sealed class HolidayFireworksField
         float time = Time.time;
         for (int i = 0; i < 6; i++)
         {
-            float x = px + (0.10f + i * 0.16f) * pw;
-            float y = py + (0.13f + (i % 3) * 0.16f) * ph
-                + Mathf.Sin(time * 1.4f + i * 1.7f) * 7f;
+            // 灯笼只落在右侧聊天主视图，避免侵入左侧会话列表；上下三层形成元宵夜景的空间层次。
+            float x = px + (0.40f + i * 0.105f) * pw;
+            float y = py + (0.12f + (i % 3) * 0.25f) * ph
+                + Mathf.Sin(time * 1.4f + i * 1.7f) * 11f;
             float size = 14f + (i % 2) * 4f;
             DrawRect(new Rect(x - size * 0.85f, y - size * 0.15f, size * 1.7f, size * 1.9f),
-                new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.10f));
+                new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.18f));
             DrawRect(new Rect(x - size * 0.45f, y - size * 0.65f, size * 0.90f, 3f),
-                new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.86f));
+                new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.98f));
             DrawRect(new Rect(x - size * 0.62f, y - size * 0.35f, size * 1.24f, size * 1.25f),
-                new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.76f));
+                new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.92f));
             DrawRect(new Rect(x - size * 0.36f, y - size * 0.18f, size * 0.72f, size * 0.80f),
-                new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.45f));
+                new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.66f));
             DrawRect(new Rect(x - size * 0.70f, y + size * 0.90f, size * 1.40f, 3f),
-                new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.82f));
+                new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.94f));
             DrawRect(new Rect(x - 1f, y + size * 1.05f, 2f, size * 0.70f),
-                new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.72f));
+                new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.84f));
+            // 细短挂线增强“悬挂”关系，同时保持低密度像素风。
+            DrawRect(new Rect(x - 1f, y - size * 1.30f, 2f, size * 0.65f),
+                new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.60f));
         }
     }
 
