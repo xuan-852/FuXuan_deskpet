@@ -553,17 +553,21 @@ public sealed class HolidayFireworksField
             float cycle = Mathf.Repeat(time * burst.z + burst.w, 1f);
             float launchT = Mathf.Clamp01(cycle / 0.20f);
             float burstT = Mathf.Clamp01((cycle - 0.20f) / 0.46f);
-            float centerX = px + burst.x * pw;
+            float sceneLeft = px + pw * 0.36f;
+            float sceneRight = px + pw * 0.96f;
+            float centerX = Mathf.Lerp(sceneLeft, sceneRight, burst.x);
             float centerY = py + (1.02f - launchT * (1.02f - burst.y)) * ph;
-            Color tint = (i % 2 == 0) ? _primaryColor : _secondaryColor;
+            Color tint = i % 2 == 0
+                ? Color.Lerp(_primaryColor, _sparkColor, 0.58f)
+                : Color.Lerp(_secondaryColor, _sparkColor, 0.42f);
 
             // 升空尾焰：细金线 + 亮点。
             if (cycle < 0.20f)
             {
-                float tailAlpha = animAlpha * (0.28f + 0.32f * launchT);
+                float tailAlpha = animAlpha * (0.54f + 0.40f * launchT);
                 GUI.color = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, tailAlpha);
                 GUI.DrawTexture(new Rect(centerX - 1f, centerY + 15f, 2f, Mathf.Max(5f, ph * 0.12f)), _sparkTex);
-                GUI.color = new Color(1f, 0.96f, 0.64f, animAlpha * 0.82f);
+                GUI.color = new Color(1f, 0.96f, 0.64f, animAlpha * 0.96f);
                 GUI.DrawTexture(new Rect(centerX - 2f, centerY + 9f, 4f, 7f), _sparkTex);
                 continue;
             }
@@ -576,7 +580,7 @@ public sealed class HolidayFireworksField
             {
                 float coreFlash = 1f - burstT / 0.14f;
                 float coreSize = Mathf.Lerp(8f, 3f, burstT) * (0.92f + _burstScales[i] * 0.10f);
-                GUI.color = new Color(1f, 0.92f, 0.56f, animAlpha * fade * coreFlash * 0.92f);
+                GUI.color = new Color(1f, 0.92f, 0.56f, animAlpha * fade * coreFlash * 1.00f);
                 GUI.DrawTexture(new Rect(centerX - coreSize * 0.5f, centerY - coreSize * 0.5f,
                     coreSize, coreSize), _sparkTex);
             }
@@ -593,7 +597,7 @@ public sealed class HolidayFireworksField
                 Vector2 trailPosition = GetSparkPosition(new Vector2(centerX, centerY), angle,
                     Mathf.Max(0f, burstT - 0.20f), maxRadius * lengthScale);
                 float thickness = s % 3 == 0 ? 2.2f : 1.4f;
-                float rayAlpha = animAlpha * fade * (0.52f + 0.22f * Mathf.Sin(s * 1.3f + i));
+                float rayAlpha = animAlpha * fade * (0.86f + 0.12f * Mathf.Sin(s * 1.3f + i));
                 DrawSegment(trailPosition, previousPosition, thickness * 0.72f,
                     new Color(tint.r, tint.g, tint.b, rayAlpha * 0.34f));
                 DrawSegment(previousPosition, position, thickness,
