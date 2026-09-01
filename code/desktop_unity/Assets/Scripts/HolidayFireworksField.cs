@@ -76,7 +76,7 @@ public sealed class HolidayFireworksField
         {
             DrawDragonBoatPoetry(px, py, pw, ph, animAlpha);
             DrawDragonBoatMugwort(px, py, pw, ph, animAlpha);
-            DrawDragonBoat(px, py, pw, ph, animAlpha);
+            DrawDuanwuWaterside(px, py, pw, ph, animAlpha);
         }
         else if (themeId == "qixi") DrawQixi(px, py, pw, ph, animAlpha);
         else if (themeId == "mid_autumn") DrawMidAutumn(px, py, pw, ph, animAlpha);
@@ -209,8 +209,8 @@ public sealed class HolidayFireworksField
         Color leaf = new Color(_primaryColor.r, Mathf.Min(1f, _primaryColor.g + 0.16f), _primaryColor.b, animAlpha * 0.92f);
         Color leafLight = new Color(Mathf.Min(1f, _primaryColor.r + 0.18f), Mathf.Min(1f, _primaryColor.g + 0.22f),
             Mathf.Min(1f, _primaryColor.b + 0.10f), animAlpha * 0.86f);
-        DrawMugwortBundle(new Vector2(px + 54f, py + ph * 0.72f), 1.08f, Time.time, false, stem, leaf, leafLight);
-        DrawMugwortBundle(new Vector2(px + pw - 54f, py + ph * 0.72f), 1.08f, Time.time + 1.7f, true, stem, leaf, leafLight);
+        DrawMugwortBundle(new Vector2(px + pw * 0.38f, py + ph * 0.72f), 1.08f, Time.time, false, stem, leaf, leafLight);
+        DrawMugwortBundle(new Vector2(px + pw * 0.94f, py + ph * 0.72f), 1.08f, Time.time + 1.7f, true, stem, leaf, leafLight);
     }
 
     private void DrawMugwortBundle(Vector2 basePoint, float scale, float time, bool mirror,
@@ -241,27 +241,182 @@ public sealed class HolidayFireworksField
             {
                 alignment = TextAnchor.MiddleCenter,
                 wordWrap = false,
-                clipping = TextClipping.Clip
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(0, 0, 0, 0),
+                margin = new RectOffset(0, 0, 0, 0)
             };
             _poetryStyle.font = Font.CreateDynamicFontFromOSFont(
                 new[] { "STXingkai", "华文行楷", "KaiTi", "楷体", "STKaiti" }, 22);
         }
         Color previousColor = GUI.color;
         float shortSide = Mathf.Min(pw, ph);
-        int fontSize = Mathf.Clamp(Mathf.RoundToInt(shortSide * 0.026f), 14, 30);
+        int fontSize = Mathf.Clamp(Mathf.RoundToInt(shortSide * 0.037f), 16, 32);
         _poetryStyle.fontSize = fontSize;
-        float lineHeight = Mathf.Max(24f, fontSize * 1.45f);
-        float breath = 0.16f + (0.5f + 0.5f * Mathf.Sin(Time.time * 0.85f)) * 0.14f;
-        _poetryStyle.normal.textColor = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * breath);
+        float lineHeight = Mathf.Max(22f, fontSize * 1.18f);
+        float columnGap = Mathf.Max(24f, fontSize * 1.55f);
+        float breath = 0.62f + (0.5f + 0.5f * Mathf.Sin(Time.time * 0.85f)) * 0.20f;
+        Color ink = Color.Lerp(_sparkColor, new Color(0.86f, 0.98f, 0.88f, 1f), 0.58f);
+        _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
         GUI.color = Color.white;
-        float poetryY = py + ph * 0.22f;
-        GUI.Label(new Rect(px + 24f, poetryY, pw - 48f, lineHeight), "端午临中夏，时清日复长", _poetryStyle);
-        if (shortSide >= 560f)
+
+        // 右列为词句开头，列内自上而下，列间从右向左。
+        string[] columns = shortSide >= 430f
+            ? new[] { "银塘朱槛曲尘波", "圆绿卷新荷", "兰条荐浴", "菖花酿酒", "天气尚清和", "好将沉醉酬佳节", "十分酒", "十分歌" }
+            : new[] { "银塘朱槛曲尘波", "圆绿卷新荷", "菖花酿酒", "十分歌" };
+        float poetryRight = px + pw * 0.82f;
+        float poetryTop = py + ph * 0.15f;
+        for (int column = 0; column < columns.Length; column++)
         {
-            _poetryStyle.normal.textColor = new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * (breath * 0.62f));
-            GUI.Label(new Rect(px + 24f, poetryY + lineHeight, pw - 48f, lineHeight), "盐梅已佐鼎，曲糵且传觞", _poetryStyle);
+            string text = columns[column];
+            float x = poetryRight - column * columnGap;
+            float y = poetryTop + Mathf.Sin(Time.time * 0.32f + column * 0.8f) * 1.5f;
+            for (int row = 0; row < text.Length; row++)
+            {
+                // 中轴线附近的轻微错位：保留书写感，不把文字打散。
+                float axisOffset = ((column + row) % 3 - 1) * 1.35f;
+                float drift = Mathf.Sin(Time.time * 0.42f + column * 0.73f + row * 0.51f) * 0.55f;
+                float charY = y + row * lineHeight;
+                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, charY,
+                    fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
+            }
         }
         GUI.color = previousColor;
+    }
+
+    private void DrawDuanwuWaterside(float px, float py, float pw, float ph, float animAlpha)
+    {
+        float time = Time.time;
+        Color water = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.54f);
+        Color waterLight = new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.76f);
+        Color rail = new Color(_sparkColor.r, _sparkColor.g * 0.74f, _sparkColor.b * 0.48f, animAlpha * 0.58f);
+        Color leaf = new Color(Mathf.Min(1f, _primaryColor.r + 0.12f), Mathf.Min(1f, _primaryColor.g + 0.16f),
+            Mathf.Min(1f, _primaryColor.b + 0.08f), animAlpha * 0.88f);
+        Color leafLight = new Color(Mathf.Min(1f, _primaryColor.r + 0.22f), Mathf.Min(1f, _primaryColor.g + 0.24f),
+            Mathf.Min(1f, _primaryColor.b + 0.12f), animAlpha * 0.76f);
+
+        // 银塘与朱槛：先铺出词中水岸，再放置诗词和艾草。
+        float railY = py + ph * 0.18f;
+        DrawRect(new Rect(px + pw * 0.38f, railY, pw * 0.54f, 4f), rail);
+        DrawRect(new Rect(px + pw * 0.42f, railY + 7f, pw * 0.46f, 2f),
+            new Color(rail.r, rail.g, rail.b, rail.a * 0.52f));
+        for (int i = 0; i < 4; i++)
+        {
+            float postX = px + pw * (0.42f + i * 0.15f);
+            DrawRect(new Rect(postX, railY - 2f, 3f, 22f), rail);
+        }
+
+        // 圆绿新荷：少量大轮廓，避免重新退化成高密度粒子。
+        DrawLotus(new Vector2(px + pw * 0.43f, py + ph * 0.53f), 1.28f, time, leaf, leafLight);
+        DrawLotus(new Vector2(px + pw * 0.65f, py + ph * 0.62f), 1.08f, time + 1.2f, leaf, leafLight);
+        DrawLotus(new Vector2(px + pw * 0.86f, py + ph * 0.49f), 0.98f, time + 2.1f, leaf, leafLight);
+
+        // 龙舟始终使用同一套屏幕坐标绘制，船体、龙头、旗帜和船桨一起换向，避免反向时出现飞线。
+        DrawDuanwuDragonBoat(px, py, pw, ph, animAlpha);
+
+        // 曲尘波：水波只做低对比的横向起伏，不干扰竖式诗词。
+        for (int row = 0; row < 4; row++)
+        {
+            float y = py + ph * (0.73f + row * 0.055f);
+            for (int segment = 0; segment < 4; segment++)
+            {
+                float x = px + pw * (0.36f + segment * 0.16f);
+                float wave = Mathf.Sin(time * 0.85f + segment * 0.9f + row * 0.7f) * 3f;
+                Vector2 start = new Vector2(x, y + wave);
+                Vector2 end = new Vector2(x + pw * 0.12f, y + Mathf.Sin(time * 0.85f + segment * 0.9f + row * 0.7f + 0.8f) * 3f);
+                DrawPixelLine(start, end, row % 2 == 0 ? 4f : 3f, row % 2 == 0 ? water : waterLight);
+            }
+        }
+
+        // 十分酒：仅保留一个小型暖色酒盏，作为词意收束点。
+        float cupX = px + pw * 0.87f;
+        float cupY = py + ph * 0.70f + Mathf.Sin(time * 0.8f) * 2f;
+        Color cup = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.78f);
+        DrawRect(new Rect(cupX, cupY, 18f, 4f), cup);
+        DrawRect(new Rect(cupX + 3f, cupY + 4f, 12f, 7f), cup);
+        DrawRect(new Rect(cupX + 6f, cupY + 11f, 6f, 2f), cup);
+    }
+
+    private void DrawDuanwuDragonBoat(float px, float py, float pw, float ph, float animAlpha)
+    {
+        float time = Time.time;
+        float boatWidth = Mathf.Clamp(pw * 0.34f, 250f, 340f);
+        float sceneLeft = px + pw * 0.36f;
+        float sceneRight = px + pw * 0.96f;
+        float travelRange = Mathf.Max(1f, sceneRight - sceneLeft - boatWidth);
+        float travel = Mathf.PingPong(time * 18f, travelRange);
+        float boatX = sceneLeft + travel;
+        float boatY = py + ph * 0.55f + Mathf.Sin(time * 1.35f) * 3f;
+        bool movingRight = Mathf.Repeat(time * 18f / travelRange, 2f) < 1f;
+
+        Color outline = new Color(0.05f, 0.30f, 0.24f, animAlpha * 0.96f);
+        Color hull = new Color(0.05f, 0.48f, 0.32f, animAlpha * 0.98f);
+        Color hullLight = new Color(0.18f, 0.66f, 0.43f, animAlpha * 0.90f);
+        Color gold = new Color(0.82f, 0.66f, 0.20f, animAlpha * 0.92f);
+        Color paddle = new Color(0.88f, 0.72f, 0.25f, animAlpha * 0.88f);
+
+        // 水下倒影比船体更弱，帮助船体从背景中脱出但不压住诗词。
+        DrawRect(new Rect(boatX + 22f, boatY + 78f, boatWidth - 44f, 4f),
+            new Color(outline.r, outline.g, outline.b, animAlpha * 0.52f));
+        DrawRect(new Rect(boatX + 66f, boatY + 87f, boatWidth - 132f, 3f),
+            new Color(gold.r, gold.g, gold.b, animAlpha * 0.42f));
+
+        // 船身和两道金色船沿。
+        DrawRect(new Rect(boatX + 22f, boatY + 37f, boatWidth - 44f, 28f), outline);
+        DrawRect(new Rect(boatX + 36f, boatY + 42f, boatWidth - 72f, 15f), hull);
+        DrawRect(new Rect(boatX + 49f, boatY + 55f, boatWidth - 98f, 7f), hullLight);
+        DrawRect(new Rect(boatX + 41f, boatY + 65f, boatWidth - 82f, 4f), gold);
+
+        float headX = movingRight ? boatX + boatWidth - 48f : boatX + 8f;
+        float headDirection = movingRight ? 1f : -1f;
+        // 龙头：鼻吻朝向运动方向，眼睛和角也随同一坐标系换向。
+        DrawRect(new Rect(headX + (movingRight ? 8f : 10f), boatY + 14f, 30f, 30f), hull);
+        DrawRect(new Rect(headX + (movingRight ? 34f : -8f), boatY + 27f, 14f, 13f), hullLight);
+        DrawRect(new Rect(headX + (movingRight ? 17f : 20f), boatY + 6f, 7f, 10f), gold);
+        DrawRect(new Rect(headX + (movingRight ? 30f : 8f), boatY + 5f, 7f, 11f), gold);
+        DrawRect(new Rect(headX + (movingRight ? 25f : 14f), boatY + 22f, 6f, 6f), gold);
+        DrawRect(new Rect(headX + (movingRight ? 28f : 13f), boatY + 23f, 3f, 3f),
+            new Color(1f, 0.30f, 0.16f, animAlpha));
+        DrawRect(new Rect(headX + (movingRight ? 40f : -13f), boatY + 40f, 12f, 3f), gold);
+
+        float flagX = movingRight ? boatX + 20f : boatX + boatWidth - 24f;
+        DrawRect(new Rect(flagX, boatY + 1f, 4f, 38f), gold);
+        DrawRect(new Rect(flagX + (movingRight ? 4f : -26f), boatY + 4f, 26f, 14f), hullLight);
+        DrawRect(new Rect(flagX + (movingRight ? 9f : -21f), boatY + 8f, 16f, 3f), gold);
+
+        // 三名鼓手保持在船内，桨线固定连接船沿和水面，不再使用 GUI 矩阵镜像。
+        for (int i = 0; i < 3; i++)
+        {
+            float seatX = boatX + 83f + i * 58f;
+            float bob = Mathf.Sin(time * 1.8f + i * 0.9f) * 1.5f;
+            float seatY = boatY + 11f + bob;
+            DrawRect(new Rect(seatX + 10f, seatY, 12f, 5f), outline);
+            DrawRect(new Rect(seatX + 5f, seatY + 5f, 22f, 8f), hullLight);
+            DrawRect(new Rect(seatX, seatY + 13f, 32f, 8f), outline);
+            DrawRect(new Rect(seatX + 6f, seatY + 13f, 20f, 4f), hullLight);
+
+            float paddleWave = Mathf.Sin(time * 3.2f + i * 0.8f) * 3f;
+            Vector2 pivot = new Vector2(seatX + 16f, seatY + 23f);
+            Vector2 blade = pivot + new Vector2(headDirection * 15f, 43f + paddleWave);
+            DrawPixelLine(pivot, blade, 3f, paddle);
+            DrawRect(new Rect(blade.x - 5f, blade.y - 2f, 10f, 5f), paddle);
+        }
+    }
+
+    private void DrawLotus(Vector2 center, float scale, float time, Color leaf, Color leafLight)
+    {
+        float sway = Mathf.Sin(time * 0.65f + center.x * 0.01f) * 2f;
+        float x = center.x + sway;
+        float y = center.y;
+        DrawRect(new Rect(x - 29f * scale, y, 58f * scale, 8f * scale), leaf);
+        DrawRect(new Rect(x - 21f * scale, y - 7f * scale, 42f * scale, 7f * scale), leafLight);
+        DrawRect(new Rect(x - 11f * scale, y - 13f * scale, 22f * scale, 7f * scale), leaf);
+        DrawRect(new Rect(x - 3f * scale, y - 18f * scale, 6f * scale, 6f * scale), leafLight);
+        DrawRect(new Rect(x + 9f * scale, y + 8f * scale, 19f * scale, 3f * scale), leafLight);
+        DrawRect(new Rect(x - 5f * scale, y - 25f * scale, 10f * scale, 5f * scale), leafLight);
+        DrawRect(new Rect(x - 13f * scale, y - 21f * scale, 8f * scale, 5f * scale), leaf);
+        DrawRect(new Rect(x + 5f * scale, y - 21f * scale, 8f * scale, 5f * scale), leaf);
+        DrawPixelLine(new Vector2(x, y + 8f * scale), new Vector2(x - 1f * scale, y + 20f * scale),
+            2f * scale, leafLight);
     }
 
     private void DrawQixi(float px, float py, float pw, float ph, float animAlpha)
