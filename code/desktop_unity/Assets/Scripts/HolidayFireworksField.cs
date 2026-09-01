@@ -77,29 +77,135 @@ public sealed class HolidayFireworksField
     private void DrawLanterns(float px, float py, float pw, float ph, float animAlpha)
     {
         float time = Time.time;
-        for (int i = 0; i < 6; i++)
+        DrawLanternMoon(px, py, pw, ph, animAlpha, time);
+        DrawLanternWillow(px, py, pw, ph, animAlpha, time);
+
+        // “花市灯如昼”：三层错落的灯市比均匀排布更接近夜市纵深。
+        Color marketBeam = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.42f);
+        DrawPixelLine(new Vector2(px + pw * 0.40f, py + ph * 0.13f),
+            new Vector2(px + pw * 0.96f, py + ph * 0.13f), 2f, marketBeam);
+        for (int i = 0; i < 8; i++)
         {
-            // 灯笼只落在右侧聊天主视图，避免侵入左侧会话列表；上下三层形成元宵夜景的空间层次。
-            float x = px + (0.40f + i * 0.105f) * pw;
-            float y = py + (0.12f + (i % 3) * 0.25f) * ph
-                + Mathf.Sin(time * 1.4f + i * 1.7f) * 11f;
-            float size = 14f + (i % 2) * 4f;
+            float layer = i % 3;
+            float x = px + (0.43f + (i % 4) * 0.145f + layer * 0.012f) * pw;
+            float y = py + (0.10f + layer * 0.25f + (i / 6) * 0.06f) * ph
+                + Mathf.Sin(time * (0.72f + (i % 2) * 0.08f) + i * 1.31f) * (4f + layer * 2f);
+            float size = Mathf.Clamp(Mathf.Min(pw, ph) * (0.040f + (i % 2) * 0.007f), 14f, 25f);
+            float glow = 0.12f + (0.5f + 0.5f * Mathf.Sin(time * 1.15f + i * 0.9f)) * 0.08f;
             DrawRect(new Rect(x - size * 0.85f, y - size * 0.15f, size * 1.7f, size * 1.9f),
-                new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.18f));
-            DrawRect(new Rect(x - size * 0.45f, y - size * 0.65f, size * 0.90f, 3f),
-                new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.98f));
-            DrawRect(new Rect(x - size * 0.62f, y - size * 0.35f, size * 1.24f, size * 1.25f),
+                new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * glow));
+            DrawRect(new Rect(x - size * 0.48f, y - size * 0.75f, size * 0.96f, 3f),
+                new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.92f));
+            DrawRect(new Rect(x - size * 0.64f, y - size * 0.40f, size * 1.28f, size * 1.28f),
                 new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.92f));
-            DrawRect(new Rect(x - size * 0.36f, y - size * 0.18f, size * 0.72f, size * 0.80f),
-                new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.66f));
-            DrawRect(new Rect(x - size * 0.70f, y + size * 0.90f, size * 1.40f, 3f),
-                new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.94f));
+            DrawRect(new Rect(x - size * 0.40f, y - size * 0.19f, size * 0.80f, size * 0.82f),
+                new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.62f));
+            DrawRect(new Rect(x - size * 0.73f, y + size * 0.87f, size * 1.46f, 3f),
+                new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.96f));
             DrawRect(new Rect(x - 1f, y + size * 1.05f, 2f, size * 0.70f),
-                new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.84f));
-            // 细短挂线增强“悬挂”关系，同时保持低密度像素风。
-            DrawRect(new Rect(x - 1f, y - size * 1.30f, 2f, size * 0.65f),
-                new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.60f));
+                new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.78f));
+            // 细挂线和横梁让灯笼与“花市”发生关系，而不是漂浮的色块。
+            DrawRect(new Rect(x - 1f, y - size * 1.42f, 2f, size * 0.70f),
+                new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.68f));
         }
+
+        DrawLanternPoetry(px, py, pw, ph, animAlpha, time);
+    }
+
+    private void DrawLanternMoon(float px, float py, float pw, float ph, float animAlpha, float time)
+    {
+        float shortSide = Mathf.Min(pw, ph);
+        float radius = Mathf.Clamp(shortSide * 0.065f, 22f, 38f);
+        float moonX = px + pw * 0.68f;
+        float moonY = py + ph * 0.16f;
+        float breath = 0.62f + (0.5f + 0.5f * Mathf.Sin(time * 0.72f)) * 0.16f;
+        Color moon = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * breath);
+        Color halo = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.06f);
+        Color shadow = new Color(0.08f, 0.02f, 0.07f, animAlpha * 0.78f);
+        // 七段横向像素带组成月轮，边缘收窄后能读成圆月，而不是叠出的方块。
+        float[] widths = { 0.34f, 0.62f, 0.84f, 1.00f, 0.84f, 0.62f, 0.34f };
+        for (int i = 0; i < widths.Length; i++)
+        {
+            float y = moonY + (i - 3) * radius * 0.24f;
+            DrawRect(new Rect(moonX - radius * widths[i] * 0.5f, y, radius * widths[i], radius * 0.22f), moon);
+        }
+        DrawRect(new Rect(moonX - radius * 1.04f, moonY - radius * 0.84f, radius * 2.08f, 2f), halo);
+        DrawRect(new Rect(moonX - radius * 1.04f, moonY + radius * 0.82f, radius * 2.08f, 2f), halo);
+        DrawRect(new Rect(moonX - radius * 0.06f, moonY - radius * 0.28f, radius * 0.20f, radius * 0.16f), shadow);
+        DrawRect(new Rect(moonX + radius * 0.18f, moonY + radius * 0.16f, radius * 0.18f, radius * 0.14f), shadow);
+    }
+
+    private void DrawLanternWillow(float px, float py, float pw, float ph, float animAlpha, float time)
+    {
+        Color branch = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.62f);
+        Color leaf = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.42f);
+        Vector2 root = new Vector2(px + pw * 0.97f, py + ph * 0.14f);
+        Vector2 fork = new Vector2(px + pw * 0.90f, py + ph * 0.20f);
+        DrawPixelLine(root, fork, 3f, branch);
+        DrawPixelLine(fork, new Vector2(px + pw * 0.85f, py + ph * 0.29f), 2f, branch);
+        DrawPixelLine(fork, new Vector2(px + pw * 0.94f, py + ph * 0.33f), 2f, branch);
+        DrawPixelLine(fork, new Vector2(px + pw * 0.82f, py + ph * 0.25f), 2f, branch);
+        for (int i = 0; i < 5; i++)
+        {
+            float t = 0.16f + i * 0.16f;
+            Vector2 point = Vector2.Lerp(fork, new Vector2(px + pw * 0.84f, py + ph * 0.31f), t);
+            point.x += Mathf.Sin(time * 0.45f + i) * 2f;
+            DrawPixelLine(point, point + new Vector2(-6f, 9f + i * 1.5f), 2f, leaf);
+            DrawRect(new Rect(point.x - 7f, point.y + 8f + i * 1.5f, 8f, 3f), leaf);
+            DrawRect(new Rect(point.x - 2f, point.y + 12f + i * 1.5f, 3f, 7f), leaf);
+        }
+    }
+
+    private void DrawLanternPoetry(float px, float py, float pw, float ph, float animAlpha, float time)
+    {
+        EnsurePoetryStyle();
+        Color previousColor = GUI.color;
+        GUI.color = Color.white;
+        float shortSide = Mathf.Min(pw, ph);
+        int fontSize = Mathf.Clamp(Mathf.RoundToInt(shortSide * 0.039f), 15, 29);
+        _poetryStyle.fontSize = fontSize;
+        float lineHeight = Mathf.Max(20f, fontSize * 1.16f);
+        float columnGap = Mathf.Max(23f, fontSize * 1.48f);
+        float breath = 0.60f + (0.5f + 0.5f * Mathf.Sin(time * 0.82f)) * 0.18f;
+        Color ink = Color.Lerp(_sparkColor, new Color(1f, 0.94f, 0.78f, 1f), 0.66f);
+        _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
+
+        // 欧阳修《生查子·元夕》：右列起读，列内自上而下，列间从右向左。
+        string[] columns = shortSide >= 390f
+            ? new[] { "去年元夜时", "花市灯如昼", "月上柳梢头", "人约黄昏后" }
+            : new[] { "花市灯如昼", "月上柳梢头", "人约黄昏后" };
+        float poetryRight = px + pw * 0.91f;
+        float poetryTop = py + ph * 0.37f;
+        for (int column = 0; column < columns.Length; column++)
+        {
+            string text = columns[column];
+            float x = poetryRight - column * columnGap;
+            float y = poetryTop + Mathf.Sin(time * 0.28f + column * 0.72f) * 1.1f;
+            for (int row = 0; row < text.Length; row++)
+            {
+                float axisOffset = ((column + row) % 3 - 1) * Mathf.Min(1.4f, fontSize * 0.055f);
+                float drift = Mathf.Sin(time * 0.36f + column * 0.61f + row * 0.43f) * 0.45f;
+                float charY = y + row * lineHeight;
+                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, charY,
+                    fontSize + 5f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
+            }
+        }
+        GUI.color = previousColor;
+    }
+
+    private void EnsurePoetryStyle()
+    {
+        if (_poetryStyle != null) return;
+        _poetryStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            wordWrap = false,
+            clipping = TextClipping.Clip,
+            padding = new RectOffset(0, 0, 0, 0),
+            margin = new RectOffset(0, 0, 0, 0)
+        };
+        _poetryStyle.font = Font.CreateDynamicFontFromOSFont(
+            new[] { "STXingkai", "华文行楷", "KaiTi", "楷体", "STKaiti" }, 22);
     }
 
     private void DrawDragonBoat(float px, float py, float pw, float ph, float animAlpha)
