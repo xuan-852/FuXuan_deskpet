@@ -422,24 +422,38 @@ public sealed class HolidayFireworksField
     private void DrawQixi(float px, float py, float pw, float ph, float animAlpha)
     {
         float time = Time.time;
-        for (int i = 0; i < 18; i++)
+        Color star = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.86f);
+        Color starSoft = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.72f);
+        for (int i = 0; i < 16; i++)
         {
-            float x = px + (0.07f + ((i * 37) % 86) / 100f) * pw;
+            float x = px + (0.38f + ((i * 37) % 86) / 100f * 0.58f) * pw;
             float y = py + (0.10f + ((i * 23) % 72) / 100f) * ph;
-            float twinkle = 0.45f + 0.45f * Mathf.Sin(time * 2.2f + i * 1.4f);
-            float size = i % 4 == 0 ? 5f : 3f;
+            float twinkle = 0.62f + 0.30f * Mathf.Sin(time * 2.2f + i * 1.4f);
+            float size = i % 4 == 0 ? 7f : 4f;
             DrawRect(new Rect(x - size * 0.5f, y - size * 0.5f, size, size),
-                new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * twinkle));
+                new Color(star.r, star.g, star.b, animAlpha * twinkle));
             if (i % 4 == 0)
             {
-                DrawRect(new Rect(x - size * 1.5f, y - 1f, size * 3f, 2f),
-                    new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * twinkle * 0.35f));
+                DrawRect(new Rect(x - size * 1.8f, y - 1f, size * 3.6f, 2f),
+                    new Color(starSoft.r, starSoft.g, starSoft.b, animAlpha * twinkle * 0.55f));
+                DrawRect(new Rect(x - 1f, y - size * 1.8f, 2f, size * 3.6f),
+                    new Color(starSoft.r, starSoft.g, starSoft.b, animAlpha * twinkle * 0.45f));
             }
         }
+
+        // 鹊桥是七夕的主视觉：由连续的紫色桥段连接两颗高亮星，缓慢上下起伏。
         float bridgeY = py + ph * 0.72f + Mathf.Sin(time * 0.8f) * 4f;
-        for (int i = 0; i < 7; i++)
-            DrawRect(new Rect(px + pw * (0.13f + i * 0.12f), bridgeY + Mathf.Sin(i * 0.8f) * 3f,
-                pw * 0.09f, 2f), new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.32f));
+        Color bridge = new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.64f);
+        for (int i = 0; i < 6; i++)
+        {
+            float x = px + pw * (0.40f + i * 0.095f);
+            float y = bridgeY + Mathf.Sin(i * 0.8f + time * 0.55f) * 4f;
+            DrawRect(new Rect(x, y, pw * 0.075f, 4f), bridge);
+            DrawRect(new Rect(x + pw * 0.025f, y - 5f, pw * 0.025f, 3f),
+                new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.55f));
+        }
+        DrawRect(new Rect(px + pw * 0.39f, bridgeY - 3f, 8f, 8f), star);
+        DrawRect(new Rect(px + pw * 0.91f, bridgeY - 3f, 8f, 8f), star);
     }
 
     private void DrawMidAutumn(float px, float py, float pw, float ph, float animAlpha)
