@@ -530,21 +530,28 @@ public sealed class HolidayFireworksField
         float time = Time.time;
         for (int i = 0; i < 4; i++)
         {
-            float x = px + pw * (0.14f + i * 0.24f);
-            float y = py + ph * (0.70f + (i % 2) * 0.12f);
-            DrawRect(new Rect(x, y, 24f, 20f), new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.72f));
-            DrawRect(new Rect(x + 5f, y - 4f, 14f, 4f), new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.74f));
-            DrawRect(new Rect(x + 5f, y + 7f, 5f, 5f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.90f));
-            DrawRect(new Rect(x + 15f, y + 7f, 5f, 5f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.90f));
-            DrawRect(new Rect(x + 8f, y + 14f, 9f, 3f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.82f));
+            // 南瓜与蝙蝠只落在右侧聊天主视图，避免装饰侵入左侧会话列表。
+            float x = px + pw * (0.42f + i * 0.14f);
+            float y = py + ph * (0.70f + (i % 2) * 0.12f)
+                + Mathf.Sin(time * 0.9f + i * 1.3f) * 9f;
+            DrawRect(new Rect(x, y, 30f, 25f), new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.86f));
+            DrawRect(new Rect(x + 6f, y - 5f, 18f, 5f), new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.88f));
+            DrawRect(new Rect(x + 6f, y + 9f, 6f, 6f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.98f));
+            DrawRect(new Rect(x + 18f, y + 9f, 6f, 6f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.98f));
+            DrawRect(new Rect(x + 10f, y + 18f, 10f, 4f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.92f));
         }
         for (int i = 0; i < 4; i++)
         {
-            float x = px + pw * (0.12f + i * 0.25f) + Mathf.Sin(time * 0.7f + i) * 12f;
-            float y = py + ph * (0.22f + (i % 2) * 0.18f);
-            DrawRect(new Rect(x, y, 18f, 3f), new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.70f));
-            DrawRect(new Rect(x - 5f, y + 3f, 7f, 3f), new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.62f));
-            DrawRect(new Rect(x + 16f, y + 3f, 7f, 3f), new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.62f));
+            float x = px + pw * (0.40f + i * 0.15f) + Mathf.Sin(time * 0.7f + i) * 18f;
+            float y = py + ph * (0.20f + (i % 2) * 0.20f)
+                + Mathf.Sin(time * 0.8f + i * 1.6f) * 12f;
+            Color bat = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.86f);
+            DrawRect(new Rect(x, y, 22f, 4f), bat);
+            DrawRect(new Rect(x - 7f, y + 4f, 9f, 4f), bat);
+            DrawRect(new Rect(x + 20f, y + 4f, 9f, 4f), bat);
+            DrawRect(new Rect(x + 8f, y + 4f, 6f, 8f), bat);
+            DrawRect(new Rect(x + 9f, y + 2f, 2f, 2f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.95f));
+            DrawRect(new Rect(x + 13f, y + 2f, 2f, 2f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.95f));
         }
     }
 
