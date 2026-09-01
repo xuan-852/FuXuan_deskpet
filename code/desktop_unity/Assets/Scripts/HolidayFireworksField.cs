@@ -162,11 +162,11 @@ public sealed class HolidayFireworksField
         Color previousColor = GUI.color;
         GUI.color = Color.white;
         float shortSide = Mathf.Min(pw, ph);
-        int fontSize = Mathf.Clamp(Mathf.RoundToInt(shortSide * 0.039f), 15, 29);
+        int fontSize = Mathf.Clamp(Mathf.RoundToInt(shortSide * 0.052f), 18, 42);
         _poetryStyle.fontSize = fontSize;
-        float lineHeight = Mathf.Max(20f, fontSize * 1.16f);
-        float columnGap = Mathf.Max(23f, fontSize * 1.48f);
-        float breath = 0.60f + (0.5f + 0.5f * Mathf.Sin(time * 0.82f)) * 0.18f;
+        float lineHeight = Mathf.Max(24f, fontSize * 1.14f);
+        float columnGap = Mathf.Max(28f, fontSize * 1.55f);
+        float breath = 0.66f + (0.5f + 0.5f * Mathf.Sin(time * 0.82f)) * 0.16f;
         Color ink = Color.Lerp(_sparkColor, new Color(1f, 0.94f, 0.78f, 1f), 0.66f);
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
 
@@ -175,7 +175,7 @@ public sealed class HolidayFireworksField
             ? new[] { "去年元夜时", "花市灯如昼", "月上柳梢头", "人约黄昏后" }
             : new[] { "花市灯如昼", "月上柳梢头", "人约黄昏后" };
         float poetryRight = px + pw * 0.91f;
-        float poetryTop = py + ph * 0.37f;
+        float poetryTop = py + ph * 0.29f;
         for (int column = 0; column < columns.Length; column++)
         {
             string text = columns[column];
