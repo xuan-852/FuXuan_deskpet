@@ -444,26 +444,67 @@ public sealed class HolidayFireworksField
 
     private void DrawMidAutumn(float px, float py, float pw, float ph, float animAlpha)
     {
+        float time = Time.time;
         float moonX = px + pw * 0.78f;
         float moonY = py + ph * 0.18f;
-        Color moon = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.72f);
+        float moonBreath = 0.70f + (0.5f + 0.5f * Mathf.Sin(time * 0.75f)) * 0.18f;
+        Color moon = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * moonBreath);
+        Color moonShadow = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.42f);
+        DrawRect(new Rect(moonX - 34f, moonY - 26f, 68f, 52f),
+            new Color(moon.r, moon.g, moon.b, animAlpha * 0.12f));
         DrawRect(new Rect(moonX - 24f, moonY - 18f, 48f, 36f), moon);
         DrawRect(new Rect(moonX - 18f, moonY - 24f, 36f, 48f), moon);
         DrawRect(new Rect(moonX - 30f, moonY - 10f, 60f, 20f), moon);
-        DrawRect(new Rect(moonX - 14f, moonY - 7f, 7f, 5f), new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.35f));
-        DrawRect(new Rect(moonX + 7f, moonY + 5f, 8f, 4f), new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.30f));
-        for (int i = 0; i < 5; i++)
+        DrawRect(new Rect(moonX - 14f, moonY - 7f, 7f, 5f), moonShadow);
+        DrawRect(new Rect(moonX + 7f, moonY + 5f, 8f, 4f), moonShadow);
+
+        // 云朵只铺在右侧聊天区，作为月亮的中景层，并以慢速横移保持呼吸感。
+        Color cloud = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.68f);
+        for (int i = 0; i < 4; i++)
         {
-            float x = px + pw * (0.12f + i * 0.20f) + Mathf.Sin(Time.time * 0.5f + i) * 8f;
+            float x = px + pw * (0.39f + i * 0.17f) + Mathf.Sin(time * 0.5f + i) * 8f;
             float y = py + ph * (0.34f + (i % 2) * 0.17f);
-            DrawRect(new Rect(x, y, 34f, 4f), new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.22f));
-            DrawRect(new Rect(x + 10f, y - 4f, 20f, 4f), new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.16f));
+            DrawRect(new Rect(x, y, 42f, 5f), cloud);
+            DrawRect(new Rect(x + 10f, y - 5f, 24f, 5f),
+                new Color(cloud.r, cloud.g, cloud.b, cloud.a * 0.78f));
         }
-        float rabbitX = px + pw * 0.62f;
-        float rabbitY = py + ph * 0.55f;
-        DrawRect(new Rect(rabbitX, rabbitY, 18f, 14f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.52f));
-        DrawRect(new Rect(rabbitX + 3f, rabbitY - 9f, 4f, 10f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.52f));
-        DrawRect(new Rect(rabbitX + 11f, rabbitY - 8f, 4f, 9f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.52f));
+
+        DrawMidAutumnOsmanthus(px, py, pw, ph, animAlpha, time);
+
+        // 玉兔使用更完整的像素轮廓，并用轻跳作为短时事件动效。
+        float rabbitX = px + pw * 0.61f;
+        float rabbitY = py + ph * 0.56f - Mathf.Max(0f, Mathf.Sin(time * 1.35f)) * 7f;
+        Color rabbit = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.80f);
+        DrawRect(new Rect(rabbitX + 8f, rabbitY - 15f, 7f, 18f), rabbit);
+        DrawRect(new Rect(rabbitX + 22f, rabbitY - 13f, 7f, 16f), rabbit);
+        DrawRect(new Rect(rabbitX + 6f, rabbitY, 28f, 24f), rabbit);
+        DrawRect(new Rect(rabbitX, rabbitY + 8f, 38f, 15f), rabbit);
+        DrawRect(new Rect(rabbitX + 3f, rabbitY + 23f, 10f, 5f), rabbit);
+        DrawRect(new Rect(rabbitX + 25f, rabbitY + 23f, 10f, 5f), rabbit);
+        DrawRect(new Rect(rabbitX + 27f, rabbitY + 6f, 4f, 4f),
+            new Color(0.96f, 0.36f, 0.28f, animAlpha * 0.92f));
+        DrawRect(new Rect(rabbitX - 9f, rabbitY + 15f, 10f, 6f), rabbit);
+    }
+
+    private void DrawMidAutumnOsmanthus(float px, float py, float pw, float ph, float animAlpha, float time)
+    {
+        Color branch = new Color(_secondaryColor.r * 0.72f, _secondaryColor.g * 0.72f,
+            _secondaryColor.b * 0.72f, animAlpha * 0.72f);
+        Color leaf = new Color(0.18f, 0.34f, 0.30f, animAlpha * 0.72f);
+        Color flower = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.82f);
+        Vector2 root = new Vector2(px + pw * 0.38f, py + ph * 0.80f);
+        Vector2 fork = new Vector2(px + pw * 0.50f, py + ph * 0.70f);
+        DrawPixelLine(root, fork, 6f, branch);
+        DrawPixelLine(fork, new Vector2(px + pw * 0.57f, py + ph * 0.62f), 4f, branch);
+        DrawPixelLine(fork, new Vector2(px + pw * 0.43f, py + ph * 0.64f), 4f, branch);
+        for (int i = 0; i < 6; i++)
+        {
+            float x = px + pw * (0.40f + i * 0.034f) + Mathf.Sin(time * 0.35f + i) * 2f;
+            float y = py + ph * (0.73f - (i % 3) * 0.045f);
+            DrawRect(new Rect(x, y, 16f, 5f), leaf);
+            DrawRect(new Rect(x + (i % 2 == 0 ? 8f : -5f), y - 5f, 12f, 5f), leaf);
+            DrawRect(new Rect(x + 3f, y - 11f, 5f, 5f), flower);
+        }
     }
 
     private void DrawHalloween(float px, float py, float pw, float ph, float animAlpha)
