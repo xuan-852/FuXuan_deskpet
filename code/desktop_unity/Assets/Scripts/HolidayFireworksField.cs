@@ -560,18 +560,38 @@ public sealed class HolidayFireworksField
         float time = Time.time;
         for (int i = 0; i < 24; i++)
         {
-            float x = px + ((i * 43) % 94) / 100f * pw;
-            float y = py + Mathf.Repeat(((i * 29) % 100) / 100f * ph + time * (12f + i % 3 * 5f), ph);
-            float size = i % 5 == 0 ? 5f : 3f;
-            DrawRect(new Rect(x, y, size, size), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * (0.38f + (i % 4) * 0.10f)));
+            // 飘雪限制在右侧聊天主视图，避免左侧会话列表被节日粒子侵入。
+            float x = px + pw * (0.40f + ((i * 17) % 57) / 100f);
+            float y = py + Mathf.Repeat(((i * 29) % 100) / 100f * ph + time * (16f + i % 3 * 6f), ph);
+            float size = i % 5 == 0 ? 6f : 4f;
+            DrawRect(new Rect(x, y, size, size), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * (0.52f + (i % 4) * 0.11f)));
         }
+
+        // 像素圣诞树作为主视觉，轻微呼吸和摆动，避免主题只剩雪点和彩灯。
+        float treeX = px + pw * 0.73f;
+        float treeY = py + ph * 0.54f + Mathf.Sin(time * 0.7f) * 4f;
+        Color tree = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.90f);
+        Color treeDeep = new Color(Mathf.Min(1f, _secondaryColor.r + 0.08f), Mathf.Min(1f, _secondaryColor.g + 0.08f),
+            Mathf.Min(1f, _secondaryColor.b + 0.06f), animAlpha * 0.96f);
+        DrawRect(new Rect(treeX - 12f, treeY, 24f, 6f), tree);
+        DrawRect(new Rect(treeX - 20f, treeY + 7f, 40f, 7f), tree);
+        DrawRect(new Rect(treeX - 28f, treeY + 15f, 56f, 8f), treeDeep);
+        DrawRect(new Rect(treeX - 36f, treeY + 24f, 72f, 9f), treeDeep);
+        DrawRect(new Rect(treeX - 5f, treeY + 33f, 10f, 12f),
+            new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.78f));
+        DrawRect(new Rect(treeX - 4f, treeY - 6f, 8f, 5f),
+            new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * (0.70f + 0.20f * Mathf.Sin(time * 2f))));
+        DrawRect(new Rect(treeX - 19f, treeY + 12f, 5f, 5f), new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.98f));
+        DrawRect(new Rect(treeX + 14f, treeY + 21f, 5f, 5f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.98f));
+        DrawRect(new Rect(treeX - 6f, treeY + 29f, 5f, 5f), new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.98f));
+
         for (int i = 0; i < 5; i++)
         {
-            float x = px + pw * (0.10f + i * 0.19f);
-            float y = py + ph * (0.67f + (i % 2) * 0.11f);
-            DrawRect(new Rect(x, y, 38f, 3f), new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.55f));
-            DrawRect(new Rect(x + 8f, y + 4f, 5f, 5f), new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.82f));
-            DrawRect(new Rect(x + 27f, y + 4f, 5f, 5f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.82f));
+            float x = px + pw * (0.40f + i * 0.12f);
+            float y = py + ph * (0.70f + (i % 2) * 0.11f) + Mathf.Sin(time * 0.6f + i) * 3f;
+            DrawRect(new Rect(x, y, 48f, 4f), new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.78f));
+            DrawRect(new Rect(x + 8f, y + 5f, 6f, 6f), new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.96f));
+            DrawRect(new Rect(x + 30f, y + 5f, 6f, 6f), new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.96f));
         }
     }
 
