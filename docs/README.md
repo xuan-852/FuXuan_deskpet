@@ -37,7 +37,7 @@
 | [`optimization.md`](optimization.md) | 当前已验证优化、后续优先级与统一验收标准 | 规划重构、性能、稳定性或成本优化前 |
 | [`holiday-skin-development-guide.md`](holiday-skin-development-guide.md) | 节日皮肤设计、实现、测试与交付规范 | 新增或修改节日主题前 |
 | [`holiday-skin-review-standard.md`](holiday-skin-review-standard.md) | 节日皮肤视觉、功能、性能、安全与截图审核标准 | 节日主题验收、提交或发布前 |
-| [`holiday-skin-evaluation-2026-08-31.md`](holiday-skin-evaluation-2026-08-31.md) | 节日皮肤逐主题评价（**对照审核标准，真实抓图**，视觉均值 48.6/60） | 查看 8 主题逐项视觉评分与验收结论时 |
+| [`holiday-skin-evaluation-2026-08-31.md`](holiday-skin-evaluation-2026-08-31.md) | 节日皮肤历史逐主题评价（**对照审核标准，真实抓图**，删除前视觉均值 48.6/60） | 查看历史 8 主题评分；当前正式范围以开发指南为准 |
 | [`project-evaluation-2026-08-31.md`](project-evaluation-2026-08-31.md) | 当前项目工程治理与节日皮肤实现评价报告 | 查看本轮代码/文档评审结论时 |
 
 ### 1.2 模块文档（modules/，每份含四要素）
