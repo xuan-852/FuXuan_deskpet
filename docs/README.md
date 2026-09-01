@@ -110,4 +110,4 @@
 
 本轮 Live2D/问候修复已同步到 [`modules/live2d-rendering.md`](modules/live2d-rendering.md)、[`modules/ai-chat-system.md`](modules/ai-chat-system.md)、[`project-bugs-and-acceptance.md`](project-bugs-and-acceptance.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：停走物理收敛、自动问候时段守卫和 ILPP PID 身份校验已通过 Quick、完整构建和隔离运行时冒烟；可见播放器观感仍待人工确认。
 
-本轮节日适配（2026-08-30～31）已同步到 [`modules/chat-ui.md`](modules/chat-ui.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：以完整 `ThemeSkin` 管理 17×24 像素符玄、聊天窗口、气泡和子面板的 8 个节日主题，独立配饰与动态背景不修改 Live2D；Quick、完整构建、隔离冒烟和 8 个主题截图闭环均通过。
+本轮节日适配（2026-08-30～31）已同步到 [`modules/chat-ui.md`](modules/chat-ui.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：以完整 `ThemeSkin` 管理 17×24 像素符玄、聊天窗口、气泡和子面板的 5 个中国传统节日主题，独立配饰与动态背景不修改 Live2D；Quick、完整构建、隔离冒烟和逐主题截图闭环均通过。

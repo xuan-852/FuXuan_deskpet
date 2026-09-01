@@ -180,6 +180,6 @@
 
 | 状态 | 优化项 | 实际落点与验证 |
 |------|--------|----------------|
-| ✅ | 8 个节日像素主题 | `ThemeSkin` 完整管理 RightPanel/子面板/ChatBubble 配色与 17×24 像素符玄独立配饰；`HolidayFireworksField` 按主题绘制新春烟花、元宵灯笼、端午水波、七夕星桥、中秋月兔、万圣南瓜/蝙蝠、圣诞飘雪/彩灯、元旦彩带；Quick、完整构建、隔离冒烟及 8 个主题截图闭环通过 |
-| ✅ | AI 调试入口 | `@@sim:holiday:<theme>` 支持 8 个节日主题及 `off/auto/status/list`，接入现有测试 Inbox；运行时日志确认主题切换、截图和完整退出 |
+| ✅ | 5 个中国传统节日像素主题 | `ThemeSkin` 完整管理 RightPanel/子面板/ChatBubble 配色与 17×24 像素符玄独立配饰；`HolidayFireworksField` 按主题绘制新春烟花、元宵灯笼、端午水波、七夕星桥、中秋月兔；Quick、完整构建、隔离冒烟及逐主题截图闭环通过 |
+| ✅ | AI 调试入口 | `@@sim:holiday:<theme>` 支持 5 个中国传统节日主题及 `off/auto/status/list`，接入现有测试 Inbox；运行时日志确认主题切换、截图和完整退出 |
 | ✅ | Live2D 边界 | 本轮未修改 Live2D 模型、参数、物理或 RT 渲染链路 |

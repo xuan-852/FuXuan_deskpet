@@ -38,9 +38,6 @@ const THEMES = [
   ['dragon_boat', '端午'],
   ['qixi', '七夕'],
   ['mid_autumn', '中秋'],
-  ['halloween', '万圣'],
-  ['christmas', '圣诞'],
-  ['new_year_day', '元旦'],
 ];
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));

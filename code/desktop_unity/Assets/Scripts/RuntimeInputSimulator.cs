@@ -129,7 +129,7 @@ public static class RuntimeInputSimulator
         }
 
         Debug.LogWarning("[TestInbox] 未知模拟输入: " + body
-            + "（支持 status/reset/release/holiday:list/holiday:status/holiday:cn_new_year/holiday:lantern_festival/holiday:dragon_boat/holiday:qixi/holiday:mid_autumn/holiday:halloween/holiday:christmas/holiday:new_year_day/holiday:off/holiday:auto/click:x,y/click:center/drag:x1,y1->x2,y2[,steps]/drag:offset:dx,dy[,steps]）");
+            + "（支持 status/reset/release/holiday:list/holiday:status/holiday:cn_new_year/holiday:lantern_festival/holiday:dragon_boat/holiday:qixi/holiday:mid_autumn/holiday:off/holiday:auto/click:x,y/click:center/drag:x1,y1->x2,y2[,steps]/drag:offset:dx,dy[,steps]）");
         return true;
     }
 

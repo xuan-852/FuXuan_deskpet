@@ -1,5 +1,7 @@
 # 节日皮肤逐主题评价报告（对照审核标准，2026-08-31）
 
+> **历史报告说明（2026-09-01）**：本报告记录的是删除前的 8 主题历史评审结果。万圣节、圣诞节和元旦已按当前“仅保留中国传统节日、由诗词驱动画面”的范围移出正式实现；当前主题集合以 `holiday-skin-development-guide.md` 为准。
+
 > **评价对象**：`HolidayThemeRuntime` + `HolidayFireworksField` + `RightPanel` + `RuntimeInputSimulator` 的 8 个节日主题。
 > **评价依据**：[`holiday-skin-review-standard.md`](holiday-skin-review-standard.md)（视觉 60 + 功能 20 + 稳定性/性能/安全 20，P0–P3 分级）、[`holiday-skin-development-guide.md`](holiday-skin-development-guide.md)。
 > **评价性质**：独立评审家评审，基于「真实抓取的渲染截图（OS 级 `Graphics.CopyFromScreen`）+ 代码推导」。视觉分标注为**视觉人工评审分**，受限于抓图条件（详见下节），不构成完整视觉验收签发。

@@ -216,21 +216,6 @@ public static class HolidayThemeRuntime
         new Color(0.58f, 0.38f, 0.86f, 1f), new Color(0.24f, 0.48f, 0.68f, 1f),
         new Color(1.00f, 0.78f, 0.34f, 1f), new Color(1.00f, 0.88f, 0.62f, 1f),
         new Color(0.92f, 0.90f, 0.98f, 1f));
-    private static readonly ThemeSkin HalloweenSkin = CreateFestivalSkin(
-        new Color(0.20f, 0.055f, 0.18f, 0.97f), new Color(0.055f, 0.018f, 0.07f, 0.97f),
-        new Color(0.96f, 0.32f, 0.08f, 1f), new Color(0.56f, 0.22f, 0.82f, 1f),
-        new Color(1.00f, 0.72f, 0.20f, 1f), new Color(1.00f, 0.78f, 0.54f, 1f),
-        new Color(0.94f, 0.86f, 0.96f, 1f));
-    private static readonly ThemeSkin ChristmasSkin = CreateFestivalSkin(
-        new Color(0.045f, 0.22f, 0.18f, 0.97f), new Color(0.012f, 0.07f, 0.08f, 0.97f),
-        new Color(0.86f, 0.12f, 0.16f, 1f), new Color(0.18f, 0.62f, 0.42f, 1f),
-        new Color(0.92f, 0.96f, 1.00f, 1f), new Color(1.00f, 0.84f, 0.66f, 1f),
-        new Color(0.90f, 0.96f, 0.98f, 1f));
-    private static readonly ThemeSkin NewYearDaySkin = CreateFestivalSkin(
-        new Color(0.055f, 0.16f, 0.28f, 0.97f), new Color(0.012f, 0.045f, 0.10f, 0.97f),
-        new Color(0.20f, 0.72f, 0.94f, 1f), new Color(0.42f, 0.38f, 0.92f, 1f),
-        new Color(0.98f, 0.86f, 0.34f, 1f), new Color(0.88f, 0.94f, 1.00f, 1f),
-        new Color(0.88f, 0.94f, 1.00f, 1f));
 
     private static readonly Theme LanternFestivalTheme = new Theme(
         "lantern_festival", "元宵主题", "lantern_festival_lantern", LanternFestivalSkin);
@@ -240,12 +225,6 @@ public static class HolidayThemeRuntime
         "qixi", "七夕主题", "qixi_star", QixiSkin);
     private static readonly Theme MidAutumnTheme = new Theme(
         "mid_autumn", "中秋主题", "mid_autumn_rabbit", MidAutumnSkin);
-    private static readonly Theme HalloweenTheme = new Theme(
-        "halloween", "万圣节主题", "halloween_hat", HalloweenSkin);
-    private static readonly Theme ChristmasTheme = new Theme(
-        "christmas", "圣诞主题", "christmas_hat", ChristmasSkin);
-    private static readonly Theme NewYearDayTheme = new Theme(
-        "new_year_day", "元旦主题", "new_year_party", NewYearDaySkin);
 
     private static ThemeSkin CreateFestivalSkin(Color panelTop, Color panelBottom,
         Color primary, Color secondary, Color highlight, Color textTitle, Color textMain)
@@ -316,10 +295,6 @@ public static class HolidayThemeRuntime
         { "qixi", QixiTheme },
         { "mid_autumn", MidAutumnTheme },
         { "中秋", MidAutumnTheme },
-        { "halloween", HalloweenTheme },
-        { "christmas", ChristmasTheme },
-        { "new_year_day", NewYearDayTheme },
-        { "元旦", NewYearDayTheme }
     };
 
     private static bool _initialized;
@@ -370,7 +345,7 @@ public static class HolidayThemeRuntime
 
         if (normalized.Equals("list", StringComparison.OrdinalIgnoreCase))
         {
-            message = "可用节日主题: default, cn_new_year, lantern_festival, dragon_boat, qixi, mid_autumn, halloween, christmas, new_year_day, auto";
+            message = "可用节日主题: default, cn_new_year, lantern_festival, dragon_boat, qixi, mid_autumn, auto";
             return true;
         }
 
@@ -395,7 +370,7 @@ public static class HolidayThemeRuntime
         Theme theme;
         if (!Themes.TryGetValue(normalized, out theme))
         {
-            message = "未知节日主题: " + normalized + "（可用: default, cn_new_year, lantern_festival, dragon_boat, qixi, mid_autumn, halloween, christmas, new_year_day, auto）";
+            message = "未知节日主题: " + normalized + "（可用: default, cn_new_year, lantern_festival, dragon_boat, qixi, mid_autumn, auto）";
             return false;
         }
 
@@ -418,14 +393,11 @@ public static class HolidayThemeRuntime
     /// </summary>
     private static string ResolveAutomaticTheme(DateTime now)
     {
-        if (now.Month == 1 && now.Day <= 7) return "new_year_day";
         if (now.Month == 1 && now.Day >= 20 || now.Month == 2 && now.Day <= 20) return "cn_new_year";
         if (now.Month == 2 && now.Day >= 21 || now.Month == 3 && now.Day <= 10) return "lantern_festival";
         if (now.Month == 5 && now.Day >= 25 || now.Month == 6 && now.Day <= 25) return "dragon_boat";
         if (now.Month == 8 && now.Day >= 1 && now.Day <= 20) return "qixi";
         if (now.Month == 9 || now.Month == 10 && now.Day <= 10) return "mid_autumn";
-        if (now.Month == 10 && now.Day >= 20 || now.Month == 11 && now.Day <= 5) return "halloween";
-        if (now.Month == 12) return "christmas";
         return "default";
     }
 
@@ -490,32 +462,6 @@ public static class HolidayThemeRuntime
             Put(layer, width, height, 6, 23, cream); Put(layer, width, height, 7, 23, cream);
             Put(layer, width, height, 6, 22, cream); Put(layer, width, height, 8, 22, cream);
             Put(layer, width, height, 7, 21, cream); Put(layer, width, height, 8, 21, cream);
-        }
-        else if (string.Equals(accessoryId, "halloween_hat", StringComparison.OrdinalIgnoreCase))
-        {
-            Color32 orange = ToColor32(Active.Skin.DecorationGold, 1f);
-            Color32 purple = ToColor32(Active.Skin.DecorationPrimary, 1f);
-            FillRow(layer, width, height, 5, 11, 23, purple);
-            FillRow(layer, width, height, 6, 10, 22, purple);
-            FillRow(layer, width, height, 7, 9, 21, purple);
-            FillRow(layer, width, height, 4, 12, 20, orange);
-        }
-        else if (string.Equals(accessoryId, "christmas_hat", StringComparison.OrdinalIgnoreCase))
-        {
-            Color32 green = ToColor32(Active.Skin.DecorationSecondary, 1f);
-            FillRow(layer, width, height, 5, 11, 23, red);
-            FillRow(layer, width, height, 6, 10, 22, red);
-            FillRow(layer, width, height, 7, 9, 21, red);
-            Put(layer, width, height, 8, 20, green); Put(layer, width, height, 9, 20, green);
-            FillRow(layer, width, height, 4, 12, 19, gold);
-        }
-        else if (string.Equals(accessoryId, "new_year_party", StringComparison.OrdinalIgnoreCase))
-        {
-            Color32 blue = ToColor32(Active.Skin.DecorationPrimary, 1f);
-            Put(layer, width, height, 8, 23, gold);
-            FillRow(layer, width, height, 7, 9, 22, blue);
-            FillRow(layer, width, height, 6, 10, 21, blue);
-            FillRow(layer, width, height, 5, 11, 20, outline);
         }
         return layer;
     }

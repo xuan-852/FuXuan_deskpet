@@ -2,7 +2,7 @@
 
 > **2026-08-16 验证记录**：审批弹窗现统一在 `DrawPanelContent` 的视图分发之后绘制，因此会覆盖会话列表、设置、便签、报告和消耗等外置视图；`ExternalChatWindow.Shutdown()` 通过窗口线程消息执行 `DestroyWindow`，并用 `PostQuitMessage` 结束消息循环，避免 Unity 主线程跨线程销毁窗口。`WindowOverlay` 会按 `FuXuanChatWindowClass` 排除外置窗口，防止延迟重试误加全屏透明置顶样式。`build.ps1 -Quick`、完整构建、EditMode 测试 78/78 和隔离冒烟测试已通过；真实退出崩溃仍需后续运行时观察。
 
-> **2026-08-30～31 节日适配验证**：`HolidayThemeRuntime.ThemeSkin` 统一管理 8 个节日主题，运行时为 17×24 像素符玄叠加独立配饰，并将 RightPanel、ChatBubble 及子面板切换到各自配色；`@@sim:holiday:*` 命令可在测试模式切换/查询主题。`HolidayFireworksField` 按主题绘制烟花、灯笼、水波、星桥、月兔、南瓜/蝙蝠、飘雪/彩灯和元旦彩带。前轮完成 8 个主题预检；正式验收按单节日推进，目前已完成元宵、端午人工审核，其他主题不提前签字。Live2D 渲染链路未修改。
+> **2026-08-30～31 节日适配验证**：`HolidayThemeRuntime.ThemeSkin` 统一管理 5 个中国传统节日主题，运行时为 17×24 像素符玄叠加独立配饰，并将 RightPanel、ChatBubble 及子面板切换到各自配色；`@@sim:holiday:*` 命令可在测试模式切换/查询主题。`HolidayFireworksField` 按主题绘制烟花、灯笼、水波、星桥和月兔。万圣节、圣诞节、元旦因不符合当前诗词驱动范围已移出正式主题。Live2D 渲染链路未修改。
 
 > **文档作用**: 本模块文档描述桌宠「交互界面」子系统的**代码真相**——纯 IMGUI 架构（无 UGUI/无 Prefab）、四类界面元素（悬浮球/BallPanel/RightPanel/ChatBubble）、对话核心事件链，以及 17×24 像素符玄 × 对话界面的开源方案可移植汇总（换字体/换头像/加表情差分三件事）。改任何 UI 相关代码前必读。
 > **基本架构**: 全部界面为 **IMGUI**（`OnGUI`/`GUI.DrawTexture`，无 UGUI、无 Prefab、无美术贴图管线），视觉元素（圆角气泡/云纹/星点/CRT 扫描线/像素边框）均运行时 `Texture2D.SetPixel` 程序生成。核心：`RightPanel.cs`（终端窗）、`ChatBubble.cs`（头顶气泡）、`ChatManager.cs`（Entry 历史 + SplitSentences 逐句事件）、`AutoChat.cs`（气泡驱动）。2026-08-12 起 RightPanel 支持 OpenClaw 任务进度可视化：标题栏状态区（思考中部位）步骤显示 + 模态审批弹窗（todo 5/6）。
@@ -352,7 +352,7 @@
 
 ## 十四、像素符玄节日主题（2026-08-30）
 
-- `HolidayThemeRuntime` 统一维护主题状态、完整 `ThemeSkin` 颜色槽位、节日配饰和测试命令；当前提供 `default`、`cn_new_year`、`lantern_festival`、`dragon_boat`、`qixi`、`mid_autumn`、`halloween`、`christmas`、`new_year_day`，另支持 `auto`、`status`、`list`。
+- `HolidayThemeRuntime` 统一维护主题状态、完整 `ThemeSkin` 颜色槽位、节日配饰和测试命令；当前提供 `default`、`cn_new_year`、`lantern_festival`、`dragon_boat`、`qixi`、`mid_autumn`，另支持 `auto`、`status`、`list`。
 - 新春主题不新增贴图依赖：在加载 17×24 像素符玄后，用确定性的 17×24 像素遮罩叠加红色帽体、金色帽檐/绒球和流苏，再按原有整数倍 Point 采样放大。
 - `RightPanel` 在主题 revision 变化时全量重建程序生成的背景、星云、星点、边框、输入栏、按钮、标题、子面板和像素头像纹理；终端按钮背景强制透明，避免 Unity 默认 skin 叠色；`ChatBubble` 同步切换红金气泡配色。
 - 节日头像统一经 `DrawMascotAvatar` 取当前主题合成帧，覆盖聊天标题、会话列表、消息气泡和输入栏；新春截图已确认红金帽饰在这些位置可见，默认主题回退到原始像素帧。
@@ -364,7 +364,7 @@
 
 ### 测试命令
 
-在测试模式下通过 Inbox 发送：`@@sim:holiday:cn_new_year`、`@@sim:holiday:lantern_festival`、`@@sim:holiday:dragon_boat`、`@@sim:holiday:qixi`、`@@sim:holiday:mid_autumn`、`@@sim:holiday:halloween`、`@@sim:holiday:christmas`、`@@sim:holiday:new_year_day`、`@@sim:holiday:off`、`@@sim:holiday:auto`、`@@sim:holiday:status`、`@@sim:holiday:list`。截图仍使用 `@@sim:screenshot:<label>`，可将所有主题放入同一轮回归对照。
+在测试模式下通过 Inbox 发送：`@@sim:holiday:cn_new_year`、`@@sim:holiday:lantern_festival`、`@@sim:holiday:dragon_boat`、`@@sim:holiday:qixi`、`@@sim:holiday:mid_autumn`、`@@sim:holiday:off`、`@@sim:holiday:auto`、`@@sim:holiday:status`、`@@sim:holiday:list`。截图仍使用 `@@sim:screenshot:<label>`，可将所有主题放入同一轮回归对照。
 
 ### 验证记录
 
@@ -394,16 +394,6 @@
 
 - 元宵灯笼限制在右侧聊天主视图，采用上下三层布局、明确挂线和较高亮度，避免左侧会话列表出现节日残影。
 - 最新元宵单主题闭环测试和 static/motion/recovery 人工检查通过；本轮 Quick 构建 CPU 峰值 23%，完整构建 CPU 峰值 30%，均使用 16/32 逻辑核负载保护。
-
-### 万圣节最新复核补充（2026-09-01）
-
-- 万圣节南瓜和蝙蝠限制在右侧聊天主视图；南瓜加强轮廓、眼口高光与上下轻摆，蝙蝠增加身体、双翼和眼部像素，保证静态可辨、动态可感知。
-- 最新万圣节单主题闭环测试和 static/motion/recovery 人工检查通过；本轮 Quick 构建 CPU 峰值 20%，完整构建 CPU 峰值 25%，均使用 16/32 逻辑核负载保护。
-
-### 圣诞节最新复核补充（2026-09-01）
-
-- 圣诞节飘雪限制在右侧聊天主视图，并补充像素圣诞树、树顶高光、红金挂饰和底部彩灯，避免主题只剩零散雪点。
-- 最新圣诞节单主题闭环测试和 static/motion/recovery 人工检查通过；本轮 Quick 构建 CPU 峰值 24%，完整构建 CPU 峰值 27%，均使用 16/32 逻辑核负载保护。
 
 ### IME 分层修复（2026-08-20）
 

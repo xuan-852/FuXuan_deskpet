@@ -3,7 +3,7 @@
 > **文档作用**：规定像素符玄节日皮肤的设计、实现、测试和交付方式，供 AI 编码代理、美术和维护者共同使用。
 > **适用范围**：像素符玄、RightPanel 聊天窗口、ChatBubble、子面板和节日动态背景。
 > **明确边界**：本规范不允许为了节日皮肤修改 Live2D 模型、Live2D 参数、物理、局部 RT 或渲染管线。
-> **当前实现基线**：`HolidayThemeRuntime` + `ThemeSkin` + `HolidayFireworksField` + `ComposePixelFrame`；当前已有 `default`、`cn_new_year`、`lantern_festival`、`dragon_boat`、`qixi`、`mid_autumn`、`halloween`、`christmas`、`new_year_day`。
+> **当前实现基线**：`HolidayThemeRuntime` + `ThemeSkin` + `HolidayFireworksField` + `ComposePixelFrame`；当前已有 `default`、`cn_new_year`、`lantern_festival`、`dragon_boat`、`qixi`、`mid_autumn`。
 
 ---
 
@@ -63,9 +63,6 @@
 | `dragon_boat` | 端午主题 | `dragon_boat_leaf` | 水波与粽子 |
 | `qixi` | 七夕主题 | `qixi_star` | 星光与星桥 |
 | `mid_autumn` | 中秋主题 | `mid_autumn_rabbit` | 月亮、云朵与玉兔 |
-| `halloween` | 万圣节主题 | `halloween_hat` | 南瓜与蝙蝠 |
-| `christmas` | 圣诞主题 | `christmas_hat` | 飘雪与彩灯 |
-| `new_year_day` | 元旦主题 | `new_year_party` | 彩带与庆祝粒子 |
 
 ### 2.2 `ThemeSkin` 字段分组
 
@@ -119,9 +116,6 @@ private static readonly Theme ExampleTheme = new Theme(
 | 端午 | 竹叶/艾草发饰 | 绿色轮廓，避免覆盖脸部 |
 | 七夕 | 星形发簪 | 少量金色像素，保持精致 |
 | 中秋 | 玉兔耳饰 | 对称轮廓和米白高光 |
-| 万圣 | 尖帽 | 紫橙对比，帽檐不遮脸 |
-| 圣诞 | 圣诞帽 | 红帽、白边、绿色小点缀 |
-| 元旦 | 派对帽/彩带 | 蓝色主体和金色顶点 |
 
 ### 3.3 禁止做法
 
@@ -174,9 +168,6 @@ private static readonly Theme ExampleTheme = new Theme(
 | 端午 | 银塘青绿色渐变 | 朱槛、新荷、菖花/艾草与竖式诗词 | 水波起伏、荷叶轻动、诗词呼吸 |
 | 七夕 | 深蓝紫星空 | 星桥与星群 | 星点闪烁、流星掠过 |
 | 中秋 | 靛蓝月夜 | 月亮、云朵、玉兔 | 云朵漂移、月光呼吸 |
-| 万圣 | 紫黑渐变 | 南瓜、蝙蝠 | 蝙蝠横向飞行、南瓜闪烁 |
-| 圣诞 | 冷绿夜色 | 彩灯或树枝 | 雪花下落、彩灯交替亮起 |
-| 元旦 | 蓝银渐变 | 彩带与分隔线 | 彩纸下落、亮片闪烁 |
 
 ### 4.5 端午诗词驱动画面规范
 
@@ -269,9 +260,6 @@ Start-Process 'D:\Unity\projects\Desktop_per_pro\Build\DesktopPet.exe'
 @@sim:holiday:dragon_boat
 @@sim:holiday:qixi
 @@sim:holiday:mid_autumn
-@@sim:holiday:halloween
-@@sim:holiday:christmas
-@@sim:holiday:new_year_day
 ```
 
 辅助命令：
