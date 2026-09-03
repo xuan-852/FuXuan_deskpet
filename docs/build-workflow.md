@@ -48,6 +48,34 @@ Start-Process .\Build\DesktopPet.exe
 #    再执行左拖及镜像后的左右拖动，比较 test_screenshots/ 中的 Unity 截图
 ```
 
+## P0：高强度构建导致过热或整机重启
+
+用户反馈：问题只在高强度完整构建阶段出现，CPU 可能瞬时满载并达到 95°C 以上，偶发导致 Windows 重启。当前系统证据包含 `Kernel-Power 41` 和处理器 `WHEA-Logger 19 Internal parity error`，因此不能简单视为“构建正常满载”；在根因隔离前，完整构建属于 P0 风险。
+
+### 已实现（2026-08-31 构建负载保护）
+
+`build.ps1` 已内置构建负载保护（默认启用），可从命令行覆盖：
+
+| 参数 | 作用 |
+|------|------|
+| `-CleanBeeCache` | **显式**清理 `Library\Bee` 缓存并强制全量重建；默认**保留**缓存走增量（避免每次全量重编译打满 CPU） |
+| `-MaxCores <n>` | 限制构建可用逻辑核数（默认 = 半数逻辑核，`0` 表示自动） |
+| `-NoThrottle` | 关闭 CPU 亲和/降优先级节流（不推荐，用于排查） |
+
+除了 `-CleanBeeCache`，其余为默认行为：`build.ps1` 会限制 Tuanjie 主进程及其子进程（Bee.Backend / Roslyn / IL2CPP 等）的 **CPU 亲和掩码**到 `MaxCores` 核并把优先级降为 **BelowNormal**，并以 2s 间隔监视子进程直到构建结束；构建期间记录系统 CPU 占用均值/峰值。
+
+> 实测（2026-08-31，i9-14900HX 32 逻辑核）：完整构建限制为 16 核 + BelowNormal，构建期 CPU **均值 15~19% / 峰值 21~26%**（此前未限制时经常打满 100%），增量构建复用缓存，构建仍成功产出 exe。
+
+### 仍待处理
+- **硬件根因**（BIOS Intel 默认功耗、XMP、散热、主板供电、PSU）尚未核查，非代码层面可解决。
+- `build.ps1` 当前只记录 CPU 占用%，**未记录 CPU 温度/封装功耗/频率**（WMI 温度口在部分硬件不可用），温度/功耗证据需人工观察或外部工具。
+- 验收门槛「低负载/受保护完整构建连续通过至少 3 次」「无新 WHEA-Logger / Kernel-Power 41」需在可见播放器 + 人工观察下完成。
+
+### 保护规则（沿用）
+1. 日常改动优先使用 `.\build.ps1 -Quick`；确需完整构建时用默认节流保护。
+2. 清理 `Library\Bee` 只在 `-CleanBeeCache` 显式传参（确认缓存损坏/构建异常）时执行，不要默认清缓存。
+3. 未完成 BIOS/散热/PSU 核查前，不得用反复重试构建作为验证方式。
+
 ## 三、构建卡死处理（重点：2026-08-17 多次遇到）
 
 ### 症状
@@ -114,7 +142,7 @@ Stop-Process -Name Tuanjie.Licensing.Client -Force -ErrorAction SilentlyContinue
 |------|------|---------|
 | 编译 | `.\build.ps1 -Quick` | `[OK] Build succeeded! (mm:ss)` |
 | 完整构建 | `.\build.ps1` | `[OK] Output: Build/DesktopPet.exe` |
-| EditMode | `.\build.ps1 -RunTests` | `test_results.xml` 中 `result=Passed` 且 `failed=0`；现有历史产物为 114/114 |
+| EditMode | `.\build.ps1 -RunTests` | `test_results.xml` 根节点 `failed=0`（含 Ignore 时根结果可为 `Skipped:Ignored`，仍算通过）；门禁会在跑前删旧结果、跑后校验；**2026-08-31 已修复**（原因 `-runTests` 与 `-quit` 同传导致测试运行器提前退出不写结果） |
 | 冒烟 | `node scripts/test/runtime_smoke.cjs` | `[PASS]` + 生产记忆零污染 |
 | 人工 | 启动 exe | 桌宠落地、功能正常 |
 

@@ -385,6 +385,9 @@ Desktop_per_pro/
 | [`docs/quality-measurement-test-guide.md`](docs/quality-measurement-test-guide.md) | 编译产物核验与 Ollama 本地质量采样说明 |
 | [`docs/quality-comparison-test-guide.md`](docs/quality-comparison-test-guide.md) | 本地 / 云端配对质量对照说明 |
 | [`docs/desktop-assistant-roadmap.md`](docs/desktop-assistant-roadmap.md) | 演进路线图（v0.3，含开源调研） |
+| [`docs/holiday-skin-development-guide.md`](docs/holiday-skin-development-guide.md) | 节日皮肤开发规范、诗词驱动设计和单节日任务流程 |
+| [`docs/holiday-skin-review-standard.md`](docs/holiday-skin-review-standard.md) | 节日皮肤自动验证、人工审核和完成门槛 |
+| [`docs/holiday-skin-evaluation-2026-08-31.md`](docs/holiday-skin-evaluation-2026-08-31.md) | 历史评审证据与当前 5 个节日状态 |
 | [`docs/README.md`](docs/README.md) | 文档总索引（10 模块四要素文档） |
 | [`AGENTS.md`](AGENTS.md) | AI 协作快速入口 |
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本迭代日志 |

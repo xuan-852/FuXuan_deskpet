@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
@@ -168,13 +168,17 @@ public static class LocalToolRouter
             "用户明确要求打开课表网页");
     }
 
-    /// <summary>本地模型只能调用当前意图白名单中的工具。</summary>
+    /// <summary>本地模型只能调用当前意图白名单中的工具；危险工具不走自动白名单，必须走审批。</summary>
     public static bool IsAllowed(string toolName, string intent)
     {
         if (string.IsNullOrWhiteSpace(toolName)) return false;
+        string trimmed = toolName.Trim();
+        // 危险工具（file_delete/power/run_command/openclaw_task 等）不可以被本地模型自动规划执行，
+        // 必须走主流程审批（ToolConfirmManager），避免低价值模型误触发破坏性操作。
+        if (ToolRegistry.IsDangerous(trimmed)) return false;
         foreach (string allowed in GetAllowedTools(intent))
         {
-            if (string.Equals(allowed, toolName.Trim(), StringComparison.Ordinal)) return true;
+            if (string.Equals(allowed, trimmed, StringComparison.Ordinal)) return true;
         }
         return false;
     }

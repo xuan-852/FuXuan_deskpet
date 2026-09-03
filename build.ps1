@@ -16,13 +16,17 @@
     .\build.ps1 -RunTests
 #>
 
+# P0 构建负载保护：CleanBeeCache（显式清 Library\Bee）、MaxCores（限制核数）、NoThrottle（关闭节流）
 param(
     [string]$UnityExe = "D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe",
     [string]$LogFile = "D:\Unity\projects\Desktop_per_pro\logs\build\build_log.txt",
     [string]$DataRoot = "",
     [switch]$Quick,
     [switch]$RunTests,
-    [switch]$NoKill
+    [switch]$NoKill,
+    [switch]$CleanBeeCache,
+    [int]$MaxCores = 0,
+    [switch]$NoThrottle
 )
 
 # ── 统一编码协议：UTF-8 环境初始化（PS 5.1 防乱码）──
@@ -61,6 +65,15 @@ if ([string]::IsNullOrWhiteSpace($BuildDataRoot) -or -not $BuildDataRootIsTestMo
 }
 $env:FU_XUAN_DATA = $BuildDataRoot
 Write-Host "[Build] Isolated data: $BuildDataRoot"
+
+# ---- P0 构建负载保护：Bee 缓存清理开关（BuildScript.cs 读取） ----
+if ($CleanBeeCache) {
+    $env:BEE_CLEAN_CACHE = "1"
+    Write-Host "[Build] 显式清理 Library\Bee 缓存（强制全量重建）"
+} else {
+    Remove-Item Env:BEE_CLEAN_CACHE -ErrorAction SilentlyContinue
+    Write-Host "[Build] 保留 Library\Bee 缓存，走增量构建（需全量请加 -CleanBeeCache）"
+}
 
 # ---- Ensure log dir exists ----
 New-Item -ItemType Directory -Force -Path (Split-Path $LogFile -Parent) | Out-Null
@@ -195,9 +208,22 @@ if ($PetProc) {
 }
 
 # ---- Determine build/test mode ----
-if ($RunTests -or $Quick) {
-    $Label = if ($RunTests) { "Run Tests" } else { "Quick (compile + EditMode harness)" }
-    $TestResultsFile = Join-Path $RootDir "logs\build\test_results.xml"
+$TestResultsFile = Join-Path $RootDir "logs\build\test_results.xml"
+if ($RunTests) {
+    $Label = "Run Tests (EditMode)"
+    # 先删旧结果，确保能校验本次新鲜结果；去掉 -quit（否则测试运行器会提前退出不写结果）
+    Remove-Item $TestResultsFile -Force -ErrorAction SilentlyContinue
+    $unityArgs = @(
+        "-batchmode"
+        "-nographics"
+        "-projectPath", "."
+        "-logFile", $LogFile
+        "-runTests"
+        "-testPlatform", "EditMode"
+        "-testResults", $TestResultsFile
+    )
+} elseif ($Quick) {
+    $Label = "Quick (compile + EditMode harness)"
     $unityArgs = @(
         "-batchmode"
         "-nographics"
@@ -223,6 +249,43 @@ if ($RunTests -or $Quick) {
 
 # ---- Save current dir and CD to project ----
 $OldCwd = Get-Location
+
+# ---- P0 构建负载保护：CPU 亲和掩码 + 降优先级 + 子进程监视 ----
+# 限制构建进程及其后代（Bee.Backend/Roslyn/IL2CPP 等）可用核数并降低优先级，
+# 避免 Unity 构建打满全部核、长时间触发热保护/偶发重启。
+function Get-BuildThreadThrottleMask {
+    param([int]$TotalCores, [int]$MaxCores)
+    if ($MaxCores -le 0) { $MaxCores = [Math]::Max(2, [Math]::Ceiling($TotalCores / 2)) }
+    if ($MaxCores -gt $TotalCores) { $MaxCores = $TotalCores }
+    $mask = 0
+    for ($i = 0; $i -lt $MaxCores; $i++) { $mask = $mask -bor (1 -shl $i) }
+    return @{ Mask = $mask; Cores = $MaxCores }
+}
+
+function Set-ProcessThrottle {
+    param([int]$ProcId, [int]$Mask)
+    try {
+        $p = Get-Process -Id $ProcId -ErrorAction Stop
+        $p.ProcessorAffinity = [IntPtr]$Mask
+        $p.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal
+        return $true
+    } catch { return $false }
+}
+
+function Get-BuildDescendantPids {
+    param([int]$RootPid)
+    $result = @($RootPid)
+    $changed = $true
+    while ($changed) {
+        $changed = $false
+        foreach ($pr in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+            if ($result -contains $pr.ParentProcessId -and -not ($result -contains $pr.ProcessId)) {
+                $result += $pr.ProcessId; $changed = $true
+            }
+        }
+    }
+    return $result
+}
 try {
     Set-Location $ProjectDir
 
@@ -232,11 +295,80 @@ try {
     Write-Host ""
 
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $process = Start-Process -FilePath $UnityExe -ArgumentList $unityArgs -NoNewWindow -Wait -PassThru
+    $process = Start-Process -FilePath $UnityExe -ArgumentList $unityArgs -NoNewWindow -PassThru
+
+    # ---- P0 构建负载保护：限制 CPU 亲和 + 降优先级 + 监视子进程 ----
+    $throttle = -not $NoThrottle
+    $mask = 0
+    $effCores = 0
+    if ($throttle) {
+        $totalCores = [Environment]::ProcessorCount
+        $t = Get-BuildThreadThrottleMask -TotalCores $totalCores -MaxCores $MaxCores
+        $mask = $t.Mask; $effCores = $t.Cores
+        $null = Set-ProcessThrottle -ProcId $process.Id -Mask $mask
+        Write-Host ("[Throttle] 构建负载保护: 逻辑核={0}, 限制={1} 核, 亲和掩码=0x{2:X}, 优先级=BelowNormal" -f $totalCores, $effCores, $mask) -ForegroundColor Yellow
+    }
+
+    $cpuSamples = @()
+    while (-not $process.HasExited) {
+        if ($throttle) {
+            foreach ($childId in (Get-BuildDescendantPids -RootPid $process.Id)) {
+                if ($childId -ne $process.Id) { $null = Set-ProcessThrottle -ProcId $childId -Mask $mask }
+            }
+        }
+        try {
+            $v = (Get-Counter "\Processor(_Total)\% Processor Time" -SampleInterval 1 -MaxSamples 1).CounterSamples[0].CookedValue
+            if ($null -ne $v) { $cpuSamples += $v }
+        } catch { /* 计数器不可用时忽略 */ }
+        Start-Sleep -Milliseconds 2000
+    }
     $sw.Stop()
 
+    $process.WaitForExit()
     $exitCode = $process.ExitCode
     $elapsed = $sw.Elapsed.ToString("mm\:ss")
+
+    # 兜底：Start-Process -NoNewWindow 下 ExitCode 偶发为空（build-workflow 已知坑）。
+    # 此时按 build-log 内容判定成功/失败，避免把实际成功的构建误判为失败。
+    if ($null -eq $exitCode) {
+        $logFailed = $false
+        if (Test-Path $LogFile) {
+            $logText = Get-Content $LogFile -Raw -ErrorAction SilentlyContinue
+            $logFailed = $logText -match '(?m)\berror\s+CS\d{4}\b|Scripts have compiler errors|Build failed|BuildFailed'
+        }
+        $exitCode = if ($logFailed) { 1 } else { 0 }
+        Write-Host ("[Throttle] ExitCode 为空，按 build-log 判定: {0}" -f $(if ($logFailed) { "失败" } else { "成功" })) -ForegroundColor Yellow
+    }
+
+    if ($cpuSamples.Count -gt 0) {
+        $avg = [Math]::Round(($cpuSamples | Measure-Object -Average).Average, 0)
+        $max = [Math]::Round(($cpuSamples | Measure-Object -Maximum).Maximum, 0)
+        Write-Host ("[Throttle] 构建期 CPU 占用: 均值 {0}%, 峰值 {1}%，保护=({2} 核/{3} 逻辑核)" -f $avg, $max, $effCores, [Environment]::ProcessorCount) -ForegroundColor Yellow
+    }
+
+    # ---- RunTests 门禁：必须校验根节点的 test-run result 与 failed 计数 ----
+    if ($RunTests) {
+        $testRan = $false
+        $testPassed = $false
+        $testFailed = 0
+        if (Test-Path $TestResultsFile) {
+            $tr = Get-Content $TestResultsFile -Raw -ErrorAction SilentlyContinue
+            # 取根 <test-run ... result="X" ... failed="N">（不是内层子套件的 result="Passed"）。
+            # 只要失败数为 0 即视为通过；含 Ignore 时 NUnit 根结果可能是 "Skipped:Ignored"，不算失败。
+            if ($tr -match '<test-run[^>]*\bresult="([^"]+)"[^>]*\bfailed="(\d+)"') {
+                $testRan = $true
+                $testFailed = [int]$Matches[2]
+                $testPassed = ($testFailed -eq 0)
+            }
+        }
+        if (-not $testRan -or -not $testPassed) {
+            $Host.UI.RawUI.ForegroundColor = "Red"
+            Write-Host "[FAIL] EditMode 测试未通过: $TestResultsFile（ran=$testRan, failed=$testFailed）"
+            if (Test-Path $TestResultsFile) { Get-Content $TestResultsFile -TotalCount 2 }
+            exit 1
+        }
+        Write-Host "[OK] EditMode 测试通过: $TestResultsFile (failed=0)" -ForegroundColor Green
+    }
 
     if ($exitCode -eq 0) {
         $Host.UI.RawUI.ForegroundColor = "Green"
@@ -272,5 +404,6 @@ try {
     } else {
         $env:FU_XUAN_DATA = $OriginalDataRoot
     }
+    Remove-Item Env:BEE_CLEAN_CACHE -ErrorAction SilentlyContinue
     Set-Location $OldCwd
 }

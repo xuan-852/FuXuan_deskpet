@@ -12,14 +12,34 @@ public class BuildScript
     /// <summary>
     /// 完整构建 — 输出可执行文件到 Build/
     /// </summary>
+    /// <summary>
+    /// 决定是否清理 Library\Bee 缓存（增量构建保护）。
+    /// 默认【保留】缓存走增量，仅显式 BEE_CLEAN_CACHE=1/true 才清理。
+    /// 抽成纯函数便于单测，防止「每次全量重编译」回归。
+    /// </summary>
+    public static bool ShouldCleanBeeCache(string value)
+    {
+        return string.Equals(value, "1", System.StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "true", System.StringComparison.OrdinalIgnoreCase);
+    }
+
     public static void BuildDesktopPet()
     {
-        // ★ 清除 Bee DAG 缓存，防止增量构建的 MonoScript 序列化损坏
+        // ★ P0 构建负载保护：Library\Bee 缓存清理改为显式开关。
+        // 默认【保留】缓存走增量构建（避免每次全量重编译导致 CPU 打满/热保护）；
+        // 仅当 build.ps1 显式传 -CleanBeeCache（设置 BEE_CLEAN_CACHE=1）时才清一次，
+        // 用于确认缓存损坏/构建异常后的强制全量重建。
+        bool cleanBeeCache = ShouldCleanBeeCache(
+            System.Environment.GetEnvironmentVariable("BEE_CLEAN_CACHE"));
         string beeDir = "Library/Bee";
-        if (Directory.Exists(beeDir))
+        if (cleanBeeCache && Directory.Exists(beeDir))
         {
-            Debug.Log("[BuildScript] 清理 Bee 缓存（防止 DAG 增量损坏）");
+            Debug.Log("[BuildScript] 清理 Bee 缓存（显式 -CleanBeeCache）");
             Directory.Delete(beeDir, true);
+        }
+        else
+        {
+            Debug.Log("[BuildScript] 保留 Bee 缓存，增量构建（需全量请在 build.ps1 加 -CleanBeeCache）");
         }
 
         // ★ 用硬编码绝对路径

@@ -27,7 +27,7 @@ public class LocalRoleplayPromptBuilderTests
         StringAssert.Contains("自称必须优先用“本座”", prompt);
         StringAssert.Contains("可自然混用“主人”和“你”", prompt);
         StringAssert.Contains("不要称呼“将军”", prompt);
-        StringAssert.Contains("用多句短句组成完整回复", prompt);
+        StringAssert.Contains("用多句短句组成有内容的完整回复", prompt);
     }
 
     [Test]

@@ -16,7 +16,7 @@
 - **服务对象**: 开发者 + AI 编码代理。任何涉及对话窗口、头顶气泡、输入栏、悬浮球、菜单面板、像素化视觉的改动。
 - **回答的问题**:
   - 界面组件有哪些？各自在哪？什么尺寸？
-  - 消息流怎么从 ChatManager 到气泡的？
+  - 消息流怎么从 ChatManager 到气泡的？~
   - 像素化改造的完整落地清单是什么？成本多少？
   - 引入外部素材的许可约束是什么？
 - **关联文档**: `code-truth-architecture.md`（UI 表现层）｜`modules/ai-chat-system.md`（对话核心事件）｜`modules/live2d-rendering.md`（像素模式与本体的关系）｜`modules/action-agent.md`（言出法随触发 UI）

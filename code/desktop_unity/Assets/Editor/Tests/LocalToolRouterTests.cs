@@ -1,4 +1,4 @@
-﻿using NUnit.Framework;
+using NUnit.Framework;
 using Newtonsoft.Json.Linq;
 
 public class LocalToolRouterTests
@@ -125,6 +125,8 @@ public class LocalToolRouterTests
         foreach (JObject item in tools)
         {
             string name = item["function"]?["name"]?.ToString();
+            // 危险工具走审批而非本地自动路由，不要求出现在自然语言白名单中。
+            if (ToolRegistry.IsDangerous(name)) continue;
             bool routed = LocalToolRouter.IsAllowed(name, "command")
                 || LocalToolRouter.IsAllowed(name, "knowledge")
                 || LocalToolRouter.IsAllowed(name, "operation");

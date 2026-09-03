@@ -13,6 +13,7 @@
 
 | # | 问题 | 影响 | 状态 | 应对 |
 |---|------|------|------|------|
+| P0 | **高强度完整构建触发 CPU 瞬时满载、95°C+，偶发整机重启** | 构建可能触发硬件保护、供电/稳定性故障，造成未保存数据丢失并阻断交付 | 🟡 **软件保护已落地，硬件未隔离**：`build.ps1` 已内置构建负载保护（默认保留 `Library\Bee` 增量 + `-MaxCores` 限制 16 核 + BelowNormal 优先级 + 2s 子进程监视；实测完整构建 CPU 均值 15~19%/峰值 21~26%）；系统仍存在 `Kernel-Power 41` 与 `WHEA-Logger 19 Internal parity error`，**硬件根因（BIOS/散热/PSU）未完成隔离** | 日常用 `-Quick`；完整构建用默认节流；`-CleanBeeCache` 仅在确认缓存损坏时显式使用；完成 BIOS/散热/PSU 核查 + 低/高负载对照 + 人工温度/重启观察后才能降级 |
 | P1 | **destroyTJDevice 退出崩溃**（崩溃计数 105→108→120 持续增长） | 退出时引擎崩溃 → 可能触发反复重启 | 🟡 **已降级未确认**：`2cad357` 按 DisableExternalMode→Shutdown→释放 RT/NativeArray 顺序修复；退出时引擎崩溃是否彻底消失**未最终确认**（exit-time 崩溃不影响外部交互） | 多轮真实退出观察 Player.log；若复现按"退出崩溃"专项排查 |
 | P2 | **schannel TLS 全坏（系统级）**：`SEC_E_NO_CREDENTIALS (0x8009030e)`，Node/curl/.NET 全部 HTTPS 失败（baidu.com 也连不上），浏览器 OK（BoringSSL） | DSH harness 切 GPT 被卡（`dsh-codex-auth` 已装但连不上）；**codex CLI（Rust/rustls）不受影响，可直接用** | 🔴 未解决 | 用户操作：重启 → `sfc /scannow` → `DISM /Online /Cleanup-Image /RestoreHealth` → 卸 SteamTools MITM 证书；修好前**不要**再尝试 DSH 代理配置 |
 | P3 | **测试模式一刀切**：禁云端后测试里验证不到真实云端链路（缓存命中率/价格/响应质量），且"本地失败=功能缺失"而非回退云端 | 测试行为与生产有偏差，可能误判 bug | 🟡 已知限制（N44） | 见 `token-cost-testing.md` 铁律 5：唯一烧钱路径需用户确认 |

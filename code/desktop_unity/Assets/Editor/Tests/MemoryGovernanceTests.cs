@@ -77,7 +77,7 @@ public class MemoryGovernanceTests
     public void 近似重复记忆合并而不是新增()
     {
         Assert.IsTrue(_memory.AddMemoryWithMetadata(
-            "主人喜欢喝热茶", "偏好", "conversation", 5, "system", 0.6f));
+            "主人喜欢喝热茶", "偏好", "conversation", 5, "user", 0.6f));
         Assert.IsFalse(_memory.AddMemoryWithMetadata(
             "主人喜欢喝热茶。", "偏好", "conversation", 8, "local_model", 0.9f));
 

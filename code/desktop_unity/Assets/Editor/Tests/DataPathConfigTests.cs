@@ -54,6 +54,7 @@ public class DataPathConfigTests
         string error;
         Assert.That(DataPathConfig.EnsureDataRoot(out error), Is.True);
         Assert.That(error, Is.Null);
-        Assert.That(Directory.Exists(_tempRoot), Is.True);
+        // 保证解析出的数据根目录存在（旧目录回退时解析结果可能是旧 C/D 目录），与环境无关。
+        Assert.That(Directory.Exists(DataPathConfig.DataRoot), Is.True);
     }
 }
