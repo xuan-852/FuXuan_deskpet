@@ -57,6 +57,7 @@ public sealed class HolidayFireworksField
         if (themeId == "cn_new_year")
         {
             DrawFireworkBurst(px, py, pw, ph, animAlpha);
+            DrawNewYearPoetry(px, py, pw, ph, animAlpha);
             return;
         }
         Matrix4x4 previousMatrix = GUI.matrix;
@@ -206,6 +207,48 @@ public sealed class HolidayFireworksField
         };
         _poetryStyle.font = Font.CreateDynamicFontFromOSFont(
             new[] { "STXingkai", "华文行楷", "KaiTi", "楷体", "STKaiti" }, 22);
+    }
+
+    /// <summary>
+    /// 新春诗词（王安石《元日》）：右列为句首，列内自上而下，列间从右向左。
+    /// 烟花集中在面板右侧场景（0.36~0.96 宽），诗句放在左侧窄区避开主场景。
+    /// </summary>
+    private void DrawNewYearPoetry(float px, float py, float pw, float ph, float animAlpha)
+    {
+        EnsurePoetryStyle();
+        Color previousColor = GUI.color;
+        float shortSide = Mathf.Min(pw, ph);
+        int fontSize = Mathf.Clamp(Mathf.RoundToInt(shortSide * 0.042f), 16, 34);
+        _poetryStyle.fontSize = fontSize;
+        float lineHeight = Mathf.Max(22f, fontSize * 1.16f);
+        float columnGap = Mathf.Max(26f, fontSize * 1.60f);
+        float breath = 0.64f + (0.5f + 0.5f * Mathf.Sin(Time.time * 0.86f)) * 0.18f;
+        Color ink = Color.Lerp(_sparkColor, new Color(1f, 0.93f, 0.70f, 1f), 0.70f);
+        _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
+        GUI.color = Color.white;
+
+        // 大界面显示完整四句，小界面保留核心两句。
+        string[] columns = shortSide >= 390f
+            ? new[] { "爆竹声中一岁除", "春风送暖入屠苏", "千门万户曈曈日", "总把新桃换旧符" }
+            : new[] { "爆竹声中一岁除", "春风送暖入屠苏" };
+        float poetryRight = px + pw * 0.30f;
+        float poetryTop = py + ph * 0.28f;
+        for (int column = 0; column < columns.Length; column++)
+        {
+            string text = columns[column];
+            float x = poetryRight - column * columnGap;
+            float y = poetryTop + Mathf.Sin(Time.time * 0.30f + column * 0.68f) * 1.4f;
+            for (int row = 0; row < text.Length; row++)
+            {
+                // 中轴线附近的轻微错位：保留书写感，不把文字打散。
+                float axisOffset = ((column + row) % 3 - 1) * 1.35f;
+                float drift = Mathf.Sin(Time.time * 0.40f + column * 0.70f + row * 0.47f) * 0.50f;
+                float charY = y + row * lineHeight;
+                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, charY,
+                    fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
+            }
+        }
+        GUI.color = previousColor;
     }
 
     private void DrawDragonBoat(float px, float py, float pw, float ph, float animAlpha)
@@ -539,6 +582,26 @@ public sealed class HolidayFireworksField
             }
         }
 
+        // 孔雀桥之前先铺流星：短时划过的高亮尾迹，作为七夕的事件动效（约 1/3 周期一次）。
+        float meteorCycle = Mathf.Repeat(time * 0.45f, 1f);
+        float meteorT = meteorCycle / 0.30f;
+        if (meteorT <= 1f)
+        {
+            float fade = Mathf.Sin(meteorT * Mathf.PI);
+            float meteorX = px + pw * (0.44f + Mathf.Lerp(0f, 0.40f, meteorT));
+            float meteorY = py + ph * (0.20f - Mathf.Lerp(0f, 0.20f, meteorT));
+            for (int i = 0; i < 6; i++)
+            {
+                float t = Mathf.Max(0f, meteorT - i * 0.025f);
+                float trailX = px + pw * (0.44f + Mathf.Lerp(0f, 0.40f, t));
+                float trailY = py + ph * (0.20f - Mathf.Lerp(0f, 0.20f, t));
+                DrawRect(new Rect(trailX - 1f, trailY - 1f, 2f, 2f),
+                    new Color(star.r, star.g, star.b, animAlpha * fade * (1f - i * 0.14f)));
+            }
+            DrawRect(new Rect(meteorX - 2f, meteorY - 2f, 4f, 4f),
+                new Color(star.r, star.g, star.b, animAlpha * fade));
+        }
+
         // 鹊桥是七夕的主视觉：由连续的紫色桥段连接两颗高亮星，缓慢上下起伏。
         float bridgeY = py + ph * 0.72f + Mathf.Sin(time * 0.8f) * 4f;
         Color bridge = new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.64f);
@@ -552,6 +615,44 @@ public sealed class HolidayFireworksField
         }
         DrawRect(new Rect(px + pw * 0.39f, bridgeY - 3f, 8f, 8f), star);
         DrawRect(new Rect(px + pw * 0.91f, bridgeY - 3f, 8f, 8f), star);
+
+        DrawQixiPoetry(px, py, pw, ph, animAlpha);
+    }
+
+    /// <summary>七夕诗词（秦观《鹊桥仙·纤云弄巧》开篇）：右列为句首，列内自上而下，列间从右向左。</summary>
+    private void DrawQixiPoetry(float px, float py, float pw, float ph, float animAlpha)
+    {
+        EnsurePoetryStyle();
+        Color previousColor = GUI.color;
+        float shortSide = Mathf.Min(pw, ph);
+        int fontSize = Mathf.Clamp(Mathf.RoundToInt(shortSide * 0.042f), 16, 34);
+        _poetryStyle.fontSize = fontSize;
+        float lineHeight = Mathf.Max(22f, fontSize * 1.16f);
+        float columnGap = Mathf.Max(26f, fontSize * 1.60f);
+        float breath = 0.64f + (0.5f + 0.5f * Mathf.Sin(Time.time * 0.84f)) * 0.18f;
+        Color ink = Color.Lerp(_sparkColor, new Color(0.82f, 0.86f, 1f, 1f), 0.72f);
+        _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
+        GUI.color = Color.white;
+
+        string[] columns = shortSide >= 390f
+            ? new[] { "纤云弄巧", "飞星传恨", "银汉迢迢暗度" }
+            : new[] { "纤云弄巧", "银汉迢迢暗度" };
+        float poetryRight = px + pw * 0.28f;
+        float poetryTop = py + ph * 0.26f;
+        for (int column = 0; column < columns.Length; column++)
+        {
+            string text = columns[column];
+            float x = poetryRight - column * columnGap;
+            float y = poetryTop + Mathf.Sin(Time.time * 0.30f + column * 0.70f) * 1.3f;
+            for (int row = 0; row < text.Length; row++)
+            {
+                float axisOffset = ((column + row) % 3 - 1) * 1.30f;
+                float drift = Mathf.Sin(Time.time * 0.42f + column * 0.72f + row * 0.48f) * 0.5f;
+                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, y + row * lineHeight,
+                    fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
+            }
+        }
+        GUI.color = previousColor;
     }
 
     private void DrawMidAutumn(float px, float py, float pw, float ph, float animAlpha)
@@ -596,6 +697,44 @@ public sealed class HolidayFireworksField
         DrawRect(new Rect(rabbitX + 27f, rabbitY + 6f, 4f, 4f),
             new Color(0.96f, 0.36f, 0.28f, animAlpha * 0.92f));
         DrawRect(new Rect(rabbitX - 9f, rabbitY + 15f, 10f, 6f), rabbit);
+
+        DrawMidAutumnPoetry(px, py, pw, ph, animAlpha);
+    }
+
+    /// <summary>中秋诗词（苏轼《水调歌头·明月几时有》节选）：右列为句首，列内自上而下，列间从右向左。</summary>
+    private void DrawMidAutumnPoetry(float px, float py, float pw, float ph, float animAlpha)
+    {
+        EnsurePoetryStyle();
+        Color previousColor = GUI.color;
+        float shortSide = Mathf.Min(pw, ph);
+        int fontSize = Mathf.Clamp(Mathf.RoundToInt(shortSide * 0.042f), 16, 34);
+        _poetryStyle.fontSize = fontSize;
+        float lineHeight = Mathf.Max(22f, fontSize * 1.16f);
+        float columnGap = Mathf.Max(26f, fontSize * 1.60f);
+        float breath = 0.64f + (0.5f + 0.5f * Mathf.Sin(Time.time * 0.82f)) * 0.18f;
+        Color ink = Color.Lerp(_sparkColor, new Color(1f, 0.92f, 0.70f, 1f), 0.72f);
+        _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
+        GUI.color = Color.white;
+
+        string[] columns = shortSide >= 390f
+            ? new[] { "明月几时有", "把酒问青天", "但愿人长久", "千里共婵娟" }
+            : new[] { "明月几时有", "千里共婵娟" };
+        float poetryRight = px + pw * 0.28f;
+        float poetryTop = py + ph * 0.26f;
+        for (int column = 0; column < columns.Length; column++)
+        {
+            string text = columns[column];
+            float x = poetryRight - column * columnGap;
+            float y = poetryTop + Mathf.Sin(Time.time * 0.32f + column * 0.66f) * 1.3f;
+            for (int row = 0; row < text.Length; row++)
+            {
+                float axisOffset = ((column + row) % 3 - 1) * 1.30f;
+                float drift = Mathf.Sin(Time.time * 0.40f + column * 0.74f + row * 0.46f) * 0.5f;
+                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, y + row * lineHeight,
+                    fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
+            }
+        }
+        GUI.color = previousColor;
     }
 
     private void DrawMidAutumnOsmanthus(float px, float py, float pw, float ph, float animAlpha, float time)

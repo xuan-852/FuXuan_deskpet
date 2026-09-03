@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Threading;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using UnityEngine;
 
 /// <summary>
@@ -21,7 +23,34 @@ public class DesktopPet : MonoBehaviour
 {
     // 单例互斥锁：防止多个实例同时运行
     private static Mutex _instanceMutex = null;
-    private const string MutexName = "DesktopPet_Unity_SingleInstance";
+    private const string MutexNamePrefix = "DesktopPet_Unity_SingleInstance_";
+
+    /// <summary>
+    /// 为每个数据根目录建立独立的单实例作用域。
+    /// 生产目录仍保持单实例；隔离测试目录可以与生产实例并行运行，避免测试脚本强杀用户桌宠。
+    /// </summary>
+    private static string GetInstanceMutexName()
+    {
+        try
+        {
+            string dataRoot = System.IO.Path.GetFullPath(DataPathConfig.DataRoot)
+                .TrimEnd('\\', '/')
+                .ToUpperInvariant();
+            using (var sha = SHA256.Create())
+            {
+                byte[] digest = sha.ComputeHash(Encoding.UTF8.GetBytes(dataRoot));
+                var suffix = new StringBuilder(16);
+                for (int i = 0; i < 8; i++)
+                    suffix.Append(digest[i].ToString("x2"));
+                return MutexNamePrefix + suffix;
+            }
+        }
+        catch
+        {
+            // 数据目录异常时回退到稳定锁名，优先保证不会产生多个不受控实例。
+            return MutexNamePrefix + "default";
+        }
+    }
 
     // Win32 API
     [DllImport("user32.dll")]
@@ -486,7 +515,7 @@ public class DesktopPet : MonoBehaviour
         try
         {
             bool createdNew;
-            _instanceMutex = new Mutex(true, MutexName, out createdNew);
+            _instanceMutex = new Mutex(true, GetInstanceMutexName(), out createdNew);
 
             if (!createdNew)
             {

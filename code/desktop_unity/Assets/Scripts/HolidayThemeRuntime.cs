@@ -220,7 +220,7 @@ public static class HolidayThemeRuntime
     private static readonly Theme LanternFestivalTheme = new Theme(
         "lantern_festival", "元宵主题", "lantern_festival_lantern", LanternFestivalSkin);
     private static readonly Theme DragonBoatTheme = new Theme(
-        "dragon_boat", "端午主题", "", DragonBoatSkin);
+        "dragon_boat", "端午主题", "dragon_boat_leaf", DragonBoatSkin);
     private static readonly Theme QixiTheme = new Theme(
         "qixi", "七夕主题", "qixi_star", QixiSkin);
     private static readonly Theme MidAutumnTheme = new Theme(
