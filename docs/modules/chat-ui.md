@@ -376,6 +376,13 @@
 - 端午诗词背景采用响应式字号、呼吸亮度和中文行楷/行书字体，列内自上而下、列间从右向左，并保留小幅字符偏移。
 - 最新端午单主题闭环测试和 static/motion/recovery 人工检查通过；本轮完整构建 CPU 峰值 29%，使用 16/32 逻辑核负载保护。
 
+### 端午验收预归档补充（2026-09-04）
+
+- 端午四图复测目录：`%TEMP%/fuxuan_final_eval_dragon_boat_20260904_final/test_screenshots/`。`dragon_boat_static`、`dragon_boat_small`、`dragon_boat_motion`、`default_recovery` 均大于 4KB；日志确认 `@@sim:holiday:list`、`@@sim:holiday:status`、主题切换、`off` 和 `@@test:quit` 均完成，未发现 `NullReferenceException`。
+- 人工审核结果：诗词按列内自上而下、列间从右向左显示，呼吸亮度可见；龙舟船头保持在右侧且往返方向正确，船体/旗帜/船桨未脱离，无异常飞行黄线；艾草、荷叶、水面和龙舟层次清晰；恢复图回到默认紫色界面、默认星空和原始头像。
+- 本轮预评分 **91/100**（视觉 54、功能 18、稳定性/性能/安全 19），未发现 P0/P1/P2；头像维持原始像素形态、诗词层次微调均列 P3。真实 GUI 双击/拖拽仍未取得稳定独立证据，因此尚未关闭 T3/T5。
+- 单实例回归：两个不同 `FU_XUAN_DATA` 数据根可并行启动且无互斥冲突；同一数据根单实例约束保持不变。Live2D 文件和参数未修改。
+
 ### 春节最新复核补充（2026-09-01）
 
 - 春节烟花的升空轨迹、爆心和火星均限制在右侧聊天内容区，主线采用红橙金过渡以提升深红面板上的可见度，避免左侧会话栏出现残影。
@@ -416,3 +423,10 @@
 - `BeginShutdown` 在 Unity 组件释放前主动调用 `ExternalChatWindow.Shutdown()`，先停止窗口线程，再由 `RightPanel` 释放 RenderTexture/NativeArray，降低 `destroyTJDevice` 退出竞态。
 - `ExternalChatWindow` 增加 `_shutdownRequested`：窗口线程尚未设置 `IsCreated` 时收到关闭请求，也会在建窗前退出；`EnsureCreated()` 不会在旧线程退出期间重复创建新线程。
 - 验证：本轮 Quick、完整构建通过；新构建包隔离 `runtime_smoke.cjs --verbose` 通过，零 NRE 且生产记忆零污染。真实退出崩溃仍需按 P1 做多轮观察。
+
+## 十五、五个传统节日最终验收证据（2026-09-04）
+
+- 当前正式范围固定为新春、元宵、端午、七夕、中秋；诗词分别为《元日》《生查子·元夕》《少年游·端午赠黄守徐君猷》前半段、《鹊桥仙·纤云弄巧》开篇和《水调歌头·明月几时有》节选。
+- 五个主题均已使用最新构建完成独立隔离评测：每主题保存 `static`、`small`、`motion`、`default_recovery` 四张 Unity 截图，并在 Player.log 中留下主题切换、`list`、`status`、`off` 和 `@@test:quit` 记录；各目录无 `NullReferenceException`。
+- 截图视觉预审结果：新春 53/60、元宵 54/60、端午 54/60、七夕 53/60、中秋 53/60；综合预评分分别为 91、92、91、91、91/100，当前均无 P0/P1/P2，细节微调列 P3。
+- `@@view:list/chat` 仅作为自动化的小/大界面证据；正式关闭 T3/T5 前仍需负责人用真实 GUI 完成双击展开和拖拽/收回，并确认诗词列距、配饰、动效方向和默认恢复。证据与状态以 [`holiday-skin-evaluation-2026-08-31.md`](../holiday-skin-evaluation-2026-08-31.md) 为准。

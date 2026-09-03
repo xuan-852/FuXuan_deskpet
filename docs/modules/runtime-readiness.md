@@ -2,7 +2,7 @@
 
 > **文档作用**: 描述桌宠启动自检、请求状态、取消/失败恢复、云端保护和外置窗口恢复；修改启动依赖、请求生命周期或退出流程前必读。
 > **基本架构**: `RuntimeReadinessService` 负责本地/桥接/云端就绪状态，`ChatManager` 负责请求生命周期，`DesktopPet` 与 `WindowOverlay` 负责关闭、DWM 和置顶恢复。
-> **开发历史迭代**: 2026-08-21 建立就绪层；2026-08-26 补充异常会话、DWM 重建和置顶看门狗；2026-08-27 补充桥接任务取消与请求失败最终态。
+> **开发历史迭代**: 2026-08-21 建立就绪层；2026-08-26 补充异常会话、DWM 重建和置顶看门狗；2026-08-27 补充桥接任务取消与请求失败最终态；2026-09-04 补充按测试数据根目录隔离的单实例互斥验证。
 > **编写注意事项**: 云端就绪检查不得发起付费探测；测试必须使用隔离数据目录；构建被权限或宿主环境阻断时只能记录为未验证。
 
 本模块记录 2026-08-21 起加入的运行时安全层，以下内容以当前代码和验证记录为准。
@@ -42,6 +42,7 @@ DesktopPet startup recovery uses a consecutive-abnormal-session watchdog. Produc
 - Ollama bootstrap is disabled in the Unity Editor and `.test_mode`, uses `OLLAMA_EXE` first and then the standard per-user/Program Files paths, and has a 60-second launch cooldown to avoid spawning duplicate processes during repeated readiness checks.
 - DesktopPet autostart is stored as a Windows `REG_SZ`; the registry bridge must encode values as UTF-16LE. The reader keeps a UTF-8 fallback so values written by older builds are migrated on the next successful startup.
 - Build/test force-termination must not be treated as proof of a DesktopPet crash. The watchdog therefore resets after a stable session and skips production crash state entirely in `.test_mode`.
+- DesktopPet 的单实例互斥名按规范化后的 `DataPathConfig.DataRoot` 生成稳定哈希后分域：同一数据根仍保持单实例，`FU_XUAN_DATA` 指向不同临时目录的测试播放器可以并行启动；生成失败时回退到固定默认锁名以保持安全性。
 
 ### 验证方法
 
@@ -69,3 +70,5 @@ The data root must be temporary and contain `.test_mode`; production memory and 
 - 2026-08-27: Quick and full build passed after bridge task-cancellation/error-classification changes; isolated `runtime_smoke.cjs --verbose` passed with zero NRE, complete self-exit, and zero production-memory pollution. The EditMode XML remains historical 114/114 and is not counted as a fresh test result.
 - 2026-08-27: `ChatManager` request finalization now keeps failed requests in `RequestStage.Error`, skips success-only quality/background work, and clears the completed coroutine reference before starting a queued request. Quick/full build and isolated `runtime_smoke.cjs --verbose` passed; the EditMode XML remains historical 114/114.
 - 2026-08-29: Added test-mode `@@sim`/`@@input` runtime input simulation for status, click, drag, reset, and release. The rebuilt player passed Quick/full build and isolated `runtime_smoke.cjs --verbose`; the smoke run covered simulated dragging, the existing UI/external-window path, zero NRE, and unchanged production-memory mtimes.
+- 2026-09-04: DesktopPet 单实例锁改为按 `DataPathConfig.DataRoot` 隔离。Quick、完整构建、EditMode、隔离 `runtime_smoke.cjs --verbose`、端午逐主题评测和两个不同 `FU_XUAN_DATA` 根目录并行启动验证均通过；生产数据未参与测试。
+- 2026-09-04 节日最终验收：五个正式主题分别在临时数据根目录完成 `@@view:open`、主题切换、`list/status/off`、四张 Unity 截图和 `@@test:quit`；每个目录无 NRE，截图视觉预评分 91/92/91/91/91。`@@view:list/chat` 只证明自动化的小/大界面状态，真实 GUI 双击展开和拖拽/收回仍需负责人签字后才能关闭 T3/T5。

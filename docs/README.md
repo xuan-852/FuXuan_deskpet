@@ -1,6 +1,6 @@
 # 📚 docs/ 文档总索引
 
-> **索引状态**: 2026-09-03 复核；代码改动完成并通过相应验证后，必须同步更新模块文档与受影响的顶层文档。
+> **索引状态**: 2026-09-04 复核；代码改动完成并通过相应验证后，必须同步更新模块文档与受影响的顶层文档。
 > **文档作用**: 本文件是 `docs/` 目录的**导航地图**——告诉 AI 与开发者每份文档的作用、归属模块、阅读优先级，以及统一的文档编写模板。
 > **基本架构**: 三层结构——① 顶层权威文档（架构/规范/路线图/清单）→ ② `modules/` 模块文档（每模块一份，四要素）→ ③ 构建产物（report.* 等，勿手改）。
 > **开发历史迭代**: 2026-08-12 由「平铺 14 份文档」重构为「索引 + 模块化」结构，全部模块文档统一四要素模板；当前 `modules/` 共 10 份模块文档。
@@ -111,4 +111,4 @@
 
 本轮 Live2D/问候修复已同步到 [`modules/live2d-rendering.md`](modules/live2d-rendering.md)、[`modules/ai-chat-system.md`](modules/ai-chat-system.md)、[`project-bugs-and-acceptance.md`](project-bugs-and-acceptance.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：停走物理收敛、自动问候时段守卫和 ILPP PID 身份校验已通过 Quick、完整构建和隔离运行时冒烟；可见播放器观感仍待人工确认。
 
-本轮节日适配（2026-08-30～31）已同步到 [`modules/chat-ui.md`](modules/chat-ui.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：以完整 `ThemeSkin` 管理 17×24 像素符玄、聊天窗口、气泡和子面板的 5 个中国传统节日主题，独立配饰与动态背景不修改 Live2D；Quick、完整构建、隔离冒烟和逐主题截图闭环均通过。
+本轮节日适配（2026-08-30～09-04）已同步到 [`modules/chat-ui.md`](modules/chat-ui.md)、[`modules/runtime-readiness.md`](modules/runtime-readiness.md)、[`optimization.md`](optimization.md)、[`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) 与 [`task-inventory.md`](task-inventory.md)：以完整 `ThemeSkin` 管理 17×24 像素符玄、聊天窗口、气泡和子面板的 5 个中国传统节日主题，独立配饰与动态背景不修改 Live2D；Quick、完整构建、隔离冒烟和逐主题 Unity 截图闭环均通过。当前五个主题均待负责人完成真实 GUI 双击/拖拽复核后关闭 T3/T5，不能仅凭 `@@sim` 提前标记为最终完成。
