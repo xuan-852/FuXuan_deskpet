@@ -315,20 +315,27 @@ public partial class RightPanel
         // —— 节日皮肤命令说明 ——
         float themeHelpY = y + 56f;
         Rect themeSec = new Rect(x, themeHelpY, w, 32f);
+        UiTextureFactory.DrawPixelRect(new Rect(x, themeHelpY, w, 112f), new Color(0.04f, 0.03f, 0.10f, 0.62f));
         GUI.Label(themeSec, "🎨 节日皮肤", _subSectionStyle);
         UiTextureFactory.DrawPixelRect(new Rect(x, themeSec.yMax - 1f, w, 1f), new Color(0.45f, 0.35f, 0.65f, 0.3f));
+        GUIStyle themeHelpStyle = new GUIStyle(_subLabelStyle)
+        {
+            fontSize = 13,
+            normal = { textColor = new Color(0.78f, 0.73f, 0.96f, 1f) }
+        };
         GUI.Label(new Rect(x, themeSec.yMax + 8f, w, 22f),
             "在聊天输入框发送：/tell theme <主题ID>",
-            new GUIStyle(_termLogDimStyle) { fontSize = 13 });
+            themeHelpStyle);
+        GUIStyle themeIdStyle = new GUIStyle(themeHelpStyle) { fontSize = 12 };
         GUI.Label(new Rect(x, themeSec.yMax + 32f, w, 22f),
             "新春 cn_new_year · 元宵 lantern_festival · 端午 dragon_boat",
-            new GUIStyle(_termLogDimStyle) { fontSize = 12 });
+            themeIdStyle);
         GUI.Label(new Rect(x, themeSec.yMax + 54f, w, 22f),
             "七夕 qixi · 中秋 mid_autumn · 关闭 off · 自动 auto",
-            new GUIStyle(_termLogDimStyle) { fontSize = 12 });
+            themeIdStyle);
 
         // —— 小节标题：任务权重 ——
-        float sectionY = y + 144f;
+        float sectionY = y + 174f;
         Rect sec1 = new Rect(x, sectionY, w, 36f);
         GUI.Label(sec1, "⚙ 任务权重", _subSectionStyle);
         UiTextureFactory.DrawPixelRect(new Rect(x, sec1.yMax - 1f, w, 1f), new Color(0.45f, 0.35f, 0.65f, 0.3f));
