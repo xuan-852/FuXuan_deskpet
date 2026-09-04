@@ -383,6 +383,20 @@ Start-Process 'D:\Unity\projects\Desktop_per_pro\Build\DesktopPet.exe'
 @@test:quit
 ```
 
+普通运行时可直接在聊天输入框发送本地快捷命令，不经过 LLM、聊天历史或忆境：
+
+```text
+/tell theme cn_new_year
+/tell theme lantern_festival
+/tell theme dragon_boat
+/tell theme qixi
+/tell theme mid_autumn
+/tell theme off
+/tell theme auto
+```
+
+`/tell theme status` 查看当前主题，`/tell theme list` 查看可用主题。设置页的“🎨 节日皮肤”区域会展示这组命令和主题 ID 对照；`@@sim:holiday:*` 仍仅用于隔离自动化测试。
+
 上述主题切换命令用于列出支持项；正式取证必须按单主题启动隔离播放器，每个主题独立完成切换、四图截图、关闭恢复和退出，不能用一次批量切换替代逐主题证据。
 
 截图命令由 Unity 保存到隔离数据目录的 `test_screenshots/`，不能用桌面截图工具代替，因为需要确认当前渲染帧和测试数据路径。

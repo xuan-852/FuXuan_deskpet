@@ -365,7 +365,7 @@
 
 ### 测试命令
 
-在测试模式下通过 Inbox 发送：`@@sim:holiday:cn_new_year`、`@@sim:holiday:lantern_festival`、`@@sim:holiday:dragon_boat`、`@@sim:holiday:qixi`、`@@sim:holiday:mid_autumn`、`@@sim:holiday:off`、`@@sim:holiday:auto`、`@@sim:holiday:status`、`@@sim:holiday:list`。截图仍使用 `@@sim:screenshot:<label>`，可将所有主题放入同一轮回归对照。
+普通聊天输入框可发送本地快捷命令 `/tell theme <主题ID>` 切换主题，支持上述 5 个主题以及 `off`、`auto`、`status`、`list`；命令在 `ChatManager` 本地处理，不进入 LLM、聊天历史或忆境。设置页的“🎨 节日皮肤”区域展示完整用法。自动化仍在测试模式下通过 Inbox 发送：`@@sim:holiday:cn_new_year`、`@@sim:holiday:lantern_festival`、`@@sim:holiday:dragon_boat`、`@@sim:holiday:qixi`、`@@sim:holiday:mid_autumn`、`@@sim:holiday:off`、`@@sim:holiday:auto`、`@@sim:holiday:status`、`@@sim:holiday:list`。截图仍使用 `@@sim:screenshot:<label>`，可将所有主题放入同一轮回归对照。
 
 ### 验证记录
 

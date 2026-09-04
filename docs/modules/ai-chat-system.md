@@ -167,8 +167,9 @@
 | `/mode set test` | 创建当前 `DataPathConfig.DataRoot/.test_mode`，启用测试保护 |
 | `/mode set normality` | 删除同一个 `.test_mode` 标记，恢复正常模式 |
 | `/tell mode` | 返回当前是测试模式还是正常模式 |
+| `/tell theme <主题ID>` | 本地切换节日主题；支持 5 个主题、`off`、`auto`、`list`、`status` |
 
-指令回执通过 `ChatManager.OnDeveloperCommandReply` 交给 `RightPanel`，仅作为当前界面的 `[dev]` 动态日志显示，不进入会话历史；普通用户不会在 UI 的指令列表中看到这组开发指令。模式状态只有 `.test_mode` 一个事实源，不会创建第二个模式文件。
+指令回执通过 `ChatManager.OnDeveloperCommandReply` 交给 `RightPanel`，仅作为当前界面的 `[dev]` 动态日志显示，不进入会话历史；主题快捷命令的用法也固定显示在设置页的“节日皮肤”说明区域。模式状态只有 `.test_mode` 一个事实源，不会创建第二个模式文件。
 
 ### 2.9 本地聊天质量护栏（2026-08-19～2026-08-21）
 
