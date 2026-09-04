@@ -16,14 +16,17 @@ public static class DeveloperCommandSet
         SetTestMode,
         SetNormalMode,
         TellMode,
+        TellTheme,
         InvalidMode,
-        InvalidTell
+        InvalidTell,
+        InvalidTheme
     }
 
     public struct ParsedCommand
     {
         public bool IsDeveloperCommand;
         public CommandType Type;
+        public string Argument;
     }
 
     /// <summary>
@@ -65,10 +68,26 @@ public static class DeveloperCommandSet
         if (root == "/tell")
         {
             parsed.IsDeveloperCommand = true;
-            parsed.Type = parts.Length == 2
-                && string.Equals(parts[1], "mode", StringComparison.OrdinalIgnoreCase)
-                ? CommandType.TellMode
-                : CommandType.InvalidTell;
+            if (parts.Length == 2
+                && string.Equals(parts[1], "mode", StringComparison.OrdinalIgnoreCase))
+            {
+                parsed.Type = CommandType.TellMode;
+            }
+            else if (parts.Length == 3
+                && string.Equals(parts[1], "theme", StringComparison.OrdinalIgnoreCase))
+            {
+                parsed.Type = CommandType.TellTheme;
+                parsed.Argument = parts[2];
+            }
+            else if (parts.Length == 2
+                && string.Equals(parts[1], "theme", StringComparison.OrdinalIgnoreCase))
+            {
+                parsed.Type = CommandType.InvalidTheme;
+            }
+            else
+            {
+                parsed.Type = CommandType.InvalidTell;
+            }
             return true;
         }
 
@@ -95,11 +114,19 @@ public static class DeveloperCommandSet
             case CommandType.TellMode:
                 reply = "当前模式：" + (IsTestMode() ? "测试模式" : "正常模式");
                 return true;
+            case CommandType.TellTheme:
+                string themeReply;
+                HolidayThemeRuntime.TrySetTheme(parsed.Argument, out themeReply);
+                reply = themeReply;
+                return true;
             case CommandType.InvalidMode:
                 reply = "开发指令格式：/mode set test 或 /mode set normality";
                 return true;
+            case CommandType.InvalidTheme:
+                reply = "主题指令格式：/tell theme <主题ID>；可用：cn_new_year、lantern_festival、dragon_boat、qixi、mid_autumn、off、auto";
+                return true;
             case CommandType.InvalidTell:
-                reply = "开发指令格式：/tell mode";
+                reply = "开发指令格式：/tell mode 或 /tell theme <主题ID>";
                 return true;
             default:
                 return false;

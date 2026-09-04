@@ -312,8 +312,23 @@ public partial class RightPanel
             OpenModelSettings();
         RegisterExtHit(modelRect, OpenModelSettings);
 
+        // —— 节日皮肤命令说明 ——
+        float themeHelpY = y + 56f;
+        Rect themeSec = new Rect(x, themeHelpY, w, 32f);
+        GUI.Label(themeSec, "🎨 节日皮肤", _subSectionStyle);
+        UiTextureFactory.DrawPixelRect(new Rect(x, themeSec.yMax - 1f, w, 1f), new Color(0.45f, 0.35f, 0.65f, 0.3f));
+        GUI.Label(new Rect(x, themeSec.yMax + 8f, w, 22f),
+            "在聊天输入框发送：/tell theme <主题ID>",
+            new GUIStyle(_termLogDimStyle) { fontSize = 13 });
+        GUI.Label(new Rect(x, themeSec.yMax + 32f, w, 22f),
+            "新春 cn_new_year · 元宵 lantern_festival · 端午 dragon_boat",
+            new GUIStyle(_termLogDimStyle) { fontSize = 12 });
+        GUI.Label(new Rect(x, themeSec.yMax + 54f, w, 22f),
+            "七夕 qixi · 中秋 mid_autumn · 关闭 off · 自动 auto",
+            new GUIStyle(_termLogDimStyle) { fontSize = 12 });
+
         // —— 小节标题：任务权重 ——
-        float sectionY = y + 56f;
+        float sectionY = y + 144f;
         Rect sec1 = new Rect(x, sectionY, w, 36f);
         GUI.Label(sec1, "⚙ 任务权重", _subSectionStyle);
         UiTextureFactory.DrawPixelRect(new Rect(x, sec1.yMax - 1f, w, 1f), new Color(0.45f, 0.35f, 0.65f, 0.3f));

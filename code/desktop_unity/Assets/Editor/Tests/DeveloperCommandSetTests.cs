@@ -17,6 +17,10 @@ public class DeveloperCommandSetTests
 
         Assert.IsTrue(DeveloperCommandSet.TryParse("/tell mode", out parsed));
         Assert.AreEqual(DeveloperCommandSet.CommandType.TellMode, parsed.Type);
+
+        Assert.IsTrue(DeveloperCommandSet.TryParse("/tell theme dragon_boat", out parsed));
+        Assert.AreEqual(DeveloperCommandSet.CommandType.TellTheme, parsed.Type);
+        Assert.AreEqual("dragon_boat", parsed.Argument);
     }
 
     [Test]
@@ -62,5 +66,17 @@ public class DeveloperCommandSetTests
             Environment.SetEnvironmentVariable("FU_XUAN_DATA", previous);
             if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, true);
         }
+    }
+
+    [Test]
+    public void ThemeSwitchIsHandledLocally()
+    {
+        string reply;
+
+        Assert.IsTrue(DeveloperCommandSet.TryHandle("/tell theme qixi", out reply));
+        StringAssert.Contains("七夕", reply);
+
+        Assert.IsTrue(DeveloperCommandSet.TryHandle("/tell theme off", out reply));
+        StringAssert.Contains("默认主题", reply);
     }
 }
