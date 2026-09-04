@@ -269,6 +269,13 @@
 
 ### 8.6 动态呼吸与重绘卡顿修复复测（2026-09-04）
 
+### 8.7 七夕主视觉与诗词稳定性复测（2026-09-04）
+
+- **修复提交**：`df8b80e`。七夕改为静态高对比像素鹊桥、双星、纤云和鹊影；移除流星位移及星桥上下移动，仅保留星点与诗词整列透明度呼吸。
+- **自动证据**：`build.ps1 -Quick`、完整构建、`build.ps1 -RunTests`（EditMode `failed=0`）和 `node scripts/test/runtime_smoke.cjs --verbose` 均通过；隔离目录清理完成，生产数据零污染。
+- **七夕独立证据**：`%TEMP%/fuxuan_qixi_final_eval_20260904/test_screenshots/`，包含 `qixi_static`、`qixi_small`、`qixi_motion`、`default_recovery` 四张非空 Unity 截图；`list/status/off`、`@@test:quit` 日志齐全，无 `NullReferenceException`。
+- **视觉结论**：静态与小界面均可辨认星桥、双星、纤云和鹊影，诗词右向左竖排且字位稳定；动态只表现为可见的呼吸/闪烁，不再出现文字跳动。当前预评分仍为 **91/100**，P0/P1/P2=0，P3 美术微调保留；真实 GUI 双击展开、拖拽/收回仍未签字，T3/T5/T6 不提前关闭。
+
 - **修复提交**：`b531d03`。`HolidayFireworksField` 的动态时钟改为由 `UpdateMotion()` 统一推进，避免 IMGUI `Layout/Repaint` 事件造成时间跳变；`RightPanel` 在节日主题激活时按 30～60 FPS 请求受控重绘，诗词呼吸亮度调整为可见范围。
 - **构建与运行时**：`build.ps1 -Quick`、完整 `build.ps1`、`build.ps1 -RunTests`、`runtime_smoke.cjs --verbose` 和 `node --check scripts/test/holiday_eval_drive.cjs` 均通过；本轮完整构建 CPU 峰值 41%，仍受 16/32 逻辑核负载保护，运行时冒烟生产数据零污染。
 - **逐主题证据**：五个主题分别完成 `@@view:open`、`@@sim:holiday:list/status/<theme>`、`static`、`small`、`motion`、`@@sim:holiday:off`、`default_recovery` 和 `@@test:quit`；每个主题 4/4 截图有效、无 NRE。证据目录分别为：
