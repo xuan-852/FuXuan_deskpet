@@ -131,6 +131,7 @@ public partial class RightPanel : MonoBehaviour
     private bool _testExternalMouseOverride;
     private RenderTexture _chatRT;   // 面板渲染目标（独立窗口显示用，尺寸跟随当前视图）
     private float _lastExtCapture;   // 渲染/推送节流计时
+    private float _lastHolidayRepaint; // 节日动态重绘节流（透明窗口没有输入时也要持续刷新）
     private string _pendingTestScreenshotPath; // 测试模式面板截图请求（下一次 Repaint 完成取证）
     private float _lastExtReadStart; // 异步读回开始时间（超时兜底防冻结）
     // 输入变化时立即触发一次外置 RT 推送，避免固定 30 FPS 节流带来的字符滞后。
@@ -566,7 +567,20 @@ public partial class RightPanel : MonoBehaviour
         {
             _starField.UpdateStarMotion();
             if (HolidayThemeRuntime.IsHolidayActive)
+            {
                 _holidayFireworks.UpdateMotion();
+                // 透明桌宠窗口在没有输入时可能停留在上一帧；节日动态必须主动请求 Repaint。
+                // 使用当前性能档位节流，保持动画连续，同时不绕过性能保护。
+                float repaintFps = _performanceMonitor != null
+                    ? Mathf.Clamp(_performanceMonitor.targetFPS, 30f, 60f)
+                    : 60f;
+                if (Time.unscaledTime - _lastHolidayRepaint >= 1f / repaintFps)
+                {
+                    _lastHolidayRepaint = Time.unscaledTime;
+                    if (_windowOverlay != null)
+                        _windowOverlay.RequestRepaint();
+                }
+            }
         }
 
         // 外置输入框是不可见的原生键盘通道，文字由此同步到 Unity RT；

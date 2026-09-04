@@ -17,6 +17,7 @@ public sealed class HolidayFireworksField
     private Color _sparkColor;
     private GUIStyle _poetryStyle;
     private bool _initialized;
+    private float _motionTime;
 
     public void Init(int seed, Color primary, Color secondary, Color spark)
     {
@@ -34,6 +35,7 @@ public sealed class HolidayFireworksField
             // 尺寸错落：保留少量大烟花，也让远处的小烟花承担空间层次。
             _burstScales[i] = 0.78f + (float)rng.NextDouble() * 0.44f;
         }
+        _motionTime = 0f;
         _initialized = true;
     }
 
@@ -48,7 +50,9 @@ public sealed class HolidayFireworksField
 
     public void UpdateMotion()
     {
-        // 烟花使用 Time.time 计算周期，Update 只保留接口以保持与 RightPanel 动画生命周期一致。
+        // 动态时间只在 Update 推进一次；不能在 IMGUI 的 Layout/Repaint 事件里推进，
+        // 否则透明窗口的事件频率会让呼吸和位移动画出现停顿或跳变。
+        _motionTime += Mathf.Clamp(Time.unscaledDeltaTime, 0f, 0.1f);
     }
 
     public void DrawFireworks(float px, float py, float pw, float ph, float animAlpha)
@@ -82,7 +86,7 @@ public sealed class HolidayFireworksField
 
     private void DrawLanterns(float px, float py, float pw, float ph, float animAlpha)
     {
-        float time = Time.time;
+        float time = _motionTime;
         DrawLanternMoon(px, py, pw, ph, animAlpha, time);
         DrawLanternWillow(px, py, pw, ph, animAlpha, time);
 
@@ -172,7 +176,7 @@ public sealed class HolidayFireworksField
         _poetryStyle.fontSize = fontSize;
         float lineHeight = Mathf.Max(24f, fontSize * 1.14f);
         float columnGap = Mathf.Max(28f, fontSize * 1.55f);
-        float breath = 0.66f + (0.5f + 0.5f * Mathf.Sin(time * 0.82f)) * 0.16f;
+        float breath = 0.54f + (0.5f + 0.5f * Mathf.Sin(time * 0.82f)) * 0.30f;
         Color ink = Color.Lerp(_sparkColor, new Color(1f, 0.94f, 0.78f, 1f), 0.66f);
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
 
@@ -227,7 +231,7 @@ public sealed class HolidayFireworksField
         _poetryStyle.fontSize = fontSize;
         float lineHeight = Mathf.Max(22f, fontSize * 1.16f);
         float columnGap = Mathf.Max(26f, fontSize * 1.60f);
-        float breath = 0.64f + (0.5f + 0.5f * Mathf.Sin(Time.time * 0.86f)) * 0.18f;
+        float breath = 0.54f + (0.5f + 0.5f * Mathf.Sin(_motionTime * 0.86f)) * 0.30f;
         Color ink = Color.Lerp(_sparkColor, new Color(1f, 0.93f, 0.70f, 1f), 0.70f);
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
         GUI.color = Color.white;
@@ -243,12 +247,12 @@ public sealed class HolidayFireworksField
         {
             string text = columns[column];
             float x = poetryRight - column * columnGap;
-            float y = poetryTop + Mathf.Sin(Time.time * 0.30f + column * 0.68f) * 1.4f;
+            float y = poetryTop + Mathf.Sin(_motionTime * 0.30f + column * 0.68f) * 1.4f;
             for (int row = 0; row < text.Length; row++)
             {
                 // 中轴线附近的轻微错位：保留书写感，不把文字打散。
                 float axisOffset = ((column + row) % 3 - 1) * 1.35f;
-                float drift = Mathf.Sin(Time.time * 0.40f + column * 0.70f + row * 0.47f) * 0.50f;
+                float drift = Mathf.Sin(_motionTime * 0.40f + column * 0.70f + row * 0.47f) * 0.50f;
                 float charY = y + row * lineHeight;
                 GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, charY,
                     fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
@@ -259,7 +263,7 @@ public sealed class HolidayFireworksField
 
     private void DrawDragonBoat(float px, float py, float pw, float ph, float animAlpha)
     {
-        float time = Time.time;
+        float time = _motionTime;
 
         for (int row = 0; row < 4; row++)
         {
@@ -356,8 +360,8 @@ public sealed class HolidayFireworksField
         Color leaf = new Color(_primaryColor.r, Mathf.Min(1f, _primaryColor.g + 0.16f), _primaryColor.b, animAlpha * 0.92f);
         Color leafLight = new Color(Mathf.Min(1f, _primaryColor.r + 0.18f), Mathf.Min(1f, _primaryColor.g + 0.22f),
             Mathf.Min(1f, _primaryColor.b + 0.10f), animAlpha * 0.86f);
-        DrawMugwortBundle(new Vector2(px + pw * 0.38f, py + ph * 0.72f), 1.08f, Time.time, false, stem, leaf, leafLight);
-        DrawMugwortBundle(new Vector2(px + pw * 0.94f, py + ph * 0.72f), 1.08f, Time.time + 1.7f, true, stem, leaf, leafLight);
+        DrawMugwortBundle(new Vector2(px + pw * 0.38f, py + ph * 0.72f), 1.08f, _motionTime, false, stem, leaf, leafLight);
+        DrawMugwortBundle(new Vector2(px + pw * 0.94f, py + ph * 0.72f), 1.08f, _motionTime + 1.7f, true, stem, leaf, leafLight);
     }
 
     private void DrawMugwortBundle(Vector2 basePoint, float scale, float time, bool mirror,
@@ -401,7 +405,7 @@ public sealed class HolidayFireworksField
         _poetryStyle.fontSize = fontSize;
         float lineHeight = Mathf.Max(22f, fontSize * 1.18f);
         float columnGap = Mathf.Max(24f, fontSize * 1.55f);
-        float breath = 0.74f + (0.5f + 0.5f * Mathf.Sin(Time.time * 0.85f)) * 0.16f;
+        float breath = 0.56f + (0.5f + 0.5f * Mathf.Sin(_motionTime * 0.85f)) * 0.28f;
         Color ink = Color.Lerp(_sparkColor, new Color(0.90f, 0.99f, 0.90f, 1f), 0.72f);
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
         GUI.color = Color.white;
@@ -416,12 +420,12 @@ public sealed class HolidayFireworksField
         {
             string text = columns[column];
             float x = poetryRight - column * columnGap;
-            float y = poetryTop + Mathf.Sin(Time.time * 0.32f + column * 0.8f) * 1.5f;
+            float y = poetryTop + Mathf.Sin(_motionTime * 0.32f + column * 0.8f) * 1.5f;
             for (int row = 0; row < text.Length; row++)
             {
                 // 中轴线附近的轻微错位：保留书写感，不把文字打散。
                 float axisOffset = ((column + row) % 3 - 1) * 1.35f;
-                float drift = Mathf.Sin(Time.time * 0.42f + column * 0.73f + row * 0.51f) * 0.55f;
+                float drift = Mathf.Sin(_motionTime * 0.42f + column * 0.73f + row * 0.51f) * 0.55f;
                 float charY = y + row * lineHeight;
                 GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, charY,
                     fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
@@ -432,7 +436,7 @@ public sealed class HolidayFireworksField
 
     private void DrawDuanwuWaterside(float px, float py, float pw, float ph, float animAlpha)
     {
-        float time = Time.time;
+        float time = _motionTime;
         Color water = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.54f);
         Color waterLight = new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.76f);
         Color rail = new Color(_sparkColor.r, _sparkColor.g * 0.74f, _sparkColor.b * 0.48f, animAlpha * 0.58f);
@@ -487,7 +491,7 @@ public sealed class HolidayFireworksField
 
     private void DrawDuanwuDragonBoat(float px, float py, float pw, float ph, float animAlpha)
     {
-        float time = Time.time;
+        float time = _motionTime;
         float boatWidth = Mathf.Clamp(pw * 0.34f, 250f, 340f);
         float sceneLeft = px + pw * 0.36f;
         float sceneRight = px + pw * 0.96f;
@@ -570,7 +574,7 @@ public sealed class HolidayFireworksField
 
     private void DrawQixi(float px, float py, float pw, float ph, float animAlpha)
     {
-        float time = Time.time;
+        float time = _motionTime;
         Color star = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.86f);
         Color starSoft = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.72f);
         for (int i = 0; i < 16; i++)
@@ -637,7 +641,7 @@ public sealed class HolidayFireworksField
         _poetryStyle.fontSize = fontSize;
         float lineHeight = Mathf.Max(22f, fontSize * 1.16f);
         float columnGap = Mathf.Max(26f, fontSize * 1.60f);
-        float breath = 0.64f + (0.5f + 0.5f * Mathf.Sin(Time.time * 0.84f)) * 0.18f;
+        float breath = 0.54f + (0.5f + 0.5f * Mathf.Sin(_motionTime * 0.84f)) * 0.30f;
         Color ink = Color.Lerp(_sparkColor, new Color(0.82f, 0.86f, 1f, 1f), 0.72f);
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
         GUI.color = Color.white;
@@ -652,11 +656,11 @@ public sealed class HolidayFireworksField
         {
             string text = columns[column];
             float x = poetryRight - column * columnGap;
-            float y = poetryTop + Mathf.Sin(Time.time * 0.30f + column * 0.70f) * 1.3f;
+            float y = poetryTop + Mathf.Sin(_motionTime * 0.30f + column * 0.70f) * 1.3f;
             for (int row = 0; row < text.Length; row++)
             {
                 float axisOffset = ((column + row) % 3 - 1) * 1.30f;
-                float drift = Mathf.Sin(Time.time * 0.42f + column * 0.72f + row * 0.48f) * 0.5f;
+                float drift = Mathf.Sin(_motionTime * 0.42f + column * 0.72f + row * 0.48f) * 0.5f;
                 GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, y + row * lineHeight,
                     fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
             }
@@ -666,7 +670,7 @@ public sealed class HolidayFireworksField
 
     private void DrawMidAutumn(float px, float py, float pw, float ph, float animAlpha)
     {
-        float time = Time.time;
+        float time = _motionTime;
         float moonX = px + pw * 0.78f;
         float moonY = py + ph * 0.18f;
         float moonBreath = 0.70f + (0.5f + 0.5f * Mathf.Sin(time * 0.75f)) * 0.18f;
@@ -720,7 +724,7 @@ public sealed class HolidayFireworksField
         _poetryStyle.fontSize = fontSize;
         float lineHeight = Mathf.Max(22f, fontSize * 1.16f);
         float columnGap = Mathf.Max(26f, fontSize * 1.60f);
-        float breath = 0.64f + (0.5f + 0.5f * Mathf.Sin(Time.time * 0.82f)) * 0.18f;
+        float breath = 0.54f + (0.5f + 0.5f * Mathf.Sin(_motionTime * 0.82f)) * 0.30f;
         Color ink = Color.Lerp(_sparkColor, new Color(1f, 0.92f, 0.70f, 1f), 0.72f);
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
         GUI.color = Color.white;
@@ -735,11 +739,11 @@ public sealed class HolidayFireworksField
         {
             string text = columns[column];
             float x = poetryRight - column * columnGap;
-            float y = poetryTop + Mathf.Sin(Time.time * 0.32f + column * 0.66f) * 1.3f;
+            float y = poetryTop + Mathf.Sin(_motionTime * 0.32f + column * 0.66f) * 1.3f;
             for (int row = 0; row < text.Length; row++)
             {
                 float axisOffset = ((column + row) % 3 - 1) * 1.30f;
-                float drift = Mathf.Sin(Time.time * 0.40f + column * 0.74f + row * 0.46f) * 0.5f;
+                float drift = Mathf.Sin(_motionTime * 0.40f + column * 0.74f + row * 0.46f) * 0.5f;
                 GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, y + row * lineHeight,
                     fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
             }
@@ -791,7 +795,7 @@ public sealed class HolidayFireworksField
         if (!_initialized || _sparkTex == null) return;
         Matrix4x4 previousMatrix = GUI.matrix;
         Color previousColor = GUI.color;
-        float time = Time.time;
+        float time = _motionTime;
 
         for (int i = 0; i < _bursts.Length; i++)
         {
