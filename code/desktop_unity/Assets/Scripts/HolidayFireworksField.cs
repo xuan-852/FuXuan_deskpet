@@ -579,8 +579,15 @@ public sealed class HolidayFireworksField
         {
             float x = px + (0.38f + ((i * 37) % 86) / 100f * 0.58f) * pw;
             float y = py + (0.10f + ((i * 23) % 72) / 100f) * ph;
-            float twinkle = 0.76f + 0.24f * Mathf.Sin(time * 1.8f + i * 1.4f);
-            float size = i % 4 == 0 ? 8f : 5f;
+            float pulse = 0.5f + 0.5f * Mathf.Sin(time * 1.25f + i * 1.4f);
+            float twinkle = 0.34f + 0.66f * pulse;
+            float size = i % 4 == 0 ? 9f : 6f;
+            if (i % 4 == 0)
+            {
+                Color halo = new Color(1.00f, 0.70f, 0.30f, animAlpha * (0.08f + pulse * 0.34f));
+                DrawRect(new Rect(x - size * 2.4f, y - 2f, size * 4.8f, 4f), halo);
+                DrawRect(new Rect(x - 2f, y - size * 2.4f, 4f, size * 4.8f), halo);
+            }
             DrawRect(new Rect(x - size * 0.5f, y - size * 0.5f, size, size),
                 new Color(star.r, star.g, star.b, animAlpha * twinkle));
             if (i % 4 == 0)
