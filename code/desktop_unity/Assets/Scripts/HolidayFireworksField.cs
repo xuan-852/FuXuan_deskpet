@@ -190,13 +190,13 @@ public sealed class HolidayFireworksField
         {
             string text = columns[column];
             float x = poetryRight - column * columnGap;
-            float y = poetryTop + Mathf.Sin(time * 0.28f + column * 0.72f) * 1.1f;
+            float y = poetryTop;
             for (int row = 0; row < text.Length; row++)
             {
+                // 只保留静态中轴线轻微错位；诗词文字不做位置动画，避免小窗口中出现跳动感。
                 float axisOffset = ((column + row) % 3 - 1) * Mathf.Min(1.4f, fontSize * 0.055f);
-                float drift = Mathf.Sin(time * 0.36f + column * 0.61f + row * 0.43f) * 0.45f;
                 float charY = y + row * lineHeight;
-                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, charY,
+                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset, charY,
                     fontSize + 5f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
             }
         }
@@ -247,14 +247,13 @@ public sealed class HolidayFireworksField
         {
             string text = columns[column];
             float x = poetryRight - column * columnGap;
-            float y = poetryTop + Mathf.Sin(_motionTime * 0.30f + column * 0.68f) * 1.4f;
+            float y = poetryTop;
             for (int row = 0; row < text.Length; row++)
             {
                 // 中轴线附近的轻微错位：保留书写感，不把文字打散。
                 float axisOffset = ((column + row) % 3 - 1) * 1.35f;
-                float drift = Mathf.Sin(_motionTime * 0.40f + column * 0.70f + row * 0.47f) * 0.50f;
                 float charY = y + row * lineHeight;
-                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, charY,
+                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset, charY,
                     fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
             }
         }
@@ -420,14 +419,13 @@ public sealed class HolidayFireworksField
         {
             string text = columns[column];
             float x = poetryRight - column * columnGap;
-            float y = poetryTop + Mathf.Sin(_motionTime * 0.32f + column * 0.8f) * 1.5f;
+            float y = poetryTop;
             for (int row = 0; row < text.Length; row++)
             {
                 // 中轴线附近的轻微错位：保留书写感，不把文字打散。
                 float axisOffset = ((column + row) % 3 - 1) * 1.35f;
-                float drift = Mathf.Sin(_motionTime * 0.42f + column * 0.73f + row * 0.51f) * 0.55f;
                 float charY = y + row * lineHeight;
-                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, charY,
+                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset, charY,
                     fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
             }
         }
@@ -575,14 +573,14 @@ public sealed class HolidayFireworksField
     private void DrawQixi(float px, float py, float pw, float ph, float animAlpha)
     {
         float time = _motionTime;
-        Color star = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.86f);
-        Color starSoft = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.72f);
+        Color star = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.94f);
+        Color starSoft = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.78f);
         for (int i = 0; i < 16; i++)
         {
             float x = px + (0.38f + ((i * 37) % 86) / 100f * 0.58f) * pw;
             float y = py + (0.10f + ((i * 23) % 72) / 100f) * ph;
-            float twinkle = 0.62f + 0.30f * Mathf.Sin(time * 2.2f + i * 1.4f);
-            float size = i % 4 == 0 ? 7f : 4f;
+            float twinkle = 0.76f + 0.24f * Mathf.Sin(time * 1.8f + i * 1.4f);
+            float size = i % 4 == 0 ? 8f : 5f;
             DrawRect(new Rect(x - size * 0.5f, y - size * 0.5f, size, size),
                 new Color(star.r, star.g, star.b, animAlpha * twinkle));
             if (i % 4 == 0)
@@ -594,39 +592,61 @@ public sealed class HolidayFireworksField
             }
         }
 
-        // 孔雀桥之前先铺流星：短时划过的高亮尾迹，作为七夕的事件动效（约 1/3 周期一次）。
-        float meteorCycle = Mathf.Repeat(time * 0.45f, 1f);
-        float meteorT = meteorCycle / 0.30f;
-        if (meteorT <= 1f)
+        // 纤云弄巧：用两组错落的像素云带把星空和鹊桥区分开，避免只剩几条横线。
+        Color cloud = new Color(0.42f, 0.50f, 0.82f, animAlpha * 0.62f);
+        Color cloudLight = new Color(0.78f, 0.80f, 1f, animAlpha * 0.48f);
+        for (int i = 0; i < 4; i++)
         {
-            float fade = Mathf.Sin(meteorT * Mathf.PI);
-            float meteorX = px + pw * (0.44f + Mathf.Lerp(0f, 0.40f, meteorT));
-            float meteorY = py + ph * (0.20f - Mathf.Lerp(0f, 0.20f, meteorT));
-            for (int i = 0; i < 6; i++)
-            {
-                float t = Mathf.Max(0f, meteorT - i * 0.025f);
-                float trailX = px + pw * (0.44f + Mathf.Lerp(0f, 0.40f, t));
-                float trailY = py + ph * (0.20f - Mathf.Lerp(0f, 0.20f, t));
-                DrawRect(new Rect(trailX - 1f, trailY - 1f, 2f, 2f),
-                    new Color(star.r, star.g, star.b, animAlpha * fade * (1f - i * 0.14f)));
-            }
-            DrawRect(new Rect(meteorX - 2f, meteorY - 2f, 4f, 4f),
-                new Color(star.r, star.g, star.b, animAlpha * fade));
+            float cloudX = px + pw * (0.25f + i * 0.17f);
+            float cloudY = py + ph * (0.31f + (i % 2) * 0.08f);
+            float cloudW = pw * (0.14f + (i % 2) * 0.03f);
+            DrawRect(new Rect(cloudX, cloudY, cloudW, 6f), cloud);
+            DrawRect(new Rect(cloudX + cloudW * 0.14f, cloudY - 7f, cloudW * 0.58f, 6f), cloudLight);
+            DrawRect(new Rect(cloudX + cloudW * 0.36f, cloudY - 13f, cloudW * 0.28f, 6f), cloud);
         }
 
-        // 鹊桥是七夕的主视觉：由连续的紫色桥段连接两颗高亮星，缓慢上下起伏。
-        float bridgeY = py + ph * 0.72f + Mathf.Sin(time * 0.8f) * 4f;
-        Color bridge = new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.64f);
-        for (int i = 0; i < 6; i++)
+        // 鹊桥是七夕的主视觉：连续拱桥连接织女星与牵牛星；位置保持静止，只让星光透明度呼吸。
+        float bridgeY = py + ph * 0.66f;
+        Color bridgeGlow = new Color(0.58f, 0.32f, 0.92f, animAlpha * 0.24f);
+        Color bridge = new Color(0.76f, 0.42f, 0.96f, animAlpha * 0.94f);
+        Color bridgeLight = new Color(1.00f, 0.78f, 0.42f, animAlpha * 0.86f);
+        for (int i = 0; i < 13; i++)
         {
-            float x = px + pw * (0.40f + i * 0.095f);
-            float y = bridgeY + Mathf.Sin(i * 0.8f + time * 0.55f) * 4f;
-            DrawRect(new Rect(x, y, pw * 0.075f, 4f), bridge);
-            DrawRect(new Rect(x + pw * 0.025f, y - 5f, pw * 0.025f, 3f),
-                new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.55f));
+            float t = i / 12f;
+            float x = px + pw * (0.23f + t * 0.54f);
+            float y = bridgeY - Mathf.Sin(t * Mathf.PI) * ph * 0.075f;
+            DrawRect(new Rect(x - 5f, y + 7f, pw * 0.060f, 10f), bridgeGlow);
+            DrawRect(new Rect(x, y, pw * 0.070f, 8f), bridge);
+            DrawRect(new Rect(x + pw * 0.012f, y - 8f, pw * 0.042f, 5f), bridgeLight);
+            if (i < 12)
+                DrawRect(new Rect(x + pw * 0.062f, y + 11f, pw * 0.020f, 4f),
+                    new Color(0.42f, 0.58f, 1.00f, animAlpha * 0.76f));
         }
-        DrawRect(new Rect(px + pw * 0.39f, bridgeY - 3f, 8f, 8f), star);
-        DrawRect(new Rect(px + pw * 0.91f, bridgeY - 3f, 8f, 8f), star);
+        float leftStarX = px + pw * 0.23f;
+        float rightStarX = px + pw * 0.77f;
+        float starY = bridgeY - ph * 0.045f;
+        DrawRect(new Rect(leftStarX - 13f, starY - 13f, 26f, 26f),
+            new Color(star.r, star.g, star.b, animAlpha * 0.24f));
+        DrawRect(new Rect(rightStarX - 13f, starY - 13f, 26f, 26f),
+            new Color(star.r, star.g, star.b, animAlpha * 0.24f));
+        DrawRect(new Rect(leftStarX - 8f, starY - 8f, 16f, 16f), star);
+        DrawRect(new Rect(rightStarX - 8f, starY - 8f, 16f, 16f), star);
+        DrawRect(new Rect(leftStarX - 19f, starY - 3f, 38f, 6f), starSoft);
+        DrawRect(new Rect(rightStarX - 19f, starY - 3f, 38f, 6f), starSoft);
+        DrawRect(new Rect(leftStarX - 3f, starY - 19f, 6f, 38f), starSoft);
+        DrawRect(new Rect(rightStarX - 3f, starY - 19f, 6f, 38f), starSoft);
+
+        // 桥上的两只像素喜鹊剪影，增强“鹊桥”语义但不引入新贴图。
+        Color magpie = new Color(0.40f, 0.46f, 0.78f, animAlpha * 0.94f);
+        float birdY = bridgeY - ph * 0.12f;
+        float leftBirdX = px + pw * 0.47f;
+        float rightBirdX = px + pw * 0.55f;
+        DrawPixelLine(new Vector2(leftBirdX - 19f, birdY), new Vector2(leftBirdX - 7f, birdY - 9f), 4f, magpie);
+        DrawPixelLine(new Vector2(leftBirdX - 7f, birdY - 9f), new Vector2(leftBirdX + 7f, birdY), 4f, magpie);
+        DrawPixelLine(new Vector2(leftBirdX + 7f, birdY), new Vector2(leftBirdX + 19f, birdY - 9f), 4f, magpie);
+        DrawPixelLine(new Vector2(rightBirdX - 19f, birdY - 9f), new Vector2(rightBirdX - 7f, birdY), 4f, magpie);
+        DrawPixelLine(new Vector2(rightBirdX - 7f, birdY), new Vector2(rightBirdX + 7f, birdY - 9f), 4f, magpie);
+        DrawPixelLine(new Vector2(rightBirdX + 7f, birdY - 9f), new Vector2(rightBirdX + 19f, birdY), 4f, magpie);
 
         DrawQixiPoetry(px, py, pw, ph, animAlpha);
     }
@@ -641,8 +661,8 @@ public sealed class HolidayFireworksField
         _poetryStyle.fontSize = fontSize;
         float lineHeight = Mathf.Max(22f, fontSize * 1.16f);
         float columnGap = Mathf.Max(26f, fontSize * 1.60f);
-        float breath = 0.54f + (0.5f + 0.5f * Mathf.Sin(_motionTime * 0.84f)) * 0.30f;
-        Color ink = Color.Lerp(_sparkColor, new Color(0.82f, 0.86f, 1f, 1f), 0.72f);
+        float breath = 0.68f + (0.5f + 0.5f * Mathf.Sin(_motionTime * 0.84f)) * 0.32f;
+        Color ink = new Color(1.00f, 0.88f, 0.66f, 1f);
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
         GUI.color = Color.white;
 
@@ -656,12 +676,11 @@ public sealed class HolidayFireworksField
         {
             string text = columns[column];
             float x = poetryRight - column * columnGap;
-            float y = poetryTop + Mathf.Sin(_motionTime * 0.30f + column * 0.70f) * 1.3f;
+            float y = poetryTop;
             for (int row = 0; row < text.Length; row++)
             {
                 float axisOffset = ((column + row) % 3 - 1) * 1.30f;
-                float drift = Mathf.Sin(_motionTime * 0.42f + column * 0.72f + row * 0.48f) * 0.5f;
-                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, y + row * lineHeight,
+                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset, y + row * lineHeight,
                     fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
             }
         }
@@ -739,12 +758,11 @@ public sealed class HolidayFireworksField
         {
             string text = columns[column];
             float x = poetryRight - column * columnGap;
-            float y = poetryTop + Mathf.Sin(_motionTime * 0.32f + column * 0.66f) * 1.3f;
+            float y = poetryTop;
             for (int row = 0; row < text.Length; row++)
             {
                 float axisOffset = ((column + row) % 3 - 1) * 1.30f;
-                float drift = Mathf.Sin(_motionTime * 0.40f + column * 0.74f + row * 0.46f) * 0.5f;
-                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset + drift, y + row * lineHeight,
+                GUI.Label(new Rect(x - fontSize * 0.5f + axisOffset, y + row * lineHeight,
                     fontSize + 4f, lineHeight + 2f), text.Substring(row, 1), _poetryStyle);
             }
         }
