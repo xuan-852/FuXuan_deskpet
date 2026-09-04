@@ -143,3 +143,13 @@ public static bool ShouldCleanBeeCache(string value)
 2. **`LocalToolRouter` 行为变更**：危险工具不再被本地 3B 模型自动执行（需审批），若需逐工具精细控制请告知。
 3. **BOM 坑**：以后用 `edit` 改 `.ps1` 后要确认 BOM 仍在（`EF BB BF`）。
 4. 温度/功耗观测需人工或外部工具补齐，方能满足 P0 完整验收门槛。
+
+---
+
+## 九、当前状态入口（2026-09-04）
+
+本报告保留 2026-08-31 的原始问题、修复过程和验证结论；以下仅补充当前状态，不改写历史结论：
+
+- `build.ps1 -Quick`、完整构建、`build.ps1 -RunTests` 和隔离 `runtime_smoke.cjs --verbose` 已在最新代码基线复核通过；EditMode 为 160 用例、159 passed、0 failed、1 ignored。
+- 构建负载保护仍按 P0 管理：软件层节流已验证，但 BIOS、散热、供电和温度/重启观察仍未完成，因此不能把软件保护写成硬件根因已解决。
+- 当前节日专项的自动证据使用隔离数据根目录，生产数据零污染；五个主题的最终状态和真实 GUI 人工验收门槛见 [`holiday-skin-evaluation-2026-08-31.md`](holiday-skin-evaluation-2026-08-31.md) 与 [`holiday-skin-review-standard.md`](holiday-skin-review-standard.md)。

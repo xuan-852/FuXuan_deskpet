@@ -370,6 +370,11 @@
 ### 验证记录
 
 `build.ps1 -Quick`、完整构建、隔离 `runtime_smoke.cjs --verbose` 均通过；端午主视觉重做后，`holiday_eval_drive.cjs --theme=dragon_boat --verbose` 通过，生成 static/motion/recovery 三张隔离截图并完成人工检查，确认主题切换、龙舟主视觉、头像框和默认恢复。元宵完成诗词驱动画面优化，并通过 `holiday_eval_drive.cjs --theme=lantern_festival --verbose` 的 static/motion/recovery 三张隔离截图人工检查，确认月轮、柳枝、花市灯笼、竖式诗词、交互安全区和默认恢复。元宵最终轮 Quick 构建 CPU 峰值 24%，完整构建 CPU 峰值 29%，均使用 16/32 逻辑核负载保护；所有测试均使用隔离数据目录，生产记忆目录未参与测试。
+
+### 五主题最终预验收状态（2026-09-04）
+
+- 五个正式主题 `cn_new_year`、`lantern_festival`、`dragon_boat`、`qixi`、`mid_autumn` 均已完成独立 `static/small/motion/default_recovery` Unity 截图、`list/status/off` 命令日志和隔离退出检查；综合预评分为 91/92/91/91/91，当前均无 P0/P1/P2。
+- `@@view:list/chat` 只提供自动化的小/大界面证据，不能替代真实 GUI。负责人仍需逐主题完成双击展开、拖拽/收回，并确认诗词列距、配饰、动效方向、UI 遮挡和默认恢复后，才能关闭 T3/T5。
 ### 端午最新复核补充（2026-09-01）
 
 - 龙舟的船体、龙头、旗帜和船桨在同一屏幕坐标系下按实际行进方向成组换向，避免回程倒行和脱离船体的黄线；艾草、水波和龙舟均限制在右侧聊天内容区。
@@ -424,7 +429,7 @@
 - `ExternalChatWindow` 增加 `_shutdownRequested`：窗口线程尚未设置 `IsCreated` 时收到关闭请求，也会在建窗前退出；`EnsureCreated()` 不会在旧线程退出期间重复创建新线程。
 - 验证：本轮 Quick、完整构建通过；新构建包隔离 `runtime_smoke.cjs --verbose` 通过，零 NRE 且生产记忆零污染。真实退出崩溃仍需按 P1 做多轮观察。
 
-## 十五、五个传统节日最终验收证据（2026-09-04）
+## 十五、五个传统节日预验收证据（2026-09-04）
 
 - 当前正式范围固定为新春、元宵、端午、七夕、中秋；诗词分别为《元日》《生查子·元夕》《少年游·端午赠黄守徐君猷》前半段、《鹊桥仙·纤云弄巧》开篇和《水调歌头·明月几时有》节选。
 - 五个主题均已使用最新构建完成独立隔离评测：每主题保存 `static`、`small`、`motion`、`default_recovery` 四张 Unity 截图，并在 Player.log 中留下主题切换、`list`、`status`、`off` 和 `@@test:quit` 记录；各目录无 `NullReferenceException`。

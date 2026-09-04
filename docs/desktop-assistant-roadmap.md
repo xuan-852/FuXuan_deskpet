@@ -1,6 +1,6 @@
 # 符玄桌宠 → 桌面助手：开源调研与演进路线图
 
-> **版本**: v0.3 (2026-08-30)
+> **版本**: v0.3 (2026-09-04)
 > **定位**: 基于现有 N39+ 代码真相（`code-truth-architecture.md`），以「任务外包给 OpenClaw」为核心的后续开发计划
 > **基准**: 六层架构 + ToolEngine 65 工具 + OpenClaw Bridge（`openclaw_bridge.js` @ 19876）
 > **开发规范**: 所有新功能开发须遵循 [`development-standards.md`](development-standards.md)（通信/目录/测试/日志规范），AI 协作入口见根目录 [`AGENTS.md`](../AGENTS.md)
@@ -11,7 +11,7 @@
 
 > **像素节日适配记录（2026-08-30～09-04）**: 已完成 5 个中国传统节日主题实现。主题由完整 `ThemeSkin` 管理，RightPanel/子面板/ChatBubble 全量重建皮肤纹理，像素符玄配饰以独立透明层合成；`HolidayFireworksField` 按主题绘制烟花、月柳灯市、水波、星桥和月兔。五个主题均已确认诗词并完成独立 Unity 截图、命令日志和视觉预审；Live2D 明确保持不变。Quick、完整构建和隔离冒烟通过，最终 T3/T5 仍需负责人完成真实 GUI 双击/拖拽复核后才可归档。
 
-> **节日皮肤验收目标（2026-09-03）**：后续按单节日任务卡推进，不以“代码已有”代替“验收完成”。每个主题必须先确认诗词，再完成设计、实现、响应式适配、Quick/完整构建、隔离冒烟、`static/motion/recovery` 截图和人工审核；综合评分至少 85/100 且无 P0/P1 后，才允许归档为完成。当前专项状态见 [`holiday-skin-evaluation-2026-08-31.md`](holiday-skin-evaluation-2026-08-31.md) 和 [`task-inventory.md`](task-inventory.md)。
+> **节日皮肤验收目标（2026-09-04）**：后续按单节日任务卡推进，不以“代码已有”代替“验收完成”。每个主题必须先确认诗词，再完成设计、实现、响应式适配、Quick/完整构建、隔离冒烟、`static/small/motion/default_recovery` 截图和人工审核；综合评分至少 85/100、无 P0/P1/P2，且真实 GUI 双击展开和拖拽/收回证据齐全后，才允许归档为完成。五个主题当前已完成代码、自动验证和截图视觉预审，T3/T5 仍待真实 GUI 签字。当前专项状态见 [`holiday-skin-evaluation-2026-08-31.md`](holiday-skin-evaluation-2026-08-31.md) 和 [`task-inventory.md`](task-inventory.md)。
 
 ---
 

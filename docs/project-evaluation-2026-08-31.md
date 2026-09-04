@@ -113,3 +113,7 @@ AI 协作规范是本项目的明显优势。文档明确了读取顺序、先�
 - `AGENTS.md`：本次没有改变开发规则或文档入口，无需修改。
 - `docs/modules/chat-ui.md`：已同步截图链路、头像复用、端午主视觉和元宵/端午逐主题验证状态。
 - 代码缺陷和测试门禁问题：元旦绘制状态、截图取证和日志兼容已修复；正式节日审核当前元宵完成首轮、端午完成第二轮，其余主题及 EditMode 结果门禁仍保留为待办。
+
+### 当前状态入口（2026-09-04）
+
+本报告前文为 2026-08-31 历史评价，原评分、原问题和原结论保持不变。当前项目状态以 [`../README.md`](../README.md)、[`holiday-skin-evaluation-2026-08-31.md`](holiday-skin-evaluation-2026-08-31.md)、[`holiday-skin-review-standard.md`](holiday-skin-review-standard.md) 和 [`task-inventory.md`](task-inventory.md) 为准：正式范围收敛为新春、元宵、端午、七夕、中秋；五个主题已完成实现、自动验证和视觉预审，但真实 GUI 双击展开及拖拽/收回仍未完成签字，不能据此写成五主题最终验收通过。

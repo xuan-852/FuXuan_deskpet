@@ -5,6 +5,8 @@
 > **明确边界**：本规范不允许为了节日皮肤修改 Live2D 模型、Live2D 参数、物理、局部 RT 或渲染管线。
 > **当前实现基线**：`HolidayThemeRuntime` + `ThemeSkin` + `HolidayFireworksField` + `ComposePixelFrame`；当前已有 `default`、`cn_new_year`、`lantern_festival`、`dragon_boat`、`qixi`、`mid_autumn`。
 
+> **当前验收状态（2026-09-04）**：五个正式主题已完成代码实现、自动验证、四类 Unity 截图和视觉预审；综合预评分为新春 91、元宵 92、端午 91、七夕 91、中秋 91，当前均为 P0/P1/P2=0，少量美术微调列为 P3。T3/T5 仍待真实 GUI 双击展开和拖拽/收回签字，不能标记为最终完成。当前内容基线为 `06a51d2`，文档状态基线为 `37ac7e2`。
+
 ---
 
 ## 一、设计目标
@@ -55,7 +57,7 @@
 | G1 | 诗词驱动 | 每个纳入正式范围的主题先确认诗词、版本和截取范围，再开始画面实现 |
 | G2 | 视觉完整 | 每个主题具备可识别主视觉、三层空间、像素配饰和稳定动态效果 |
 | G3 | 响应式可用 | 小界面、大界面和双击展开状态下，文字、按钮、角色和主题元素均清晰可用 |
-| G4 | 可验证可回退 | 每个主题都有自动测试、`static/motion/recovery` 截图、人工审核记录，并能恢复默认主题 |
+| G4 | 可验证可回退 | 每个主题都有自动测试、`static/small/motion/default_recovery` 四类截图、人工审核记录，并能恢复默认主题 |
 | G5 | 边界安全 | 不修改 Live2D、默认主题和生产数据；不扩展未经确认的非传统节日主题 |
 
 ### 1.4 单节日任务卡与关闭规则
@@ -72,7 +74,7 @@
 | T5 | 人工审核 | 按审核标准逐项评分、问题分级和结论 | 总分至少 85/100，无 P0/P1/P2，且真实 GUI 证据齐全 |
 | T6 | 归档发布 | 模块文档、索引、路线图、任务清单和提交记录 | 证据可追溯，文档同步后才允许标记完成 |
 
-“代码已实现”只代表 T2 完成，不代表节日验收完成；未完成 T0 或 T5 的主题不得标记为“已完成”。
+“代码已实现”只代表 T2 完成，不代表节日验收完成；未完成 T0、T3 或 T5 的主题不得标记为“已完成”。真实 GUI 双击展开和拖拽/收回不能由 `@@sim` 替代。
 
 ---
 
@@ -359,6 +361,8 @@ Start-Process 'D:\Unity\projects\Desktop_per_pro\Build\DesktopPet.exe'
 
 ```text
 @@view:open
+@@view:list
+@@view:chat
 @@sim:holiday:cn_new_year
 @@sim:holiday:lantern_festival
 @@sim:holiday:dragon_boat
@@ -377,6 +381,8 @@ Start-Process 'D:\Unity\projects\Desktop_per_pro\Build\DesktopPet.exe'
 @@test:quit
 ```
 
+上述主题切换命令用于列出支持项；正式取证必须按单主题启动隔离播放器，每个主题独立完成切换、四图截图、关闭恢复和退出，不能用一次批量切换替代逐主题证据。
+
 截图命令由 Unity 保存到隔离数据目录的 `test_screenshots/`，不能用桌面截图工具代替，因为需要确认当前渲染帧和测试数据路径。
 
 测试播放器的单实例互斥按 `DataPathConfig.DataRoot` 分域：生产播放器与不同 `FU_XUAN_DATA` 隔离目录不会互相拦截，同一数据根仍只能运行一个实例；不得用强杀用户播放器代替隔离配置。
@@ -388,7 +394,7 @@ Start-Process 'D:\Unity\projects\Desktop_per_pro\Build\DesktopPet.exe'
 1. `static`：切换完成后立即检查配色、配饰和布局。
 2. `<theme>_small`：进入小界面/会话列表状态，检查字号、列距和边缘裁切。
 3. `motion`：进入大界面/聊天状态并等待一个动态周期中段，检查粒子/装饰的位置和层次。
-4. `recovery`：切回 `off` 后检查默认主题恢复和节日元素清除。
+4. `default_recovery`：切回 `off` 后检查默认主题恢复和节日元素清除。
 
 正式人工审核还必须通过真实 GUI 完成一次双击展开和一次拖拽/收回操作；`@@view:list/chat` 与 `@@sim` 只用于建立可重复的自动证据，不能替代真实鼠标操作。若真实 GUI 操作未完成，只能标记为“待人工审核”，不能关闭 T3/T5。
 

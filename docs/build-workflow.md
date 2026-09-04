@@ -4,6 +4,8 @@
 > **基本架构**: 构建入口 `build.ps1`（包装 Tuanjie.exe batchmode）；诊断脚本 `scripts/diagnose_tuanjie.ps1`（清理残留+验授权+试编译）；验证闭环 = Quick → 完整构建 → EditMode → 隔离冒烟。
 > **开发历史迭代**: 2026-08-17 多次遇到「Tuanjie 启动 4 分钟无日志、log 未创建、CPU 不动」——根因是环境时序（残留进程/授权客户端状态），非代码问题；诊断脚本 + 杀残留后一次通过。
 
+> **当前验证基线（2026-09-04）**：最新代码基线已通过 Quick、完整构建、EditMode 和隔离运行时冒烟；五个节日主题另有逐主题 Unity 四图和命令日志证据。节日文档本轮只做状态同步，不重复构建；真实 GUI 双击展开、拖拽/收回仍属于人工验收门槛。
+
 ---
 
 > **2026-08-19 构建修复**：`build.ps1 -Quick` 现在复用 EditMode harness 编译路径，并自动使用临时 `FU_XUAN_DATA/.test_mode`；Quick/完整构建均带 `-nographics`。Tuanjie 必须在 full-access 环境启动，否则 Windows 沙箱可能在授权初始化阶段卡死且不创建日志。构建脚本会在确认没有 Tuanjie 进程后清理 `ArtifactDB-lock` / `SourceAssetDB-lock`，并在确认 ILPP PID 已退出后清理陈旧的 `Library\ilpp.pid`。
@@ -147,6 +149,15 @@ Stop-Process -Name Tuanjie.Licensing.Client -Force -ErrorAction SilentlyContinue
 | 人工 | 启动 exe | 桌宠落地、功能正常 |
 
 > **AI 铁则**：功能级改动**必须先编译+测试通过**，再更新模块文档；文档只记录已验证的代码真相（AGENTS.md）。
+
+### 2026-09-04 最新验证记录
+
+- `build.ps1 -Quick`：通过，`[OK] Build succeeded!`，CPU 峰值 23%。
+- `build.ps1`：通过，`[OK] Build succeeded!`，CPU 峰值 32%，产出 `Build/DesktopPet.exe`。
+- `build.ps1 -RunTests`：通过，EditMode `failed=0`；结果为 160 用例、159 passed、0 failed、1 ignored（环境目录缺失导致的忽略不计为失败）。
+- `node scripts/test/runtime_smoke.cjs --verbose`：隔离运行通过，生产数据未参与，测试后无残留 `DesktopPet` 进程。
+- 五个节日主题：各自完成 `list/status/off`、四类 Unity 截图和退出检查；OS 级截图仅作辅助，正式视觉证据以 Unity 截图为准。
+- 本轮为文档同步，不重新运行上述构建；若后续修改 C#，必须重新执行完整闭环。
 
 ## 五、给 codex 等代理的执行建议
 
