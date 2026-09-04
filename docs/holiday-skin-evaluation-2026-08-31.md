@@ -271,6 +271,8 @@
 
 ### 8.7 七夕主视觉与诗词稳定性复测（2026-09-04）
 
+- **星光补充提交**：`225accb`。扩大星点亮度呼吸范围，重点星增加金色十字光晕；星点位置、鹊桥、诗词字位保持静止。
+
 - **修复提交**：`df8b80e`。七夕改为静态高对比像素鹊桥、双星、纤云和鹊影；移除流星位移及星桥上下移动，仅保留星点与诗词整列透明度呼吸。
 - **自动证据**：`build.ps1 -Quick`、完整构建、`build.ps1 -RunTests`（EditMode `failed=0`）和 `node scripts/test/runtime_smoke.cjs --verbose` 均通过；隔离目录清理完成，生产数据零污染。
 - **七夕独立证据**：`%TEMP%/fuxuan_qixi_final_eval_20260904/test_screenshots/`，包含 `qixi_static`、`qixi_small`、`qixi_motion`、`default_recovery` 四张非空 Unity 截图；`list/status/off`、`@@test:quit` 日志齐全，无 `NullReferenceException`。
