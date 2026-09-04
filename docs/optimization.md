@@ -181,5 +181,6 @@
 | 状态 | 优化项 | 实际落点与验证 |
 |------|--------|----------------|
 | 🔧 | 5 个中国传统节日像素主题 | `ThemeSkin` 完整管理 RightPanel/子面板/ChatBubble 配色与 17×24 像素符玄独立配饰；`HolidayFireworksField` 按主题绘制新春烟花、元宵灯笼、端午水波、七夕星桥、中秋月兔；Quick、完整构建、隔离冒烟及逐主题 `static/small/motion/default_recovery` Unity 截图闭环通过，预评分 91/92/91/91/91，真实 GUI 双击/拖拽复核后才能归档 |
+| ✅ | 节日动态呼吸与重绘稳定性 | `b531d03` 将动态时钟推进移入 `UpdateMotion()`，并按 30～60 FPS 主动请求透明窗口重绘；五主题 static/motion 对比、完整构建、EditMode、隔离冒烟通过；真实 GUI T3/T5 仍待签字 |
 | ✅ | AI 调试入口 | `@@sim:holiday:<theme>` 支持 5 个中国传统节日主题及 `off/auto/status/list`，接入现有测试 Inbox；运行时日志确认主题切换、截图和完整退出 |
 | ✅ | Live2D 边界 | 本轮未修改 Live2D 模型、参数、物理或 RT 渲染链路 |

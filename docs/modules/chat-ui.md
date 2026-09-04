@@ -375,6 +375,12 @@
 
 - 五个正式主题 `cn_new_year`、`lantern_festival`、`dragon_boat`、`qixi`、`mid_autumn` 均已完成独立 `static/small/motion/default_recovery` Unity 截图、`list/status/off` 命令日志和隔离退出检查；综合预评分为 91/92/91/91/91，当前均无 P0/P1/P2。
 - `@@view:list/chat` 只提供自动化的小/大界面证据，不能替代真实 GUI。负责人仍需逐主题完成双击展开、拖拽/收回，并确认诗词列距、配饰、动效方向、UI 遮挡和默认恢复后，才能关闭 T3/T5。
+
+### 节日动态重绘复测（2026-09-04）
+
+- `HolidayFireworksField.UpdateMotion()` 现在在 `RightPanel.Update()` 中以 `Time.unscaledDeltaTime` 推进独立动态时钟，`OnGUI()` 只读取状态并绘制；诗词呼吸亮度扩大到可见范围，避免 IMGUI 多次事件导致动画停顿或跳变。
+- 节日主题激活时，`RightPanel` 通过 `WindowOverlay.RequestRepaint()` 按性能档位以 30～60 FPS 主动刷新透明窗口，避免无输入时停留在上一帧；不触碰 Live2D、局部 RT 或生产数据。
+- `b531d03` 后五个主题逐一完成隔离 `static/small/motion/default_recovery` 截图和命令链路复测，均通过；真实 GUI 双击展开与拖拽/收回仍是 T3/T5 的人工签字门槛。
 ### 端午最新复核补充（2026-09-01）
 
 - 龙舟的船体、龙头、旗帜和船桨在同一屏幕坐标系下按实际行进方向成组换向，避免回程倒行和脱离船体的黄线；艾草、水波和龙舟均限制在右侧聊天内容区。
