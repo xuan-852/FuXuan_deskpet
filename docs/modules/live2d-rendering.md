@@ -124,7 +124,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 ### 2.11 物理网格刷新与帧率（2026-08-26）
 
 - `符玄.physics3.json` 的物理步进频率为 60 FPS，桌宠后台 High/Normal/Low 档的主循环目标现在为 60/45/30 FPS；这三个目标会随性能监控档位调整，不代表每档都能保证实际帧率。
-- `Live2DRenderer.LateUpdate()` 在 Cubism Physics（800）之后执行；普通路径按隔帧节奏调用 `ForceUpdateNow()`，避免额外刷新再次推进物理弹簧。法阵（#7）和星辰（#4）仍保留各自的专用刷新路径，避免重复全量更新。
+- `Live2DRenderer.LateUpdate()` 在 Cubism Physics（800）之后执行；普通路径按隔帧节奏调用 `ForceUpdateNow()`。该调用会强制 Cubism Core 重算当前参数对应的网格，不会重新派发 `CubismPhysicsController`；隔帧的目的是限制额外 Core 重算的主线程开销。法阵（#7）保留其专用最终提交路径。
 - 该隔帧策略是对“走路正常、停止抖动”回归的保守修复；待团结引擎许可证恢复后，需要在可见播放器中重新确认衣服后摆的流畅度，再决定是否拆分网格刷新与物理刷新。
 - 2026-08-24 修复硬编码动作的手部穿模：`SetHandLayer()` 的 Param95/98/100/108/116/117/119/120 统一采用 `Live2DMotionTemplates` 的图层权重，不再使用偏低的旧值，避免抬臂时手/袖被衣服网格压到后方。
 
@@ -176,9 +176,18 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 
 ### 2.18 走路停止时的物理收敛（2026-08-30）
 
-- 走路刚停止的 `IDLE_BLEND_DURATION` 期间，`LateUpdate()` 不再额外调用普通路径的 `ForceUpdateModelNow()`；此时 `Update()` 已在 Cubism Physics（800）前把停止输入归零，避免同一帧再次推进物理导致头部/后发在走路姿态与空闲姿态之间抖动。
+- 走路刚停止的 `IDLE_BLEND_DURATION` 期间，`LateUpdate()` 不再额外调用普通路径的 `ForceUpdateModelNow()`；此时 `Update()` 已在 Cubism Physics（800）前把停止输入归零，避免在姿态交接期间增加无效的 Core 网格重算。
 - 该保护只覆盖“停止收敛”窗口，正常行走、稳定空闲，以及星辉（#4）/法阵（#7）专用刷新路径不变；`Live2DRenderer` 仍保持 801 晚于 Cubism Physics 800。
 - 本轮 Quick、完整构建和隔离运行时冒烟均通过；停走瞬间的头部稳定性仍需在可见播放器中人工确认，不能仅以自动化冒烟替代视觉验收。
+
+### 2.19 动作参数单写入者与同帧刷新审查（2026-09-06）
+
+- 参数写入按阶段划分：`Update()` 仅写供 Physics(800) 读取的拖拽/边缘反弹输入；`LateUpdate()` 在 Physics 后写最终视觉姿态。拖拽的这两段写入是输入与输出的分层，`OnPetUpdate()` 在拖拽时提前返回，且速度一帧只采样一次，不属于同一参数的并发覆盖。
+- `ActionPresetPlayer.StopWithFade()` 现在直接停止原播放协程。旧实现会把协程句柄换成一个不写参数的“淡出”协程，导致旧关键帧协程继续运行，随后与新预设或 AI 动作在同一帧争写参数。
+- `GenerateMotionTool` 在启动 `MotionGenerator` 前拒绝已有旧式动作、预设动作或 AI 参数动作的请求，并立即停止表情；`PlayAction()` 与 `ForceIdleAction()` 也会立即停止表情，`PlayExpression()` 在动作/AI 控制锁生效时拒绝请求。这样预设、旧式动作、AI 关键帧与表情不会并行控制同一模型参数。
+- 普通动作的最终 `ForceUpdateModelNow()` 延后到本帧后处理参数全部写完后统一提交，消除了左臂物理拦截与基础路径在偶数帧重复强制 Cubism Core 更新的问题。法阵的 `MaterialPropertyBlock` 刷新从每帧两遍 Drawable 遍历收束为最终阶段的一遍。
+- 动作结束后，头发/衣摆的小幅 Bounds 波动曾使局部 RT 在相邻的 32px 量化尺寸之间反复重建（实测 `320×480 ↔ 320×512`），透明窗口会短暂闪黑，表现为头发闪烁。局部取景现在对一个量化单位的尺寸差保留现有 RT；只有至少 64px 的真实扩张才重建，64px 裁切边距覆盖该波动。
+- `ForceUpdateCountThisFrame`、`ForceUpdateCountLastFrame`、`ForceUpdateCountLastSecond` 和 `ForceUpdateMaxPerFrame` 保留为可见播放器 Profiling 的观测口。2026-09-06 已通过 `build.ps1 -Quick` 和隔离 EditMode 测试（failed=0）；仍需在可见播放器中连续触发预设切换、`@@idle:7` 与 AI 动作，结合 Profiler 验收帧时间和视觉连贯性。
 
 ## 三、开发历史迭代
 
@@ -197,6 +206,7 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 | 2026-08-29 | 2026-08-29 | `Live2DParameterMapper` 增加语义参数对象缓存，减少普通动作 `Set/Get` 的重复查找；Quick/完整构建/隔离冒烟通过，普通动作模板迁移仍继续 |
 | 2026-08-29 | 2026-08-29 | 普通空闲动作配置改用语义参数名；修复 `JsonUtility` 无法读取 `Dictionary` 导致目标为空；复用目标/冷却缓冲并修复重复尾段的 `star_spin.json`；Quick/完整构建、隔离冒烟和 `@@idle:1` 截图闭环通过 |
 | 2026-08-30 | 2026-08-30 | 走路停止过渡期间跳过普通路径的额外 `ForceUpdateNow()`，避免物理重复推进造成停下瞬间头部剧烈抖动；Quick/完整构建/隔离冒烟通过，真实观感待可见播放器确认 |
+| 2026-09-06 | 2026-09-06 | 审查并收束预设、旧式动作、AI 关键帧和表情的参数写入权；修复预设淡出遗留协程、普通动作同帧重复 Cubism Core 更新、法阵重复 PropertyBlock 遍历，以及动作结束时局部 RT 在相邻量化尺寸间反复重建导致的头发闪烁；Quick、隔离 EditMode 与 #4/#7 临时播放器复测通过 |
 
 ## 四、编写注意事项
 
@@ -207,3 +217,4 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 5. **迁移动作时**：保持「动作时冻结行走」（`_pet.Pause/Resume()`）；迁移后跑动作回归（play_action + 肉眼验证）
 6. **测试模式**：涉及表情/动作的自动化测试须开 `.test_mode`，且 `set_expression`/`play_action` 属 operation 意图白名单
 7. **参数语义映射**：新参数先查 `Live2DParameterMapper` 与 `KnownParameterPatterns.cs`（KNOW_PATTERNS 单源），勿重复硬编码参数 ID
+8. **单写入者铁则**：每个可见参数在一个帧阶段只能有一个动作来源。新预设/协程必须先终止旧协程；AI 关键帧、旧式动作和表情要受同一控制锁约束；网格强制更新应在该帧全部参数写完后最多提交一次。

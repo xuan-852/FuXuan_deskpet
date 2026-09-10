@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -643,7 +643,7 @@ public class PetMemory : MonoBehaviour
         try
         {
             string json = JsonUtility.ToJson(_data, prettyPrint: true);
-            File.WriteAllText(FilePath, json);
+            AtomicFileWriter.WriteAllText(FilePath, json, new System.Text.UTF8Encoding(false));
         }
         catch (Exception e)
         {
@@ -660,8 +660,12 @@ public class PetMemory : MonoBehaviour
                 Debug.Log("[PetMemory] 无已有记忆，从零开始");
                 return;
             }
-            string json = File.ReadAllText(FilePath);
-            var loaded = JsonUtility.FromJson<MemoryData>(json);
+            MemoryData loaded = LoadMemoryFile(FilePath);
+            if (loaded == null && File.Exists(FilePath + ".bak"))
+            {
+                Debug.LogWarning("[PetMemory] 主记忆文件损坏，正在从最近备份恢复");
+                loaded = LoadMemoryFile(FilePath + ".bak");
+            }
             if (loaded != null)
             {
                 _data = loaded;
@@ -736,6 +740,20 @@ public class PetMemory : MonoBehaviour
         catch (Exception e)
         {
             Debug.LogError($"[PetMemory] ❌ 载入失败: {e.Message}");
+        }
+    }
+
+    private static MemoryData LoadMemoryFile(string path)
+    {
+        try
+        {
+            string json = File.ReadAllText(path);
+            return JsonUtility.FromJson<MemoryData>(json);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[PetMemory] 读取记忆文件失败: {e.Message}");
+            return null;
         }
     }
 }

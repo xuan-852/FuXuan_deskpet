@@ -6,6 +6,8 @@
 
 > **2026-09-04 动态问题复测**：`b531d03` 已修复节日绘制时间依赖 IMGUI 事件频率导致的呼吸不明显/移动停顿风险，并加入受性能档位约束的透明窗口主动重绘。五主题隔离评测、完整构建、EditMode、运行时冒烟通过；当前没有新增 P0/P1/P2，T3/T5 仍等待真实 GUI 签字。
 
+> **2026-09-04 系统关机退出修复**：`WindowOverlay` 已显式处理 `WM_QUERYENDSESSION`/`WM_ENDSESSION`；仅在 Windows 确认结束会话后通知 `DesktopPet.BeginShutdown`，避免取消关机时提前销毁外置窗口。隔离实例的消息探针已确认回调、清理日志和幂等路径生效；真实关机/注销仍需人工观察，因此不将退出风险标记为完全关闭。
+
 > **文档作用**: 让 AI **第一时间**掌握两件事——① 项目当前**已知 Bug / 风险点**（哪些还没解决、哪些已修复但改相关代码时必须防回归、哪些是**刻意保持现状勿动**的）；② 改完代码后的**重要验收点**（怎么证明没改坏）。任何涉及"外置窗口 / 渲染 / 退出流程 / 测试模式 / Token 消耗"的改动，先读本文。
 > **基本架构**: 本文与 [`token-cost-testing.md`](token-cost-testing.md)（消耗专项）、[`task-inventory.md`](task-inventory.md) 第十二节（N39 前老 Bug 审计）互补——本文聚焦 **2026-08-16 外置窗口阶段之后**的活跃问题与验收标准。
 > **开发历史迭代**: 2026-08-16 外置面板 A1-A6/B1-B3 阶段集中产出 10+ 个渲染/交互 Bug（多数已修）；N44 测试模式禁云端新增一类"测试与生产行为偏差"；2026-08-26 完成 ¥5/天异常的跨项目 Key 归因。
@@ -19,6 +21,7 @@
 |---|------|------|------|------|
 | P0 | **高强度完整构建触发 CPU 瞬时满载、95°C+，偶发整机重启** | 构建可能触发硬件保护、供电/稳定性故障，造成未保存数据丢失并阻断交付 | 🟡 **软件保护已落地，硬件未隔离**：`build.ps1` 已内置构建负载保护（默认保留 `Library\Bee` 增量 + `-MaxCores` 限制 16 核 + BelowNormal 优先级 + 2s 子进程监视；实测完整构建 CPU 均值 15~19%/峰值 21~26%）；系统仍存在 `Kernel-Power 41` 与 `WHEA-Logger 19 Internal parity error`，**硬件根因（BIOS/散热/PSU）未完成隔离** | 日常用 `-Quick`；完整构建用默认节流；`-CleanBeeCache` 仅在确认缓存损坏时显式使用；完成 BIOS/散热/PSU 核查 + 低/高负载对照 + 人工温度/重启观察后才能降级 |
 | P1 | **destroyTJDevice 退出崩溃**（崩溃计数 105→108→120 持续增长） | 退出时引擎崩溃 → 可能触发反复重启 | 🟡 **已降级未确认**：`2cad357` 按 DisableExternalMode→Shutdown→释放 RT/NativeArray 顺序修复；退出时引擎崩溃是否彻底消失**未最终确认**（exit-time 崩溃不影响外部交互） | 多轮真实退出观察 Player.log；若复现按"退出崩溃"专项排查 |
+| P1 | **Windows 关机/注销优雅退出未显式接入** | 系统会话结束时可能来不及完成外置窗口、任务取消和状态收尾 | 🟡 **代码已补齐，真实关机/注销待观察**：`WindowOverlay` 对 `WM_QUERYENDSESSION` 明确返回允许，对确认的 `WM_ENDSESSION` 通知 `DesktopPet.BeginShutdown`；隔离消息探针已通过 | 真实关机/注销后检查 Player.log、进程、托盘图标、外置窗口和下次启动异常计数；不得用强杀代替 |
 | P2 | **schannel TLS 全坏（系统级）**：`SEC_E_NO_CREDENTIALS (0x8009030e)`，Node/curl/.NET 全部 HTTPS 失败（baidu.com 也连不上），浏览器 OK（BoringSSL） | DSH harness 切 GPT 被卡（`dsh-codex-auth` 已装但连不上）；**codex CLI（Rust/rustls）不受影响，可直接用** | 🔴 未解决 | 用户操作：重启 → `sfc /scannow` → `DISM /Online /Cleanup-Image /RestoreHealth` → 卸 SteamTools MITM 证书；修好前**不要**再尝试 DSH 代理配置 |
 | P3 | **测试模式一刀切**：禁云端后测试里验证不到真实云端链路（缓存命中率/价格/响应质量），且"本地失败=功能缺失"而非回退云端 | 测试行为与生产有偏差，可能误判 bug | 🟡 已知限制（N44） | 见 `token-cost-testing.md` 铁律 5：唯一烧钱路径需用户确认 |
 | P5 | **外置窗口退出顺序回归风险**：组件销毁顺序不应被当作唯一清理保障 | 窗口线程泄漏/崩溃 | 🟡 **已加固需防回归**：`DesktopPet.BeginShutdown` 统一托盘/测试/Unity 生命周期/对象销毁清理；`ExternalChatWindow` 增加建窗早期关闭请求保护 | 改退出或外置窗口生命周期代码后必须跑 Quick、完整构建、隔离冒烟测试 + 真实退出观察 |
@@ -106,6 +109,7 @@ node scripts/test/runtime_smoke.cjs   # 隔离目录 + .test_mode + 生产记忆
 3. **禁止空参数遍历调用所有工具**：只限低风险只读白名单（get_system_info/get_mouse_pos）；剪贴板、文件内容和截图工具必须显式确认
 4. **密钥不入库**：环境变量读取，日志/输出禁含 token
 5. **PS 5.1 写 JSON 带 BOM**：Python 读 `utf-8-sig`；`.cs`/`.ps1`/`.cmd` 带 BOM，其余 UTF-8 无 BOM
+6. **验收脚本只管理自己启动的进程**：`local_tool_acceptance.cjs` 不得按镜像名结束 `DesktopPet.exe`；必须记录子进程 PID，并只按 PID 清理。质量案例运行器必须显式设置 `FU_XUAN_DATA`，缺失案例、预算拦截或配对不完整都必须返回失败退出码。
 
 ### 3.6 提交与文档验收
 - Conventional Commits：`<type>(<scope>): <中文描述>`，一个提交一件事

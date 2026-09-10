@@ -438,9 +438,20 @@
 - `ExternalChatWindow` 增加 `_shutdownRequested`：窗口线程尚未设置 `IsCreated` 时收到关闭请求，也会在建窗前退出；`EnsureCreated()` 不会在旧线程退出期间重复创建新线程。
 - 验证：本轮 Quick、完整构建通过；新构建包隔离 `runtime_smoke.cjs --verbose` 通过，零 NRE 且生产记忆零污染。真实退出崩溃仍需按 P1 做多轮观察。
 
+### Windows 关机/注销退出链路（2026-09-04）
+
+- `WindowOverlay` 的 Unity 主窗口代理显式处理 `WM_QUERYENDSESSION` 和 `WM_ENDSESSION`：前者快速返回允许，后者才触发 `DesktopPet.BeginShutdown`，避免用户取消关机时提前拆除外置窗口。
+- 清理仍遵循既有顺序：先停止 `ExternalChatWindow` 线程，再发出在途任务取消请求、解绑日志和释放互斥体；通知具有幂等保护。隔离消息探针已确认回调和清理日志，真实系统关机/注销仍需人工观察。
+
 ## 十五、五个传统节日预验收证据（2026-09-04）
 
 - 当前正式范围固定为新春、元宵、端午、七夕、中秋；诗词分别为《元日》《生查子·元夕》《少年游·端午赠黄守徐君猷》前半段、《鹊桥仙·纤云弄巧》开篇和《水调歌头·明月几时有》节选。
 - 五个主题均已使用最新构建完成独立隔离评测：每主题保存 `static`、`small`、`motion`、`default_recovery` 四张 Unity 截图，并在 Player.log 中留下主题切换、`list`、`status`、`off` 和 `@@test:quit` 记录；各目录无 `NullReferenceException`。
 - 截图视觉预审结果：新春 53/60、元宵 54/60、端午 54/60、七夕 53/60、中秋 53/60；综合预评分分别为 91、92、91、91、91/100，当前均无 P0/P1/P2，细节微调列 P3。
 - `@@view:list/chat` 仅作为自动化的小/大界面证据；正式关闭 T3/T5 前仍需负责人用真实 GUI 完成双击展开和拖拽/收回，并确认诗词列距、配饰、动效方向和默认恢复。证据与状态以 [`holiday-skin-evaluation-2026-08-31.md`](../holiday-skin-evaluation-2026-08-31.md) 为准。
+
+### 五主题视觉优化复测（2026-09-04）
+
+- `HolidayFireworksField` 增加按聊天面板宽度启用的紧凑安全区，并按宽度而非高度选择诗词列数，避免窄而高的会话列表误用大界面排版，遮挡标题、会话项或输入栏。
+- 新春补充低对比门窗背板并延长烟花可见相位；元宵增加灯笼事件点亮和底部倒影、收紧灯笼横向范围；端午放大并减速龙舟、减少重复水纹；七夕提高诗词呼吸可读性；中秋按大小窗口调整月轮、放大大窗口玉兔并增强桂枝层次。
+- 最终隔离目录 `%TEMP%/fuxuan_visual_optimization_eval_20260904_final/test_screenshots/` 生成 16 张非空 Unity 截图（五主题各 `static/small/motion`，加统一 `default_recovery`）；EditMode `failed=0`、完整构建、异常检查和生产数据隔离均通过。该复测不替代真实 GUI 双击展开与拖拽/收回签字。

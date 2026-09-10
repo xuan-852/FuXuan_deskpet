@@ -38,11 +38,14 @@ function resolveOpenClawGatewayEntry() {
 }
 import { createServer } from 'node:http';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { execSync } from 'node:child_process';
+import { execSync, execFile } from 'node:child_process';
 import { writeFileSync, unlinkSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, copyFileSync, readdirSync, lstatSync } from 'node:fs';
 import { dirname, basename, extname, join, resolve, relative, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 let GatewayChatClient = null;
 let openClawResolveError = null;
@@ -636,7 +639,7 @@ async function generateOfficeContent(type, description, title, theme) {
 }
 
 // 调用本地 Python 生成器渲染文件
-function renderOfficeFile(type, contentJson, outDir) {
+async function renderOfficeFile(type, contentJson, outDir) {
     const python = resolvePython();
     if (!python) throw new Error('未找到 Python 解释器，无法生成办公文档。请安装 Python 3.10+ 并加入 PATH');
     const scriptMap = { ppt: 'ppt_gen.py', docx: 'docx_gen.py', xlsx: 'xlsx_gen.py' };
@@ -670,13 +673,16 @@ function renderOfficeFile(type, contentJson, outDir) {
     const tmpJson = join(tmpdir(), `office_${Date.now().toString(36)}_${type}.json`);
     writeFileSync(tmpJson, JSON.stringify(contentJson), 'utf-8');
 
-    const pyCmd = `"${python}" "${scriptPath}" "${tmpJson}" "${outDir}"`;
-    console.log(`[Bridge] Office render: ${pyCmd}`);
-    const stdout = execSync(pyCmd, {
-        windowsHide: true, timeout: 60000, encoding: 'utf-8', stdio: 'pipe',
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
-    });
-    try { unlinkSync(tmpJson); } catch { /* ignore */ }
+    console.log(`[Bridge] Office render: ${script}`);
+    let stdout;
+    try {
+        ({ stdout } = await execFileAsync(python, [scriptPath, tmpJson, outDir], {
+            windowsHide: true, timeout: 60000, encoding: 'utf-8',
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
+        }));
+    } finally {
+        try { unlinkSync(tmpJson); } catch { /* ignore */ }
+    }
     const result = stdout.trim().split('\n').pop(); // 取最后一行 JSON
     try {
         return JSON.parse(result);
@@ -722,13 +728,15 @@ function isValidSectionBody(text, expectedTitle) {
 //   1) 坏节立即暴露——错误精确定位到某一节
 //   2) 坏节自动重试/跳过，不拖垮整份文档（此前 \uline 缺宏包、引用不存在文件
 //      会让整份文档编译失败）
-function compileCheckpoint(head, sectionBodies, checkpointDir, compiler) {
+async function compileCheckpoint(head, sectionBodies, checkpointDir, compiler) {
     const tex = head + '\n\n' + sectionBodies.join('\n\n') + '\n\n\\end{document}\n';
     const tmp = join(checkpointDir, 'checkpoint.tex');
     try {
         writeFileSync(tmp, tex, 'utf-8');
-        execSync(`"${compiler}" -interaction=nonstopmode -halt-on-error -output-directory="${checkpointDir}" "${tmp}"`, {
-            cwd: checkpointDir, timeout: 120000, windowsHide: true, stdio: 'pipe', encoding: 'utf-8'
+        await execFileAsync(compiler, [
+            '-interaction=nonstopmode', '-halt-on-error', `-output-directory=${checkpointDir}`, tmp
+        ], {
+            cwd: checkpointDir, timeout: 120000, windowsHide: true, encoding: 'utf-8'
         });
         return { ok: true, tail: '' };
     } catch (e) {
@@ -858,14 +866,15 @@ async function generateChunkedLatex(description, compiler = 'xelatex') {
         };
 
         // 自检一次 head（可编译则 ok）
-        const selfCheck = (h) => compileCheckpoint(h, [], ckDir, compiler);
+        const selfCheck = async (h) => compileCheckpoint(h, [], ckDir, compiler);
 
         let head = stripTitlesecConfig(extractHead(outline));
         let headPkgs = new Set();
-        let skeletonOk = selfCheck(head).ok;
+        let skeletonCheck = await selfCheck(head);
+        let skeletonOk = skeletonCheck.ok;
         if (!skeletonOk) {
             // 失败时把错误尾部反馈给 AI（此前不反馈，AI 只能瞎猜）
-            const failTail = selfCheck(extractHead(outline)).tail.slice(-300);
+            const failTail = (await selfCheck(extractHead(outline))).tail.slice(-300);
             console.error(`[Bridge] Skeleton self-check FAILED, regenerating once\n  └─ tail: ${failTail.split('\n').slice(-6).join('\n')}`);
             try {
                 const retryOutline = cleanLatexFence(await sendChatAndWait(
@@ -879,7 +888,8 @@ async function generateChunkedLatex(description, compiler = 'xelatex') {
                 }
                 // ★ BUG 修复 3：重生成后必须重新提取 head（此前 head 还是旧的坏骨架）并再次自检
                 head = stripTitlesecConfig(extractHead(outline));
-                skeletonOk = selfCheck(head).ok;
+                skeletonCheck = await selfCheck(head);
+                skeletonOk = skeletonCheck.ok;
                 if (!skeletonOk) {
                     console.error('[Bridge] Regenerated skeleton STILL fails self-check, continuing with stripped head');
                 }
@@ -937,7 +947,7 @@ async function generateChunkedLatex(description, compiler = 'xelatex') {
                 dropped.push(title);
                 continue;
             }
-            const ck = compileCheckpoint(head, [...bodies, lifted.tex], ckDir, compiler);
+            const ck = await compileCheckpoint(head, [...bodies, lifted.tex], ckDir, compiler);
             if (ck.ok) {
                 bodies.push(lifted.tex);
                 console.log(`[Bridge] Section ${i + 1}/${sectionTitles.length}「${title}」${lifted.tex.length} chars, checkpoint OK | head: ${lifted.tex.slice(0, 50).replace(/\n/g, ' ')}`);
@@ -968,7 +978,7 @@ async function generateChunkedLatex(description, compiler = 'xelatex') {
                     if (!isValidSectionBody(lifted2.tex, title)) {
                         console.error(`[Bridge] Section ${i + 1}「${title}」retry invalid after lift: ${JSON.stringify(lifted2.tex.slice(0, 80))}`);
                     } else {
-                        const ck2 = compileCheckpoint(head, [...bodies, lifted2.tex], ckDir, compiler);
+                        const ck2 = await compileCheckpoint(head, [...bodies, lifted2.tex], ckDir, compiler);
                         if (ck2.ok) {
                             bodies.push(lifted2.tex);
                             console.log(`[Bridge] Section ${i + 1}「${title}」retry OK (${lifted2.tex.length} chars)`);
@@ -1454,7 +1464,9 @@ function startHttpServer() {
                     }
                     const compilerPath = process.env.LATEX_COMPILER || compiler;
                     try {
-                        execSync(`where "${compilerPath}"`, { stdio: 'pipe', windowsHide: true, timeout: 5000, encoding: 'utf-8' });
+                        await execFileAsync('where', [compilerPath], {
+                            windowsHide: true, timeout: 5000, encoding: 'utf-8'
+                        });
                     } catch {
                         res.writeHead(412, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({
@@ -1515,10 +1527,11 @@ function startHttpServer() {
                     //   只留下 .tex 没有 .pdf/.log，报错不明。现在低于阈值直接给出明确提示。
                     const MIN_FREE_MEM_GB = parseFloat(process.env.LATEX_MIN_FREE_MEM_GB || '1.5');
                     try {
-                        const memOut = execSync(
-                            `powershell -NoProfile -Command "$os=Get-CimInstance Win32_OperatingSystem; [math]::Round($os.FreePhysicalMemory/1MB,1)"`,
-                            { windowsHide: true, timeout: 15000, encoding: 'utf-8' }
-                        ).trim();
+                        const { stdout: memStdout } = await execFileAsync('powershell', [
+                            '-NoProfile', '-Command',
+                            '$os=Get-CimInstance Win32_OperatingSystem; [math]::Round($os.FreePhysicalMemory/1MB,1)'
+                        ], { windowsHide: true, timeout: 15000, encoding: 'utf-8' });
+                        const memOut = memStdout.trim();
                         const freeGB = parseFloat(memOut);
                         if (!isNaN(freeGB) && freeGB < MIN_FREE_MEM_GB) {
                             console.warn(`[Bridge] Low memory ${freeGB}GB < ${MIN_FREE_MEM_GB}GB, aborting compile`);
@@ -1543,7 +1556,6 @@ function startHttpServer() {
                     const compileDir = mkdtempSync(join(tmpdir(), 'latex-main-'));
                     const compileTex = join(compileDir, 'main.tex');
                     copyFileSync(texPath, compileTex);
-                    const compileArgs = `-interaction=nonstopmode -halt-on-error -output-directory="${compileDir}" "${compileTex}"`;
                     const baseNoExt = join(outDir, basename(texPath, '.tex'));
                     const logPath = baseNoExt + '.log';
                     const compilePdf = join(compileDir, 'main.pdf');
@@ -1551,8 +1563,11 @@ function startHttpServer() {
 
                     for (let pass = 1; pass <= 2; pass++) {
                         try {
-                            execSync(`"${compilerPath}" ${compileArgs}`, {
-                                cwd: compileDir, timeout: COMPILE_TIMEOUT_MS, windowsHide: true, stdio: 'pipe', encoding: 'utf-8',
+                            await execFileAsync(compilerPath, [
+                                '-interaction=nonstopmode', '-halt-on-error',
+                                `-output-directory=${compileDir}`, compileTex
+                            ], {
+                                cwd: compileDir, timeout: COMPILE_TIMEOUT_MS, windowsHide: true, encoding: 'utf-8'
                             });
                         } catch (e) {
                             // 提取错误信息：优先读 .log 文件尾部（比 stderr 更完整）
@@ -1622,7 +1637,9 @@ function startHttpServer() {
                             const desktopDir = join(process.env.USERPROFILE || 'C:\\Users\\25295', 'Desktop');
                             shortcutPath = join(desktopDir, `${docTitle}.lnk`);
                             const psCmd = `$wshell = New-Object -ComObject WScript.Shell; $lnk = $wshell.CreateShortcut('${shortcutPath.replace(/'/g, "''")}'); $lnk.TargetPath = '${pdfPath.replace(/'/g, "''")}'; $lnk.Save()`;
-                            execSync(`powershell -Command \"${psCmd.replace(/"/g, '\\"')}\"`, { windowsHide: true, timeout: 10000 });
+                            await execFileAsync('powershell', ['-NoProfile', '-Command', psCmd], {
+                                windowsHide: true, timeout: 10000
+                            });
                             console.log(`[Bridge] Shortcut created: ${shortcutPath}`);
                         } catch (e) {
                             console.error(`[Bridge] Shortcut creation failed: ${e.message}`);
@@ -1677,7 +1694,7 @@ function startHttpServer() {
                     mkdirSync(outDir, { recursive: true });
 
                     // 3) 本地 Python 渲染
-                    const result = renderOfficeFile(type, content, outDir);
+                    const result = await renderOfficeFile(type, content, outDir);
                     if (!result || result.success !== true) {
                         res.writeHead(500, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ success: false, error: result?.error || '文档生成失败', folder_path: outDir }));
@@ -1710,7 +1727,7 @@ function startHttpServer() {
         // body: { path: "D:\\xxx.pdf", max_chars?: 500000 }
         // 返回: { success, text?, pages?, chars?, is_scanned?, error? }
         if (path === '/extract_pdf' && req.method === 'POST') {
-            readRequestBody(req).then(body => {
+            readRequestBody(req).then(async body => {
                 try {
                     const { path: rawPdfPath, max_chars } = JSON.parse(body);
                     if (!rawPdfPath || typeof rawPdfPath !== 'string') {
@@ -1765,13 +1782,16 @@ function startHttpServer() {
                     const tmpJson = join(tmpdir(), `pdf_${Date.now().toString(36)}.json`);
                     writeFileSync(tmpJson, JSON.stringify({ path: pdfPath, max_chars: maxChars }), 'utf-8');
 
-                    const pyCmd = `"${python}" "${scriptPath}" "${tmpJson}"`;
                     console.log(`[Bridge] Extract PDF: ${pdfPath}`);
-                    const stdout = execSync(pyCmd, {
-                        windowsHide: true, timeout: 120000, encoding: 'utf-8', stdio: 'pipe',
-                        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
-                    });
-                    try { unlinkSync(tmpJson); } catch { /* ignore */ }
+                    let stdout;
+                    try {
+                        ({ stdout } = await execFileAsync(python, [scriptPath, tmpJson], {
+                            windowsHide: true, timeout: 120000, encoding: 'utf-8',
+                            env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
+                        }));
+                    } finally {
+                        try { unlinkSync(tmpJson); } catch { /* ignore */ }
+                    }
 
                     const resultLine = stdout.trim().split('\n').pop(); // 取最后一行 JSON
                     let parsed;

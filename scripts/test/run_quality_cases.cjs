@@ -20,7 +20,17 @@ const fs = require('fs');
 const path = require('path');
 
 const cases = require('./quality_cases.js');
-const DATA_ROOT = process.env.FU_XUAN_DATA || 'D:\\DesktopPetData';
+const configuredDataRoot = process.env.FU_XUAN_DATA;
+if (!configuredDataRoot) {
+  console.error('[FAIL] 必须设置 FU_XUAN_DATA，质量采样禁止回退到生产目录');
+  process.exit(1);
+}
+const DATA_ROOT = path.resolve(configuredDataRoot);
+const defaultProductionRoot = path.resolve('D:\\DesktopPetData');
+if (DATA_ROOT.toLowerCase() === defaultProductionRoot.toLowerCase()) {
+  console.error(`[FAIL] FU_XUAN_DATA 指向生产目录，拒绝运行: ${DATA_ROOT}`);
+  process.exit(1);
+}
 const INBOX = path.join(DATA_ROOT, 'inbox.txt');
 
 const args = process.argv.slice(2);
@@ -151,5 +161,5 @@ async function waitForCase(caseId, task, timeout) {
   console.log('');
   console.log(`完成: ${done}/${filtered.length} 成功，${fail} 超时/错误，${blocked} 预算拦截`);
   console.log('下一步: 关闭桌宠后用 summarize_quality.cjs 汇总，两组都跑完后用 compare_quality.cjs 配对比较。');
-  if (fail > 0) process.exitCode = 1;
+  if (fail > 0 || blocked > 0 || done < filtered.length) process.exitCode = 1;
 })();

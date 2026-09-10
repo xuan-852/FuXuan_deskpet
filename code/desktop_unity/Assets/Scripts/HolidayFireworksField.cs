@@ -60,22 +60,30 @@ public sealed class HolidayFireworksField
         string themeId = HolidayThemeRuntime.ActiveId;
         Matrix4x4 previousMatrix = GUI.matrix;
         Color previousColor = GUI.color;
+        // The compact list view still renders the background over the whole panel.
+        // Reserve the title/search/session band before placing holiday elements.
+        bool compact = pw < 700f;
+        float topInset = compact ? Mathf.Clamp(ph * 0.14f, 110f, 180f) : 0f;
+        float bottomInset = compact ? Mathf.Clamp(ph * 0.035f, 30f, 56f) : 0f;
+        float scenePy = py + topInset;
+        float scenePh = Mathf.Max(160f, ph - topInset - bottomInset);
         try
         {
             if (themeId == "cn_new_year")
             {
-                DrawFireworkBurst(px, py, pw, ph, animAlpha);
-                DrawNewYearPoetry(px, py, pw, ph, animAlpha);
+                DrawNewYearBackplate(px, scenePy, pw, scenePh, animAlpha);
+                DrawFireworkBurst(px, scenePy, pw, scenePh, animAlpha);
+                DrawNewYearPoetry(px, scenePy, pw, scenePh, animAlpha);
             }
-            else if (themeId == "lantern_festival") DrawLanterns(px, py, pw, ph, animAlpha);
+            else if (themeId == "lantern_festival") DrawLanterns(px, scenePy, pw, scenePh, animAlpha);
             else if (themeId == "dragon_boat")
             {
-                DrawDragonBoatPoetry(px, py, pw, ph, animAlpha);
-                DrawDragonBoatMugwort(px, py, pw, ph, animAlpha);
-                DrawDuanwuWaterside(px, py, pw, ph, animAlpha);
+                DrawDragonBoatPoetry(px, scenePy, pw, scenePh, animAlpha);
+                DrawDragonBoatMugwort(px, scenePy, pw, scenePh, animAlpha);
+                DrawDuanwuWaterside(px, scenePy, pw, scenePh, animAlpha);
             }
-            else if (themeId == "qixi") DrawQixi(px, py, pw, ph, animAlpha);
-            else if (themeId == "mid_autumn") DrawMidAutumn(px, py, pw, ph, animAlpha);
+            else if (themeId == "qixi") DrawQixi(px, scenePy, pw, scenePh, animAlpha);
+            else if (themeId == "mid_autumn") DrawMidAutumn(px, scenePy, pw, scenePh, animAlpha);
         }
         finally
         {
@@ -92,16 +100,20 @@ public sealed class HolidayFireworksField
 
         // “花市灯如昼”：三层错落的灯市比均匀排布更接近夜市纵深。
         Color marketBeam = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.42f);
-        DrawPixelLine(new Vector2(px + pw * 0.40f, py + ph * 0.13f),
+        DrawPixelLine(new Vector2(px + pw * 0.30f, py + ph * 0.13f),
             new Vector2(px + pw * 0.96f, py + ph * 0.13f), 2f, marketBeam);
         for (int i = 0; i < 8; i++)
         {
             float layer = i % 3;
-            float x = px + (0.43f + (i % 4) * 0.145f + layer * 0.012f) * pw;
+            float x = px + (0.36f + (i % 4) * 0.10f + layer * 0.010f) * pw;
             float y = py + (0.10f + layer * 0.25f + (i / 6) * 0.06f) * ph
                 + Mathf.Sin(time * (0.72f + (i % 2) * 0.08f) + i * 1.31f) * (4f + layer * 2f);
-            float size = Mathf.Clamp(Mathf.Min(pw, ph) * (0.040f + (i % 2) * 0.007f), 14f, 25f);
-            float glow = 0.12f + (0.5f + 0.5f * Mathf.Sin(time * 1.15f + i * 0.9f)) * 0.08f;
+            float size = Mathf.Clamp(Mathf.Min(pw, ph) * (0.050f + (i % 2) * 0.008f), 18f, 34f);
+            int litIndex = Mathf.FloorToInt(time * 0.55f) % 8;
+            float eventPulse = i == litIndex
+                ? (0.06f + (0.5f + 0.5f * Mathf.Sin(time * 3.4f)) * 0.10f)
+                : 0f;
+            float glow = 0.12f + (0.5f + 0.5f * Mathf.Sin(time * 1.15f + i * 0.9f)) * 0.08f + eventPulse;
             DrawRect(new Rect(x - size * 0.85f, y - size * 0.15f, size * 1.7f, size * 1.9f),
                 new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * glow));
             DrawRect(new Rect(x - size * 0.48f, y - size * 0.75f, size * 0.96f, 3f),
@@ -119,25 +131,41 @@ public sealed class HolidayFireworksField
                 new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.68f));
         }
 
+        DrawLanternReflections(px, py, pw, ph, animAlpha, time);
         DrawLanternPoetry(px, py, pw, ph, animAlpha, time);
+    }
+
+    private void DrawLanternReflections(float px, float py, float pw, float ph, float animAlpha, float time)
+    {
+        Color reflection = new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.075f);
+        Color reflectionGold = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.11f);
+        for (int row = 0; row < 4; row++)
+        {
+            float y = py + ph * (0.70f + row * 0.065f);
+            float width = pw * (0.46f - row * 0.07f);
+            float x = px + pw * 0.50f - width * 0.5f + Mathf.Sin(time * 0.35f + row) * 5f;
+            DrawRect(new Rect(x, y, width, 3f), reflection);
+            if (row < 3)
+                DrawRect(new Rect(x + width * 0.24f, y + 6f, width * 0.52f, 2f), reflectionGold);
+        }
     }
 
     private void DrawLanternMoon(float px, float py, float pw, float ph, float animAlpha, float time)
     {
         float shortSide = Mathf.Min(pw, ph);
-        float radius = Mathf.Clamp(shortSide * 0.065f, 22f, 38f);
-        float moonX = px + pw * 0.68f;
-        float moonY = py + ph * 0.16f;
-        float breath = 0.62f + (0.5f + 0.5f * Mathf.Sin(time * 0.72f)) * 0.16f;
+        float radius = Mathf.Clamp(shortSide * 0.095f, 36f, 64f);
+        float moonX = px + pw * 0.57f;
+        float moonY = py + ph * 0.18f;
+        float breath = 0.78f + (0.5f + 0.5f * Mathf.Sin(time * 0.72f)) * 0.16f;
         Color moon = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * breath);
-        Color halo = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.06f);
+        Color halo = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.16f);
         Color shadow = new Color(0.08f, 0.02f, 0.07f, animAlpha * 0.78f);
         // 七段横向像素带组成月轮，边缘收窄后能读成圆月，而不是叠出的方块。
-        float[] widths = { 0.34f, 0.62f, 0.84f, 1.00f, 0.84f, 0.62f, 0.34f };
+        float[] widths = { 0.72f, 1.25f, 1.70f, 2.00f, 1.70f, 1.25f, 0.72f };
         for (int i = 0; i < widths.Length; i++)
         {
-            float y = moonY + (i - 3) * radius * 0.24f;
-            DrawRect(new Rect(moonX - radius * widths[i] * 0.5f, y, radius * widths[i], radius * 0.22f), moon);
+            float y = moonY + (i - 3) * radius * 0.22f;
+            DrawRect(new Rect(moonX - radius * widths[i] * 0.5f, y, radius * widths[i], radius * 0.28f), moon);
         }
         DrawRect(new Rect(moonX - radius * 1.04f, moonY - radius * 0.84f, radius * 2.08f, 2f), halo);
         DrawRect(new Rect(moonX - radius * 1.04f, moonY + radius * 0.82f, radius * 2.08f, 2f), halo);
@@ -147,18 +175,18 @@ public sealed class HolidayFireworksField
 
     private void DrawLanternWillow(float px, float py, float pw, float ph, float animAlpha, float time)
     {
-        Color branch = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.62f);
-        Color leaf = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.42f);
-        Vector2 root = new Vector2(px + pw * 0.97f, py + ph * 0.14f);
-        Vector2 fork = new Vector2(px + pw * 0.90f, py + ph * 0.20f);
+        Color branch = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.72f);
+        Color leaf = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.62f);
+        Vector2 root = new Vector2(px + pw * 0.36f, py + ph * 0.14f);
+        Vector2 fork = new Vector2(px + pw * 0.40f, py + ph * 0.20f);
         DrawPixelLine(root, fork, 3f, branch);
-        DrawPixelLine(fork, new Vector2(px + pw * 0.85f, py + ph * 0.29f), 2f, branch);
-        DrawPixelLine(fork, new Vector2(px + pw * 0.94f, py + ph * 0.33f), 2f, branch);
-        DrawPixelLine(fork, new Vector2(px + pw * 0.82f, py + ph * 0.25f), 2f, branch);
+        DrawPixelLine(fork, new Vector2(px + pw * 0.43f, py + ph * 0.27f), 2f, branch);
+        DrawPixelLine(fork, new Vector2(px + pw * 0.37f, py + ph * 0.29f), 2f, branch);
+        DrawPixelLine(fork, new Vector2(px + pw * 0.46f, py + ph * 0.25f), 2f, branch);
         for (int i = 0; i < 5; i++)
         {
             float t = 0.16f + i * 0.16f;
-            Vector2 point = Vector2.Lerp(fork, new Vector2(px + pw * 0.84f, py + ph * 0.31f), t);
+            Vector2 point = Vector2.Lerp(fork, new Vector2(px + pw * 0.44f, py + ph * 0.29f), t);
             point.x += Mathf.Sin(time * 0.45f + i) * 2f;
             DrawPixelLine(point, point + new Vector2(-6f, 9f + i * 1.5f), 2f, leaf);
             DrawRect(new Rect(point.x - 7f, point.y + 8f + i * 1.5f, 8f, 3f), leaf);
@@ -181,10 +209,10 @@ public sealed class HolidayFireworksField
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
 
         // 欧阳修《生查子·元夕》：右列起读，列内自上而下，列间从右向左。
-        string[] columns = shortSide >= 390f
+        string[] columns = pw >= 700f
             ? new[] { "去年元夜时", "花市灯如昼", "月上柳梢头", "人约黄昏后" }
             : new[] { "花市灯如昼", "月上柳梢头", "人约黄昏后" };
-        float poetryRight = px + pw * 0.91f;
+        float poetryRight = px + pw * 0.93f;
         float poetryTop = py + ph * 0.29f;
         for (int column = 0; column < columns.Length; column++)
         {
@@ -232,12 +260,12 @@ public sealed class HolidayFireworksField
         float lineHeight = Mathf.Max(22f, fontSize * 1.16f);
         float columnGap = Mathf.Max(26f, fontSize * 1.60f);
         float breath = 0.54f + (0.5f + 0.5f * Mathf.Sin(_motionTime * 0.86f)) * 0.30f;
-        Color ink = Color.Lerp(_sparkColor, new Color(1f, 0.93f, 0.70f, 1f), 0.70f);
+        Color ink = Color.Lerp(_sparkColor, new Color(1f, 0.94f, 0.76f, 1f), 0.84f);
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
         GUI.color = Color.white;
 
         // 大界面显示完整四句，小界面保留核心两句。
-        string[] columns = shortSide >= 390f
+        string[] columns = pw >= 700f
             ? new[] { "爆竹声中一岁除", "春风送暖入屠苏", "千门万户曈曈日", "总把新桃换旧符" }
             : new[] { "爆竹声中一岁除", "春风送暖入屠苏" };
         // DrawFireworks 由整个面板入口调用，必须避开左侧会话列表（约 0~0.32）。
@@ -258,6 +286,23 @@ public sealed class HolidayFireworksField
             }
         }
         GUI.color = previousColor;
+    }
+
+    private void DrawNewYearBackplate(float px, float py, float pw, float ph, float animAlpha)
+    {
+        Color panel = new Color(_primaryColor.r, _primaryColor.g, _primaryColor.b, animAlpha * 0.09f);
+        Color gold = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.18f);
+        for (int i = 0; i < 3; i++)
+        {
+            float x = px + pw * (0.42f + i * 0.20f);
+            float y = py + ph * 0.68f;
+            float w = pw * 0.12f;
+            float h = ph * 0.17f;
+            DrawRect(new Rect(x, y, w, h), panel);
+            DrawRect(new Rect(x + w * 0.48f, y, 2f, h), gold);
+            DrawRect(new Rect(x, y + h * 0.50f, w, 2f), gold);
+            DrawRect(new Rect(x - 5f, y - 4f, w + 10f, 3f), gold);
+        }
     }
 
     private void DrawDragonBoat(float px, float py, float pw, float ph, float animAlpha)
@@ -405,12 +450,12 @@ public sealed class HolidayFireworksField
         float lineHeight = Mathf.Max(22f, fontSize * 1.18f);
         float columnGap = Mathf.Max(24f, fontSize * 1.55f);
         float breath = 0.56f + (0.5f + 0.5f * Mathf.Sin(_motionTime * 0.85f)) * 0.28f;
-        Color ink = Color.Lerp(_sparkColor, new Color(0.90f, 0.99f, 0.90f, 1f), 0.72f);
+        Color ink = Color.Lerp(_sparkColor, new Color(0.92f, 1.00f, 0.92f, 1f), 0.86f);
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
         GUI.color = Color.white;
 
         // 右列为词句开头，列内自上而下，列间从右向左。
-        string[] columns = shortSide >= 430f
+        string[] columns = pw >= 700f
             ? new[] { "银塘朱槛曲尘波", "圆绿卷新荷", "兰条荐浴", "菖花酿酒", "天气尚清和", "好将沉醉酬佳节", "十分酒", "十分歌" }
             : new[] { "银塘朱槛曲尘波", "圆绿卷新荷", "菖花酿酒", "十分歌" };
         float poetryRight = px + pw * 0.82f;
@@ -465,9 +510,9 @@ public sealed class HolidayFireworksField
         DrawDuanwuDragonBoat(px, py, pw, ph, animAlpha);
 
         // 曲尘波：水波只做低对比的横向起伏，不干扰竖式诗词。
-        for (int row = 0; row < 4; row++)
+        for (int row = 0; row < 3; row++)
         {
-            float y = py + ph * (0.73f + row * 0.055f);
+            float y = py + ph * (0.74f + row * 0.070f);
             for (int segment = 0; segment < 4; segment++)
             {
                 float x = px + pw * (0.36f + segment * 0.16f);
@@ -490,14 +535,15 @@ public sealed class HolidayFireworksField
     private void DrawDuanwuDragonBoat(float px, float py, float pw, float ph, float animAlpha)
     {
         float time = _motionTime;
-        float boatWidth = Mathf.Clamp(pw * 0.34f, 250f, 340f);
+        bool compact = pw < 700f;
+        float boatWidth = Mathf.Clamp(pw * (compact ? 0.42f : 0.40f), compact ? 180f : 290f, compact ? 250f : 400f);
         float sceneLeft = px + pw * 0.36f;
         float sceneRight = px + pw * 0.96f;
         float travelRange = Mathf.Max(1f, sceneRight - sceneLeft - boatWidth);
-        float travel = Mathf.PingPong(time * 18f, travelRange);
+        float travel = Mathf.PingPong(time * 12f, travelRange);
         float boatX = sceneLeft + travel;
         float boatY = py + ph * 0.55f + Mathf.Sin(time * 1.35f) * 3f;
-        bool movingRight = Mathf.Repeat(time * 18f / travelRange, 2f) < 1f;
+        bool movingRight = Mathf.Repeat(time * 12f / travelRange, 2f) < 1f;
 
         Color outline = new Color(0.05f, 0.30f, 0.24f, animAlpha * 0.96f);
         Color hull = new Color(0.05f, 0.48f, 0.32f, animAlpha * 0.98f);
@@ -668,12 +714,12 @@ public sealed class HolidayFireworksField
         _poetryStyle.fontSize = fontSize;
         float lineHeight = Mathf.Max(22f, fontSize * 1.16f);
         float columnGap = Mathf.Max(26f, fontSize * 1.60f);
-        float breath = 0.68f + (0.5f + 0.5f * Mathf.Sin(_motionTime * 0.84f)) * 0.32f;
-        Color ink = new Color(1.00f, 0.88f, 0.66f, 1f);
+        float breath = 0.78f + (0.5f + 0.5f * Mathf.Sin(_motionTime * 0.84f)) * 0.22f;
+        Color ink = new Color(1.00f, 0.92f, 0.72f, 1f);
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
         GUI.color = Color.white;
 
-        string[] columns = shortSide >= 390f
+        string[] columns = pw >= 700f
             ? new[] { "纤云弄巧", "飞星传恨", "银汉迢迢暗度" }
             : new[] { "纤云弄巧", "银汉迢迢暗度" };
         // 动态层的坐标原点是整个面板，诗词不能落入左侧会话列表。
@@ -697,18 +743,21 @@ public sealed class HolidayFireworksField
     private void DrawMidAutumn(float px, float py, float pw, float ph, float animAlpha)
     {
         float time = _motionTime;
-        float moonX = px + pw * 0.78f;
-        float moonY = py + ph * 0.18f;
+        bool compact = pw < 700f;
+        float moonX = px + pw * (compact ? 0.78f : 0.74f);
+        float moonY = py + ph * (compact ? 0.18f : 0.17f);
         float moonBreath = 0.70f + (0.5f + 0.5f * Mathf.Sin(time * 0.75f)) * 0.18f;
         Color moon = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * moonBreath);
         Color moonShadow = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.42f);
-        DrawRect(new Rect(moonX - 34f, moonY - 26f, 68f, 52f),
+        float moonWidth = compact ? 58f : 92f;
+        float moonHeight = compact ? 46f : 70f;
+        DrawRect(new Rect(moonX - moonWidth * 0.50f, moonY - moonHeight * 0.50f, moonWidth, moonHeight),
             new Color(moon.r, moon.g, moon.b, animAlpha * 0.12f));
-        DrawRect(new Rect(moonX - 24f, moonY - 18f, 48f, 36f), moon);
-        DrawRect(new Rect(moonX - 18f, moonY - 24f, 36f, 48f), moon);
-        DrawRect(new Rect(moonX - 30f, moonY - 10f, 60f, 20f), moon);
-        DrawRect(new Rect(moonX - 14f, moonY - 7f, 7f, 5f), moonShadow);
-        DrawRect(new Rect(moonX + 7f, moonY + 5f, 8f, 4f), moonShadow);
+        DrawRect(new Rect(moonX - moonWidth * 0.35f, moonY - moonHeight * 0.50f, moonWidth * 0.70f, moonHeight), moon);
+        DrawRect(new Rect(moonX - moonWidth * 0.44f, moonY - moonHeight * 0.28f, moonWidth * 0.88f, moonHeight * 0.56f), moon);
+        DrawRect(new Rect(moonX - moonWidth * 0.22f, moonY - moonHeight * 0.42f, moonWidth * 0.44f, moonHeight * 0.84f), moon);
+        DrawRect(new Rect(moonX - moonWidth * 0.20f, moonY - moonHeight * 0.13f, moonWidth * 0.11f, moonHeight * 0.10f), moonShadow);
+        DrawRect(new Rect(moonX + moonWidth * 0.10f, moonY + moonHeight * 0.08f, moonWidth * 0.12f, moonHeight * 0.08f), moonShadow);
 
         // 云朵只铺在右侧聊天区，作为月亮的中景层，并以慢速横移保持呼吸感。
         Color cloud = new Color(_secondaryColor.r, _secondaryColor.g, _secondaryColor.b, animAlpha * 0.68f);
@@ -727,6 +776,9 @@ public sealed class HolidayFireworksField
         float rabbitX = px + pw * 0.61f;
         float rabbitY = py + ph * 0.56f - Mathf.Max(0f, Mathf.Sin(time * 1.35f)) * 7f;
         Color rabbit = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.80f);
+        Matrix4x4 rabbitPreviousMatrix = GUI.matrix;
+        if (!compact)
+            GUIUtility.ScaleAroundPivot(new Vector2(1.18f, 1.18f), new Vector2(rabbitX + 19f, rabbitY + 10f));
         DrawRect(new Rect(rabbitX + 8f, rabbitY - 15f, 7f, 18f), rabbit);
         DrawRect(new Rect(rabbitX + 22f, rabbitY - 13f, 7f, 16f), rabbit);
         DrawRect(new Rect(rabbitX + 6f, rabbitY, 28f, 24f), rabbit);
@@ -736,6 +788,7 @@ public sealed class HolidayFireworksField
         DrawRect(new Rect(rabbitX + 27f, rabbitY + 6f, 4f, 4f),
             new Color(0.96f, 0.36f, 0.28f, animAlpha * 0.92f));
         DrawRect(new Rect(rabbitX - 9f, rabbitY + 15f, 10f, 6f), rabbit);
+        GUI.matrix = rabbitPreviousMatrix;
 
         DrawMidAutumnPoetry(px, py, pw, ph, animAlpha);
     }
@@ -755,7 +808,7 @@ public sealed class HolidayFireworksField
         _poetryStyle.normal.textColor = new Color(ink.r, ink.g, ink.b, animAlpha * breath);
         GUI.color = Color.white;
 
-        string[] columns = shortSide >= 390f
+        string[] columns = pw >= 700f
             ? new[] { "明月几时有", "把酒问青天", "但愿人长久", "千里共婵娟" }
             : new[] { "明月几时有", "千里共婵娟" };
         // 动态层的坐标原点是整个面板，诗词不能落入左侧会话列表。
@@ -778,9 +831,9 @@ public sealed class HolidayFireworksField
 
     private void DrawMidAutumnOsmanthus(float px, float py, float pw, float ph, float animAlpha, float time)
     {
-        Color branch = new Color(_secondaryColor.r * 0.72f, _secondaryColor.g * 0.72f,
-            _secondaryColor.b * 0.72f, animAlpha * 0.72f);
-        Color leaf = new Color(0.18f, 0.34f, 0.30f, animAlpha * 0.72f);
+        Color branch = new Color(_secondaryColor.r * 0.86f, _secondaryColor.g * 0.86f,
+            _secondaryColor.b * 0.86f, animAlpha * 0.78f);
+        Color leaf = new Color(0.25f, 0.42f, 0.37f, animAlpha * 0.78f);
         Color flower = new Color(_sparkColor.r, _sparkColor.g, _sparkColor.b, animAlpha * 0.82f);
         Vector2 root = new Vector2(px + pw * 0.38f, py + ph * 0.80f);
         Vector2 fork = new Vector2(px + pw * 0.50f, py + ph * 0.70f);
@@ -849,7 +902,7 @@ public sealed class HolidayFireworksField
 
             // 爆裂阶段：火星先高速向外冲，再受重力沿抛物线下坠。
             float fade = 1f - Mathf.Clamp01((burstT - 0.62f) / 0.38f);
-            float maxRadius = Mathf.Min(pw, ph) * 0.16f * _burstScales[i];
+            float maxRadius = Mathf.Min(pw, ph) * 0.18f * _burstScales[i];
             // 中心黄点只作为短促闪光，不在整个爆裂阶段持续占据视觉中心。
             if (burstT < 0.14f)
             {
@@ -872,7 +925,7 @@ public sealed class HolidayFireworksField
                 Vector2 trailPosition = GetSparkPosition(new Vector2(centerX, centerY), angle,
                     Mathf.Max(0f, burstT - 0.20f), maxRadius * lengthScale);
                 float thickness = s % 3 == 0 ? 2.2f : 1.4f;
-                float rayAlpha = animAlpha * fade * (0.86f + 0.12f * Mathf.Sin(s * 1.3f + i));
+                float rayAlpha = animAlpha * Mathf.Max(0.34f, fade * (0.86f + 0.12f * Mathf.Sin(s * 1.3f + i)));
                 DrawSegment(trailPosition, previousPosition, thickness * 0.72f,
                     new Color(tint.r, tint.g, tint.b, rayAlpha * 0.34f));
                 DrawSegment(previousPosition, position, thickness,

@@ -3,7 +3,7 @@
 > **文档作用**: 本模块文档描述桌宠「记忆与人格」子系统的**代码真相**——PetMemory 三层记忆、PersonalityManager 五维人格演化、KnowledgeBaseManager 本地 RAG 知识库，以及数据持久化文件地图。改记忆读写/人格演化/知识库相关代码前必读。
 > **基本架构**: `PetMemory`（entries + coreFacts + conversationSummary 三层存储；entries 按四层配额治理，按当前问题相关性收束注入）；`PersonalityManager`（五维人格 × 三维关系 × 情绪联动，`pet_personality.json`）；`KnowledgeBaseManager`（Ollama nomic-embed-text 嵌入 + 余弦 TopK 检索，`knowledge_base.json`）；反思链路（CheckReflection → DoReflection → CommitReflection）。数据根目录由 `DataPathConfig.cs` 统一解析：默认 `%LOCALAPPDATA%\FuXuan\DesktopPetData\`，可用 `FU_XUAN_DATA` 覆盖，失效配置会在已有旧目录时按代码规则回退，防止重装生成第二份活动目录。
 > **开发历史迭代**: N39 修复两大缺口——反思链路实际接线（死回调 OnReflectRequest 删除）、知识库上下文实际注入（GetFormattedContext 返回 LastFormattedContext 缓存）；测试模式 IsTestMode 防污染（.test_mode 标记文件）；2026-08-12 P4 新增 PreferencesManager 偏好结构化存储（`pet_preferences.json` + set/query/remove 三工具）。
-> **编写注意事项**: ①测试必须开 `.test_mode`（防污染 pet_memory.json 忆境 + pet_personality.json 人格计数），测后清理用 `scripts/openclaw/clean_test_pollution.cjs`；②人格触发词注意区分正负触发（"我的"/"我在"等 importantMarkers）；③`MotionAgent` 已按帧调用 `DriftTowardNeutral()`，修改动作循环时要防止无交互回归逻辑被移除；④知识库检索是协程异步填充缓存，同步 API 返回最近结果（可能有 1 帧延迟）。
+> **编写注意事项**: ①测试必须开 `.test_mode`（防污染 pet_memory.json 忆境 + pet_personality.json 人格计数），测后清理用 `scripts/openclaw/clean_test_pollution.cjs`；②人格触发词注意区分正负触发（"我的"/"我在"等 importantMarkers）；③`MotionAgent` 已按帧调用 `DriftTowardNeutral()`，修改动作循环时要防止无交互回归逻辑被移除；④知识库检索是协程异步填充缓存，同步 API 返回最近结果（可能有 1 帧延迟）；⑤`PetMemory` 与 `KnowledgeBaseManager` 必须经 `AtomicFileWriter` 落盘，保留 `.bak` 并在主 JSON 损坏时回退读取备份。
 
 ---
 
@@ -62,6 +62,8 @@ SendRequestCoroutine → CheckReflection (L518)
 记忆重要性评估 / 反思提炼已实际驱动（曾有的 `OnReflectRequest` 死回调已删除）。
 
 ### 2.5 数据持久化地图（根目录由 `DataPathConfig.cs` 决定）
+
+`AtomicFileWriter` 先把 UTF-8 文本写入同目录的唯一临时文件并 flush，再以 `File.Replace` 原子替换已有正式文件，同时保留 `<file>.bak`。首次保存使用原子移动。`PetMemory.Load()` 与 `KnowledgeBaseManager.Load()` 在主 JSON 解析失败时会读取该备份；两次 EditMode 测试覆盖替换后备份内容和首次写入无临时残留。
 
 | 文件 | 写入方 | 说明 |
 |------|--------|------|

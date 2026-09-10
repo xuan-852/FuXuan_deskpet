@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -184,9 +184,10 @@ public class ToolEngineTests
     [Test]
     public void Execute_只读工具不抛异常()
     {
-        // 只读安全工具白名单——这些工具以空参数调用不会产生副作用
+        // 只读安全工具白名单——不得包含剪贴板、文件内容、截图等私密数据来源。
+        // 测试只验证这些工具能处理空参数；危险/隐私工具必须由专门的替身测试覆盖。
         string[] safeReadonlyTools = {
-            "get_system_info", "get_mouse_pos", "get_clipboard",
+            "get_system_info", "get_mouse_pos",
             "get_volume", "get_screen_size", "query_reminders",
             "query_exams", "query_scores", "query_schedule",
             "show_inner_state", "get_traffic_info"
@@ -221,16 +222,6 @@ public class ToolEngineTests
             $"get_mouse_pos 应返回坐标信息，得到: {result}");
     }
 
-    [Test]
-    public void GetClipboard_不抛异常()
-    {
-        Assert.DoesNotThrow(() =>
-        {
-            string result = ToolRegistry.Execute("get_clipboard", "{}");
-            Assert.IsNotNull(result);
-        });
-    }
-
     // ================================================================
     //  4. 异步工具执行（协程路径）
     // ================================================================
@@ -247,18 +238,15 @@ public class ToolEngineTests
     }
 
     [UnityTest]
-    public IEnumerator ExecuteAsync_所有异步工具可启动()
+    public IEnumerator ExecuteAsync_未知工具不触发副作用()
     {
-        // 注意：一些工具因缺少运行时依赖（Live2DRenderer、GLM 等）
-        // 会返回"功能不可用"提示，但不应该抛 C# 异常
-        foreach (var name in GetAsyncToolNames())
-        {
-            string result = null;
-            yield return ToolRegistry.ExecuteAsync(
-                name, "{}", r => result = r);
-            Assert.IsNotNull(result,
-                $"异步工具 {name} 应返回结果（可能是功能不可用提示）");
-        }
+        // 不得以空参数遍历异步工具。其集合包含截图、联网、文件和系统操作，
+        // 即使其中一些当前会在测试模式降级，也不能把偶然的内部保护当作测试边界。
+        string result = null;
+        yield return ToolRegistry.ExecuteAsync(
+            "non_existent_async_tool", "{}", r => result = r);
+        Assert.IsNotNull(result);
+        StringAssert.Contains("不识此术", result);
     }
 
     // ================================================================
@@ -333,11 +321,6 @@ public class ToolEngineTests
             // ExecuteCoroutine + GetCoroutineResult (sync)
             yield return invoker.ExecuteCoroutine("get_system_info", "{}");
             string cr = invoker.GetCoroutineResult();
-            Assert.IsNotNull(cr);
-
-            // ExecuteCoroutine (async)
-            yield return invoker.ExecuteCoroutine("take_screenshot", "{}");
-            cr = invoker.GetCoroutineResult();
             Assert.IsNotNull(cr);
 
             // ExecuteCoroutine (unknown)

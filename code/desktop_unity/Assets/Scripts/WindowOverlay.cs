@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using UnityEngine;
 
 /// <summary>
@@ -42,6 +43,8 @@ public class WindowOverlay : MonoBehaviour
     private const int GWL_EXSTYLE = -20;
     private const int GWLP_WNDPROC = -4;
     private const uint WM_NCHITTEST = 0x0084;
+    private const uint WM_QUERYENDSESSION = 0x0011;
+    private const uint WM_ENDSESSION = 0x0016;
     private const int HTTRANSPARENT = -1;
 
     // 要移除的样式：标题栏、边框、系统菜单、最小/最大按钮
@@ -259,10 +262,17 @@ public class WindowOverlay : MonoBehaviour
     private WindowProcDelegate _windowProcDelegate;
     private IntPtr _originalWndProc = IntPtr.Zero;
     private IntPtr _hookedHwnd = IntPtr.Zero;
+    private int _systemShutdownNotified;
     private bool _externalHoleApplied;
     private RECT _externalHoleRect;
     private float _nextTopMostRefreshRealtime = 0f;
     private const float TOPMOST_REFRESH_INTERVAL_SECONDS = 2f;
+
+    /// <summary>
+    /// Windows 会话结束确认后的退出通知。只在 WM_ENDSESSION(wParam != 0) 到达时触发，
+    /// 不在 WM_QUERYENDSESSION 阶段提前销毁，避免用户取消关机后桌宠处于半退出状态。
+    /// </summary>
+    public event Action SystemShutdownRequested;
 
     private void Start()
     {
@@ -653,69 +663,90 @@ public class WindowOverlay : MonoBehaviour
             Log($"Process.MainWindowHandle 失败: {ex.Message}");
         }
 
-        // ★ 方法2: 枚举窗口，但更严格地跳过非主窗口
+        // ★ 方法2: 枚举窗口，但更严格地跳过非主窗口。
+        // 冒烟测试会以隐藏窗口方式启动独立进程；此时 Unity 主窗口仍存在，
+        // 却不会通过 IsWindowVisible。只把同进程且类名明确为 Unity 的隐藏窗口
+        // 作为最后回退，避免误认外置对话窗口或其它内部窗口。
         Log($"回退: 枚举进程窗口...");
         IntPtr found = IntPtr.Zero;
+        IntPtr hiddenUnityWindow = IntPtr.Zero;
 
         EnumWindows((hWnd, lParam) =>
         {
-            if (!IsWindowVisible(hWnd))
-                return true;
-
             GetWindowThreadProcessId(hWnd, out uint pid);
-            if (pid == currentPid)
+            if (pid != currentPid) return true;
+
+            if (IsExternalChatWindow(hWnd))
             {
-                if (IsExternalChatWindow(hWnd))
+                Log($"  跳过外置对话窗口: {hWnd.ToInt64():X8}");
+                return true;
+            }
+
+            StringBuilder sb = new StringBuilder(256);
+            int len = (int)GetWindowTextW(hWnd, sb, sb.Capacity);
+            string title = len > 0 ? sb.ToString().Trim() : "(空标题)";
+            bool visible = IsWindowVisible(hWnd);
+
+            StringBuilder className = new StringBuilder(256);
+            int classLen = GetClassNameW(hWnd, className, className.Capacity);
+            string windowClass = classLen > 0 ? className.ToString() : string.Empty;
+            Log($"  窗口: {hWnd.ToInt64():X8} 标题='{title}', 类='{windowClass}', 可见={visible}");
+
+            if (!visible)
+            {
+                if (hiddenUnityWindow == IntPtr.Zero &&
+                    windowClass.IndexOf("Unity", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    Log($"  跳过外置对话窗口: {hWnd.ToInt64():X8}");
+                    hiddenUnityWindow = hWnd;
+                    Log($"  记录隐藏 Unity 主窗口候选: {hWnd.ToInt64():X8}");
+                }
+                return true;
+            }
+
+            if (len > 0 && !string.IsNullOrEmpty(title))
+            {
+                // 跳过所有已知的内部窗口 — 尤其警惕单字符标题！
+                if (title.StartsWith("Unity_") || title.StartsWith("UMP_") ||
+                    title.StartsWith("D3D") || title.Contains("GfxPlugin") ||
+                    title == "UnityWindowClass" || title == "UnityChildWindow" ||
+                    title.Length <= 2)  // ★ 单/双字符标题几乎肯定是内部窗口
                     return true;
+
+                // 优先精确匹配 productName
+                if (!string.IsNullOrEmpty(productName) &&
+                    title.Equals(productName, StringComparison.OrdinalIgnoreCase))
+                {
+                    Log($"  → 精确匹配 productName");
+                    found = hWnd;
+                    return false;
                 }
 
-                StringBuilder sb = new StringBuilder(256);
-                int len = (int)GetWindowTextW(hWnd, sb, sb.Capacity);
-                string title = len > 0 ? sb.ToString().Trim() : "(空标题)";
-
-                Log($"  窗口: {hWnd.ToInt64():X8} 标题='{title}'");
-
-                if (len > 0 && !string.IsNullOrEmpty(title))
+                // 包含 productName
+                if (!string.IsNullOrEmpty(productName) &&
+                    title.IndexOf(productName, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    // 跳过所有已知的内部窗口 — 尤其警惕单字符标题！
-                    if (title.StartsWith("Unity_") || title.StartsWith("UMP_") ||
-                        title.StartsWith("D3D") || title.Contains("GfxPlugin") ||
-                        title == "UnityWindowClass" || title == "UnityChildWindow" ||
-                        title.Length <= 2)  // ★ 单/双字符标题几乎肯定是内部窗口
-                        return true;
+                    Log($"  → 包含 productName");
+                    found = hWnd;
+                    return false;
+                }
 
-                    // 优先精确匹配 productName
-                    if (!string.IsNullOrEmpty(productName) &&
-                        title.Equals(productName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        Log($"  → 精确匹配 productName");
-                        found = hWnd;
-                        return false;
-                    }
-
-                    // 包含 productName
-                    if (!string.IsNullOrEmpty(productName) &&
-                        title.IndexOf(productName, StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        Log($"  → 包含 productName");
-                        found = hWnd;
-                        return false;
-                    }
-
-                    // 特征匹配 — 必须有明确的关键词
-                    if (title.Contains("Unity") || title.Contains("Player") ||
-                        title.IndexOf("desktop", StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        Log($"  → 特征匹配");
-                        found = hWnd;
-                        return false;
-                    }
+                // 特征匹配 — 必须有明确的关键词
+                if (title.Contains("Unity") || title.Contains("Player") ||
+                    title.IndexOf("desktop", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    Log($"  → 特征匹配");
+                    found = hWnd;
+                    return false;
                 }
             }
             return true;
         }, IntPtr.Zero);
+
+        if (found == IntPtr.Zero && hiddenUnityWindow != IntPtr.Zero)
+        {
+            Log($"使用隐藏 Unity 主窗口候选: {hiddenUnityWindow.ToInt64():X8}");
+            found = hiddenUnityWindow;
+        }
 
         if (found != IntPtr.Zero)
         {
@@ -979,9 +1010,35 @@ public class WindowOverlay : MonoBehaviour
     {
         if (msg == WM_NCHITTEST && clickThrough)
             return new IntPtr(HTTRANSPARENT);
+        // 系统关机/注销前 Windows 会先询问所有顶层窗口。必须明确同意，
+        // 否则无边框/透明窗口的自定义 WndProc 可能让会话结束流程等待超时。
+        if (msg == WM_QUERYENDSESSION)
+            return new IntPtr(1);
+
+        // WM_ENDSESSION 表示关机/注销已确认。Unity 通常随后会触发
+        // OnApplicationQuit，但这里额外通知统一退出链，覆盖透明窗口/托盘场景
+        // 下 OnApplicationQuit 来不及进入的情况。
+        if (msg == WM_ENDSESSION && wParam != IntPtr.Zero)
+            NotifySystemShutdown();
         if (_originalWndProc != IntPtr.Zero)
             return CallWindowProcW(_originalWndProc, hWnd, msg, wParam, lParam);
         return IntPtr.Zero;
+    }
+
+    private void NotifySystemShutdown()
+    {
+        if (Interlocked.Exchange(ref _systemShutdownNotified, 1) != 0)
+            return;
+
+        try
+        {
+            UnityEngine.Debug.Log("[WindowOverlay] 收到 Windows 会话结束通知，进入优雅退出链");
+            SystemShutdownRequested?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            UnityEngine.Debug.LogError($"[WindowOverlay] 系统关机退出通知处理失败: {ex.Message}");
+        }
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -71,6 +71,19 @@ public class GenerateMotionTool : IPetTool
 
         if (duration > 0.5f) plan.TotalDuration = duration;
 
+        // 参数动作必须独占模型写入：不能在预设/旧式动作或另一段 AI 参数动作
+        // 尚未退出时启动第二个生成器，否则两套协程会在同一帧覆盖同一参数。
+        if (renderer.IsActionLocked || renderer.CurrentActionId != 0 || renderer.IsAiControlLocked ||
+            (renderer.ActionController?.Actions != null && renderer.ActionController.Actions.IsPlaying))
+        {
+            onResult?.Invoke("⏳ 当前已有 Live2D 动作正在收束，请等待完成后再开始演武");
+            yield break;
+        }
+
+        // 表情也会在 LateUpdate 写入面部参数；生成动作开始前立即停止它，避免
+        // 淡出阶段仍与 MotionGenerator 的关键帧交叠。
+        renderer.ActionController?.StopAll();
+
         // 设置 AI 控制锁
         renderer.SetAiControlLock(plan.TotalDuration + 1f);
 
@@ -89,6 +102,7 @@ public class GenerateMotionTool : IPetTool
                 }
             }
         });
+        renderer.ReleaseAiControlLock();
 
         string baseResult = $"✅ 演武完成：「{plan.Description}」，持续 {plan.TotalDuration:F1} 秒，共 {plan.KeyFrames.Count} 个关键帧";
 

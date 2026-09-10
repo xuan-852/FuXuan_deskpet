@@ -14,6 +14,7 @@
 | ✅ | 本地 Ollama 就绪检查与模型存在性保护 | `RuntimeReadinessService`、`LocalLLMClient`；启动自检不发起付费云端探测 |
 | ✅ | 请求生命周期、取消与失败状态收敛 | `RequestLifecycle`、`RequestStatusText`、`CancelCurrentRequest()`、`ReplyFinalizer` |
 | ✅ | OpenClaw 任务取消与关闭路径保护 | `/task/{id}/cancel`、`BeginShutdown()`、取消结果 `success` 校验 |
+| ⚠️ | Windows 关机/注销优雅退出 | `WindowOverlay` 已接入 `WM_QUERYENDSESSION`/`WM_ENDSESSION` 并通知 `BeginShutdown()`；隔离消息探针通过，真实关机/注销仍待人工观察 |
 | ✅ | 外置窗口 DWM 恢复与非激活置顶看门狗 | `WindowOverlay` 延迟重建、2 秒一次 `HWND_TOPMOST` 看门狗 |
 | ✅ | 构建权限与受限沙箱判定说明 | `docs/build-workflow.md`、根目录 `AGENTS.md` |
 | 🔴 P0 | 高强度完整构建稳定性 | 用户反馈完整高负载构建会令 i9 CPU 瞬时满载、95°C+，偶发整机重启；系统存在 `Kernel-Power 41` 与处理器 `WHEA-Logger 19 Internal parity error`；**软件层构建负载保护已实现**（`build.ps1` 默认增量 + 限制 16 核 + BelowNormal + 子进程监视，实测 CPU 均值 15~19%/峰值 21~26%）；**硬件根因（BIOS/散热/PSU）仍未核查** |
@@ -66,6 +67,8 @@
 单节日只有在综合评分至少 85/100、无 P0/P1/P2、自动验证和人工审核证据齐全、默认主题恢复正常、生产数据零污染、Live2D 未修改，并且相关文档同步完成后，才能改为 ✅。本轮五个主题已完成 T0、T1、T2、T4 和截图视觉预审；T3/T5 仍等待真实 GUI 双击/拖拽签字，T6 必须在其后完成文件范围复核、文档归档和推送。`96f199d` 记录本轮文档同步内容，不代表五个主题已经最终验收。具体步骤和记录字段见 [`holiday-skin-development-guide.md`](holiday-skin-development-guide.md) 与 [`holiday-skin-review-standard.md`](holiday-skin-review-standard.md)。
 
 **动态复测更新（2026-09-04）**：`b531d03` 修复节日动态时钟和透明窗口主动重绘；五个主题重新完成四图隔离评测，背景位移/状态变化可见，Quick、完整构建、EditMode、隔离冒烟均通过。该修复更新 T2/T4 证据，不改变 T3/T5 等待真实 GUI 签字的状态。
+
+**视觉优化复测更新（2026-09-04）**：五主题补齐紧凑窗口安全区与按宽度响应式诗词列数，并对烟花背板、灯笼事件点亮/倒影、龙舟尺寸与速度、七夕文字呼吸、中秋月兔和桂枝层次进行小幅优化。最终隔离评测生成 16 张有效 Unity 截图，EditMode `failed=0`、完整构建、日志异常检查和生产数据隔离均通过；该更新不关闭 T3/T5/T6。
 
 ---
 
@@ -1142,6 +1145,13 @@ vis_verify
 | 状态 | 任务 | 验证依据 |
 |------|------|---------|
 | ✅ | OpenClaw 安装包桥接链路收敛：服务注册错误检查、升级刷新、便携 OpenClaw 路径、健康检查与动态 gateway-chat 文件名验收 | `node --check`、full-access `build.ps1 -Quick`、Inno Setup 编译、静默安装/卸载验收、隔离端口 `/health` 通过 |
+
+### 2026-09-10 v1.0.13 安装包重建
+
+| 状态 | 任务 | 验证依据 |
+|------|------|---------|
+| ✅ | 当前 Unity 完整构建 → portable（内置 Node v22.22.3）→ EXE/ZIP/SHA256；随包 Ollama 下载脚本改为 UTF-8 BOM | `build.ps1 -Quick`、完整构建、portable PowerShell 5.1 解析、Node/Bridge 语法检查、Inno 编译通过 |
+| ⚠️ | 本机 `D:\Fuxuan` 静默安装：程序文件与 OpenClaw 初始化完成；桥接服务注册待闭环 | `install-service.cmd` 因 NSSM 在线下载不可用退出 10；应改为经完整性校验的随包依赖或使用受控安装源后，在干净 VM 复验 |
 
 ### 2026-08-30 Security hardening
 

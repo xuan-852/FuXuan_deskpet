@@ -1,4 +1,4 @@
-using UnityEditor;
+﻿using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
@@ -42,8 +42,12 @@ public class BuildScript
             Debug.Log("[BuildScript] 保留 Bee 缓存，增量构建（需全量请在 build.ps1 加 -CleanBeeCache）");
         }
 
-        // ★ 用硬编码绝对路径
-        string buildDir = @"D:\Unity\projects\Desktop_per_pro\Build";
+        // 默认沿用正式 Build 目录；自动化验收可通过 build.ps1 的
+        // FU_XUAN_BUILD_OUTPUT 写入隔离位置，避免锁定用户正在运行的桌宠。
+        string buildDir = System.Environment.GetEnvironmentVariable("FU_XUAN_BUILD_OUTPUT");
+        if (string.IsNullOrWhiteSpace(buildDir))
+            buildDir = @"D:\Unity\projects\Desktop_per_pro\Build";
+        buildDir = Path.GetFullPath(buildDir);
         string buildPath = Path.Combine(buildDir, "DesktopPet.exe");
 
         if (!Directory.Exists(buildDir))

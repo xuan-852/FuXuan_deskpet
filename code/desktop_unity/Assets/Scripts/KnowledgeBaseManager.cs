@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -746,7 +746,7 @@ public class KnowledgeBaseManager : MonoBehaviour
             string dir = Path.GetDirectoryName(FilePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
-            File.WriteAllText(FilePath, json, Encoding.UTF8);
+            AtomicFileWriter.WriteAllText(FilePath, json, new UTF8Encoding(false));
         }
         catch (Exception e)
         {
@@ -760,8 +760,12 @@ public class KnowledgeBaseManager : MonoBehaviour
         {
             if (!File.Exists(FilePath)) return;
 
-            string json = File.ReadAllText(FilePath, Encoding.UTF8);
-            var data = Newtonsoft.Json.JsonConvert.DeserializeObject<KnowledgeBaseData>(json);
+            KnowledgeBaseData data = LoadKnowledgeBaseFile(FilePath);
+            if (data == null && File.Exists(FilePath + ".bak"))
+            {
+                Debug.LogWarning("[KnowledgeBase] 主知识库文件损坏，正在从最近备份恢复");
+                data = LoadKnowledgeBaseFile(FilePath + ".bak");
+            }
             if (data == null || data.documents == null) return;
 
             _documents.Clear();
@@ -779,6 +783,20 @@ public class KnowledgeBaseManager : MonoBehaviour
         {
             Debug.LogWarning($"[KnowledgeBase] 加载失败（首次使用或文件损坏）: {e.Message}");
             _documents.Clear();
+        }
+    }
+
+    private static KnowledgeBaseData LoadKnowledgeBaseFile(string path)
+    {
+        try
+        {
+            string json = File.ReadAllText(path, Encoding.UTF8);
+            return Newtonsoft.Json.JsonConvert.DeserializeObject<KnowledgeBaseData>(json);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[KnowledgeBase] 读取知识库文件失败: {e.Message}");
+            return null;
         }
     }
 

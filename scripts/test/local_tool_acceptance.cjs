@@ -38,8 +38,9 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const readLog = () => fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8') : '';
 const count = (text, needle) => (text.match(new RegExp(needle, 'g')) || []).length;
 
-function killPet() {
-  try { execFileSync('taskkill', ['/IM', 'DesktopPet.exe', '/F', '/T'], { stdio: 'ignore', windowsHide: true }); } catch (_) {}
+function stopOwnedPet(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  try { execFileSync('taskkill', ['/PID', String(pid), '/F', '/T'], { stdio: 'ignore', windowsHide: true }); } catch (_) {}
 }
 
 async function waitForLog(predicate, timeoutMs) {
@@ -60,8 +61,7 @@ async function main() {
     snapshot.set(file, fs.existsSync(target) ? fs.statSync(target).mtimeMs : 0);
   }
 
-  killPet();
-  await sleep(2500);
+  // 不按镜像名杀进程：用户可能正在运行生产桌宠。测试只管理自己启动的 PID。
   fs.rmSync(testRoot, { recursive: true, force: true });
   fs.mkdirSync(testRoot, { recursive: true });
   fs.writeFileSync(path.join(testRoot, '.test_mode'), '');
@@ -100,8 +100,7 @@ async function main() {
       await sleep(2500);
     }
   } finally {
-    try { child.kill(); } catch (_) {}
-    killPet();
+    stopOwnedPet(child.pid);
     await sleep(1000);
     fs.rmSync(testRoot, { recursive: true, force: true });
   }
@@ -122,7 +121,6 @@ async function main() {
 
 main().catch(error => {
   console.error(`[FAIL] ${error.message}`);
-  killPet();
   fs.rmSync(testRoot, { recursive: true, force: true });
   process.exitCode = 1;
 });

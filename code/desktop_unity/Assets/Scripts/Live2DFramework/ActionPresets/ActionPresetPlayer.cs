@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -123,17 +123,17 @@ public class ActionPresetPlayer
         CurrentAction = null;
     }
 
-    /// <summary>立即停止并清空参数（带淡出）</summary>
+    /// <summary>
+    /// 停止当前动作。
+    ///
+    /// 动作预设没有独立的参数所有权表，过去所谓的“淡出”只启动了一个
+    /// 不写参数的协程，却没有停止原播放协程。后续播放新动作时会失去旧协程
+    /// 的句柄，使两套关键帧在同一帧继续写入模型。先停止原协程，交由下一帧
+    /// 的渲染器基线/新动作接管参数，才能保证只有一个预设写入者。
+    /// </summary>
     public void StopWithFade(float fadeOut = 0.2f)
     {
-        if (_isPlaying)
-        {
-            _currentCoroutine = _coroutineHost.StartCoroutine(FadeOutRoutine(fadeOut));
-        }
-        else
-        {
-            Stop();
-        }
+        Stop();
     }
 
     // ================================================================
@@ -288,17 +288,6 @@ public class ActionPresetPlayer
 
         foreach (var key in allTargets.Keys)
             _mapper.Set(key, 0f);
-    }
-
-    private IEnumerator FadeOutRoutine(float duration)
-    {
-        // 快速淡出所有当前动作参数
-        // 由于我们不知道哪些参数被修改了，Safe 做法：只用 _isPlaying 做标志不实际清参数
-        // 实际场景中，下一帧的 Idle 动画会覆盖回去
-        _isPlaying = false;
-        CurrentAction = null;
-        _currentCoroutine = null;
-        yield break;
     }
 
     // ================================================================

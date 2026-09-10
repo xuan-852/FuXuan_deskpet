@@ -1,5 +1,7 @@
 # 📚 docs/ 文档总索引
 
+> **2026-09-06 项目测评**：[`project-evaluation-2026-09-06.md`](project-evaluation-2026-09-06.md) 记录全项目工程检查范围、脚本/办公/桥接实测、安装与测试隔离缺陷，以及尚未完成的验收门槛；不替代历史专项报告或人工签字。
+
 > **索引状态**: 2026-09-04 复核；代码改动完成并通过相应验证后，必须同步更新模块文档与受影响的顶层文档。
 > **文档作用**: 本文件是 `docs/` 目录的**导航地图**——告诉 AI 与开发者每份文档的作用、归属模块、阅读优先级，以及统一的文档编写模板。
 > **基本架构**: 三层结构——① 顶层权威文档（架构/规范/路线图/清单）→ ② `modules/` 模块文档（每模块一份，四要素）→ ③ 构建产物（report.* 等，勿手改）。
@@ -15,6 +17,8 @@
 - 设置页主题说明布局提交：`e09c2b1`；说明底板、文字对比度和与任务权重区域的间距已完成最终截图复核。
 - 主题快捷命令只在本地处理，不进入 LLM、聊天历史或忆境；自动化取证仍使用测试模式下的 `@@sim:holiday:*`。
 - 正式节日范围固定为新春 `cn_new_year`、元宵 `lantern_festival`、端午 `dragon_boat`、七夕 `qixi`、中秋 `mid_autumn`。五个主题均已完成代码实现、隔离自动验证、四类 Unity 截图和视觉预审，综合预评分为 91/92/91/91/91，当前均无 P0/P1/P2。
+- 2026-09-04 视觉优化复测已补齐紧凑窗口安全区、按宽度响应式诗词列数和五主题层次/动效微调；最终隔离评测 16 张截图、EditMode `failed=0`、完整构建和数据隔离检查通过。该复测未重新签发正式评分，真实 GUI 双击/拖拽签字门槛保持不变。
+- 2026-09-04 系统关机退出修复已补齐 `WM_QUERYENDSESSION`/`WM_ENDSESSION` 到统一 `BeginShutdown` 的链路；隔离消息探针、Quick、完整构建和运行时冒烟通过，真实关机/注销仍需人工观察。
 - “已实现/自动验证/截图预审”与“最终验收完成”严格分开：五个主题仍待真实 GUI 双击展开和拖拽/收回人工签字，T3/T5 未关闭，G1～G5 不能提前标记完成。
 - 带日期的评价和修复报告保留原结论；当前状态以本索引、节日评价报告附录、审核标准和任务清单为准。截图与临时测试目录不入库。
 
@@ -115,6 +119,10 @@
 4. **文档优先级**（AI 读取顺序）：`AGENTS.md` → `docs/README.md` → `development-standards.md` → `build-workflow.md` → `code-truth-architecture.md` → `token-cost-testing.md` → `token-saving-architecture.md` → 质量测试指南 → `project-bugs-and-acceptance.md` → 对应模块文档
 5. **数据真实性**：模块文档中的组件名/工具数/行号必须以代码为准（参考 `code-truth-architecture.md` 的审计方法），禁止沿用过时描述
 ## 2026-08-30 文档同步
+
+## 2026-09-10 安装包状态同步
+
+v1.0.13 已以当前完整构建重建 portable、EXE、ZIP 和 SHA256；Windows PowerShell 5.1 已能解析随包的 Ollama 下载脚本，且内置 Node 固定为 v22.22.3。`D:\Fuxuan` 本机静默安装的文件落地和 OpenClaw 初始化通过；NSSM 未随包提供、在线下载失败时桥接服务不会注册，因此干净机服务验收及商业签名仍为发布阻塞项。详见 [`installer-plan.md`](installer-plan.md) 与 [`task-inventory.md`](task-inventory.md)。
 
 安装包/OpenClaw 桥接链路已完成一轮实现收敛，详见 [`installer-plan.md`](installer-plan.md) 与 [`modules/bridge-communication.md`](modules/bridge-communication.md)。本轮代码和安装产物均已通过对应验证；任务状态已同步到 [`task-inventory.md`](task-inventory.md)。
 

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![版本](https://img.shields.io/badge/版本-v1.0.12-blue)
+![版本](https://img.shields.io/badge/版本-v1.0.13-blue)
 ![引擎](https://img.shields.io/badge/引擎-团结引擎%20Tuanjie%202022.3.62t7-purple)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%2064位-green)
 ![Live2D](https://img.shields.io/badge/Live2D-Cubism%205--r.4-orange)
@@ -26,8 +26,7 @@
 [下载 Windows 安装包 FuXuanSetup-1.0.12.exe](https://github.com/xuan-852/FuXuan_deskpet/releases/latest/download/FuXuanSetup-1.0.12.exe)<br>
 [备用 ZIP 下载（浏览器拦截 EXE 时使用）](https://github.com/xuan-852/FuXuan_deskpet/releases/latest/download/FuXuanSetup-1.0.12.zip)
 
-当前版本：`v1.0.12` · EXE SHA256：`56FFDF40F96123D6834F2193145F0752E45D93E47D1C6274D2ACB6F96859DFF5`<br>
-备用 ZIP SHA256：`8A2F63B89EACBEC86F7B47DE5CDAFDFD44F4D449B9C63C6EAA1855EFBE41636D`
+公开 Release 当前仍为 `v1.0.12`。本地构建候选 `v1.0.13`（尚未上传 Release）：EXE SHA256 `9F477BA9275BEA177A1603BEA6DEF378064AFF48C962A7F94FA6CE7D619036ED`；ZIP SHA256 `1D0AFF5B2EC04AC529E2554CEE0527E6488CA07B1BD7C7D01666511B043BA3F5`。
 
 > 首次发布的 Windows EXE 可能被 SmartScreen/浏览器提示“通常不会下载”。请优先从本仓库 Release 下载，并用对应 `.sha256` 文件校验；当前发布包尚未接入商业代码签名证书，正式签名接入后将减少此提示。
 
@@ -360,8 +359,8 @@ Desktop_per_pro/
 │   │   └── ...（感知/记忆/UI/物理 各子系统）
 │   └── openclaw_bridge.js       # Node.js 桥接服务器（:19876）
 ├── installer/                   # Inno Setup 安装包与组件脚本
-│   ├── dist/FuXuanSetup-1.0.12.exe # 当前发布安装包（GitHub Release Assets）
-│   └── dist/FuXuanSetup-1.0.12.zip # EXE 备用下载包
+│   ├── dist/FuXuanSetup-1.0.13.exe # 当前本地候选安装包（发布前需上传 Release）
+│   └── dist/FuXuanSetup-1.0.13.zip # EXE 备用下载包
 ├── scripts/office/              # Python 办公生成器（PPT/Word/Excel）
 ├── docs/                        # 权威文档（架构/规范/模块/路线图）
 │   ├── code-truth-architecture.md   # 代码真相架构审计
@@ -409,13 +408,14 @@ Desktop_per_pro/
 
 ## 📜 版本历史
 
-完整历史见 [`CHANGELOG.md`](CHANGELOG.md)。当前发布版本 **v1.0.12**：
+完整历史见 [`CHANGELOG.md`](CHANGELOG.md)。当前本地候选版本 **v1.0.13**（尚未上传公开 Release）：
 
 | 版本 | 日期 | 亮点 |
 |------|------|------|
 | **v1.0.8** | 2026-08-21 | 本地优先聊天模型路由与模型设置页；忆境治理与只读管理页；统一用户数据目录；安装/升级/卸载保留与删除逻辑；发布 Windows 安装包 |
 | **v1.0.9** | 2026-08-22 | 本地模型工具规划与安全执行链路；自然语言触发系统信息、文件搜索、文件夹、剪贴板和办公工具；规划 JSON 容错与本地隔离验收 |
 | **v1.0.12** | 2026-08-22 | Ollama 下载、安装、API 等待与模型拉取增加超时、独立日志和明确失败返回；安装器增加跨盘数据目录检测、可写性预检与旧目录复用 |
+| **v1.0.13** | 2026-09-10 | 重建桌宠、portable 与 EXE/ZIP；修复 PowerShell 5.1 对 Ollama 下载脚本的编码兼容性；内置 Node v22.22.3 |
 | **2026-08-12** | — | 任务可视化（进度/审批弹窗）+ **exec 审批 E2E 打通** + 多任务并行（per-session 锁）+ 任务模板库/轨迹沉淀（65 工具）+ 办公文档生成 + 偏好系统 |
 | **N41** | 2026-08-09 | 像素表情包（9 种脸部表情帧）+ 颜文字禁绝（SystemPrompt + 代码兜底翻译为表情动作） |
 | N40 | 2026-08-05~08 | 安全加固（危险工具审批/Bridge 鉴权）+ Token 优化 T1-T8（缓存命中率 98.6%、成本降 60%） |
@@ -434,7 +434,7 @@ Desktop_per_pro/
 - ✅ 本地优先聊天：qwen3:8b 质量档与 qwen2.5 系列低占用档位
 - ✅ 模型设置页：按模型展示真实生成样例，不复用其他模型的假样例
 - ✅ 忆境治理：重要度/置信度/相关性闸门、容量控制、按问题选择性注入、忆境只读管理页
-- ✅ v1.0.12 安装与分发：跨盘数据目录检测、可写性预检、旧目录复用、卸载保留/删除选择、Ollama 依赖超时保护、EXE/ZIP Release 安装包与 SHA256 校验
+- ⚠️ v1.0.13 安装与分发：EXE/ZIP 与 SHA256 已重建；跨盘数据、升级与卸载保留策略可用。NSSM 仍在线下载，服务注册的干净机验收与商业签名未完成。
 - 🔜 真实运行采样：对话质量、延迟、GPU/CPU 占用与动作状态切换
 - 🔜 多屏行走、3D 渲染模式、任务模板可视化画布
 

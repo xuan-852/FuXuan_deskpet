@@ -24,6 +24,8 @@
 
 > ⚠️ **环境固定**：Unity = `D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe`（32 位）；项目 = `D:\Unity\projects\Desktop_per_pro\code\desktop_unity`。不要换路径、不要装第二个编辑器。
 
+完整构建不会再按进程名终止正在运行的生产桌宠：默认 `Build\DesktopPet.exe` 被占用时会明确失败。需要与生产实例并行验证时，使用专属目录，例如 `./build.ps1 -OutputDir "$env:TEMP\fuxuan_build_check"`；构建成功日志会显示实际输出的 exe 路径。
+
 ## 二、标准流程（改完 C# 后）
 
 ```powershell

@@ -5,7 +5,7 @@
 ; 测试模式: /DPrivileges=lowest 编译后 setup.exe /VERYSILENT /SKIPENV /DIR=... 可本地静默验证
 ; ============================================================
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.12"
+  #define MyAppVersion "1.0.13"
 #endif
 #ifndef OutputSuffix
   #define OutputSuffix ""

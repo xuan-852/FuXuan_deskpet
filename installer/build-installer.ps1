@@ -17,7 +17,7 @@
 param(
     [switch]$SkipPack,
     [switch]$Test,
-    [string]$Version = "1.0.12",
+    [string]$Version = "1.0.13",
     # 正式发布时建议使用受信任 CA 签发的 PFX。密码只从环境变量读取，避免出现在命令历史/日志。
     [string]$SignPfx = "",
     [string]$SignPasswordEnv = "FUXUAN_SIGN_PASSWORD",
@@ -92,7 +92,7 @@ function Write-ReleaseMetadata([string]$path) {
 # ── 1. portable 就绪 ──
 if (-not $SkipPack) {
     Write-Host "`n[1/4] 打包便携目录..."
-    & (Join-Path $PSScriptRoot "build-portable.ps1") -IncludeNode
+    & (Join-Path $PSScriptRoot "build-portable.ps1") -IncludeNode -Version $Version
 } else {
     $portExe = Join-Path $PSScriptRoot "portable\DesktopPet.exe"
     if (-not (Test-Path $portExe)) { Write-Host "[ERROR] portable 不存在（先运行 build-portable.ps1）" -ForegroundColor Red; exit 1 }

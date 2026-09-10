@@ -25,6 +25,7 @@ param(
     [switch]$SkipOpenClaw,       # 跳过拷贝 openclaw npm 包（省 300MB）
     [string]$OpenClawSource = $env:OPENCLAW_SOURCE, # openclaw 包目录；也可从 OPENCLAW_NODE_MODULES 读取
     [string]$OutDir = "$PSScriptRoot\portable",
+    [string]$Version = "",                  # 正式安装器传入发布版本；独立 portable 构建则保留时间戳
     [string]$NodeVersion = "v22.22.3",   # ⚠️ 必须 ≥22.22.3：OpenClaw 要求 SQLite 3.51.3+，旧版 Node 内置 3.47.2 有 WAL 损坏 bug（2026-08-14 实测 v22.14.0 启动报错）
     [string]$PythonVersion = "3.12.10"   # 便携 Python 版本（不存在则回退 3.12.8）
 )
@@ -247,7 +248,11 @@ start "" /D "%ROOT%" "%ROOT%DesktopPet.exe"
 Write-CmdFile (Join-Path $OutDir "start-pet.cmd") $startPet
 
 # ── 8. version.txt + README ──
-$version = "v1.0-portable-$(Get-Date -Format 'yyyyMMdd-HHmm')"
+$version = if ([string]::IsNullOrWhiteSpace($Version)) {
+    "v1.0-portable-$(Get-Date -Format 'yyyyMMdd-HHmm')"
+} else {
+    "v$Version"
+}
 [System.IO.File]::WriteAllText((Join-Path $OutDir "version.txt"), $version + "`r`n", (New-Object System.Text.UTF8Encoding($true)))
 
 $readme = @"

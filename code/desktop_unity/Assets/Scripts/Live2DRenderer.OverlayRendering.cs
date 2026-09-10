@@ -225,6 +225,19 @@ public partial class Live2DRenderer
         float scale = GetRTScale();
         int targetWidth = QuantizeOverlaySize(Mathf.CeilToInt(cropWidth * scale));
         int targetHeight = QuantizeOverlaySize(Mathf.CeilToInt(cropHeight * scale));
+
+        // 动作结束时头发/衣摆的 Bounds 会在相邻两帧跨过一个 32px 量化边界。
+        // 若立即按 480↔512 反复销毁并创建 RT，透明窗口会闪黑，视觉上像头发
+        // 在闪烁。保留一个量化单位的余量；只有模型实际扩张至少两个量化单位
+        // 才重建，64px padding 足以覆盖这一小段包围盒波动。
+        if (_overlayRT != null &&
+            Mathf.Abs(targetWidth - _overlayScreenW) <= LOCAL_OVERLAY_SIZE_QUANTUM &&
+            Mathf.Abs(targetHeight - _overlayScreenH) <= LOCAL_OVERLAY_SIZE_QUANTUM)
+        {
+            targetWidth = _overlayScreenW;
+            targetHeight = _overlayScreenH;
+        }
+
         cropWidth = targetWidth / Mathf.Max(0.01f, scale);
         cropHeight = targetHeight / Mathf.Max(0.01f, scale);
 

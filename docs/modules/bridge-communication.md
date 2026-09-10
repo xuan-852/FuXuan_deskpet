@@ -1,7 +1,7 @@
 # 桥接通信 — C# ↔ Node.js ↔ Python 三层链路
 
 > **文档作用**: 本模块文档描述桌宠「通信桥接」子系统的**代码真相**——Unity C#（`OpenClawBridge.cs`）↔ Node.js 桥接服务器（`openclaw_bridge.js`，:19876）↔ OpenClaw Gateway（WebSocket :18789）↔ Python 脚本（办公/LaTeX 生成）的完整链路、端点契约、鉴权方式、超时与健壮性机制。**改任何端点/工具/通信相关代码前必读**。
-> **基本架构**: `OpenClawBridge.cs`（静态类，UnityWebRequest HTTP JSON）→ `openclaw_bridge.js`（Node http server，鉴权 `x-bridge-token`，请求 per-session 锁，任务心跳）→ ①WebSocket→OpenClaw Gateway（:18789，GATEWAY_TOKEN 自动从 openclaw.json 读取）②execSync→Python 脚本（临时 JSON 传参）。端点：`/health`/`/search`（GET）/`/task` 系列（POST+轮询+审批）/`/compile_latex`（POST）/`/generate_office`（POST）。端口 19876，PM2 管理（进程名 `openclaw-bridge`）。
+> **基本架构**: `OpenClawBridge.cs`（静态类，UnityWebRequest HTTP JSON）→ `openclaw_bridge.js`（Node http server，鉴权 `x-bridge-token`，请求 per-session 锁，任务心跳）→ ①WebSocket→OpenClaw Gateway（:18789，GATEWAY_TOKEN 自动从 openclaw.json 读取）②异步 `execFile`→Python/LaTex 子进程（临时 JSON 传参）。端点：`/health`/`/search`（GET）/`/task` 系列（POST+轮询+审批）/`/compile_latex`（POST）/`/generate_office`（POST）。端口 19876，PM2 管理（进程名 `openclaw-bridge`）。
 > **开发历史迭代**: run#7 修复并发响应错位（请求串行锁）；8/5 认证失败（GATEWAY_TOKEN 自动轮换读取）；8/7 BOM 导致 JSON.parse 失败（strip BOM）；任务不可重试错误分类（烧 token 元凶修复）；2026-08-12 Phase A 新增 `/generate_office` 端点（Python 办公生成器链路）；2026-08-12 Phase B 任务可视化：实时事件订阅（tool/item/approval）→ steps 收集去重 + `GET /task/{id}` 返回 `steps`/`pendingApproval` + `POST /task/{id}/approve` 审批回执；2026-08-12 Phase C 并行化（per-session 锁）+ exec 审批打通（`exec.approval.resolve`）。
 > **编写注意事项**: ①新端点必须鉴权（x-bridge-token）+ 放 404 前 + 更新 404 文案；②返回统一 `{success:bool,...}` 或 `{success:false,error:"..."}`；③PM2 进程勿手动 kill/start，改桥接后 `pm2 restart openclaw-bridge --update-env`；④PS 5.1 写 JSON 带 BOM，Python 读文件用 `utf-8-sig`；⑤JS 2 空格缩进，请求体必须 `Buffer.concat` 收集（body += chunk 会截断中文）；⑥密钥不入库，日志禁含 Token。
 
@@ -24,7 +24,7 @@
 ```
 C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876)
                                                         |--WebSocket--> OpenClaw Gateway (:18789, GATEWAY_TOKEN)
-                                                        |--execSync 临时JSON--> Python scripts (scripts/office/ 等)
+                                                        |--execFile（异步）临时JSON--> Python scripts (scripts/office/ 等)
 ```
 
 ### 2.2 鉴权与配置
@@ -44,7 +44,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 
 | 端点 | 方法 | 鉴权 | 参数 | 响应 | 超时 |
 |------|------|------|------|------|------|
-| `/health` | GET | ✅（实际所有请求均需 token，见下方注） | — | `{status: ok/error, connected, error}` | 3s |
+| `/health` | GET | 免鉴权（仅本机诊断） | — | `{status: ok/error, connected, error}` | 3s |
 | `/search` | GET | ✅ | `?q=` | `{success, query, response, elapsed_ms}` | 180s |
 | `/task` | POST | ✅ | `{task, mode?, timeoutMs?, maxSteps?}` | `{success, task_id, status}` | 立即返回 |
 | `/task/{id}` | GET | ✅ | — | `{success, task_id, status, result?, error?, fatal?, lastActivityAt?, steps?, pendingApproval?}` | 轮询 |
@@ -73,6 +73,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | **BOM 防护** | PowerShell Set-Content 写 BOM → `.replace(/^\uFEFF/, '')`（8/7 复现根因） |
 | **任务预算** | `buildTaskPrompt` 步骤预算（maxSteps 默认 20）+ 长任务心跳汇报规则 |
 | **CORS 关闭** | 不设 CORS 头——浏览器跨域读不到，Unity 原生客户端不受影响 |
+| **生成子进程不阻塞 HTTP** | 办公生成、PDF 提取和 LaTeX 编译使用 `execFile` 的 Promise 版本；超时、错误和临时输入清理在 `finally` 中处理，健康检查与任务轮询不再被同步进程调用卡住。2026-09-06 已做语法与编译验证；受控慢任务下的响应时延仍应在独立桥接进程中测量。 |
 | **实时事件订阅** | Gateway WS `evt.event === 'agent'` → 按 `payload.stream` 分支：`"tool"`（phase:start/result, name, toolCallId, args, meta）、`"item"`（phase:start/end/update, itemId, kind, title, toolCallId）、`"approval"`（phase:requested/resolved, approvalId, approvalSlug, command, host, title）；`tool.call` 是轨迹导出事件名，实时不推送 |
 | **steps 去重** | `seenToolCalls` Set 按 `toolCallId` 去重——同一工具调用 start+result 只记一条，避免重复步骤 |
 | **审批回执** | `POST /task/{id}/approve` 校验 decision ∈ {allow-once, allow-always, deny} 后按 `pendingApproval.kind` 选决议 API：`kind='exec'` → `exec.approval.resolve`（RPC，`chatClient.client.request`），失败回退 plugin 通道；`kind='plugin'` → `resolvePluginApproval`（=`plugin.approval.resolve`），失败回退 exec 通道。⚠️ 2026-08-12 E2E 实测教训：exec 审批必须走 `exec.approval.resolve`，`plugin.approval.resolve` 不认识 exec 审批 id（报 `unknown or expired approval id`）；触发条件：openclaw.json `tools.exec.mode = "ask"` + security allowlist（**2026-08-12 已配置生效**） |

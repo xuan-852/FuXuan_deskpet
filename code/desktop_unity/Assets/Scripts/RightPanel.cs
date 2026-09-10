@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -133,6 +133,7 @@ public partial class RightPanel : MonoBehaviour
     private float _lastExtCapture;   // 渲染/推送节流计时
     private float _lastHolidayRepaint; // 节日动态重绘节流（透明窗口没有输入时也要持续刷新）
     private string _pendingTestScreenshotPath; // 测试模式面板截图请求（下一次 Repaint 完成取证）
+    private float _pendingTestScreenshotRequestedAt = -1f;
     private float _lastExtReadStart; // 异步读回开始时间（超时兜底防冻结）
     // 输入变化时立即触发一次外置 RT 推送，避免固定 30 FPS 节流带来的字符滞后。
     // 非输入变化仍按普通动画频率推送，避免为降低输入延迟而长期增加 GPU/CPU 负载。
@@ -561,6 +562,23 @@ public partial class RightPanel : MonoBehaviour
     void Update()
     {
         RefreshRefs();
+
+        // 透明窗口在部分 DWM/无输入组合下可能接受 RequestRepaint 却不再进入 IMGUI Repaint。
+        // 测试截图不能无限等待该事件；半秒后用当前面板区域回读兜底，并保留请求以便下帧再试。
+        if (!string.IsNullOrEmpty(_pendingTestScreenshotPath)
+            && !_externalMode
+            && _pendingTestScreenshotRequestedAt >= 0f
+            && Time.realtimeSinceStartup - _pendingTestScreenshotRequestedAt >= 0.5f)
+        {
+            string fallbackPath = _pendingTestScreenshotPath;
+            _pendingTestScreenshotRequestedAt = Time.realtimeSinceStartup;
+            if (TrySavePanelRegionScreenshot(fallbackPath))
+            {
+                _pendingTestScreenshotPath = null;
+                _pendingTestScreenshotRequestedAt = -1f;
+                Debug.Log($"[TestInbox] screenshot saved: {fallbackPath} (panel region timeout fallback)");
+            }
+        }
 
         // IMGUI 一帧可能触发多次 Layout/Repaint；动画状态必须按帧更新，不能绑定绘制事件次数。
         if (_isOpen)
@@ -1336,13 +1354,15 @@ public partial class RightPanel : MonoBehaviour
     {
         if (!ChatManager.IsTestMode || string.IsNullOrEmpty(path)) return false;
         _pendingTestScreenshotPath = path;
+        _pendingTestScreenshotRequestedAt = Time.realtimeSinceStartup;
         if (_windowOverlay != null && _windowOverlay.RequestRepaint())
         {
             return true;
         }
-        _pendingTestScreenshotPath = null;
         if (!_externalMode && TrySavePanelRegionScreenshot(path))
         {
+            _pendingTestScreenshotPath = null;
+            _pendingTestScreenshotRequestedAt = -1f;
             Debug.Log($"[TestInbox] screenshot saved: {path} (panel region fallback)");
             return true;
         }
@@ -1412,6 +1432,7 @@ public partial class RightPanel : MonoBehaviour
         RenderTexture target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32);
         string path = _pendingTestScreenshotPath;
         _pendingTestScreenshotPath = null;
+        _pendingTestScreenshotRequestedAt = -1f;
 
         RenderTexture previousTarget = RenderTexture.active;
         Matrix4x4 previousMatrix = GUI.matrix;
@@ -1448,6 +1469,7 @@ public partial class RightPanel : MonoBehaviour
         if (string.IsNullOrEmpty(_pendingTestScreenshotPath) || _chatRT == null) return;
         string path = _pendingTestScreenshotPath;
         _pendingTestScreenshotPath = null;
+        _pendingTestScreenshotRequestedAt = -1f;
         try
         {
             SaveRenderTextureAsPng(_chatRT, path);

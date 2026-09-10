@@ -2,7 +2,7 @@
 
 > **文档作用**: 描述桌宠启动自检、请求状态、取消/失败恢复、云端保护和外置窗口恢复；修改启动依赖、请求生命周期或退出流程前必读。
 > **基本架构**: `RuntimeReadinessService` 负责本地/桥接/云端就绪状态，`ChatManager` 负责请求生命周期，`DesktopPet` 与 `WindowOverlay` 负责关闭、DWM 和置顶恢复。
-> **开发历史迭代**: 2026-08-21 建立就绪层；2026-08-26 补充异常会话、DWM 重建和置顶看门狗；2026-08-27 补充桥接任务取消与请求失败最终态；2026-09-04 补充按测试数据根目录隔离的单实例互斥验证与节日动态主动重绘复测。
+> **开发历史迭代**: 2026-08-21 建立就绪层；2026-08-26 补充异常会话、DWM 重建和置顶看门狗；2026-08-27 补充桥接任务取消与请求失败最终态；2026-09-04 补充按测试数据根目录隔离的单实例互斥验证、节日动态主动重绘复测和 Windows 会话结束退出通知。
 > **编写注意事项**: 云端就绪检查不得发起付费探测；测试必须使用隔离数据目录；构建被权限或宿主环境阻断时只能记录为未验证。
 
 本模块记录 2026-08-21 起加入的运行时安全层，以下内容以当前代码和验证记录为准。
@@ -31,6 +31,8 @@ DesktopPet startup recovery uses a consecutive-abnormal-session watchdog. Produc
 
 `WindowOverlay` also maintains a lightweight topmost watchdog. Every two seconds it reapplies `HWND_TOPMOST` without activating the window, restores a hidden main window, or reacquires a stale Unity handle and reapplies the full overlay configuration. This prevents external windows, tray restore, and DWM resets from silently lowering the pet's Z-order.
 
+For Windows shutdown or logoff, the hooked Unity window explicitly returns success for `WM_QUERYENDSESSION`. It waits for confirmed `WM_ENDSESSION` before invoking `DesktopPet`'s idempotent shutdown callback, so cancelling a pending shutdown does not tear down the external window early. The callback reuses the existing cleanup order: external window thread first, in-flight task cancellation request, log detach, and mutex release. A real OS shutdown/logoff observation is still required before this risk can be closed completely.
+
 ## 四、编写注意事项
 
 ### 成本保护
@@ -43,6 +45,8 @@ DesktopPet startup recovery uses a consecutive-abnormal-session watchdog. Produc
 - DesktopPet autostart is stored as a Windows `REG_SZ`; the registry bridge must encode values as UTF-16LE. The reader keeps a UTF-8 fallback so values written by older builds are migrated on the next successful startup.
 - Build/test force-termination must not be treated as proof of a DesktopPet crash. The watchdog therefore resets after a stable session and skips production crash state entirely in `.test_mode`.
 - DesktopPet 的单实例互斥名按规范化后的 `DataPathConfig.DataRoot` 生成稳定哈希后分域：同一数据根仍保持单实例，`FU_XUAN_DATA` 指向不同临时目录的测试播放器可以并行启动；生成失败时回退到固定默认锁名以保持安全性。
+- `runtime_smoke.cjs` 仅接受系统临时目录中以 `fuxuan_smoke_test` 开头、无符号链接且不与生产根重叠的目录；它只结束自己创建的 PID，并按文件存在性与 SHA-256 比较受保护生产数据。`--keep-alive` 保留 `.test_mode` 和隔离目录，`--keep-artifacts` 保留诊断产物但仍结束测试实例。
+- 隐藏启动的隔离播放器会使 Unity 主窗口暂不可见。`WindowOverlay` 枚举同进程窗口时将类名含 `Unity` 的隐藏窗口仅作为最后回退候选，仍优先产品标题、主窗口句柄和可见窗口，并排除外置聊天窗口。
 
 ### 验证方法
 
@@ -73,3 +77,4 @@ The data root must be temporary and contain `.test_mode`; production memory and 
 - 2026-09-04: DesktopPet 单实例锁改为按 `DataPathConfig.DataRoot` 隔离。Quick、完整构建、EditMode、隔离 `runtime_smoke.cjs --verbose`、端午逐主题评测和两个不同 `FU_XUAN_DATA` 根目录并行启动验证均通过；生产数据未参与测试。
 - 2026-09-04 节日统一预验收：五个正式主题分别在临时数据根目录完成 `@@view:open`、`@@view:list/chat`、主题切换、`list/status/off`、四张 Unity 截图和 `@@test:quit`；每个目录无 NRE，截图视觉预评分 91/92/91/91/91。`@@view:list/chat` 只证明自动化的小/大界面状态，真实 GUI 双击展开和拖拽/收回仍需负责人签字后才能关闭 T3/T5。
 - 2026-09-04 动态复测：提交 `b531d03` 后，节日动态时钟由 `UpdateMotion()` 统一推进，RightPanel 按 30～60 FPS 主动请求透明窗口重绘；五个主题的隔离评测、完整构建和 `runtime_smoke.cjs --verbose` 均通过，生产数据零污染。
+- 2026-09-04 系统会话结束复测：`WindowOverlay` 增加 `WM_QUERYENDSESSION`/`WM_ENDSESSION` 处理；对隔离实例发送非破坏性的会话消息探针后，收到 Windows 会话结束日志并进入 `DesktopPet.BeginShutdown`，无异常。Quick、完整构建和隔离 `runtime_smoke.cjs --verbose` 均通过；真实关机/注销仍待人工观察。

@@ -8,30 +8,31 @@
  * 隔离设计（2026-08-15）：启动时用 FU_XUAN_DATA 指向临时目录（%TEMP%\fuxuan_smoke_test），
  * 桌宠以「无记忆」状态运行——生产 D:\DesktopPetData 的记忆/动作/活动/校验日志完全不被读写；
  * 再叠加 .test_mode 双保险（ChatManager/MotionMemory/ActivityTracker/DualModelValidator 均不落盘）。
- * 测试结束清理隔离目录，并断言生产记忆文件 mtime 未变（防污染回归）。
+ * 测试目录必须是 TEMP 下专属目录；测试只会终止自己创建的进程，并比较生产文件的存在性与 SHA-256。
  *
  * 用法:
  *   node scripts/test/runtime_smoke.cjs                # 默认路径
  *   node scripts/test/runtime_smoke.cjs --exe <path>   # 指定桌宠 exe
  *   node scripts/test/runtime_smoke.cjs --keep-alive   # 测试后保留桌宠运行（默认结束后杀）
+ *   node scripts/test/runtime_smoke.cjs --keep-artifacts # 失败排查时保留隔离日志和截图
  *   node scripts/test/runtime_smoke.cjs --verbose      # 详细输出
  *
  * 通过标准:
  *   ① 全部 @@view 命令被处理（[TestInbox] 留痕）
  *   ② 窗口尺寸切换出现；大屏固定分辨率时额外校验三档尺寸
- *   ③ Player.log 无 NullReferenceException（其他 Exception 计为警告）
- *   ④ 生产数据目录记忆文件 mtime 全程未变（无记忆测试）
- * 前置: 已构建 Build\DesktopPet.exe；测试会结束当前运行的 DesktopPet 再启动新实例
+ *   ③ Player.log 无 Exception
+ *   ④ 生产数据目录受保护文件的存在性和内容全程未变（无记忆测试）
+ * 前置: 已构建 Build\DesktopPet.exe；不会结束已有的生产桌宠实例
  */
 'use strict';
 const { spawn, execSync } = require('child_process');
+const { createHash } = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
 const EXE_DEFAULT = path.join(__dirname, '..', '..', 'Build', 'DesktopPet.exe');
-const TEST_DATA_ROOT = process.env.FU_XUAN_TEST_DATA || path.join(os.tmpdir(), 'fuxuan_smoke_test'); // 隔离数据目录（无记忆起点）
-const PROD_DATA_ROOT = process.env.FU_XUAN_DATA || 'D:\\DesktopPetData'; // 生产数据目录（只读校验）
+const TEST_DATA_ROOT = path.resolve(process.env.FU_XUAN_TEST_DATA || path.join(os.tmpdir(), 'fuxuan_smoke_test'));
 // DesktopPet 会把全量日志镜像写入 DataPathConfig.LogsDir。
 // 测试进程通过 FU_XUAN_DATA 使用隔离目录，因此默认必须读取隔离镜像；
 // 不能读取默认 Player.log，否则可能拿到旧实例日志，造成“启动成功但所有 UI 命令缺失”的假失败。
@@ -44,7 +45,9 @@ const args = process.argv.slice(2);
 const exeIdx = args.indexOf('--exe');
 const exe = exeIdx >= 0 ? (args[exeIdx + 1] || EXE_DEFAULT) : EXE_DEFAULT;
 const keepAlive = args.includes('--keep-alive');
+const keepArtifacts = args.includes('--keep-artifacts');
 const verbose = args.includes('--verbose');
+const validateSafety = args.includes('--validate-safety');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = m => console.log(m);
@@ -64,8 +67,60 @@ function writeFileSafe(p, content) {
     throw new Error('无法写入 ' + p);
 }
 
-function killDesktopPet() {
-    try { execSync('taskkill /IM DesktopPet.exe /F /T', { stdio: 'ignore', windowsHide: true }); } catch { /* 没有在运行则忽略 */ }
+function resolveProductionDataRoot() {
+    const normalize = value => value ? path.resolve(String(value).trim().replace(/^"|"$/g, '')) : '';
+    const configured = normalize(process.env.FU_XUAN_DATA);
+    if (configured && fs.existsSync(configured)) return configured;
+    const legacyC = path.resolve('C:\\DesktopPetData');
+    if (fs.existsSync(legacyC)) return legacyC;
+    const legacyD = path.resolve('D:\\DesktopPetData');
+    if (fs.existsSync(legacyD)) return legacyD;
+    return configured || path.resolve(process.env.LOCALAPPDATA || os.tmpdir(), 'FuXuan', 'DesktopPetData');
+}
+
+const PROD_DATA_ROOT = resolveProductionDataRoot();
+
+function isPathInside(child, parent) {
+    const rel = path.relative(parent, child);
+    return rel !== '' && !rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel);
+}
+
+function assertSafeTestDataRoot() {
+    const tempRoot = path.resolve(os.tmpdir());
+    if (!isPathInside(TEST_DATA_ROOT, tempRoot)) {
+        throw new Error(`FU_XUAN_TEST_DATA 必须位于系统临时目录下: ${tempRoot}`);
+    }
+    if (!path.basename(TEST_DATA_ROOT).startsWith('fuxuan_smoke_test')) {
+        throw new Error('FU_XUAN_TEST_DATA 必须使用 fuxuan_smoke_test 前缀，避免误删非测试目录');
+    }
+    if (TEST_DATA_ROOT.toLowerCase() === PROD_DATA_ROOT.toLowerCase() ||
+        isPathInside(PROD_DATA_ROOT, TEST_DATA_ROOT) || isPathInside(TEST_DATA_ROOT, PROD_DATA_ROOT)) {
+        throw new Error('测试目录与生产数据目录重叠，拒绝启动');
+    }
+    let current = TEST_DATA_ROOT;
+    while (current.toLowerCase() !== tempRoot.toLowerCase()) {
+        if (fs.existsSync(current) && fs.lstatSync(current).isSymbolicLink()) {
+            throw new Error(`测试目录路径含符号链接，拒绝清理: ${current}`);
+        }
+        const parent = path.dirname(current);
+        if (parent === current) break;
+        current = parent;
+    }
+}
+
+function snapshotFile(filePath) {
+    if (!fs.existsSync(filePath)) return { exists: false, hash: null };
+    return {
+        exists: true,
+        hash: createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
+    };
+}
+
+function stopOwnedDesktopPet(proc) {
+    if (!proc || !Number.isInteger(proc.pid) || proc.pid <= 0) return;
+    try { process.kill(proc.pid, 0); } catch { return; }
+    try { execSync(`taskkill /PID ${proc.pid} /F /T`, { stdio: 'ignore', windowsHide: true }); }
+    catch { /* 进程已退出或被应用自身关闭 */ }
 }
 
 const COMMANDS = [
@@ -130,9 +185,15 @@ async function main() {
     const testMode = path.join(TEST_DATA_ROOT, '.test_mode');
     // 生产记忆文件快照（用于防污染断言）
     const PROD_FILES = ['pet_memory.json', 'pet_personality.json', 'motion_memory.json', 'activity_log.json', 'validation_log.json', 'knowledge_base.json', 'reminders.json'];
+    assertSafeTestDataRoot();
+    if (validateSafety) {
+        log(`[PASS] 测试目录边界有效: ${TEST_DATA_ROOT}`);
+        log(`[PASS] 生产目录边界有效: ${PROD_DATA_ROOT}`);
+        return;
+    }
     const prodSnapshot = PROD_FILES.map(f => {
         const p = path.join(PROD_DATA_ROOT, f);
-        return { f, p, mtime: fs.existsSync(p) ? fs.statSync(p).mtimeMs : 0 };
+        return { f, p, ...snapshotFile(p) };
     });
 
     if (!fs.existsSync(exe)) { console.error(`[FAIL] 未找到桌宠 exe: ${exe}`); process.exit(1); }
@@ -145,9 +206,7 @@ async function main() {
     fs.rmSync(TEST_DATA_ROOT, { recursive: true, force: true });
     fs.mkdirSync(TEST_DATA_ROOT, { recursive: true });
 
-    // 1. 结束旧实例 + 清场（等 3s 让旧窗口完全释放，避免 WindowOverlay 透明窗设置失败）
-    killDesktopPet();
-    await sleep(3000);
+    // 1. 仅清理本次专属目录；绝不终止已有生产桌宠实例。
     try { fs.unlinkSync(PLAYER_LOG); } catch { /* 无旧日志 */ }
     writeFileSafe(inbox, '');
     fs.writeFileSync(testMode, ''); // 开测试模式（双保险防落盘）
@@ -169,7 +228,7 @@ async function main() {
     }
     if (!booted) {
         console.error('[FAIL] 启动超时，未看到落地标记 ' + BOOT_MARKER);
-        fs.unlinkSync(testMode); killDesktopPet(); process.exit(1);
+        fs.unlinkSync(testMode); stopOwnedDesktopPet(proc); process.exit(1);
     }
     log('[smoke] 启动完成，开始驱动 UI...');
 
@@ -215,7 +274,7 @@ async function main() {
     const nre = (content.match(/NullReferenceException/g) || []).length;
     const otherExc = (content.match(/Exception:/g) || []).length - nre;
     if (nre > 0) fails.push(`Player.log 发现 ${nre} 次 NullReferenceException（面板渲染中断，见堆栈）`);
-    if (otherExc > 0) log(`[warn] 其他异常 ${otherExc} 次（不判失败，请人工确认是否良性）`);
+    if (otherExc > 0) fails.push(`Player.log 发现 ${otherExc} 次其他 Exception`);
 
     // @@test:quit 必须真的让应用自行退出；后面的 taskkill 只是防止测试实例残留，
     // 不能用强杀结果掩盖退出链没有生效。
@@ -228,18 +287,27 @@ async function main() {
         if (stillRunning) fails.push('@@test:quit 后桌宠进程仍在运行，未完成应用自身退出');
     }
 
-    // 6. 清理：删测试模式 + 结束实例 + 删除隔离目录 + 断言生产记忆未变
-    fs.unlinkSync(testMode);
-    if (!keepAlive) { killDesktopPet(); }
-    for (let i = 0; i < 10; i++) {
-        try { fs.rmSync(TEST_DATA_ROOT, { recursive: true, force: true }); break; }
-        catch { await sleep(300); }
+    // 6. 清理：只终止本次创建的 PID；--keep-alive 保留隔离目录和 .test_mode，
+    // 让留下的实例仍处在无记忆、禁云端的受保护状态。
+    if (!keepAlive && !keepArtifacts) {
+        try { fs.unlinkSync(testMode); } catch { /* 已不存在 */ }
+        stopOwnedDesktopPet(proc);
+        for (let i = 0; i < 10; i++) {
+            try { fs.rmSync(TEST_DATA_ROOT, { recursive: true, force: true }); break; }
+            catch { await sleep(300); }
+        }
     }
-    // ★ 防污染断言：生产记忆文件 mtime 必须全程未变（无记忆测试的核心保证）
-    const pollution = prodSnapshot.filter(x => x.mtime > 0 && fs.existsSync(x.p) && fs.statSync(x.p).mtimeMs !== x.mtime);
+    // ★ 防污染断言：存在性或内容哈希的任何变化都必须失败。
+    const pollution = prodSnapshot.filter(x => {
+        const after = snapshotFile(x.p);
+        return x.exists !== after.exists || x.hash !== after.hash;
+    });
     if (pollution.length > 0) fails.push(`生产记忆文件被测试修改: ${pollution.map(x => x.f).join(', ')}`);
     log(`[smoke] 隔离目录已清理: ${!fs.existsSync(TEST_DATA_ROOT)}`);
-    if (!keepAlive) log('[smoke] 已结束测试实例');
+    if (!keepAlive) {
+        stopOwnedDesktopPet(proc);
+        log('[smoke] 已结束测试实例');
+    }
 
     if (fails.length > 0) {
         console.error(`\n[FAIL] 冒烟测试未通过（${fails.length} 项）：`);

@@ -1152,40 +1152,38 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         // ★ 强制网格更新：Cubism 的网格在 Update() 阶段已用 C++ 核心算完，
         //    Physics(800) 覆盖了衣服参数，我们(801)覆盖了手臂参数，
         //    但网格仍是旧参数结果，需强制刷新用最新参数重新算一遍。
-        // ★ 基础状态恢复隔帧 ForceUpdateNow：ForceUpdateNow 会再次跑一遍
-        //   Cubism 更新/物理链路。停止状态每帧额外跑一次会让衣服弹簧的
-        //   有效步进频率翻倍，正是本次“走路正常、停下抖动”的回归来源之一。
+        // ★ 基础状态恢复隔帧 ForceUpdateNow：它会强制 Cubism Core 在当前帧
+        //   重算网格，而不会重新派发 CubismPhysicsController。停止状态每帧额外
+        //   重算一次仍会增加主线程开销，正是“走路正常、停下卡顿”的来源之一。
         //   眼睛保护值仍由普通参数写入；特殊动作保留各自的专用刷新路径。
         bool hasActiveAction = (_currentIdleAction > 0 && _idleActionTime > 0f);
         bool debugOffsetActive = (debugOffsetEnabled && !_actionLocked && !hasActiveAction && debugOffsets != null && debugOffsets.Count > 0);
-        // ★ 重要：空闲动作（如星辉/伸懒腰）也要 ForceUpdate，否则物理系统覆盖了我们的值
-        // ★ 2026-08-20 卡顿修复：法阵(#7)/星辰(#4)分支内部已有自己的 ForceUpdateNow
-        //   （法阵 L1169/L1199 两次、星辰分支内一次），此处跳过可省 1 次全量模型更新，
-        //   缓解"法阵期每帧 4+ 次 ForceUpdateNow → 帧率暴跌 → deltaTime 膨胀 → 动作拉长"恶性循环。
-        // ★ 法阵/星辰分支内部已有自己的刷新路径；其他状态按历史稳定节奏
-        //   隔帧刷新，避免物理链路被 LateUpdate 的额外刷新重复推进。
+        // ★ 重要：空闲动作（如星辉/伸懒腰）也需要最终网格提交，否则 Core 仍保留
+        //   Physics(800) 覆盖前的结果。法阵(#7)有自己的最终提交；其他状态按稳定节奏
+        //   隔帧刷新，避免同一渲染帧重复执行 Cubism Core。
         // 走路刚停止时，Physics 正在从走路输入回到静止状态。
-        // 此时再次 ForceUpdateNow 会在同一帧重复推进物理，令头部/后发在
-        // “走路姿态 → 空闲姿态”之间来回取值，表现为停下瞬间剧烈抖动。
+        // 此时再次 ForceUpdateNow 会增加核心模型重算次数，放大“走路姿态 →
+        // 空闲姿态”切换时的主线程压力。
         // 等 IDLE_BLEND_DURATION 淡出完成后再恢复普通隔帧刷新。
         bool locomotionSettling = !isWalking && (_walkBlendRemaining > 0f || _wasWalkingLastFrame);
-        if (_currentIdleAction != 7 && _currentIdleAction != 4
-            && !locomotionSettling && (Time.frameCount & 1) == 0)
-            ForceUpdateModelNow();
+        // 本帧所有后处理参数都写完后才提交一次模型更新。此前普通动作会在
+        // 这里刷新一次、左臂物理拦截后再刷新一次，CubismModel 因 LastTick 被
+        // 重置而会在同一渲染帧重复执行核心更新。法阵 #7 保留自己的最终提交。
+        bool needsFinalModelUpdate = !debugOffsetActive && !locomotionSettling
+            && _currentIdleAction != 7 && (Time.frameCount & 1) == 0;
 
         // ============================================================
-        // ★ 左臂(Param34/36/37) 物理拦截：双重 ForceUpdate + 权重归零
+        // ★ 左臂(Param34/36/37) 物理拦截：参数存储同步 + 权重归零
         //
         // 问题链：
         //   1. CubismParameterStore(order 150) 保存当前参数值
         //   2. Physics(order 800) 把 Param34/36/37 写为非零（弹簧动量）
-        //   3. 我们(order 801) 设回 0 并 ForceUpdateNow
-        //   4. ForceUpdateNow→Update()→RestoreParameters() 恢复 step 1 保存的非零值
-        //   5. 最终网格用的是 step 4 的非零值 → 左臂依然扭曲！
+        //   3. 我们(order 801) 设回 0；若不同步参数存储，下一帧基础管线会恢复
+        //      step 1 保存的非零值，导致左臂扭曲。
         //
         // 解决：
-        //   a) 二次 ForceUpdate：第一次后强设 0→SaveParameters→第二次 ForceUpdateNow，
-        //      第二次 RestoreParameters 恢复的是刚保存的 0。
+        //   a) 强设 0 后立即 SaveParameters，使下一帧恢复的也是 0；最终网格提交
+        //      统一在所有后处理参数写完后执行一次。
         //   b) 同时归零"手臂L"物理输出权重：让下一帧物理评估时左臂输出 = 0，
         //      打断弹簧动量在帧间的传递。
         // ============================================================
@@ -1203,7 +1201,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             // === 1) 归零"手臂L"输出权重（影响下一帧 physics evaluate） ===
             ZeroLeftArmWeights();
 
-            // === 2) 第二次强设左臂 + 保存到参数存储 + 二次 ForceUpdate ===
+            // === 2) 强设左臂并保存到参数存储 ===
             SetParameter("Param34", 0f);
             SetParameter("Param36", 0f);
             SetParameter("Param37", 0f);
@@ -1213,9 +1211,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
                 _paramStore.SaveParameters();
             }
 
-            // ★ 2026-08-20 性能：左臂拦截的二次 ForceUpdate 也隔帧
-            if ((Time.frameCount & 1) == 0)
-                ForceUpdateModelNow();
+            // 最终模型提交统一放在本帧所有参数覆盖之后，避免与基础动作
+            // 提交形成同帧双重 Core 更新。
         }
         else
         {
@@ -1281,12 +1278,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             SetParameter("Param108", 1f);
             SetParameter("Param119", 1f);
 
-            // ★ 调试偏移的第二次 ForceUpdate (无法合并，因为偏移值在第一次 ForceUpdate 后才读取到的 animVal)
-            ForceUpdateModelNow();
+            // 调试偏移是本帧最后一层参数覆盖，要求一次最终提交即可。
+            needsFinalModelUpdate = true;
         }
 
-        // ★ ForceUpdateNow 会触发 Cubism 更新管线，Physics 重新覆盖头发/衣服参数。
-        //    最后一次 ForceUpdate 后重新应用 + SaveParameters，确保最终值是我们设定的。
+        // ★ ForceUpdateNow 会让 Cubism Core 读取当前参数并重算网格；最后一次更新前
+        //    先写入并保存头发/衣服参数，确保下一帧参数存储保持最终值。
         // ★ 无条件 _currentIdleAction==7（不依赖 _actionLocked），
         //   自然触发（_actionLocked=false）时同样需要 ForceRefreshModelAfterFade 保护。
         if (_currentIdleAction == 7)
@@ -1316,9 +1313,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             if ((Time.frameCount & 1) == 0)
                 ForceUpdateModelNow();
 
-            // ★ ForceUpdateNow 触发了 Cubism 物理管线，Physics 重新计算了
-            //   ParamBodyAngleX/ParamAngleX，覆盖了 UpdateMagicCircle() 中设置的
-            //   Perlin+Spring 飘动偏移。此处重新应用身体角度。
+            // 重新写入由 UpdateMagicCircle() 计算的身体角度，保证参数存储中的最终值
+            // 与本帧的 Perlin + Spring 飘动一致。
             //   从 UpdateMagicCircle() 计算出的 _magicSpringPosX/_magicSpringPosH
             //   在弹簧物理中已更新，直接使用。
             float angleFade = Mathf.Clamp01(_complexActionPhase / CIRCLE_ANGLE_RAMP_DUR);
@@ -1342,6 +1338,10 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             // ★ ForceUpdateNow 后 CubismRenderController 可能重置了 GPU 的 MultiplyColor，
             //   需要重新强制设置为白色，防止眼睛变暗。
             ForceRefreshModelAfterFade();
+        }
+        else if (needsFinalModelUpdate)
+        {
+            ForceUpdateModelNow();
         }
 
         // ============================================================
@@ -2048,9 +2048,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         float duration = CIRCLE_DURATION;
         float t = Mathf.Clamp01(p / duration);
 
-        // ★ 每帧强制重置 GPU MultiplyColor，防 CubismRenderController（order 10000）
-        //   在上一帧写回的非白色 SharedPropertyBlock 覆盖 ArtMesh 眼色。
-        ForceRefreshModelAfterFade();
+        // MultiplyColor 在本方法完成所有参数写入和最终模型提交后统一刷新；
+        // 不在这里预先遍历所有 ArtMesh，避免同一帧重复设置 PropertyBlock。
 
         // ===== 身体姿态（全阶段 + 物理飘动） =====
         // 弹簧初始化
@@ -2722,6 +2721,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         if (!_loaded || _cubismModel == null) return;
 
+        // 旧式动作同样独占参数，先终止正在淡出的表情写入。
+        ActionController?.StopExpression(0f);
+
         // Keep forced legacy actions consistent with PlayAction: stop the
         // pet's physical locomotion as well as the renderer's walk overlay.
         if (!_actionLocked && _pet != null && !_pet.isPaused)
@@ -2798,7 +2800,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         {
             // 表情
             string expName = actionSpec.Substring(4);
-            ActionController.PlayExpression(expName);
+            PlayExpression(expName);
             onComplete?.Invoke(); // 表情立即返回（淡入中）
         }
         else if (actionSpec.StartsWith("act:"))
@@ -2826,7 +2828,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             else if (ActionController.Expressions != null &&
                      System.Linq.Enumerable.Contains(ActionController.Expressions.AvailableExpressions, actionSpec))
             {
-                ActionController.PlayExpression(actionSpec);
+                PlayExpression(actionSpec);
                 onComplete?.Invoke();
             }
             else
@@ -3231,6 +3233,11 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     public void PlayExpression(string name, float fadeTime = -1f)
     {
         if (ActionController == null) return;
+        if (_actionLocked || _aiControlLocked)
+        {
+            Debug.Log($"[Live2DRenderer] 忽略表情 {name}：当前动作正在独占参数写入");
+            return;
+        }
         ActionController.PlayExpression(name, fadeTime);
     }
 
@@ -3313,6 +3320,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         // ★ 清空闲动作残留状态，防止旧式 idle 在新动作结束后继续播放已过时的动作
         ResetIdleAction();
+        // 表情也在 LateUpdate 写入面部参数。复合动作取得控制权时立即停掉，避免
+        // 0.2 秒淡出仍与动作关键帧竞争同一参数。
+        ActionController.StopExpression(0f);
 
         // ★ 暂停宠物物理（停走 + 冻结状态机），避免"边走边做动作"
         if (_pet != null)
@@ -4159,6 +4169,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     /// <summary>是否被强制动作锁定</summary>
     public bool IsActionLocked => _actionLocked;
+
+    /// <summary>是否有 AI 参数动作正在独占模型参数写入。</summary>
+    public bool IsAiControlLocked => _aiControlLocked;
 
     /// <summary>设置参数值（公开版）</summary>
     public void SetParameterValue(string name, float value)

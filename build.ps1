@@ -21,6 +21,7 @@ param(
     [string]$UnityExe = "D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe",
     [string]$LogFile = "D:\Unity\projects\Desktop_per_pro\logs\build\build_log.txt",
     [string]$DataRoot = "",
+    [string]$OutputDir = "",
     [switch]$Quick,
     [switch]$RunTests,
     [switch]$NoKill,
@@ -65,6 +66,20 @@ if ([string]::IsNullOrWhiteSpace($BuildDataRoot) -or -not $BuildDataRootIsTestMo
 }
 $env:FU_XUAN_DATA = $BuildDataRoot
 Write-Host "[Build] Isolated data: $BuildDataRoot"
+
+# 完整构建可写入专属临时目录，避免为替换默认 Build/DesktopPet.exe 而中断用户正在使用的实例。
+$BuildOutputDir = ""
+if (-not [string]::IsNullOrWhiteSpace($OutputDir)) {
+    $BuildOutputDir = [System.IO.Path]::GetFullPath($OutputDir)
+    if ($BuildOutputDir -eq [System.IO.Path]::GetFullPath($RootDir)) {
+        throw "OutputDir 不能是仓库根目录"
+    }
+    New-Item -ItemType Directory -Force -Path $BuildOutputDir | Out-Null
+    $env:FU_XUAN_BUILD_OUTPUT = $BuildOutputDir
+    Write-Host "[Build] 自定义输出目录: $BuildOutputDir"
+} else {
+    Remove-Item Env:FU_XUAN_BUILD_OUTPUT -ErrorAction SilentlyContinue
+}
 
 # ---- P0 构建负载保护：Bee 缓存清理开关（BuildScript.cs 读取） ----
 if ($CleanBeeCache) {
@@ -191,22 +206,6 @@ if (Test-Path -LiteralPath $IlppPidPath) {
     }
 }
 
-# ---- Detect running DesktopPet (would lock output exe and fail the build) ----
-$PetProc = Get-Process -Name "DesktopPet" -ErrorAction SilentlyContinue
-if ($PetProc) {
-    $Pids = ($PetProc | ForEach-Object { $_.Id }) -join ", "
-    $Host.UI.RawUI.ForegroundColor = "Yellow"
-    Write-Host "[WARN] DesktopPet 正在运行 (PID: $Pids)，会锁定输出文件导致构建失败"
-    if ($NoKill) {
-        $Host.UI.RawUI.ForegroundColor = "Red"
-        Write-Host "[ERROR] 已加 -NoKill，请先手动关闭 DesktopPet 再构建"
-        exit 1
-    }
-    Write-Host "[BUILD] 自动终止 DesktopPet 进程..."
-    $PetProc | Stop-Process -Force
-    Write-Host "[OK] DesktopPet 已终止"
-}
-
 # ---- Determine build/test mode ----
 $TestResultsFile = Join-Path $RootDir "logs\build\test_results.xml"
 if ($RunTests) {
@@ -245,6 +244,22 @@ if ($RunTests) {
         "-logFile", $LogFile
         "-executeMethod", "BuildScript.BuildDesktopPet"
     )
+}
+
+# ---- Detect running DesktopPet without disrupting a user's active session ----
+# Quick/EditMode does not replace Build/DesktopPet.exe and can run alongside the
+# player. A full build may be blocked by a locked output, so fail explicitly
+# instead of terminating every process named DesktopPet (including production).
+$PetProc = Get-Process -Name "DesktopPet" -ErrorAction SilentlyContinue
+if ($PetProc) {
+    $Pids = ($PetProc | ForEach-Object { $_.Id }) -join ", "
+    if ($Quick -or $RunTests -or -not [string]::IsNullOrWhiteSpace($BuildOutputDir)) {
+        Write-Host "[INFO] DesktopPet 正在运行 (PID: $Pids)；$Label 不会终止现有实例"
+    } else {
+        $Host.UI.RawUI.ForegroundColor = "Red"
+        Write-Host "[ERROR] DesktopPet 正在运行 (PID: $Pids)，完整构建可能锁定输出。请自行正常退出后重试。"
+        exit 1
+    }
 }
 
 # ---- Save current dir and CD to project ----
@@ -375,7 +390,8 @@ try {
         Write-Host "[OK] Build succeeded! ($elapsed)"
 
         if (-not $Quick) {
-            $exe = Join-Path $DefaultOutputDir "DesktopPet.exe"
+            $exeOutputDir = if ([string]::IsNullOrWhiteSpace($BuildOutputDir)) { $DefaultOutputDir } else { $BuildOutputDir }
+            $exe = Join-Path $exeOutputDir "DesktopPet.exe"
             if (Test-Path $exe) {
                 $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
                 Write-Host "[OK] Output: $exe ($size MB)"

@@ -607,6 +607,7 @@ public class DesktopPet : MonoBehaviour
             _windowOverlay = gameObject.AddComponent<WindowOverlay>();
             Debug.Log("[DesktopPet] 自动添加了 WindowOverlay 组件");
         }
+        _windowOverlay.SystemShutdownRequested += OnSystemShutdownRequested;
 
         // 自动确保 MainThreadDispatcher 存在（后台线程 → 主线程回调调度，独立聊天窗口依赖）
         if (GetComponent<MainThreadDispatcher>() == null)
@@ -1265,6 +1266,17 @@ public class DesktopPet : MonoBehaviour
     }
 
     /// <summary>
+    /// Windows 已确认关机/注销时的退出入口。WM_QUERYENDSESSION 阶段只返回允许，
+    /// 到 WM_ENDSESSION 才进入清理，避免用户取消关机后提前关闭外置窗口。
+    /// </summary>
+    private void OnSystemShutdownRequested()
+    {
+        SafePrefsSetInt(PREF_CLEAN_EXIT, 1);
+        SafePrefsSave();
+        BeginShutdown("Windows 会话结束");
+    }
+
+    /// <summary>
     /// 系统挂起（睡眠/休眠）时释放 D3D 资源和 Win32 句柄关联。
     /// 唤醒后一切由 WindowOverlay.OnApplicationPause(false) 自动重建。
     /// </summary>
@@ -1333,6 +1345,9 @@ public class DesktopPet : MonoBehaviour
 
         if (_trayManager != null)
             _trayManager.OnQuitRequested -= OnTrayQuitRequested;
+
+        if (_windowOverlay != null)
+            _windowOverlay.SystemShutdownRequested -= OnSystemShutdownRequested;
 
         // 外置窗口线程可能仍在读取 RT/NativeArray；先让它在自身线程销毁窗口，
         // 再进入 Unity 组件的 OnDestroy，避免 destroyTJDevice 竞态。

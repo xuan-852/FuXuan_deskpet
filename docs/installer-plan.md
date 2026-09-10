@@ -328,3 +328,9 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 - `verify-runtime.cmd` 增加 19876 端口、桥接 `/health` 和服务状态诊断；`verify-acceptance.cjs` 按 `gateway-chat-*.js` 动态匹配，不依赖版本哈希。
 - 桥接 `/health` 免鉴权并暴露 `openclaw_ready`；OpenClaw 动态导入失败不会阻止诊断服务启动；LaTeX 输出目录跟随 `FU_XUAN_DATA`。
 - 已验证：full-access `build.ps1 -Quick` 通过；Inno 生产/测试安装器编译、静默安装、动态入口检查、静默卸载通过；隔离端口桥接健康检查通过。
+
+## 2026-09-10 v1.0.13 重建记录
+
+- 当前产物：`FuXuanSetup-1.0.13.exe` SHA256 `9F477BA9275BEA177A1603BEA6DEF378064AFF48C962A7F94FA6CE7D619036ED`；ZIP SHA256 `1D0AFF5B2EC04AC529E2554CEE0527E6488CA07B1BD7C7D01666511B043BA3F5`。两者均未使用商业代码签名证书。
+- 验证完成：Unity Quick 与完整构建、portable 中 PowerShell 5.1 脚本解析、内置 Node v22.22.3、桥接 `node --check` 以及 Inno 编译。安装文件已静默落地到 `D:\Fuxuan`。
+- 未完成：`install-service.cmd` 运行时从 nssm.cc 下载 NSSM；本机该下载不可用，脚本以 exit 10 结束，因此 `FuXuanBridge` 服务没有注册。必须将 NSSM 改为可校验的随包依赖，或提供受控下载源并在干净 Win10/11 VM 上重新验证，之后才能把服务部署标为通过。

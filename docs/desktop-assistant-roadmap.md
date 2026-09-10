@@ -13,6 +13,10 @@
 
 > **节日动态复测记录（2026-09-04）**: `b531d03` 修复动态时钟由 IMGUI 绘制事件驱动造成的停顿，并为透明窗口增加按性能档位的主动重绘；五主题 static/motion 对比和隔离运行复测通过。该记录不改变最终真实 GUI 验收门槛。
 
+> **节日视觉优化记录（2026-09-04）**: 在动态复测基础上完成五主题的紧凑窗口安全区、诗词列数响应式、主视觉尺寸/位置和低强度层次补强；最终隔离评测共生成 16 张有效 Unity 截图，EditMode、完整构建和异常/数据隔离检查通过。该记录属于实现优化复测，不改变 T3/T5 的真实 GUI 签字要求。
+
+> **系统退出修复记录（2026-09-04）**: `WindowOverlay` 已处理 Windows `WM_QUERYENDSESSION`/`WM_ENDSESSION`，确认关机或注销后进入 `DesktopPet.BeginShutdown()`；隔离消息探针、Quick、完整构建和 `runtime_smoke.cjs --verbose` 通过。真实关机/注销观察仍是退出风险的关闭条件。
+
 > **节日皮肤验收目标（2026-09-04）**：后续按单节日任务卡推进，不以“代码已有”代替“验收完成”。每个主题必须先确认诗词，再完成设计、实现、响应式适配、Quick/完整构建、隔离冒烟、`static/small/motion/default_recovery` 截图和人工审核；综合评分至少 85/100、无 P0/P1/P2，且真实 GUI 双击展开和拖拽/收回证据齐全后，才允许归档为完成。五个主题当前已完成代码、自动验证和截图视觉预审，T3/T5 仍待真实 GUI 签字。当前专项状态见 [`holiday-skin-evaluation-2026-08-31.md`](holiday-skin-evaluation-2026-08-31.md) 和 [`task-inventory.md`](task-inventory.md)。
 
 ---

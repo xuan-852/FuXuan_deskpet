@@ -32,7 +32,7 @@ code/desktop_unity/Assets/
 | `Scripts/Live2DRenderer.cs` | **4,262** | Live2D 模型加载、参数缓存、动作、交互与目标点式拖拽物理输入 |
 | `Scripts/Live2DRenderer.OverlayRendering.cs` | **294** | Live2D 局部叠加相机、RenderTexture、OnGUI 与性能档位 |
 | `Scripts/RuntimeInputSimulator.cs` | **191** | 测试模式 `@@sim`/`@@input` 运行时输入解析、调度与 Unity 截图 |
-| `Scripts/HolidayFireworksField.cs` | **~360** | 5 个中国传统节日主题的低密度像素动态背景绘制 |
+| `Scripts/HolidayFireworksField.cs` | **~976** | 5 个中国传统节日主题的低密度像素动态背景绘制；含紧凑面板安全区、响应式诗词和主题专属动效 |
 | `RightPanel.cs` | **2,534** | 右键面板主逻辑；聊天区和子面板已拆到 partial 文件 |
 | `ChatManager.cs` | **1,775** | AI 请求协程、历史裁剪与请求状态收尾 |
 | `ChatManager.RequestLifecycle.cs` | **121** | ChatManager 请求发送、排队、取消、状态通知与意图分类入口 |

@@ -97,3 +97,6 @@ if (judgeKeys.length) {
     diff(local, cloud, 'score', average)
   ].join('\t'));
 }
+
+// 配对不完整时不能把交集指标当成完整对照结果。
+if (missingLocal.length || missingCloud.length) process.exitCode = 1;

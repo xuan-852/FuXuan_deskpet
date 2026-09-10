@@ -288,3 +288,10 @@
   - `%TEMP%/fuxuan_motion_fix_eval_mid_autumn_20260904/test_screenshots/`
 - **视觉复测**：static/motion 对比确认五个主题的背景元素发生连续位移或状态变化；诗词透明度呼吸和小幅字符微动由同一动态时钟驱动，未再出现依赖 IMGUI 事件频率的停顿。OS 级截图仍仅作辅助，正式证据为 Unity 截图。
 - **状态**：五个主题预评分仍为 91/92/91/91/91，P0/P1/P2 仍为 0，P3 美术优化保留；真实 GUI 双击展开、拖拽/收回人工签字仍未完成，T3/T5/T6 及 G1～G5 不提前关闭。
+
+### 8.8 五主题视觉优化复测（2026-09-04）
+
+- **修改范围**：仅修改 `HolidayFireworksField.cs`。增加紧凑面板的顶部/底部安全区，统一以面板宽度选择诗词列数；分别优化新春烟花与背板、元宵灯笼事件点亮/水面倒影、端午龙舟尺寸与速度、七夕诗词呼吸、中秋月轮/玉兔/桂枝层次。未修改 Live2D 模型、参数、物理或渲染管线。
+- **自动验证**：`build.ps1 -RunTests` 通过（EditMode `failed=0`），完整 `build.ps1` 通过；随后直接运行 `Build/DesktopPet.exe` 做新春 post-build 隔离冒烟，4/4 截图有效且无 `NullReferenceException`/未处理异常，测试进程正常退出，生产数据目录无新增运行时文件。
+- **截图证据**：`%TEMP%/fuxuan_visual_optimization_eval_20260904_final/test_screenshots/`，五主题各有 `static`、`small`、`motion` 和统一 `default_recovery`，共 16 张非空 Unity 截图；`list/status/off` 和 `@@test:quit` 日志齐全。视觉复核确认小窗口诗词不再落入标题/会话列表，五套主视觉与动效仍可辨。
+- **本轮结论**：这是针对前述“底部填充、动效存在感、窄窗口排版和主视觉尺寸”的实现复测，未重新签发正式 85/100 评分。五主题仍保持“自动证据齐全、待真实 GUI 人工签字”的状态；T3/T5/T6 及 G1～G5 不提前关闭。
