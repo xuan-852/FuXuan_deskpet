@@ -76,7 +76,7 @@ public class DesktopPet : MonoBehaviour
 
     // ================ 可调参数（改这里）================
     const int GROUND_Y_MARGIN     = 0;       // 地面距屏幕底部距离（像素），负数=往下调，正数=往上调
-    const float WALK_SPEED_FACTOR = 36f;     // 移动速度（像素/秒，帧率无关）
+    const float WALK_SPEED_FACTOR = 24f;     // 移动速度（像素/秒，帧率无关）
     // ==================================================
 
     #region 物理状态
@@ -158,16 +158,16 @@ public class DesktopPet : MonoBehaviour
     public int taskWeightStopTime = 6;
 
     [Tooltip("地面任务移动最短时间（毫秒）")]
-    public int taskMoveTimeMinMs = 2500;
+    public int taskMoveTimeMinMs = 2000;
 
     [Tooltip("地面任务移动最长时间（毫秒）")]
-    public int taskMoveTimeMaxMs = 4500;
+    public int taskMoveTimeMaxMs = 4000;
 
     [Tooltip("停止最短时间（毫秒）")]
-    public int taskStopTimeMinMs = 3500;
+    public int taskStopTimeMinMs = 6000;
 
     [Tooltip("停止最长时间（毫秒）")]
-    public int taskStopTimeMaxMs = 7500;
+    public int taskStopTimeMaxMs = 15000;
 
     [System.NonSerialized]
     public GroundTask currentTask = GroundTask.None;
