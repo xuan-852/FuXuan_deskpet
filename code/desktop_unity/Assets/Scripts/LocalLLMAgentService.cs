@@ -79,7 +79,7 @@ public class LocalLLMAgentService : MonoBehaviour
     private bool _isProcessing = false;
 
     /// <summary>将一个任务加入队列</summary>
-    private void EnqueueTask(Func<IEnumerator> task, string requiredModel = null)
+    private bool EnqueueTask(Func<IEnumerator> task, string requiredModel = null)
     {
         bool modelReady = string.IsNullOrWhiteSpace(requiredModel)
             ? LocalLLMClient.IsReady
@@ -87,11 +87,12 @@ public class LocalLLMAgentService : MonoBehaviour
         if (!modelReady || LocalLLMClient.Paused)
         {
             Debug.LogWarning("[LocalLLMAgent] 本地模型不可用，跳过任务");
-            return;
+            return false;
         }
         _taskQueue.Enqueue(task);
         if (!_isProcessing)
             StartCoroutine(ProcessQueue());
+        return true;
     }
 
     private IEnumerator ProcessQueue()
@@ -338,7 +339,7 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
         // 不同聊天模型使用各自的质量预算；动作/摘要仍走轻量模型。
         float temperature = profile.Temperature;
         int maxTokens = profile.MaxTokens;
-        EnqueueTask(() => LocalLLMClient.PromptAsync(
+        bool queued = EnqueueTask(() => LocalLLMClient.PromptAsync(
             "你是符玄。请严格按照下面的本地角色卡和输出契约作答。\n\n" + prompt,
             userMessage,
             onResult,
@@ -346,6 +347,8 @@ JSON 格式：{""intent"": ""类型"", ""emotion"": ""情绪"", ""brief"": ""一
             maxTokens: maxTokens,
             timeout: profile.TimeoutSeconds,
             modelOverride: LocalLLMClient.ChatModelName), LocalLLMClient.ChatModelName);
+        if (!queued)
+            onResult?.Invoke(false, "本地聊天模型尚未就绪");
     }
 
     // ──────────────────────────────────────────────────────────────────

@@ -533,11 +533,34 @@ public partial class ChatManager : MonoBehaviour
     private IEnumerator DoOllamaOnlyReply()
     {
         SetRequestStatus("检查本地模型…", RequestStage.Thinking);
-        float deadline = Time.time + 20f;
-        while ((LocalLLMAgentService.Instance == null || !LocalLLMAgentService.Instance.CanProcessChat)
-            && Time.time < deadline)
+        // 桌宠可能先于 Ollama 启动；启动阶段的一次健康检查失败不能永久锁死聊天。
+        // 发送消息时主动重试，确保 Ollama 后启动或模型刚加载完成后仍能恢复对话。
+        bool chatReady = LocalLLMAgentService.Instance != null
+            && LocalLLMAgentService.Instance.CanProcessChat;
+        float deadline = Time.realtimeSinceStartup + 20f;
+        while (!chatReady && Time.realtimeSinceStartup < deadline)
         {
-            yield return null;
+            bool checkedNow = false;
+            yield return LocalLLMClient.CheckHealthAsync((ok, msg) =>
+            {
+                checkedNow = true;
+                chatReady = ok && LocalLLMAgentService.Instance != null
+                    && !LocalLLMClient.Paused;
+                if (!string.IsNullOrEmpty(msg))
+                    Debug.Log("[ChatManager] 本地聊天健康检查: " + msg);
+            }, LocalLLMClient.ChatModelName);
+
+            if (chatReady) break;
+            // 避免服务不可用时忙等；下一轮允许服务在后台完成启动。
+            yield return new WaitForSecondsRealtime(checkedNow ? 1f : 0.25f);
+        }
+
+        if (!chatReady)
+        {
+            _lastError = "Ollama 未就绪或本地模型生成失败";
+            SetRequestStatus("请求失败", RequestStage.Error);
+            OnRequestError?.Invoke($"⚠ 本地 Ollama 未就绪，请确认 Ollama 已启动且已安装聊天模型 {LocalLLMClient.ChatModelName}");
+            yield break;
         }
 
         SetRequestStatus("本地灵识判断中…", RequestStage.LocalGenerating);
