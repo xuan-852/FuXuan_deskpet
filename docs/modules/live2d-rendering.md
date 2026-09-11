@@ -100,6 +100,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 - 行走恢复时，`LateUpdate` 会先中断自动动作并调用 `ResetIdleAction(true)`，再写入行走姿态，避免上一动作的头部、身体或手臂参数残留。
 - 右键/测试触发的旧动作（包括 #4 星辉、#7 法阵）使用 `_actionLocked`，并暂停 `DesktopPet` 的物理移动；动作结束时只恢复由该动作引入的暂停状态。
 - #4 `UpdateStarSpin()` 仍是五阶段硬编码动作；#7 `UpdateMagicCircle()` 仍是五阶段 Spring/Perlin 复杂动作。二者均不应被行走姿态覆盖。
+- 2026-09-11 为提高首次使用时的可感知性，`DesktopPet` 的默认地面速度为 36px/s，单次移动 2.5–4.5 秒、停留 3.5–7.5 秒；对应约 90–162px 的连续位移。只调整移动节奏，不增加不存在的腿部参数，也不改动上述动作互斥与停止收敛链路。
 
 测试模式下可用以下 inbox 命令复核旧动作和渲染快照（必须先创建隔离目录中的 `.test_mode`）：
 

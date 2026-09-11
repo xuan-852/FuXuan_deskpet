@@ -3,7 +3,7 @@
 > **文档作用**: 本模块文档描述桌宠「具身智能」子系统的**代码真相**——ActionAgent 15 文件架构、MotionAgent 决策循环、MotionPlanner 模板 + MotionTranslator LLM 翻译、闭环验证体系（GLM-4V 评分 + MotionMemory 学习）、验证协议与历史成绩。改动作生成/验证/记忆相关代码前必读。
 > **基本架构**: `MotionAgent`（tick 驱动决策）→ `MotionPlanner`（10 模板）/ `MotionTranslator`（DeepSeek 自然语言→关键帧，10 规则 + 10 特殊模式）→ `MotionGenerator`（协程插值播放）→ 闭环：截图 → 2×2 拼图 → GLM-4V 评分 → `MotionMemoryManager`（30 条容量）→ VERIFIED FEEDBACK 反馈给下次生成。关键目录：`Assets/Scripts/Live2DFramework/ActionAgent/`（15 文件）。
 > **开发历史迭代**: N31 引入 DualModelValidator（名义双模型）；N34（2026-07-07）SPECIAL PATTERNS 优化（捂脸/捂嘴/叉腰/缩团/行礼）；N37 通过率 60%→70%；N38（2026-08-02）代码真相审计修正规则数 11→10、SPECIAL PATTERNS 12→10；N39 修复 BUG-1（睡眠时段判断）/BUG-5（Dual 回调简化）/BUG-7（示例角度制），删除 AutoMotionCollector 死代码；N40 T2 部位裁剪 schema。
-> **编写注意事项**: ①验证协议是「历史数据存档」，评分须同步更新 `verification_report_2026-07-07.md` 或本模块文档；②GLM-4V 是唯一评分模型（Qwen-VL 已删除，`DualModelValidator` 名存实亡但文件未改名）；③MotionMemory 容量 30 条、负反馈 ≤2 分入反例（最多 10 条）；④验证截图存 `glm_collages/` 上限 50 张；⑤行走研究仅理论参考（Live2D 无腿部参数，未落地）。
+> **编写注意事项**: ①验证协议是「历史数据存档」，评分须同步更新 `verification_report_2026-07-07.md` 或本模块文档；②GLM-4V 是唯一评分模型（Qwen-VL 已删除，`DualModelValidator` 名存实亡但文件未改名）；③MotionMemory 容量 30 条、负反馈 ≤2 分入反例（最多 10 条）；④验证截图存 `glm_collages/` 上限 50 张；⑤AI 生成的腿部行走循环仅理论参考（模型无腿部参数）；现有 `DesktopPet` 地面状态机的真实横向位移与身体步态是独立能力。
 >
 > **质量遥测（2026-08-18）**：`QualityTelemetry` 记录 `motion_decision`、`motion_translation` 和 `motion_validation` 的来源（local/template/cloud/fallback）、解析结果、耗时、关键帧数量和 GLM 分数；不记录动作原文或参数快照。与 `validation_log.json` 的历史动作描述日志分离，统计命令为 `node scripts/log-analysis/summarize_quality.cjs D:\DesktopPetData`。`--cloud-baseline` 会跳过 MotionTranslator 的本地优先路径并暂停自主决策，`@@case:<id>` + `@@motion:<描述>` 可让指定动作结果按案例配对，详细流程见 `docs/quality-comparison-test-guide.md`。
 
@@ -141,7 +141,7 @@ generate_motion → 播放动作 → 截图 (20/40/60/80%)
 2. **GLM-4V 是唯一评分模型**：`DualModelValidator.cs` 文件仍叫 Dual 但实际仅 GLM-4V（付费 glm-4.6v，免费 glm-4v-flash 回退），`qwenScore` 恒 0——**不要**为它加回 Qwen 逻辑，除非明确要双模型
 3. **验证截图管理**：2×2 拼图存 `glm_collages/` 上限 50 张，超限需清理
 4. **`validation_log.json` 不存在**：早期文档声称写入该文件，代码未实现——验证报告经 `Debug.Log` 输出，不要找这个文件
-5. **行走循环研究未落地**：`walk_cycle_research.md`（Animator Island / 《动画师生存手册》理论）是纯研究笔记，Live2D 模型无腿部参数，行走映射仅理论参考
+5. **行走循环研究未落地**：`walk_cycle_research.md`（Animator Island / 《动画师生存手册》理论）是纯研究笔记，Live2D 模型无腿部参数，不能把它当作 AI 生成的腿部走路能力；但 `DesktopPet` 已有独立的地面状态机，会做真实横向位移并由渲染器提供身体步态。新用户默认速度为 36px/s、单次移动 2.5–4.5 秒、静止 3.5–7.5 秒；设置页保存的仅是任务权重，不覆盖这组安全默认节奏。
 6. **验证运行方式**：聊天输入 `\verify` 运行完整验证套件，或输入动作描述（如"害羞地捂脸"）触发自动播放+验证
 7. **测试模式**：验证套件涉及 GLM 截图与 Memory 写入，测试须开 `.test_mode` 防污染 MotionMemory 高分/反例
 8. **动作时冻结行走**：动作播放期间调用 `_pet.Pause/Resume()` 防冲突，勿在动作中修改物理状态
