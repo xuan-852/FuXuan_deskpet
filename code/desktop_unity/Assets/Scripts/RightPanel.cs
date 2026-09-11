@@ -363,7 +363,7 @@ public partial class RightPanel : MonoBehaviour
 
     // ==================== QQ 式两级界面（会话列表 ⇄ 聊天）+ 子面板（设置/便签/报告） ====================
     /// <summary>窗口视图：SessionList=第一级窄条会话列表；Chat=第二级展开；ModelSettings=独立模型设置页</summary>
-    private enum PanelView { SessionList, Chat, Settings, ModelSettings, Reminders, Report, Usage, Memory }
+    private enum PanelView { SessionList, Chat, Settings, ModelSettings, Reminders, Report, Usage, Memory, Onboarding, About }
     private PanelView _currentView = PanelView.SessionList;
 
     // 尺寸参照 QQ 实测（Win32：324×846 窄条模式）；展开后左会话栏 280 + 右聊天区 580
@@ -489,6 +489,9 @@ public partial class RightPanel : MonoBehaviour
         RuntimeReadinessService.EnsureExists();
         RefreshRefs();
         DisableLegacyBallPanels();
+        _userExperience = UserExperienceState.Load();
+        if (_userExperience.ShouldOfferOnboarding && !_userExperience.firstHintShown)
+            StartCoroutine(ShowFirstUseHint());
         // 恢复字体档位（默认 1=A2 1.2×）
         try
         {
@@ -562,6 +565,7 @@ public partial class RightPanel : MonoBehaviour
     void Update()
     {
         RefreshRefs();
+        EnsureTrayHelpSubscription();
 
         // 透明窗口在部分 DWM/无输入组合下可能接受 RequestRepaint 却不再进入 IMGUI Repaint。
         // 测试截图不能无限等待该事件；半秒后用当前面板区域回读兜底，并保留请求以便下帧再试。
@@ -618,7 +622,10 @@ public partial class RightPanel : MonoBehaviour
                 if (inputVersion != _lastExternalInputVersion)
                 {
                     _lastExternalInputVersion = inputVersion;
-                    _inputText = ExternalChatWindow.GetInputText();
+                    if (_onboardingExternalEditing)
+                        _onboardingName = ExternalChatWindow.GetInputText();
+                    else
+                        _inputText = ExternalChatWindow.GetInputText();
                 }
                 _lastExternalComposition = nativeComposition;
                 _externalInputDirty = true;
@@ -793,6 +800,11 @@ public partial class RightPanel : MonoBehaviour
     {
         if (sessionIdx < 0 || sessionIdx >= _sessions.Count) return;
         _activeSession = sessionIdx;
+        if (_userExperience != null && _userExperience.ShouldOfferOnboarding)
+        {
+            OpenOnboarding(false);
+            return;
+        }
         _currentView = PanelView.Chat;
         ApplyViewSize();
         _inputFocused = true;          // 进入聊天后聚焦输入框
@@ -811,7 +823,7 @@ public partial class RightPanel : MonoBehaviour
     /// <summary>判断是否为子面板视图（设置/便签/报告）</summary>
     private bool IsSubPanelView(PanelView v)
     {
-        return v == PanelView.Settings || v == PanelView.ModelSettings || v == PanelView.Reminders || v == PanelView.Report || v == PanelView.Usage || v == PanelView.Memory;
+        return v == PanelView.Settings || v == PanelView.ModelSettings || v == PanelView.Reminders || v == PanelView.Report || v == PanelView.Usage || v == PanelView.Memory || v == PanelView.Onboarding || v == PanelView.About;
     }
 
     /// <summary>打开独立模型设置页；模型切换不会改变动作模型。</summary>
@@ -995,7 +1007,13 @@ public partial class RightPanel : MonoBehaviour
             return;
         }
 
-        // ★ 测试视图切换：@@view:settings|reminders|report|chat|list|back|close|open
+        if (content.StartsWith("@@onboarding:"))
+        {
+            HandleTestOnboardingCommand(content.Substring("@@onboarding:".Length).Trim());
+            return;
+        }
+
+        // ★ 测试视图切换：@@view:settings|reminders|report|onboarding|about|chat|list|back|close|open
         //   终端测试链路——无需模拟鼠标点击，写一行文件即可可靠切页（仅测试模式）。
         //   设置/便签/报告 = 页内子面板；chat = 聊天视图；list = 会话列表；back = 子面板返回。
         if (content.StartsWith("@@view:"))
@@ -1074,6 +1092,8 @@ public partial class RightPanel : MonoBehaviour
             case "report": OpenSubPanel(BallPanel.PanelType.Report); break;
             case "usage": OpenSubPanel(BallPanel.PanelType.Usage); break;
             case "memory": OpenSubPanel(BallPanel.PanelType.Memory); break;
+            case "onboarding": OpenOnboarding(true); break;
+            case "about": OpenAbout(); break;
             case "chat":
                 if (_currentView != PanelView.Chat)
                 {
@@ -1745,7 +1765,8 @@ public partial class RightPanel : MonoBehaviour
         }
         // ——— 子面板视图（设置/便签/报告/消耗） ———
         else if (_currentView == PanelView.Settings || _currentView == PanelView.ModelSettings || _currentView == PanelView.Reminders
-            || _currentView == PanelView.Report || _currentView == PanelView.Usage || _currentView == PanelView.Memory)
+            || _currentView == PanelView.Report || _currentView == PanelView.Usage || _currentView == PanelView.Memory
+            || _currentView == PanelView.Onboarding || _currentView == PanelView.About)
         {
             DrawSubPanelView(px, py, pw, ph, mp);
         }
@@ -1976,7 +1997,7 @@ public partial class RightPanel : MonoBehaviour
         _termLogDimStyle = new GUIStyle
         {
             font = _monoFont, fontSize = 15, wordWrap = true,
-            normal = { textColor = new Color(0.55f, 0.54f, 0.60f, 0.9f) },
+            normal = { textColor = new Color(0.68f, 0.66f, 0.74f, 0.98f) },
             alignment = TextAnchor.UpperLeft
         };
         _emptyStateTitleStyle = new GUIStyle
@@ -2696,6 +2717,7 @@ public partial class RightPanel : MonoBehaviour
 
     void OnDestroy()
     {
+        ReleaseTrayHelpSubscription();
         // 全局热键为轮询模式，无需注销（GetAsyncKeyState 无资源占用）
         if (_bgTex != null) Destroy(_bgTex);
         if (_inputBgTex != null) Destroy(_inputBgTex);
@@ -2836,6 +2858,14 @@ public partial class RightPanel : MonoBehaviour
     {
         if (string.IsNullOrWhiteSpace(text)) return;
         string message = text.Trim();
+        if (_onboardingExternalEditing)
+        {
+            _onboardingName = message;
+            EndOnboardingNameEditing();
+            _experienceStatus = "称呼已填写，点击“完成设置”即可保存。";
+            GUI.changed = true;
+            return;
+        }
         Debug.Log($"[RightPanel] 外部窗口发送: {message}");
 
         // DoSend() 已经在窗口线程清空了 Win32 EDIT。这里不能再把已发送文本写回

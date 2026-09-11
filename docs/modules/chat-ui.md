@@ -445,7 +445,16 @@
 - `WindowOverlay` 的 Unity 主窗口代理显式处理 `WM_QUERYENDSESSION` 和 `WM_ENDSESSION`：前者快速返回允许，后者才触发 `DesktopPet.BeginShutdown`，避免用户取消关机时提前拆除外置窗口。
 - 清理仍遵循既有顺序：先停止 `ExternalChatWindow` 线程，再发出在途任务取消请求、解绑日志和释放互斥体；通知具有幂等保护。隔离消息探针已确认回调和清理日志，真实系统关机/注销仍需人工观察。
 
-## 十五、五个传统节日预验收证据（2026-09-04）
+## 十五、首启引导、帮助与本地版本中心（2026-09-11）
+
+- `UserExperienceState` 将首启完成/跳过/轻量提示状态原子写入 `DataPathConfig.UserExperienceStateFile`；该文件属于用户数据目录，覆盖安装只替换程序目录时不会丢失。没有该文件但已有偏好、记忆、活动或其他 JSON 的目录会判为旧用户，不自动弹引导。
+- 新用户启动时仅显示“点击本体或按 F2 打开聊天”的头顶轻提示；首次进入聊天显示三步欢迎页（聊天、拖动、托盘）。称呼可空，填写后经 `PreferencesManager.SetPreference("call_me", ...)` 保存；自启默认关闭，只在用户明确选择时调用托盘管理器，测试模式绝不写 HKCU。
+- 聊天标题栏增加 `?`，托盘增加“使用帮助”，均可重新进入欢迎/帮助页。外置窗口的称呼框仍用隐藏原生 EDIT 输入桥，并通过 `RegisterExtHit` 处理命中，避免出现只可见不可点击的页面。
+- 设置页新增“关于与数据”：显示随程序 `version.txt`（开发构建回退 `Application.version`）、运行目录、数据目录与可写性、自启状态、本地 `release-notes.txt` 摘要，并提供打开数据目录/复制路径。该页不联网检查或下载更新。
+- 新增测试入口 `@@view:onboarding`、`@@view:about` 与 `@@onboarding:complete|skip|name:<值>|autostart:on|autostart:off`；短链路 `runtime_smoke.cjs --ui-experience-only` 截图、验证自启隔离及完整退出。
+- 验证：2026-09-11 `build.ps1 -Quick`、独立输出完整构建、`runtime_smoke.cjs --ui-experience-only --verbose` 均通过；欢迎页/版本中心截图成功，零 NRE，生产数据零污染。
+
+## 十六、五个传统节日预验收证据（2026-09-04）
 
 - 当前正式范围固定为新春、元宵、端午、七夕、中秋；诗词分别为《元日》《生查子·元夕》《少年游·端午赠黄守徐君猷》前半段、《鹊桥仙·纤云弄巧》开篇和《水调歌头·明月几时有》节选。
 - 五个主题均已使用最新构建完成独立隔离评测：每主题保存 `static`、`small`、`motion`、`default_recovery` 四张 Unity 截图，并在 Player.log 中留下主题切换、`list`、`status`、`off` 和 `@@test:quit` 记录；各目录无 `NullReferenceException`。

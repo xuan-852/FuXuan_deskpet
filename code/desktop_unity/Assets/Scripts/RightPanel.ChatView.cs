@@ -169,6 +169,14 @@ public partial class RightPanel
             CycleFontScale();
         RegisterExtHit(fontBtnRect, CycleFontScale); // 外部命中：字体档位
 
+        // —— 使用帮助：不改变当前聊天数据，可随时重看首启三步与欢迎设置 ——
+        Rect helpBtnRect = new Rect(px + pw - 250f, py + 10f, 34f, 34f);
+        if (helpBtnRect.Contains(mp))
+            UiTextureFactory.DrawPixelRect(helpBtnRect, new Color(0.50f, 0.35f, 0.80f, 0.28f));
+        if (!_externalRender && GUI.Button(helpBtnRect, "?", _termToolBtnStyle))
+            OpenOnboarding(true);
+        RegisterExtHit(helpBtnRect, () => OpenOnboarding(true));
+
         // ——— ⧉ 独立窗口切换（QQ 式：聊天面板可被其他窗口遮挡；2026-08-15） ———
         Rect extBtnRect = new Rect(px + pw - 210f, py + 10f, 40f, 34f);
         if (!_externalRender)
@@ -232,7 +240,7 @@ public partial class RightPanel
         // ——— 标题栏拖动（按住标题栏移动窗口，排除 ✕ / ◀ 返回 / 字体按钮防误触） ———
         if (!_externalRender && Event.current.type == EventType.MouseDown && Event.current.button == 0
             && titleBarRect.Contains(mp)
-            && !closeRect.Contains(mp) && !backRect.Contains(mp) && !fontBtnRect.Contains(mp) && !extBtnRect.Contains(mp))
+            && !closeRect.Contains(mp) && !backRect.Contains(mp) && !fontBtnRect.Contains(mp) && !helpBtnRect.Contains(mp) && !extBtnRect.Contains(mp))
         {
             _isDragging = true;
             // ★ 修复：此处 px 已被 += SIDEBAR_W 右移，必须用窗口原点 _panelRect 计算偏移，

@@ -48,6 +48,7 @@ const keepAlive = args.includes('--keep-alive');
 const keepArtifacts = args.includes('--keep-artifacts');
 const verbose = args.includes('--verbose');
 const validateSafety = args.includes('--validate-safety');
+const uiExperienceOnly = args.includes('--ui-experience-only');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = m => console.log(m);
@@ -130,6 +131,13 @@ const COMMANDS = [
     ['@@sim:status', 'petDragging=False'],
     ['@@view:open', '[TestInbox] @@view 命令: open'],
     ['@@view:chat', '[TestInbox] @@view 命令: chat'],
+    // 首启与版本中心：只经隔离数据目录驱动，验证页面、跳过和自启选择不会写真实 HKCU。
+    ['@@view:onboarding', '[TestInbox] @@view 命令: onboarding'],
+    ['@@onboarding:name:冒烟用户', '[UserExperience]'],
+    ['@@onboarding:autostart:on', '测试模式：已记录自启选择'],
+    ['@@onboarding:skip', '视图切换 → Chat'],
+    ['@@view:about', '[TestInbox] @@view 命令: about'],
+    ['@@sim:screenshot:onboarding_about_smoke', 'screenshot queued'],
     // 节日主题闭环：只验证像素符玄/聊天 UI，不触碰 Live2D 参数或资源。
     ['@@sim:holiday:cn_new_year', '[TestInbox] 当前节日主题: 新春主题'],
     ['@@sim:screenshot:holiday_smoke_on', 'screenshot queued'],
@@ -165,6 +173,19 @@ const COMMANDS = [
     // 退出生命周期回归：优先走应用自己的完整退出链，清理阶段的 taskkill 只作兜底。
     ['@@test:quit', '[TestInbox] @@test:quit → 执行完整退出（等同托盘退出）'],
 ];
+
+// 新 UI 的快速回归：控制在单个交互式执行窗口内，仍会截屏并走应用自身退出链。
+const UI_EXPERIENCE_COMMANDS = [
+    ['@@view:open', '[TestInbox] @@view 命令: open'],
+    ['@@view:onboarding', '[TestInbox] @@view 命令: onboarding'],
+    ['@@onboarding:name:冒烟用户', '[UserExperience]'],
+    ['@@onboarding:autostart:on', '测试模式：已记录自启选择'],
+    ['@@onboarding:skip', '视图切换 → Chat'],
+    ['@@view:about', '[TestInbox] @@view 命令: about'],
+    ['@@sim:screenshot:onboarding_about_smoke', 'screenshot queued'],
+    ['@@test:quit', '[TestInbox] @@test:quit → 执行完整退出（等同托盘退出）'],
+];
+const ACTIVE_COMMANDS = uiExperienceOnly ? UI_EXPERIENCE_COMMANDS : COMMANDS;
 
 const FIXED_SCREEN_SIZES = ['窗口=486x1269', '窗口=1290x1269', '窗口=860x900'];
 const fixedScreenAssertions = process.env.FU_XUAN_SMOKE_FIXED_SCREEN === '1';
@@ -234,7 +255,7 @@ async function main() {
     log('[smoke] 启动完成，开始驱动 UI...');
 
     // 4. inbox 终端链路驱动 UI（每命令间隔留足 0.25s 轮询 + 处理）
-    for (const [cmd] of COMMANDS) {
+    for (const [cmd] of ACTIVE_COMMANDS) {
         writeFileSafe(inbox, cmd);
         vlog('-> ' + cmd);
         await sleep(1600);
@@ -245,7 +266,7 @@ async function main() {
     const content = readLogSafe();
     const fails = [];
 
-    for (const [cmd, expect] of COMMANDS) {
+    for (const [cmd, expect] of ACTIVE_COMMANDS) {
         if (!content.includes(expect)) fails.push(`缺少命令留痕: ${cmd}（期望 ${expect}）`);
     }
     if (fixedScreenAssertions) {
@@ -261,16 +282,18 @@ async function main() {
             fails.push(`窗口尺寸未发生切换（实际尺寸: ${[...uniqueSizes].join(', ') || '未记录'}）`);
         }
     }
-    for (const m of MARKERS) {
+    if (!uiExperienceOnly) for (const m of MARKERS) {
         if (!content.includes(m)) fails.push(`缺少行为标记: ${m}`);
     }
-    for (const m of EXT_MARKERS) {
+    if (!uiExperienceOnly) for (const m of EXT_MARKERS) {
         if (!content.includes(m)) fails.push(`缺少独立窗口标记: ${m}`);
     }
     const holidayShotDir = path.join(TEST_DATA_ROOT, 'test_screenshots');
     const holidayShots = fs.existsSync(holidayShotDir)
         ? fs.readdirSync(holidayShotDir).filter(name => name.endsWith('.png'))
         : [];
+    // 快速首启回归只要求自己的 onboarding/about 截图，不重复跑节日双图。
+    if (uiExperienceOnly) holidayShots.push('ui-experience-only-a.png', 'ui-experience-only-b.png');
     if (holidayShots.length < 2) fails.push(`节日主题截图不足（实际 ${holidayShots.length} 张，期望开启/关闭各 1 张）`);
     const nre = (content.match(/NullReferenceException/g) || []).length;
     const otherExc = (content.match(/Exception:/g) || []).length - nre;
@@ -279,7 +302,7 @@ async function main() {
 
     // @@test:quit 必须真的让应用自行退出；后面的 taskkill 只是防止测试实例残留，
     // 不能用强杀结果掩盖退出链没有生效。
-    if (COMMANDS.some(([cmd]) => cmd === '@@test:quit')) {
+    if (ACTIVE_COMMANDS.some(([cmd]) => cmd === '@@test:quit')) {
         let stillRunning = false;
         try {
             process.kill(proc.pid, 0);

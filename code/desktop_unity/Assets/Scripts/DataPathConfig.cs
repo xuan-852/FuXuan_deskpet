@@ -81,6 +81,15 @@ public static class DataPathConfig
     /// <summary>测试模式标记文件（存在 = IsTestMode）</summary>
     public static string TestModeFile => System.IO.Path.Combine(DataRoot, ".test_mode");
 
+    /// <summary>当前是否运行于隔离测试数据目录。</summary>
+    public static bool IsTestMode => System.IO.File.Exists(TestModeFile);
+
     /// <summary>测试收件箱（终端链路 UI 测试注入）</summary>
     public static string InboxFile => System.IO.Path.Combine(DataRoot, "inbox.txt");
+
+    /// <summary>
+    /// 用户界面体验状态（首启引导是否完成等）。
+    /// 此文件位于数据目录，安装程序更新只替换程序目录时不会覆盖它。
+    /// </summary>
+    public static string UserExperienceStateFile => System.IO.Path.Combine(DataRoot, "ui_experience_state.json");
 }

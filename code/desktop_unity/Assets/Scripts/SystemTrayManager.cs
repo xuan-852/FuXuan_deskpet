@@ -101,7 +101,8 @@ public class SystemTrayManager : MonoBehaviour
     // 右键菜单项 ID
     private const uint MENU_SHOW = 1001;
     private const uint MENU_AUTOSTART = 1002;
-    private const uint MENU_QUIT = 1003;
+    private const uint MENU_HELP = 1003;
+    private const uint MENU_QUIT = 1004;
 
     private const uint MF_STRING = 0;
     private const uint MF_CHECKED = 0x0008;
@@ -261,6 +262,9 @@ public class SystemTrayManager : MonoBehaviour
 
     /// <summary>显示/隐藏切换事件</summary>
     public event Action<bool> OnVisibilityChanged;
+
+    /// <summary>用户从托盘请求打开使用帮助</summary>
+    public event Action OnHelpRequested;
 
     // 引用 WindowOverlay（用于恢复时重新应用 DWM 透明）
     private WindowOverlay _windowOverlay;
@@ -716,8 +720,9 @@ public class SystemTrayManager : MonoBehaviour
             MENU_AUTOSTART, "开机自启 (A)");
 
         InsertMenu(hMenu, 3, MF_BYPOSITION | MF_SEPARATOR, 0, null);
-
-        InsertMenu(hMenu, 4, MF_BYPOSITION | MF_STRING, MENU_QUIT, "退出 (Q)");
+        InsertMenu(hMenu, 4, MF_BYPOSITION | MF_STRING, MENU_HELP, "使用帮助 (H)");
+        InsertMenu(hMenu, 5, MF_BYPOSITION | MF_SEPARATOR, 0, null);
+        InsertMenu(hMenu, 6, MF_BYPOSITION | MF_STRING, MENU_QUIT, "退出 (Q)");
 
         // 同步获取用户选择（阻塞）
         uint cmd = TrackPopupMenu(hMenu,
@@ -734,6 +739,9 @@ public class SystemTrayManager : MonoBehaviour
                 break;
             case MENU_AUTOSTART:
                 SetAutoStart(!_autoStartEnabled);
+                break;
+            case MENU_HELP:
+                OnHelpRequested?.Invoke();
                 break;
             case MENU_QUIT:
                 Quit();

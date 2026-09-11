@@ -329,6 +329,12 @@ ollama serve（注册为 Windows 服务自启，官方安装器默认）
 - 桥接 `/health` 免鉴权并暴露 `openclaw_ready`；OpenClaw 动态导入失败不会阻止诊断服务启动；LaTeX 输出目录跟随 `FU_XUAN_DATA`。
 - 已验证：full-access `build.ps1 -Quick` 通过；Inno 生产/测试安装器编译、静默安装、动态入口检查、静默卸载通过；隔离端口桥接健康检查通过。
 
+## 2026-09-11 本地版本中心与升级保留
+
+- `build-portable.ps1` 在生成 `version.txt` 后，同时将仓库 `CHANGELOG.md` 复制为安装目录的 `release-notes.txt`；若发布说明缺失则生成基础文本。桌宠设置页只读取这两个本地文件，不联网下载或替换程序。
+- 运行时“关于与数据”页明确区分程序目录与 `FU_XUAN_DATA` 数据目录：覆盖升级只替换前者，聊天记录、偏好、记忆、设置及首启状态文件均留在后者。页面提供数据目录可写状态、打开目录和复制路径。
+- 发布前仍必须执行已有的升级验收：在有旧数据的测试安装上覆盖安装，核对 `ui_experience_state.json`、`pet_preferences.json`、记忆与聊天数据未变，并确认 `version.txt`/`release-notes.txt` 同包存在。
+
 ## 2026-09-10 v1.0.13 重建记录
 
 - 当前产物：`FuXuanSetup-1.0.13.exe` SHA256 `9F477BA9275BEA177A1603BEA6DEF378064AFF48C962A7F94FA6CE7D619036ED`；ZIP SHA256 `1D0AFF5B2EC04AC529E2554CEE0527E6488CA07B1BD7C7D01666511B043BA3F5`。两者均未使用商业代码签名证书。

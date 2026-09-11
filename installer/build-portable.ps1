@@ -255,6 +255,18 @@ $version = if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 [System.IO.File]::WriteAllText((Join-Path $OutDir "version.txt"), $version + "`r`n", (New-Object System.Text.UTF8Encoding($true)))
 
+# 版本中心直接读取随包的本地说明，不依赖联网更新服务。
+# 优先携带仓库 CHANGELOG；没有时仍生成一个明确的占位说明，避免 UI 显示空白。
+$releaseNotesSource = Join-Path $RootDir "CHANGELOG.md"
+$releaseNotesTarget = Join-Path $OutDir "release-notes.txt"
+if (Test-Path $releaseNotesSource) {
+    Copy-Item -LiteralPath $releaseNotesSource -Destination $releaseNotesTarget -Force
+    Write-Host "[OK] 已携带发布说明: release-notes.txt"
+} else {
+    [System.IO.File]::WriteAllText($releaseNotesTarget, "$version`r`n本版本包含本地版本中心与首启体验改进。`r`n", (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host "[WARN] 未找到 CHANGELOG.md，已生成基础发布说明"
+}
+
 $readme = @"
 # FuXuan Desktop Pet - Portable Build (Stage 1)
 

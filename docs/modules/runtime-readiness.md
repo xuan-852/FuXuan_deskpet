@@ -59,6 +59,12 @@ Run the project diagnostic after adding or changing C#:
 
 The data root must be temporary and contain `.test_mode`; production memory and personality files must not be used by automated tests. The Tuanjie wrapper may report an empty process exit code in the host environment, so `direct_compile.log` and the actual compiler error list are the authoritative compile evidence.
 
+## 2026-09-11 首启与数据保留验证
+
+- 首启界面状态保存到用户数据根目录的 `ui_experience_state.json`，不放进安装目录；正式软件覆盖更新后，聊天记录、偏好、记忆、设置和该状态文件均保留。
+- 自启不再由 `DesktopPet` 的首次启动逻辑自动写入注册表。既有注册表值继续由 `SystemTrayManager` 读取并保留；新用户只能从欢迎页或托盘菜单明确开启。
+- 运行时测试模式检查 `DataPathConfig.IsTestMode`：欢迎页的自启选择只记录测试状态、不触碰真实 HKCU。`runtime_smoke.cjs --ui-experience-only` 在临时 `FU_XUAN_DATA` 下验证欢迎/版本中心截图、应用自退出及生产数据零污染。
+
 ## 2026-08-21 verification
 
 - Host user `FU\\25295`: `build.ps1 -RunTests` completed with exit code 0 and refreshed the build log; the editor did not refresh `test_results.xml`, so the existing 114/114 XML is not counted as a fresh test run.

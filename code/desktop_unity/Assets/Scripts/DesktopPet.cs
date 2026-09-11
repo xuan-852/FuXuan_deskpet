@@ -803,13 +803,8 @@ public class DesktopPet : MonoBehaviour
                 if (_trayManager != null)
                 {
                     _trayManager.Initialize(_windowOverlay.WindowHandle);
-                    // ★ 首次运行自动设置开机自启（写入 HKCU\\Run）
-                    // 这样下次重启后程序会自动启动
-                    if (!_trayManager.AutoStartEnabled)
-                    {
-                        _trayManager.SetAutoStart(true);
-                        Debug.Log("[DesktopPet] 首次运行，已自动设置开机自启");
-                    }
+                    // 自启只由用户在首启欢迎页或托盘菜单明确选择。
+                    // 已有用户的注册表配置由 SystemTrayManager.Initialize 读取并保持。
 
                     // ★ ESC 待处理 — 托盘就绪后立即隐藏
                     if (_pendingEscToTray)

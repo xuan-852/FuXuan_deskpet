@@ -80,6 +80,8 @@ public partial class RightPanel
             PanelView.Report => "📝 报告 · 演武心经",
             PanelView.Usage => "💰 消耗 · Token 统计",
             PanelView.Memory => "🧠 忆境 · 核心记忆",
+            PanelView.Onboarding => "✦ 欢迎来到符玄桌宠",
+            PanelView.About => "ⓘ 关于与数据",
             _ => ""
         };
         GUIStyle headerTitleStyle = _currentView == PanelView.ModelSettings
@@ -134,6 +136,8 @@ public partial class RightPanel
             case PanelView.Report: DrawReportSubPanel(contentX, contentY, contentW, contentH, mp); break;
             case PanelView.Usage: DrawUsageSubPanel(contentX, contentY, contentW, contentH, mp); break;
             case PanelView.Memory: DrawMemorySubPanel(contentX, contentY, contentW, contentH, mp); break;
+            case PanelView.Onboarding: DrawOnboardingSubPanel(contentX, contentY, contentW, contentH, mp); break;
+            case PanelView.About: DrawAboutSubPanel(contentX, contentY, contentW, contentH, mp); break;
         }
 
         // 右键关闭（快捷收面板）
@@ -311,6 +315,13 @@ public partial class RightPanel
         if (GUI.Button(modelRect, "🤖 AI 模型设置", _subBtnStyle))
             OpenModelSettings();
         RegisterExtHit(modelRect, OpenModelSettings);
+
+        Rect aboutRect = new Rect(x + 240f, y, 170f, 40f);
+        if (aboutRect.Contains(mp))
+            UiTextureFactory.DrawPixelRect(aboutRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
+        if (GUI.Button(aboutRect, "ⓘ 关于与数据", _subBtnStyle))
+            OpenAbout();
+        RegisterExtHit(aboutRect, OpenAbout);
 
         // —— 节日皮肤命令说明 ——
         float themeHelpY = y + 56f;
