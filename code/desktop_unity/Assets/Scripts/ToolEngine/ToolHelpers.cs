@@ -687,51 +687,87 @@ public static class ToolHelpers
     /// </summary>
     public static List<string> SearchWithEverything(string query, string rootDir, int maxResults = 200)
     {
+        return TrySearchWithEverything(query, rootDir, maxResults, out var results, out _) ? results : null;
+    }
+
+    /// <summary>
+    /// 使用 Everything 搜索，并保留不可用原因供界面作诚实的降级说明。
+    /// Everything 的 CLI 是通过当前用户会话中的 IPC 窗口通信；找到 es.exe 不等于 IPC 一定可用。
+    /// </summary>
+    public static bool TrySearchWithEverything(string query, string rootDir, int maxResults,
+        out List<string> results, out string failureReason)
+    {
+        results = null;
+        failureReason = null;
         string esExe = FindEverythingCli();
-        if (esExe == null) return null;
-        var results = new List<string>();
+        if (esExe == null)
+        {
+            failureReason = "未找到 Everything 命令行客户端 es.exe";
+            return false;
+        }
+
+        // 默认 IPC 协议失败时依次兼容 Everything 1.4 的三种 IPC 协议。
+        // 这也覆盖用户升级/降级 Everything 后保留旧客户端的情况。
+        string[] ipcModes = { "", "-ipc1", "-ipc2", "-ipc3" };
+        string lastError = null;
+        foreach (var ipcMode in ipcModes)
+        {
+            if (TryRunEverything(esExe, ipcMode, query, rootDir, maxResults, out results, out string error))
+                return true;
+            lastError = error;
+        }
+
+        failureReason = string.IsNullOrWhiteSpace(lastError)
+            ? "Everything 未能返回搜索结果"
+            : $"Everything IPC 不可用（{lastError}）";
+        return false;
+    }
+
+    private static bool TryRunEverything(string esExe, string ipcMode, string query, string rootDir,
+        int maxResults, out List<string> results, out string error)
+    {
+        results = null;
+        error = null;
+        string tmpFile = Path.Combine(Path.GetTempPath(), "es_search_" + Guid.NewGuid().ToString("N") + ".txt");
         try
         {
-            string tmpFile = Path.Combine(Path.GetTempPath(),
-                "es_search_" + Guid.NewGuid().ToString("N") + ".txt");
-            string exportArgs = $"-n {maxResults} -no-header -utf8-bom -export-txt \"{tmpFile}\"";
+            string exportArgs = $"{ipcMode} -n {maxResults} -no-header -utf8-bom -export-txt \"{tmpFile}\"";
             if (!string.IsNullOrEmpty(rootDir))
                 exportArgs += $" -path \"{rootDir.Replace("\"", "\\\"")}\"";
             exportArgs += $" \"{query.Replace("\"", "\\\"")}\"";
 
             var psi = new ProcessStartInfo(esExe, exportArgs)
             {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8
+                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
+                CreateNoWindow = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
             };
-            var p = Process.Start(psi);
-            if (p != null)
+            using (var p = Process.Start(psi))
             {
-                // 🔒 es.exe 加超时+杀进程：防 Everything 异常挂起导致协程永久等待
-                var readTask = System.Threading.Tasks.Task.Run(() => p.StandardOutput.ReadToEnd());
+                if (p == null) { error = "无法启动 es.exe"; return false; }
+                string stdout = p.StandardOutput.ReadToEnd();
+                string stderr = p.StandardError.ReadToEnd();
                 if (!p.WaitForExit(5000))
                 {
                     try { p.Kill(); } catch { }
-                    p.WaitForExit(2000);
+                    error = "es.exe 响应超时";
+                    return false;
                 }
-                try { _ = readTask.Result; } catch { }
+                if (p.ExitCode != 0)
+                {
+                    error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+                    error = string.IsNullOrWhiteSpace(error) ? $"es.exe 退出码 {p.ExitCode}" : error.Trim();
+                    return false;
+                }
             }
-            if (File.Exists(tmpFile))
-            {
-                // UTF-8 BOM 文件：无结果时仅含 BOM（空），有结果时中文路径不乱码
-                var lines = File.ReadAllLines(tmpFile, Encoding.UTF8);
-                foreach (var line in lines)
-                    if (!string.IsNullOrWhiteSpace(line)) results.Add(line);
-                try { File.Delete(tmpFile); } catch { }
-                return results;
-            }
-            return null; // es.exe 未产出文件 → 失败，调用方降级
+            if (!File.Exists(tmpFile)) { error = "es.exe 未生成结果文件"; return false; }
+
+            results = new List<string>();
+            foreach (var line in File.ReadAllLines(tmpFile, Encoding.UTF8))
+                if (!string.IsNullOrWhiteSpace(line)) results.Add(line);
+            return true;
         }
-        catch { return null; }
+        catch (Exception e) { error = e.Message; return false; }
+        finally { try { if (File.Exists(tmpFile)) File.Delete(tmpFile); } catch { } }
     }
 
     public static void SearchRecursive(string dir, string query, List<string> results, int maxResults, bool skipSystemDirs = false)
@@ -902,8 +938,8 @@ public static class ToolHelpers
         try
         {
             // ★ 优先 Everything（毫秒级全盘索引），失败才递归
-            var esResults = SearchWithEverything(query, rootDir, 100);
-            if (esResults != null)
+            bool usedEverything = TrySearchWithEverything(query, rootDir, 100, out var esResults, out string everythingFailure);
+            if (usedEverything)
             {
                 if (esResults.Count == 0)
                 {
@@ -921,9 +957,9 @@ public static class ToolHelpers
             SearchSafeRoots(roots, query, results, 100);
             string scope2 = FormatSearchRoots(roots);
             if (results.Count == 0)
-                return $"🔍 在{scope2}中未找到与「{query}」匹配的文件（未检测到 Everything，已使用安全目录递归搜索）";
+                return $"🔍 在{scope2}中未找到与「{query}」匹配的文件（{everythingFailure}，已使用安全目录递归搜索）";
             var sb = new StringBuilder();
-            sb.AppendLine($"🔍未检测到 Everything，已使用安全目录递归搜索（范围：{scope2}），找到 {results.Count} 项与「{query}」相关的文件：");
+            sb.AppendLine($"🔍{everythingFailure}，已使用安全目录递归搜索（范围：{scope2}），找到 {results.Count} 项与「{query}」相关的文件：");
             foreach (var f in results) sb.AppendLine($"  📄 {f}");
             return sb.ToString();
         }
