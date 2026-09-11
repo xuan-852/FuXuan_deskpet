@@ -100,7 +100,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 - 行走恢复时，`LateUpdate` 会先中断自动动作并调用 `ResetIdleAction(true)`，再写入行走姿态，避免上一动作的头部、身体或手臂参数残留。
 - 右键/测试触发的旧动作（包括 #4 星辉、#7 法阵）使用 `_actionLocked`，并暂停 `DesktopPet` 的物理移动；动作结束时只恢复由该动作引入的暂停状态。
 - #4 `UpdateStarSpin()` 仍是五阶段硬编码动作；#7 `UpdateMagicCircle()` 仍是五阶段 Spring/Perlin 复杂动作。二者均不应被行走姿态覆盖。
-- 2026-09-11 为提高首次使用时的可感知性，`DesktopPet` 的默认地面速度为 36px/s，单次移动 2.5–4.5 秒、停留 3.5–7.5 秒；对应约 90–162px 的连续位移。只调整移动节奏，不增加不存在的腿部参数，也不改动上述动作互斥与停止收敛链路。
+- 2026-09-11 为提高首次使用时的可感知性，`DesktopPet` 的默认地面速度为 36px/s，单次移动 2.5–4.5 秒、停留 3.5–7.5 秒；对应约 90–162px 的连续位移。渲染器同时把步频提升至 6rad/s、上下重心 4→8px、身体横摆 2→4、转体摆幅 3→5、手臂/肩膀摆动适度提高；只增强现有身体步态，不虚构模型不存在的腿部参数，也不改动上述动作互斥与停止收敛链路。
 
 测试模式下可用以下 inbox 命令复核旧动作和渲染快照（必须先创建隔离目录中的 `.test_mode`）：
 
@@ -147,7 +147,7 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 ### 2.15 AI 调试输入与拖动挣扎修复（2026-08-29）
 
 - `RightPanel.CheckTestInbox()` 将 `@@sim:`（兼容别名 `@@input:`）交给 `RuntimeInputSimulator`；命令只在 `.test_mode` 下生效，不调用 OS 鼠标 API。命令本身不直接发起 LLM 请求，但点击/拖动会复用真实事件回调，可能触发 AutoChat；测试模式阻止生产持久化与云端调用。
-- `@@sim:status` 输出位置/尺寸/拖动候选/拖动状态/速度/暂停状态；`@@sim:click:x,y`、`@@sim:click:center` 复用真实点击姿势和事件回调；`@@sim:drag:x1,y1->x2,y2[,steps]` 与 `@@sim:drag:offset:dx,dy[,steps]` 按帧推进拖动，默认 12 步；`@@sim:reset`/`@@sim:release` 中止并清理模拟输入。
+- `@@sim:status` 输出位置/尺寸/拖动候选/拖动状态/速度/暂停状态；`@@sim:walk:left|right|stop` 可在测试模式强制启动或停止地面任务，用于对照步态和位移；`@@sim:click:x,y`、`@@sim:click:center` 复用真实点击姿势和事件回调；`@@sim:drag:x1,y1->x2,y2[,steps]` 与 `@@sim:drag:offset:dx,dy[,steps]` 按帧推进拖动，默认 12 步；`@@sim:reset`/`@@sim:release` 中止并清理模拟输入。
 - `@@sim:screenshot[:name]` 在测试模式下调用 Unity `ScreenCapture` 保存当前渲染帧到 `DataRoot/test_screenshots/`。拖拽方向回归必须至少执行右拖截图、左拖截图，并在角色已镜像后重复一次，不能只看参数符号或编译结果。
 - `DragHandler` 在按下后保持透明层接收输入，避免鼠标离开动态宠物矩形后丢失 MouseDrag/MouseUp；位置改为浮点累积后取整，并限制在屏幕内。窗口失焦会中止拖动，避免卡在 `isDragging`。
 - `Live2DRenderer` 的挣扎速度每帧只采样一次，即使 `OnPetUpdate` 和 `LateUpdate` 都覆盖姿态也不会把速度重复衰减；速度平滑和左臂幅度已修正为可见、可跟手的范围。

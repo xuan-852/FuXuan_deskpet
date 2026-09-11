@@ -125,6 +125,7 @@ function stopOwnedDesktopPet(proc) {
 
 const COMMANDS = [
     ['@@sim:status', '[TestInbox] 模拟输入状态:'],
+    ['@@sim:walk:right', '[TestInbox] 已强制开始向右走'],
     ['@@sim:drag:offset:120,20,8', '[DragHandler] 模拟拖动开始'],
     ['@@sim:status', 'petDragging=False'],
     ['@@view:open', '[TestInbox] @@view 命令: open'],

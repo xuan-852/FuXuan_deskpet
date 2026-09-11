@@ -67,6 +67,38 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.StartsWith("walk:", StringComparison.OrdinalIgnoreCase))
+        {
+            string direction = body.Substring("walk:".Length).Trim();
+            DesktopPet pet = UnityEngine.Object.FindObjectOfType<DesktopPet>();
+            if (pet == null)
+            {
+                Debug.LogWarning("[TestInbox] 强制走路失败：未找到 DesktopPet");
+                return true;
+            }
+
+            if (direction.Equals("left", StringComparison.OrdinalIgnoreCase))
+            {
+                pet.StartGroundTask(DesktopPet.GroundTask.MoveLeftTime);
+                Debug.Log("[TestInbox] 已强制开始向左走");
+            }
+            else if (direction.Equals("right", StringComparison.OrdinalIgnoreCase))
+            {
+                pet.StartGroundTask(DesktopPet.GroundTask.MoveRightTime);
+                Debug.Log("[TestInbox] 已强制开始向右走");
+            }
+            else if (direction.Equals("stop", StringComparison.OrdinalIgnoreCase))
+            {
+                pet.ForceStop();
+                Debug.Log("[TestInbox] 已强制停止走路");
+            }
+            else
+            {
+                WarnFormat("walk", direction, "left、right 或 stop");
+            }
+            return true;
+        }
+
         if (body.StartsWith("screenshot", StringComparison.OrdinalIgnoreCase))
         {
             string suffix = body.Length > "screenshot".Length
@@ -129,7 +161,7 @@ public static class RuntimeInputSimulator
         }
 
         Debug.LogWarning("[TestInbox] 未知模拟输入: " + body
-            + "（支持 status/reset/release/holiday:list/holiday:status/holiday:cn_new_year/holiday:lantern_festival/holiday:dragon_boat/holiday:qixi/holiday:mid_autumn/holiday:off/holiday:auto/click:x,y/click:center/drag:x1,y1->x2,y2[,steps]/drag:offset:dx,dy[,steps]）");
+            + "（支持 status/walk:left|right|stop/reset/release/holiday:list/holiday:status/holiday:cn_new_year/holiday:lantern_festival/holiday:dragon_boat/holiday:qixi/holiday:mid_autumn/holiday:off/holiday:auto/click:x,y/click:center/drag:x1,y1->x2,y2[,steps]/drag:offset:dx,dy[,steps]）");
         return true;
     }
 

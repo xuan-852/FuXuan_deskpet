@@ -84,17 +84,18 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     // 模型转体侧面，腿/手臂摆动可见
     // bodyAngleY符号由方向决定（翻转后视觉一致）
     const float WALK_SIDE_ANGLE    = 18f;    // 身体Y轴转体幅度（方向自动匹配）
-    const float WALK_SWAY_FREQ     = 5f;     // 步频
-    const float WALK_BOUNCE_PX    = 4f;     // 上下颠簸(像素)
+    const float WALK_SWAY_FREQ     = 6f;     // 步频
+    const float WALK_BOUNCE_PX    = 8f;     // 上下颠簸(像素)
     const float WALK_BODY_LEAN    = 5f;     // 身体前倾
     const float WALK_HEAD_TILT    = 8f;     // 头微低看路（ParamAngleY 正数=低头）
     const float WALK_LEG_LIFT     = 4f;     // 抬腿幅度 (Param165)
     const float WALK_LEG_SWING    = 6f;     // 腿前后摆幅 (Param126/129 位移)
     const float WALK_LEG_BEND     = 6f;     // 腿弯曲幅度 (Param127/131 透视)
-    const float WALK_ARM_BIG      = 2f;     // 手臂大范围参数 (Param94, 范围[-30,60])
-    const float WALK_ARM_SMALL    = 0.4f;   // 手臂小范围参数 (Param31~37, 范围[-1,1])
-    const float WALK_BODY_SWING   = 2f;     // 身体Z轴横摆(驱动衣服飘动, ParamBodyAngleZ)
-    const float WALK_SHOULDER     = 1.5f;   // 耸肩 (Param153)
+    const float WALK_ARM_BIG      = 4f;     // 手臂大范围参数 (Param94, 范围[-30,60])
+    const float WALK_ARM_SMALL    = 0.65f;  // 手臂小范围参数 (Param31~37, 范围[-1,1])
+    const float WALK_BODY_SWING   = 4f;     // 身体Z轴横摆(驱动衣服飘动, ParamBodyAngleZ)
+    const float WALK_BODY_YAW_SWING = 5f;   // 转体摆幅（ParamBodyAngleY）
+    const float WALK_SHOULDER     = 2.5f;   // 耸肩 (Param153)
     const float WALK_BREATH       = 3f;     // 呼吸恒定加深（给物理持续输入）
     const float IDLE_BLEND_DURATION = 0.4f;  // 走路→空闲混合消退时长
     const float WALK_FADE_IN_DURATION = 0.3f; // 空闲→走路体态淡入时长
@@ -3001,7 +3002,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         float phase = _walkPhase;
 
         // 身体转体侧面
-        float bodyYaw = (WALK_SIDE_ANGLE + Mathf.Sin(phase) * 3f) * weight;
+        float bodyYaw = (WALK_SIDE_ANGLE + Mathf.Sin(phase) * WALK_BODY_YAW_SWING) * weight;
         SetParameter("ParamBodyAngleY", bodyYaw);
 
         // 身体前倾
