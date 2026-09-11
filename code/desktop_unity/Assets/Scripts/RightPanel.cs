@@ -2245,14 +2245,25 @@ public partial class RightPanel : MonoBehaviour
     /// </summary>
     private static Texture2D LoadPixelFx()
     {
-        var loaded = Resources.Load<Texture2D>("PixelFuXuan");
-        if (loaded != null)
+        var pixel = Resources.Load<Texture2D>("PixelFuXuan_17x24");
+        if (pixel != null)
         {
-            loaded.filterMode = FilterMode.Bilinear; // 高清原图平滑缩放
-            Debug.Log("[RightPanel] 已加载多模态生成的符玄头像: Resources/PixelFuXuan");
-            return loaded;
+            pixel.filterMode = FilterMode.Point;
+            pixel.wrapMode = TextureWrapMode.Clamp;
+            Debug.Log("[RightPanel] 已加载 17x24 像素符玄头像");
+            return pixel;
         }
-        Debug.LogWarning("[RightPanel] 未找到 Resources/PixelFuXuan.png，使用代码生成占位像素画。可用多模态模型生成后替换。");
+
+        var legacy = Resources.Load<Texture2D>("PixelFuXuan");
+        if (legacy != null)
+        {
+            legacy.filterMode = FilterMode.Point;
+            legacy.wrapMode = TextureWrapMode.Clamp;
+            Debug.LogWarning("[RightPanel] 未找到 17x24 像素头像，临时使用旧头像资源的 Point 采样回退");
+            return legacy;
+        }
+
+        Debug.LogWarning("[RightPanel] 未找到符玄头像资源，使用代码生成的占位像素画");
         return GenPixelFx(2);
     }
 
@@ -2292,16 +2303,32 @@ public partial class RightPanel : MonoBehaviour
     private void DrawMascotAvatar(Rect rect, Texture2D fallback = null)
     {
         DrawMascotAvatarFrame(rect);
-        Texture2D texture = HolidayThemeRuntime.IsHolidayActive && _mascotOpenTex != null
-            ? _mascotOpenTex
-            : (fallback ?? _pixelFxTex);
+        Texture2D texture = GetActiveMascotTex() ?? fallback ?? _pixelFxTex;
         if (texture != null)
             GUI.DrawTexture(rect, texture, ScaleMode.ScaleToFit, true);
     }
 
     private void DrawMascotAvatarFrame(Rect rect)
     {
-        if (!HolidayThemeRuntime.IsHolidayActive || HolidayThemeRuntime.ActiveId != "dragon_boat") return;
+        if (!HolidayThemeRuntime.IsHolidayActive || HolidayThemeRuntime.ActiveId != "dragon_boat")
+        {
+            float framePixel = Mathf.Clamp(Mathf.Round(rect.height / 48f), 1f, 2f);
+            Rect defaultOuter = new Rect(rect.x - framePixel, rect.y - framePixel,
+                rect.width + framePixel * 2f, rect.height + framePixel * 2f);
+            Color edge = new Color(0.25f, 0.16f, 0.42f, 0.96f);
+            Color accent = new Color(0.72f, 0.56f, 0.98f, 0.95f);
+
+            UiTextureFactory.DrawPixelRect(defaultOuter, new Color(0.06f, 0.04f, 0.11f, 0.52f));
+            UiTextureFactory.DrawPixelRect(new Rect(defaultOuter.x, defaultOuter.y, defaultOuter.width, framePixel), edge);
+            UiTextureFactory.DrawPixelRect(new Rect(defaultOuter.x, defaultOuter.yMax - framePixel, defaultOuter.width, framePixel), edge);
+            UiTextureFactory.DrawPixelRect(new Rect(defaultOuter.x, defaultOuter.y, framePixel, defaultOuter.height), edge);
+            UiTextureFactory.DrawPixelRect(new Rect(defaultOuter.xMax - framePixel, defaultOuter.y, framePixel, defaultOuter.height), edge);
+            UiTextureFactory.DrawPixelRect(new Rect(defaultOuter.x, defaultOuter.y, framePixel * 4f, framePixel), accent);
+            UiTextureFactory.DrawPixelRect(new Rect(defaultOuter.x, defaultOuter.y, framePixel, framePixel * 4f), accent);
+            UiTextureFactory.DrawPixelRect(new Rect(defaultOuter.xMax - framePixel * 4f, defaultOuter.yMax - framePixel, framePixel * 4f, framePixel), accent);
+            UiTextureFactory.DrawPixelRect(new Rect(defaultOuter.xMax - framePixel, defaultOuter.yMax - framePixel * 4f, framePixel, framePixel * 4f), accent);
+            return;
+        }
         HolidayThemeRuntime.ThemeSkin skin = HolidayThemeRuntime.Active.Skin;
         Color deep = new Color(skin.DecorationSecondary.r, skin.DecorationSecondary.g, skin.DecorationSecondary.b, 0.98f);
         Color leaf = new Color(skin.DecorationPrimary.r, skin.DecorationPrimary.g, skin.DecorationPrimary.b, 0.98f);

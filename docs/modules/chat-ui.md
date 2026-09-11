@@ -54,17 +54,18 @@
 | 对话核心 | `ChatManager.cs` | `Entry{role,content}` 历史，`SplitSentences` 逐句 + `OnSentenceChanged` 事件 |
 | 气泡驱动 | `AutoChat.cs` | `OnNewReply`/`OnSentenceChanged`/`OnRequestError` → 驱动气泡逐句播放 |
 
-### 2.3 像素头像现状（RightPanel 内三处）
+### 2.3 像素头像（RightPanel）
 
-现有 `_pixelFxTex` 由 `LoadPixelFx()`（L1159）加载：优先 `Resources/PixelFuXuan.png`（高清立绘），回退代码生成 16×16 像素小人。
+`DrawMascotAvatar()` 统一使用 `GetActiveMascotTex()` 的 17×24 像素立绘（眨眼/表情差分优先）；无可用差分时才回退到 `LoadPixelFx()`。`LoadPixelFx()` 优先加载 `Resources/PixelFuXuan_17x24` 并强制 `FilterMode.Point` 与 `Clamp`，旧 `PixelFuXuan` 仅作为 Point 采样的兼容回退，最后才使用代码生成占位头像。
 
-| 位置 | 行号 | 尺寸 | 现状 |
-|------|------|------|------|
-| 标题栏 | L339 | 30×30 + 黑方块描边 | `GUI.DrawTexture(_pixelFxTex)` |
-| 消息列表（符玄气泡旁） | L509 | avatarSize（约 24） | `GUI.DrawTexture(_pixelFxTex)` |
-| 输入框最左 | L553 | 56×56 + 黑方块描边 | `GUI.DrawTexture(_pixelFxTex)` |
+| 位置 | 尺寸 | 绘制方式 |
+|------|------|----------|
+| 标题栏 | 34×48 | 竖长像素立绘 + 状态/卦象装饰避让 |
+| 消息列表（符玄气泡旁） | 34×48 | 与用户方形头像区分，按立绘高度参与行高计算 |
+| 输入框最左 | 34×48 | 立绘比例，不压缩输入区域 |
+| 会话列表 / 侧栏 | 51×72 / 34×48 | 同一头像渲染和像素边框 |
 
-**关键缺陷**：高清立绘平滑显示（`FilterMode.Bilinear`）与窗口像素边框/CRT 扫描线风格割裂；三处正方形裁切与 17×24 竖长比例冲突。
+非端午主题使用深色半透明底、紫色像素边和对角高光；端午主题仍沿用自己的主题边框。所有头像以 `ScaleMode.ScaleToFit` 绘制，避免正方形裁切与平滑插值造成的风格割裂。
 
 ### 2.4 现有像素基建（可复用，勿重复造）
 
@@ -228,6 +229,7 @@
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | — | — | 纯 IMGUI 界面 + 程序生成视觉（圆角/云纹/星点/CRT） |
+| `fix(chat)` | 2026-09-11 | 聊天标题、消息、输入框和会话列表统一改用 17×24 像素立绘比例；默认头像取消 Bilinear 高清图路径，统一 Point 采样与像素边框。Quick、隔离 EditMode、隔离运行时冒烟及聊天截图验证通过。 |
 | N40 | 2026-08-08 | 17×24 像素化调研完成（`pixel-dialogue-optimization.md`）：开源方案汇总 + P0/P1/P2 落地清单 |
 | 2026-08-12 | **OpenClaw 任务可视化**（方案七）：标题栏状态区步骤显示（金色呼吸，优先级 任务>思考中>就绪）+ 日志区 `[openclaw]` 系统行 + 模态审批弹窗（红边三按钮，60s 自动拒绝，`DrawApprovalDialog`） |
 | 2026-08-13 | **QQ 式两级界面**：热键打开默认「会话列表」窄条（第一级），双击条目展开「左会话栏+右聊天区」（第二级），◀ 返回收窄；尺寸按 QQ 实测 324×846 基准 **1.5 倍放大**（486×1269 / 1290×1269 / SIDEBAR_W=420），字体全量 QQ 化（Microsoft YaHei，标题 19 / 气泡 17 / 输入 18）；**修复第二级拖拽偏移 bug**（`_dragOffset` 改用窗口原点 `_panelRect` 计算，排除 ✕/◀/字体按钮误触，MouseUp 复位 + Update 防吸保险），拖拽跟手验证通过 |

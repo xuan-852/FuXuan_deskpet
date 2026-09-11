@@ -114,9 +114,9 @@ public partial class RightPanel
         }
         RegisterExtHit(backRect, BackToSessionList); // 外部命中：返回会话列表
 
-        // 符玄头像（标题栏左侧，30×30，带深色描边以增强对比）
-        float fxHeadSize = 38f;
-        Rect fxHeadRect = new Rect(px + 54f, py + 6f, fxHeadSize, fxHeadSize);
+        // 符玄头像（标题栏左侧，保持 17:24 像素立绘比例）
+        float fxHeadSize = 34f;
+        Rect fxHeadRect = new Rect(px + 54f, py + 3f, fxHeadSize, 48f);
         DrawMascotAvatar(fxHeadRect);
 
         bool waiting = _chat != null && _chat.IsWaiting;
@@ -149,12 +149,12 @@ public partial class RightPanel
             statusText = "● " + RuntimeReadinessService.Instance.ShortStatus;
 
         GUI.color = statusC;
-        GUI.DrawTexture(new Rect(px + fxHeadSize + 16f, py + titleH / 2f - 4f, 9f, 9f), _statusDotTex);
+        GUI.DrawTexture(new Rect(fxHeadRect.xMax + 10f, py + titleH / 2f - 4f, 9f, 9f), _statusDotTex);
         GUI.color = _panelTint;
 
         // 卦象三爻装饰（金色，太卜司占卜符号）
         if (_hexagramTex != null)
-            GUI.DrawTexture(new Rect(px + fxHeadSize + 32f, py + titleH / 2f - 10f, 18f, 18f), _hexagramTex);
+            GUI.DrawTexture(new Rect(fxHeadRect.xMax + 26f, py + titleH / 2f - 10f, 18f, 18f), _hexagramTex);
 
         GUI.Label(new Rect(px + fxHeadSize + 60f, py + 4f, pw - 260f, 24f), "符玄@太卜司: ~", _termTitleStyle);
         GUI.Label(new Rect(px + fxHeadSize + 60f, py + 29f, pw - 260f, 20f), statusText, _termStatusStyle);
@@ -318,7 +318,9 @@ public partial class RightPanel
 
         float logViewW = pw - 16f;
         float maxBubbleW = logViewW * 0.72f;   // 气泡最大宽度
-        float avatarSize = 36f + _fontScaleLevel * 2f;  // 头像尺寸（随档位略增）
+        float userAvatarSize = 36f + _fontScaleLevel * 2f;
+        const float mascotAvatarW = 34f;
+        const float mascotAvatarH = 48f;
         Rect logView = new Rect(px + 8f, logY, logViewW, logH);
 
         // 日志区背景（略深于面板）
@@ -338,7 +340,8 @@ public partial class RightPanel
                 GUIStyle bubble = ln.kind == 1 ? _bubbleUserStyle : _bubbleFxStyle;
                 float naturalW = bubble.CalcSize(new GUIContent(ln.text)).x;
                 float bubbleW = Mathf.Min(naturalW, maxBubbleW);
-                totalH += Mathf.Max(CalcBubbleHeight(bubble, ln.text, bubbleW, naturalW), avatarSize) + 8f;
+                float avatarH = ln.kind == 1 ? userAvatarSize : mascotAvatarH;
+                totalH += Mathf.Max(CalcBubbleHeight(bubble, ln.text, bubbleW, naturalW), avatarH) + 8f;
             }
         }
         if (waiting) totalH += 24f;
@@ -381,7 +384,7 @@ public partial class RightPanel
             if (isUser)
             {
                 // 用户消息：靠右，头像在气泡右侧
-                avatarRect = new Rect(logViewW - 8f - avatarSize, yCursor + 2f, avatarSize, avatarSize);
+                avatarRect = new Rect(logViewW - 8f - userAvatarSize, yCursor + 2f, userAvatarSize, userAvatarSize);
                 bubbleRect = new Rect(avatarRect.x - 8f - bubbleW, yCursor, bubbleW, bubbleH);
                 GUI.DrawTexture(avatarRect, _userAvatarTex);
                 // 头像文字直接使用完整头像矩形居中，避免旧的手工偏移造成“我”字漂移。
@@ -390,12 +393,12 @@ public partial class RightPanel
             else
             {
                 // 符玄消息：靠左，头像在气泡左侧
-                avatarRect = new Rect(8f, yCursor + 2f, avatarSize, avatarSize);
+                avatarRect = new Rect(8f, yCursor + 2f, mascotAvatarW, mascotAvatarH);
                 bubbleRect = new Rect(avatarRect.xMax + 8f, yCursor, bubbleW, bubbleH);
                 DrawMascotAvatar(avatarRect);
             }
             GUI.Label(bubbleRect, ln.text, bubble);
-            yCursor += Mathf.Max(bubbleH, avatarSize) + 8f;
+            yCursor += Mathf.Max(bubbleH, isUser ? userAvatarSize : mascotAvatarH) + 8f;
         }
         if (waiting)
         {
@@ -493,9 +496,10 @@ public partial class RightPanel
             new Rect(inputX, inputY - 8f, inputW, 1f),
             new Color(0.45f, 0.38f, 0.66f, 0.24f));
 
-        // 符玄头像（输入框内最左，高清原图）★多模态资源：Resources/PixelFuXuan.png
-        float fxSize = 40f;
-        fxRect = new Rect(inputX, inputY + (inputBarHeight - fxSize) / 2f, fxSize, fxSize);
+        // 符玄头像（输入框内最左，保持 17:24 像素立绘比例）
+        const float fxW = 34f;
+        const float fxH = 48f;
+        fxRect = new Rect(inputX, inputY + (inputBarHeight - fxH) / 2f, fxW, fxH);
         DrawMascotAvatar(fxRect);
 
         float tfH = 44f + _fontScaleLevel * 4f;
@@ -503,8 +507,8 @@ public partial class RightPanel
 
         // 输入框（透明背景，文字直接绘在输入条上）
         float sendBtnSize = 40f;
-        float tfX = inputX + fxSize + 10f;
-        float tfW = inputW - fxSize - 10f - sendBtnSize - 10f;
+        float tfX = inputX + fxW + 10f;
+        float tfW = inputW - fxW - 10f - sendBtnSize - 10f;
         inputBgRect = new Rect(tfX, tfY, tfW, tfH);
 
         // 外置窗口使用透明原生 EDIT 作为 IME 宿主接收真实键盘/中文输入；可见文字、光标和背景统一由 Unity 绘制。
@@ -878,17 +882,18 @@ public partial class RightPanel
             if (itemRect.Contains(localMp))
                 UiTextureFactory.DrawPixelRect(itemRect, new Color(0.50f, 0.35f, 0.80f, 0.18f));
             UiTextureFactory.DrawPixelRect(new Rect(itemRect.x + 12f, itemRect.yMax - 1f, itemRect.width - 24f, 1f), new Color(0.45f, 0.35f, 0.65f, 0.18f));
-            // 头像 60px 圆角方块
-            float av = 60f;
-            Rect avRect = new Rect(itemRect.x + 12f, itemRect.y + (itemH - 8f - av) / 2f, av, av);
+            // 会话头像，保持像素立绘比例
+            const float avW = 51f;
+            const float avH = 72f;
+            Rect avRect = new Rect(itemRect.x + 12f, itemRect.y + (itemH - 8f - avH) / 2f, avW, avH);
             DrawMascotAvatar(avRect, s.avatar);
             // 名称（粗金）+ 时间（右上）
-            GUI.Label(new Rect(avRect.xMax + 14f, itemRect.y + 10f, contentRect.width - av - 130f, 28f), s.name, _termTitleStyle);
+            GUI.Label(new Rect(avRect.xMax + 14f, itemRect.y + 10f, contentRect.width - avW - 130f, 28f), s.name, _termTitleStyle);
             GUI.Label(new Rect(itemRect.x + itemRect.width - 96f, itemRect.y + 16f, 84f, 22f), s.lastTime, _termTimeStyle);
             // 最后消息（灰，单行截断）
             string msg = s.lastMsg ?? "";
             if (msg.Length > 22) msg = msg.Substring(0, 22) + "…";
-            GUI.Label(new Rect(avRect.xMax + 14f, itemRect.y + 46f, contentRect.width - av - 34f, 26f), msg, _termLogDimStyle);
+            GUI.Label(new Rect(avRect.xMax + 14f, itemRect.y + 46f, contentRect.width - avW - 34f, 26f), msg, _termLogDimStyle);
             // 双击进入聊天（QQ 式交互）
             if (Event.current.type == EventType.MouseDown && Event.current.button == 0
                 && itemRect.Contains(localMp) && Event.current.clickCount == 2)
@@ -973,14 +978,15 @@ public partial class RightPanel
                 UiTextureFactory.DrawPixelRect(itemRect, new Color(0.55f, 0.40f, 0.85f, 0.30f));       // 选中高亮
             else if (itemRect.Contains(mp))
                 UiTextureFactory.DrawPixelRect(itemRect, new Color(0.50f, 0.35f, 0.80f, 0.15f));       // 悬停
-            float av = 44f;
-            Rect avRect = new Rect(itemRect.x + 12f, itemRect.y + (itemH - 8f - av) / 2f, av, av);
+            const float avW = 34f;
+            const float avH = 48f;
+            Rect avRect = new Rect(itemRect.x + 12f, itemRect.y + (itemH - 8f - avH) / 2f, avW, avH);
             DrawMascotAvatar(avRect, s.avatar);
-            GUI.Label(new Rect(avRect.xMax + 12f, itemRect.y + 12f, w - av - 40f, 26f), s.name,
+            GUI.Label(new Rect(avRect.xMax + 12f, itemRect.y + 12f, w - avW - 40f, 26f), s.name,
                 active ? _termToolBtnHoverStyle : _termTitleStyle);
             string msg = s.lastMsg ?? "";
             if (msg.Length > 10) msg = msg.Substring(0, 10) + "…";
-            GUI.Label(new Rect(avRect.xMax + 12f, itemRect.y + 46f, w - av - 36f, 22f), msg, _termLogDimStyle);
+            GUI.Label(new Rect(avRect.xMax + 12f, itemRect.y + 46f, w - avW - 36f, 22f), msg, _termLogDimStyle);
             // 单击切换会话（多角色切换）
             if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && itemRect.Contains(mp))
             {
