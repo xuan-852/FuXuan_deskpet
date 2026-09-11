@@ -256,50 +256,6 @@ public partial class ChatManager : MonoBehaviour
     /// <summary>当前 tool 轮次，0 = 第一轮</summary>
     private int _toolRound = 0;
 
-    /// <summary>意图 → 允许的工具名列表（空 = 不发任何 tool）</summary>
-    private static readonly Dictionary<string, string[]> IntentToolMap = new Dictionary<string, string[]>
-    {
-        ["chat"] = new string[0],       // 闲聊 → 纯角色对话，不发 tools
-        ["emotion"] = new string[0],    // 情感 → 纯角色回应
-
-        ["command"] = new[]  // 指令操作类
-        {
-            "launch_pogget", "pogget_agent", "open_app", "open_url", "open_folder",
-            "search", "search_web", "openclaw_search", "openclaw_task",
-            "lock_screen", "set_volume", "mute", "power",
-            "get_system_info", "get_mouse_pos", "list_files", "search_files",
-            "run_command", "notify", "get_clipboard", "set_clipboard",
-            "file_open", "file_move", "file_copy", "file_delete", "file_read",
-            "file_rename", "file_info", "file_create", "dir_create", "take_screenshot"
-        },
-
-        ["knowledge"] = new[]  // 知识查询类
-        {
-            "search_web", "search", "openclaw_search", "openclaw_task", "open_url",
-            "knowledge_search", "compile_latex", "get_weather",
-            "generate_ppt", "generate_docx", "generate_xlsx",
-            "get_system_info", "get_mouse_pos", "get_clipboard",
-            "file_info", "list_files", "file_read", "search_files", "search_file",
-            "query_exams", "query_scores", "query_schedule",
-            "query_user_status", "query_reminders", "query_preferences", "query_task_templates",
-            "inspect_motion_memory", "inspect_personality",
-            "explore_body", "explore_body_vision", "set_preference", "remove_preference"
-        },
-
-        ["operation"] = new[]  // 桌宠控制类
-        {
-            "set_expression", "play_action", "stop_action",
-            "generate_motion",
-            "inspect_motion_memory", "inspect_personality",
-            "explore_body", "explore_body_vision", "control_body",
-            "run_verification", "vis_verify", "self_review",
-            "take_screenshot", "knowledge_index",
-            "set_reminder", "query_reminders", "mark_reminder_done", "delete_reminder",
-            "set_preference", "query_preferences", "remove_preference",
-            "query_task_templates", "save_task_template", "remove_task_template"
-        },
-    };
-
     // ---- 消息队列：等待时输入不会丢 ----
     private Queue<(string text, System.Action onUpdate, string caseId)> _messageQueue
         = new Queue<(string, System.Action, string)>();
@@ -617,21 +573,46 @@ public partial class ChatManager : MonoBehaviour
                 {
                     if (!LocalToolRouter.IsAllowed(plan.ToolName, intentName))
                     {
-                        localToolContext = "❌ 本地安全路由拒绝了未在当前意图白名单中的术式：「"
-                            + plan.ToolName + "」。";
-                        Debug.LogWarning($"[ChatManager] 🛡️ 本地术式不在白名单: {plan.ToolName}");
+                        // 意图分类属于概率判断；对已匹配到明确关键词的请求，允许用
+                        // 确定性计划修正一次，而不是静默退回普通聊天。
+                        if (LocalToolRouter.TryBuildKeywordPlan(intentName, userMessage, out LocalToolPlan repairedPlan)
+                            && LocalToolRouter.IsAllowed(repairedPlan.ToolName, intentName))
+                        {
+                            plan = repairedPlan;
+                            Debug.LogWarning($"[ChatManager] 🔄 本地术式白名单修正: {plan.ToolName}");
+                        }
+                        else
+                        {
+                            localToolContext = "❌ 本地安全路由拒绝了术式：「"
+                                + plan.ToolName + "」。请换一种明确说法，或检查工具是否已安装。";
+                            Debug.LogWarning($"[ChatManager] 🛡️ 本地术式不在白名单: {plan.ToolName}");
+                        }
                     }
-                    else
+
+                    if (localToolContext == null)
                     {
                         string hardenedArgs;
                         string hardeningError;
                         if (!LocalToolRouter.TryHardenPlanArguments(plan.ToolName, userMessage,
                             plan.ArgumentsJson, out hardenedArgs, out hardeningError))
                         {
-                            localToolContext = "❌ 本地术式参数保护已拦截：" + hardeningError;
-                            Debug.LogWarning("[ChatManager] 🛡️ 本地术式参数保护: " + hardeningError);
+                            if (LocalToolRouter.TryBuildKeywordPlan(intentName, userMessage, out LocalToolPlan repairedPlan)
+                                && LocalToolRouter.IsAllowed(repairedPlan.ToolName, intentName)
+                                && LocalToolRouter.TryHardenPlanArguments(repairedPlan.ToolName, userMessage,
+                                    repairedPlan.ArgumentsJson, out hardenedArgs, out hardeningError))
+                            {
+                                plan = repairedPlan;
+                                Debug.LogWarning($"[ChatManager] 🔄 本地术式参数修正: {plan.ToolName}");
+                            }
+                            else
+                            {
+                                localToolContext = "❌ 本地术式参数保护已拦截：" + hardeningError
+                                    + "。请提供明确路径或参数后重试。";
+                                Debug.LogWarning("[ChatManager] 🛡️ 本地术式参数保护: " + hardeningError);
+                            }
                         }
-                        else
+
+                        if (localToolContext == null)
                         {
                             plan.ArgumentsJson = hardenedArgs;
                             string localToolResult = null;
@@ -1026,8 +1007,8 @@ public partial class ChatManager : MonoBehaviour
     private string[] BuildToolSubsetForRound()
     {
         // 首轮有意图：按意图过滤（原有逻辑）
-        if (_toolRound == 0 && !string.IsNullOrEmpty(_lastIntent)
-            && IntentToolMap.TryGetValue(_lastIntent, out var allowed))
+        if (_toolRound == 0
+            && LocalToolRouter.TryGetStrictIntentTools(_lastIntent, out string[] allowed))
         {
             return allowed;
         }
@@ -1046,7 +1027,7 @@ public partial class ChatManager : MonoBehaviour
             if (e.role == "tool" && !string.IsNullOrEmpty(e.name))
                 names.Add(e.name);
         }
-        if (!string.IsNullOrEmpty(_lastIntent) && IntentToolMap.TryGetValue(_lastIntent, out var allowed2))
+        if (LocalToolRouter.TryGetStrictIntentTools(_lastIntent, out string[] allowed2))
         {
             foreach (var n in allowed2) names.Add(n);
         }

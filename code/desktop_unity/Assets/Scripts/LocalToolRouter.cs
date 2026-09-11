@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
@@ -47,6 +47,7 @@ public static class LocalToolRouter
     private static readonly string[] KnowledgeTools =
     {
         "search", "search_web", "openclaw_search", "openclaw_task", "open_url",
+        "open_app", "open_folder", "file_open",
         "knowledge_search", "knowledge_index", "get_weather",
         "query_reminders", "query_exams", "query_scores", "query_schedule", "query_user_status",
         "query_preferences", "query_task_templates",
@@ -87,6 +88,15 @@ public static class LocalToolRouter
         "file_create", "dir_create", "set_volume", "mute", "lock_screen", "power"
     };
 
+    // 这些工具只会查询或交给 Windows 打开用户显式指定的目标，不涉及读取内容、
+    // 修改文件或系统设置。意图分类是概率结果，不能让“打开桌面”因被归为 knowledge
+    // 而在最后一道白名单被错误拒绝；危险工具仍严格按原意图和审批流程处理。
+    private static readonly string[] CrossIntentSafeTools =
+    {
+        "open_app", "open_folder", "open_url", "file_open", "search", "search_web",
+        "search_files", "search_file", "list_files"
+    };
+
     private static readonly string[] ActionKeywords =
     {
         "打开", "启动", "运行", "执行", "搜索", "查找", "查询", "读取", "查看",
@@ -106,6 +116,33 @@ public static class LocalToolRouter
             case "knowledge": return KnowledgeTools;
             case "operation": return OperationTools;
             default: return FallbackTools;
+        }
+    }
+
+    /// <summary>
+    /// 为云端 Function Calling 提供严格意图子集。与本地 fallback 不同，chat/emotion
+    /// 必须明确返回空列表，未知意图则由调用方决定是否使用全量探测。
+    /// </summary>
+    public static bool TryGetStrictIntentTools(string intent, out string[] tools)
+    {
+        switch ((intent ?? "").Trim().ToLowerInvariant())
+        {
+            case "chat":
+            case "emotion":
+                tools = Array.Empty<string>();
+                return true;
+            case "command":
+                tools = CommandTools;
+                return true;
+            case "knowledge":
+                tools = KnowledgeTools;
+                return true;
+            case "operation":
+                tools = OperationTools;
+                return true;
+            default:
+                tools = null;
+                return false;
         }
     }
 
@@ -179,6 +216,10 @@ public static class LocalToolRouter
         foreach (string allowed in GetAllowedTools(intent))
         {
             if (string.Equals(allowed, trimmed, StringComparison.Ordinal)) return true;
+        }
+        foreach (string safeTool in CrossIntentSafeTools)
+        {
+            if (string.Equals(safeTool, trimmed, StringComparison.Ordinal)) return true;
         }
         return false;
     }
@@ -414,7 +455,8 @@ public static class LocalToolRouter
             if (!string.IsNullOrWhiteSpace(query))
             {
                 return AssignPlan(out plan, "search_files",
-                    JsonConvert.SerializeObject(new { query, root = "" }), "用户明确搜索文件");
+                    JsonConvert.SerializeObject(new { query, root = ToolHelpers.ResolveSearchRoot(message) }),
+                    "用户明确搜索文件");
             }
         }
 

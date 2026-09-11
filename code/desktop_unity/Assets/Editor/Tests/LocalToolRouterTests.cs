@@ -1,4 +1,4 @@
-using NUnit.Framework;
+﻿using NUnit.Framework;
 using Newtonsoft.Json.Linq;
 
 public class LocalToolRouterTests
@@ -30,6 +30,8 @@ public class LocalToolRouterTests
     public void IntentAllowlistRejectsToolsOutsideCurrentRoute()
     {
         Assert.IsTrue(LocalToolRouter.IsAllowed("open_app", "command"));
+        Assert.IsTrue(LocalToolRouter.IsAllowed("open_folder", "knowledge"));
+        Assert.IsTrue(LocalToolRouter.IsAllowed("file_open", "knowledge"));
         Assert.IsTrue(LocalToolRouter.IsAllowed("generate_ppt", "knowledge"));
         Assert.IsFalse(LocalToolRouter.IsAllowed("file_delete", "command"));
         Assert.IsFalse(LocalToolRouter.IsAllowed("file_delete", "chat"));
@@ -82,6 +84,35 @@ public class LocalToolRouterTests
         StringAssert.Contains("本地工具测试", plan.ArgumentsJson);
 
         Assert.IsTrue(LocalToolRouter.IsAllowed("generate_xlsx", "operation"));
+    }
+
+    [Test]
+    public void KeywordFallbackResolvesProjectAndKnownFolderSearchRoots()
+    {
+        LocalToolPlan plan;
+        Assert.IsTrue(LocalToolRouter.TryBuildKeywordPlan("", "请搜索项目里的 README.md 文件", out plan));
+        JObject projectArgs = JObject.Parse(plan.ArgumentsJson);
+        string projectRoot = projectArgs["root"]?.ToString();
+        Assert.IsTrue(System.IO.Directory.Exists(projectRoot), "项目搜索应携带现有项目根目录");
+        StringAssert.Contains("Desktop_per_pro", projectRoot);
+
+        Assert.IsTrue(LocalToolRouter.TryBuildKeywordPlan("", "请搜索桌面里的 README.md 文件", out plan));
+        JObject desktopArgs = JObject.Parse(plan.ArgumentsJson);
+        Assert.AreEqual(
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop),
+            desktopArgs["root"]?.ToString());
+    }
+
+    [Test]
+    public void StrictIntentToolsUseRouterAsSingleSource()
+    {
+        Assert.IsTrue(LocalToolRouter.TryGetStrictIntentTools("knowledge", out string[] tools));
+        CollectionAssert.Contains(tools, "open_folder");
+        CollectionAssert.Contains(tools, "search_files");
+
+        Assert.IsTrue(LocalToolRouter.TryGetStrictIntentTools("chat", out string[] chatTools));
+        Assert.IsEmpty(chatTools);
+        Assert.IsFalse(LocalToolRouter.TryGetStrictIntentTools("unknown", out _));
     }
 
     [Test]

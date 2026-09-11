@@ -51,6 +51,13 @@ qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请�
 `LocalToolRouter` 按意图只暴露常用小目录，拒绝未知工具和当前意图之外的工具；
 因此本地模型获得“能执行”的能力，但不会获得绕过 Unity 安全层的权限。
 
+### 2.2.3 本地搜索与打开可靠性（2026-09-12）
+
+- `LocalToolRouter` 是本地与云端意图子集的唯一来源；`ChatManager` 不再维护第二份白名单。`open_app` / `open_folder` / `open_url` / `file_open` 与搜索、列目录工具属于跨意图安全工具，避免意图分类把“打开桌面”误判为 knowledge 后被错误拒绝；危险工具仍先过 `ToolRegistry.DangerousTools` 与确认弹窗。
+- 文件搜索规则会从“项目里”、桌面/下载/文档别名和现有 Windows 路径提取 `root`。Everything 的 `es.exe` 可由 `FU_XUAN_EVERYTHING_ES` 指定，存在时走全盘索引；不存在时改为用户目录、数据目录和开发项目的安全递归搜索，并在结果中明确显示降级范围，跳过系统/缓存/构建目录。
+- `open_folder` 在路径安全校验前先解析已知目录别名；`open_folder` / `open_app` / `open_url` / `file_open` 的 Shell 启动异常统一转换为可读失败消息。EditMode 通过可替换 Shell 启动器验证，不会真的打开浏览器或资源管理器。
+- 本地规划的白名单或参数校验失败时，`ChatManager` 会基于高置信度关键词修正一次；仍失败则把具体阻断原因交给最终回复，不伪装为执行成功，也不自动转云端/OpenClaw。
+
 ### 2.2.2 自然语言工具覆盖（2026-08-25）
 
 - 65 个已注册工具均至少出现在 `LocalToolRouter` 的一个自然语言意图目录中，并同步存在于 `ChatManager.IntentToolMap`；偏好、任务模板、动作复盘/验证、文件读写等此前容易漏路由的工具已补齐关键词和白名单。

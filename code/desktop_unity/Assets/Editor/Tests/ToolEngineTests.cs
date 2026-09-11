@@ -62,6 +62,15 @@ public class ToolEngineTests
     public void SetUp()
     {
         ResetRegistry();
+        ToolHelpers.ShellOpenOverrideForTests = null;
+        ToolHelpers.EverythingCliOverrideForTests = null;
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        ToolHelpers.ShellOpenOverrideForTests = null;
+        ToolHelpers.EverythingCliOverrideForTests = null;
     }
 
     // ================================================================
@@ -175,6 +184,75 @@ public class ToolEngineTests
         string result = ToolRegistry.Execute("non_existent_tool", "{}");
         Assert.IsTrue(result.Contains("不识此术"),
             "未知工具应返回错误提示");
+    }
+
+    [Test]
+    public void OpenFolder_ResolvesKnownFolderBeforeSafetyCheck_AndUsesShellAdapter()
+    {
+        string launched = null;
+        ToolHelpers.ShellOpenOverrideForTests = info =>
+        {
+            launched = info.FileName;
+            return null;
+        };
+
+        string result = new OpenFolderTool().Execute("{\"path\":\"Desktop\"}");
+
+        StringAssert.StartsWith("📂", result);
+        Assert.AreEqual(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), launched);
+    }
+
+    [Test]
+    public void OpenFolder_ReportsShellLaunchFailureWithoutOpeningExplorer()
+    {
+        ToolHelpers.ShellOpenOverrideForTests = _ => new InvalidOperationException("模拟启动失败");
+
+        string result = new OpenFolderTool().Execute("{\"path\":\"Desktop\"}");
+
+        StringAssert.StartsWith("❌", result);
+        StringAssert.Contains("模拟启动失败", result);
+    }
+
+    [Test]
+    public void FindEverythingCli_UsesConfiguredExecutablePath()
+    {
+        string testDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "fuxuan_everything_test");
+        string fakeExe = System.IO.Path.Combine(testDir, "es.exe");
+        string previous = Environment.GetEnvironmentVariable("FU_XUAN_EVERYTHING_ES");
+        try
+        {
+            System.IO.Directory.CreateDirectory(testDir);
+            System.IO.File.WriteAllText(fakeExe, "test");
+            Environment.SetEnvironmentVariable("FU_XUAN_EVERYTHING_ES", fakeExe);
+
+            Assert.AreEqual(fakeExe, ToolHelpers.FindEverythingCli());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FU_XUAN_EVERYTHING_ES", previous);
+            if (System.IO.Directory.Exists(testDir))
+                System.IO.Directory.Delete(testDir, true);
+        }
+    }
+
+    [Test]
+    public void SafeSearchRoots_ExcludeProtectedSystemDirectories()
+    {
+        var roots = ToolHelpers.GetSafeSearchRoots("");
+
+        Assert.IsNotEmpty(roots);
+        foreach (string root in roots)
+            Assert.IsTrue(ToolHelpers.IsPathAllowed(root), $"安全搜索根不应包含受保护目录: {root}");
+    }
+
+    [Test]
+    public void SearchWithEverything_ReturnsNullWhenCliIsUnavailable()
+    {
+        ToolHelpers.EverythingCliOverrideForTests = () => null;
+
+        Assert.IsNull(ToolHelpers.SearchWithEverything("README.md", "", 1));
+        Assert.IsNotEmpty(ToolHelpers.GetSafeSearchRoots(""),
+            "Everything 不可用时必须仍有安全目录降级路径");
     }
 
     // ⚠️ 注意：不遍历所有工具测试空参数执行！

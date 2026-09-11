@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -13,6 +13,15 @@ using UnityEngine;
 /// </summary>
 public static class ToolHelpers
 {
+    /// <summary>
+    /// 仅供 EditMode 测试替换 Shell 打开行为。生产环境保持 null，仍使用系统默认关联程序。
+    /// 返回非空异常表示模拟启动失败。
+    /// </summary>
+    public static Func<ProcessStartInfo, Exception> ShellOpenOverrideForTests;
+
+    /// <summary>仅供 EditMode 覆盖 Everything 探测结果，null 表示按真实环境探测。</summary>
+    public static Func<string> EverythingCliOverrideForTests;
+
     /// <summary>日志脱敏：工具参数/结果不得把凭据或隐私内容写入 Player.log。</summary>
     public static string SanitizeLogValue(string toolName, string value)
     {
@@ -428,6 +437,176 @@ public static class ToolHelpers
     //  文件搜索
     // ================================================================
 
+    /// <summary>通过 Windows Shell 打开文件、目录或 URL，并把系统异常转换为可读错误。</summary>
+    public static bool TryShellOpen(string target, out string error)
+    {
+        error = "";
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            error = "未指定要打开的目标";
+            return false;
+        }
+
+        try
+        {
+            var startInfo = new ProcessStartInfo(target) { UseShellExecute = true };
+            if (ShellOpenOverrideForTests != null)
+            {
+                Exception simulated = ShellOpenOverrideForTests(startInfo);
+                if (simulated != null) throw simulated;
+            }
+            else
+            {
+                Process.Start(startInfo);
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>把桌面、下载、文档等别名转换为用户真实目录；空值默认桌面。</summary>
+    public static string ResolveFolderPath(string rawPath, bool defaultToDesktop = true)
+    {
+        string value = DecodeFileUri(rawPath ?? "").Trim().Trim('"');
+        if (string.IsNullOrEmpty(value))
+            return defaultToDesktop ? Environment.GetFolderPath(Environment.SpecialFolder.Desktop) : "";
+
+        string lower = value.ToLowerInvariant();
+        if (lower == "desktop" || value.Contains("桌面"))
+            return Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+        if (lower == "downloads" || value.Contains("下载"))
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+        if (lower == "documents" || lower == "document" || value.Contains("文档"))
+            return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        if (lower == "pictures" || lower == "picture" || value.Contains("图片"))
+            return Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+        if (lower == "music" || value.Contains("音乐"))
+            return Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
+        if (lower == "videos" || lower == "video" || value.Contains("视频"))
+            return Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+
+        try { return Path.GetFullPath(value); }
+        catch { return value; }
+    }
+
+    /// <summary>
+    /// 从自然语言中解析文件搜索范围：显式存在路径优先，其次处理常用目录别名和开发项目根。
+    /// 空字符串代表由 Everything 执行全盘搜索或由安全目录回退策略决定范围。
+    /// </summary>
+    public static string ResolveSearchRoot(string userMessage)
+    {
+        if (string.IsNullOrWhiteSpace(userMessage)) return "";
+
+        string explicitPath = ExtractExistingPathFromText(userMessage);
+        if (!string.IsNullOrEmpty(explicitPath)) return explicitPath;
+
+        if (userMessage.Contains("项目") && TryGetDevelopmentProjectRoot(out string projectRoot))
+            return projectRoot;
+
+        if (userMessage.Contains("桌面")) return ResolveFolderPath("Desktop", false);
+        if (userMessage.Contains("下载")) return ResolveFolderPath("Downloads", false);
+        if (userMessage.Contains("文档")) return ResolveFolderPath("Documents", false);
+        if (userMessage.Contains("图片")) return ResolveFolderPath("Pictures", false);
+        return "";
+    }
+
+    /// <summary>Everything 不可用时的安全搜索根：显式路径优先，否则用户目录、数据目录和开发项目。</summary>
+    public static List<string> GetSafeSearchRoots(string requestedRoot)
+    {
+        var roots = new List<string>();
+        AddSafeSearchRoot(roots, requestedRoot);
+        if (roots.Count > 0) return roots;
+
+        AddSafeSearchRoot(roots, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        AddSafeSearchRoot(roots, DataPathConfig.DataRoot);
+        if (TryGetDevelopmentProjectRoot(out string projectRoot)) AddSafeSearchRoot(roots, projectRoot);
+        return roots;
+    }
+
+    /// <summary>按安全根依次递归搜索，保留一个全局结果上限。</summary>
+    public static void SearchSafeRoots(IEnumerable<string> roots, string query, List<string> results, int maxResults)
+    {
+        if (roots == null || results == null) return;
+        foreach (string root in roots)
+        {
+            if (results.Count >= maxResults) break;
+            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) continue;
+            SearchRecursive(root, query, results, maxResults, skipSystemDirs: true);
+        }
+    }
+
+    public static string FormatSearchRoots(IEnumerable<string> roots)
+    {
+        if (roots == null) return "安全目录";
+        var names = new List<string>();
+        foreach (string root in roots)
+        {
+            if (string.IsNullOrWhiteSpace(root)) continue;
+            names.Add(root);
+            if (names.Count >= 3) break;
+        }
+        return names.Count == 0 ? "安全目录" : string.Join("、", names);
+    }
+
+    private static void AddSafeSearchRoot(List<string> roots, string candidate)
+    {
+        if (roots == null || string.IsNullOrWhiteSpace(candidate)) return;
+        string full;
+        try { full = Path.GetFullPath(DecodeFileUri(candidate)); }
+        catch { return; }
+        if (!Directory.Exists(full) || !IsPathAllowed(full)) return;
+        foreach (string existing in roots)
+            if (string.Equals(existing, full, StringComparison.OrdinalIgnoreCase)) return;
+        roots.Add(full);
+    }
+
+    private static string ExtractExistingPathFromText(string text)
+    {
+        var matches = System.Text.RegularExpressions.Regex.Matches(
+            text ?? "", @"(?<![A-Za-z0-9])(?:[A-Za-z]:[\\/]|\\\\)[^\""<>|?*\r\n，。；！？]*");
+        foreach (System.Text.RegularExpressions.Match match in matches)
+        {
+            string candidate = match.Value.Trim().Trim('"', '\'', '。', '，', '；', '！', '？');
+            int suffix = candidate.IndexOfAny(new[] { '里', '中', '的' });
+            if (suffix > 2) candidate = candidate.Substring(0, suffix).TrimEnd('\\', '/');
+            try
+            {
+                string full = Path.GetFullPath(candidate);
+                if (Directory.Exists(full) && IsPathAllowed(full)) return full;
+            }
+            catch { }
+        }
+        return "";
+    }
+
+    private static bool TryGetDevelopmentProjectRoot(out string projectRoot)
+    {
+        projectRoot = "";
+        var starts = new[] { Application.dataPath, Directory.GetCurrentDirectory() };
+        foreach (string start in starts)
+        {
+            if (string.IsNullOrWhiteSpace(start)) continue;
+            DirectoryInfo current;
+            try { current = new DirectoryInfo(start); }
+            catch { continue; }
+            for (int i = 0; current != null && i < 8; i++, current = current.Parent)
+            {
+                string candidate = current.FullName;
+                if (File.Exists(Path.Combine(candidate, "README.md"))
+                    && Directory.Exists(Path.Combine(candidate, "code", "desktop_unity")))
+                {
+                    projectRoot = candidate;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public static string FastWhich(string name)
     {
         try
@@ -462,9 +641,17 @@ public static class ToolHelpers
     /// </remarks>
     public static string FindEverythingCli()
     {
+        if (EverythingCliOverrideForTests != null)
+            return EverythingCliOverrideForTests();
+
         try
         {
-            // 1) PATH（便携版/手动添加过）
+            // 1) 显式配置（便携版、非标准盘符或企业软件分发目录）
+            string configured = Environment.GetEnvironmentVariable("FU_XUAN_EVERYTHING_ES");
+            if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured.Trim()))
+                return configured.Trim();
+
+            // 2) PATH（便携版/手动添加过）
             var paths = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';');
             foreach (var dir in paths)
             {
@@ -473,7 +660,7 @@ public static class ToolHelpers
                 if (File.Exists(test)) return test;
             }
 
-            // 2) Everything 官方安装器的默认位置（用户级 / 全局）
+            // 3) Everything 官方安装器的默认位置（用户级 / 全局）
             var candidates = new List<string>
             {
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Everything", "es.exe"),
@@ -729,12 +916,14 @@ public static class ToolHelpers
                 return sb0.ToString();
             }
 
-            if (string.IsNullOrEmpty(rootDir)) rootDir = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
             var results = new List<string>();
-            SearchRecursive(rootDir, query, results, 100, skipSystemDirs: true);
-            if (results.Count == 0) return $"🔍 在「{rootDir}」中未找到与「{query}」匹配的文件";
+            List<string> roots = GetSafeSearchRoots(rootDir);
+            SearchSafeRoots(roots, query, results, 100);
+            string scope2 = FormatSearchRoots(roots);
+            if (results.Count == 0)
+                return $"🔍 在{scope2}中未找到与「{query}」匹配的文件（未检测到 Everything，已使用安全目录递归搜索）";
             var sb = new StringBuilder();
-            sb.AppendLine($"🔍 本座以递归之法搜「{rootDir}」，得 {results.Count} 件与「{query}」相关之物：");
+            sb.AppendLine($"🔍未检测到 Everything，已使用安全目录递归搜索（范围：{scope2}），找到 {results.Count} 项与「{query}」相关的文件：");
             foreach (var f in results) sb.AppendLine($"  📄 {f}");
             return sb.ToString();
         }

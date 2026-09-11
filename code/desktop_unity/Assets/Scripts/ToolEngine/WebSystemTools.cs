@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -62,7 +62,8 @@ public class OpenUrlTool : IPetTool
         string lower = url.ToLowerInvariant();
         if (!(lower.StartsWith("http://") || lower.StartsWith("https://") || lower.StartsWith("mailto:")))
             return "❌ 仅允许打开 http/https/mailto 链接";
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        if (!ToolHelpers.TryShellOpen(url, out string error))
+            return $"❌ 无法打开网址「{url}」：{error}";
         return $"✅ 已开天目，窥视「{url}」";
     }
 
@@ -87,7 +88,8 @@ public class SearchTool : IPetTool
         string query = ToolHelpers.JsonRead(argsJson, "query");
         if (string.IsNullOrEmpty(query)) return "❌ 未说要搜什么";
         string url = "https://www.bing.com/search?q=" + Uri.EscapeDataString(query);
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        if (!ToolHelpers.TryShellOpen(url, out string error))
+            return $"❌ 无法打开浏览器搜索「{query}」：{error}";
         return $"🔍 已为卜主搜索「{query}」";
     }
 
@@ -147,19 +149,17 @@ public class OpenAppTool : IPetTool
             if (!SafeLaunchApps.Contains(exeName))
                 return $"❌ 拒绝启动可执行文件「{name}」（仅允许白名单内应用）";
         }
-        try
-        {
-            Process.Start(new ProcessStartInfo(name) { UseShellExecute = true });
+        string launchError = "";
+        if (ToolHelpers.TryShellOpen(name, out launchError))
             return $"✅ 已遵法旨，召来「{name}」";
-        }
-        catch { }
 
         try
         {
             string found = ToolHelpers.FastWhich(name);
             if (found != null)
             {
-                Process.Start(new ProcessStartInfo(found) { UseShellExecute = true });
+                if (!ToolHelpers.TryShellOpen(found, out launchError))
+                    return $"❌ 启动「{Path.GetFileName(found)}」失败：{launchError}";
                 return $"✅ 在 PATH 中寻得「{Path.GetFileName(found)}」，已召来";
             }
 
@@ -169,13 +169,16 @@ public class OpenAppTool : IPetTool
             string lnk = ToolHelpers.FastFindLink(startMenu, name);
             if (lnk != null)
             {
-                Process.Start(new ProcessStartInfo(lnk) { UseShellExecute = true });
+                if (!ToolHelpers.TryShellOpen(lnk, out launchError))
+                    return $"❌ 启动「{Path.GetFileNameWithoutExtension(lnk)}」失败：{launchError}";
                 return $"✅ 在开始菜单寻得「{Path.GetFileNameWithoutExtension(lnk)}」，已召来";
             }
         }
         catch { }
 
-        return $"❌ 寻遍诸天也未找到「{name}」";
+        return string.IsNullOrEmpty(launchError)
+            ? $"❌ 寻遍诸天也未找到「{name}」"
+            : $"❌ 未能启动或找到「{name}」：{launchError}";
     }
 
     public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
@@ -196,30 +199,13 @@ public class OpenFolderTool : IPetTool
 
     public string Execute(string argsJson)
     {
-        string path = ToolHelpers.JsonRead(argsJson, "path");
-        if (string.IsNullOrEmpty(path)) path = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-        path = Environment.ExpandEnvironmentVariables(path);
-        if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统或受保护路径，不可打开";
+        string rawPath = ToolHelpers.JsonRead(argsJson, "path");
+        string path = ToolHelpers.ResolveFolderPath(Environment.ExpandEnvironmentVariables(rawPath ?? ""));
         if (!Directory.Exists(path))
-        {
-            // 试试常见简写
-            string lower = path.ToLower();
-            if (lower.Contains("桌面") || lower.Contains("desktop"))
-                path = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            else if (lower.Contains("下载") || lower.Contains("download"))
-                path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-            else if (lower.Contains("文档") || lower.Contains("documents") || lower.Contains("document"))
-                path = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            else if (lower.Contains("图片") || lower.Contains("pictures") || lower.Contains("picture"))
-                path = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
-            else if (lower.Contains("音乐") || lower.Contains("music"))
-                path = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
-            else if (lower.Contains("视频") || lower.Contains("videos") || lower.Contains("video"))
-                path = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
-            else if (lower.Length <= 3 && lower.EndsWith(":")) path = lower + "\\";
-            else return $"❌ 找不到「{path}」这个去处";
-        }
-        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            return $"❌ 未找到文件夹「{path}」";
+        if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统或受保护路径，不可打开";
+        if (!ToolHelpers.TryShellOpen(path, out string error))
+            return $"❌ 无法打开文件夹「{path}」：{error}";
         return $"📂 已打开「{path}」";
     }
 

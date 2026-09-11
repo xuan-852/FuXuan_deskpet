@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -108,12 +108,9 @@ public class FileOpenTool : IPetTool
         if (string.IsNullOrEmpty(path)) return "❌ 未指定路径";
         path = ToolHelpers.DecodeFileUri(path);
         if (!ToolHelpers.IsPathAllowed(path)) return "❌ 系统或受保护路径，不可打开";
-        try
-        {
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-            return $"✅ 已打开「{Path.GetFileName(path)}」";
-        }
-        catch (Exception e) { return $"❌ 打不开：{e.Message}"; }
+        if (!ToolHelpers.TryShellOpen(path, out string error))
+            return $"❌ 无法打开「{Path.GetFileName(path)}」：{error}";
+        return $"✅ 已打开「{Path.GetFileName(path)}」";
     }
 
     public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
@@ -522,41 +519,30 @@ public class SearchFilesTool : IPetTool
     {
         try
         {
-            bool useEverything = true;
             var results = ToolHelpers.SearchWithEverything(query, rootDir, 200);
-            if (results == null)
-            {
-                useEverything = false;
-                results = new List<string>();
-            }
-
+            bool useEverything = results != null;
+            List<string> searchRoots = null;
             if (!useEverything)
             {
-                try
-                {
-                    if (string.IsNullOrEmpty(rootDir))
-                        rootDir = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                    if (Directory.Exists(rootDir))
-                        ToolHelpers.SearchRecursive(rootDir, query, results, 200, skipSystemDirs: true);
-                }
-                catch (Exception ex)
-                {
-                    results.Add($"⚠️ 搜索中断：{ex.Message}");
-                }
+                results = new List<string>();
+                searchRoots = ToolHelpers.GetSafeSearchRoots(rootDir);
+                ToolHelpers.SearchSafeRoots(searchRoots, query, results, 200);
             }
 
+            string scope = useEverything
+                ? (string.IsNullOrEmpty(rootDir) ? "全盘" : $"「{rootDir}」")
+                : ToolHelpers.FormatSearchRoots(searchRoots);
             if (results.Count == 0)
             {
-                string scope = useEverything
-                    ? (string.IsNullOrEmpty(rootDir) ? "本座的天眼所及之处" : $"「{rootDir}」")
-                    : (string.IsNullOrEmpty(rootDir) ? "桌面" : $"「{rootDir}」");
-                return $"🔍 在{scope}中未找到与「{query}」匹配的文件";
+                string fallbackNote = useEverything ? "" : "（未检测到 Everything，已使用安全目录递归搜索）";
+                return $"🔍 在{scope}中未找到与「{query}」匹配的文件{fallbackNote}";
             }
 
-            string method = useEverything ? "⚡本座以 Everything 天眼通搜" : "🔍本座以递归之法搜";
-            string scope2 = string.IsNullOrEmpty(rootDir) ? "全境" : $"「{rootDir}」";
+            string method = useEverything
+                ? "⚡已使用 Everything 全盘索引"
+                : "🔍未检测到 Everything，已使用安全目录递归搜索";
             var sb = new StringBuilder();
-            sb.AppendLine($"{method}{scope2}，得 {results.Count} 件与「{query}」相关之物：");
+            sb.AppendLine($"{method}（范围：{scope}），找到 {results.Count} 项与「{query}」相关的文件：");
             foreach (var f in results)
                 sb.AppendLine($"  📄 {f}");
             return Truncate(sb.ToString(), 2000);

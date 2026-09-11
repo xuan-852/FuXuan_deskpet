@@ -140,9 +140,11 @@
 | `@@view:extclick:x,y[,dbl]` | 模拟独立窗口点击（坐标=面板逻辑坐标；dbl=true 双击） |
 | `@@approval:命令` | 注入 OpenClaw 审批弹窗（仅测试模式） |
 | `@@emote:xxx` | 注入表情（不走 LLM） |
-| 其他文本 | 作为用户消息发送（走 LLM） |
+| 其他文本 | 作为用户消息发送（走 LLM）；工具验收可直接写入“请搜索项目里的 README.md 文件”“请打开桌面文件夹”等自然语言 |
 
 命令处理在 `HandleTestViewCommand()`（未知命令 `Debug.LogWarning` 列出支持列表），命令执行留痕 `[TestInbox] @@view 命令: xxx` 于 Player.log。**新增 UI 视图/按钮时必须在命令表中补等价命令。**
+
+2026-09-12 的本地工具验收使用上述“其他文本”路径，而不是模拟鼠标：隔离 `FU_XUAN_DATA` 下搜索项目 README 必须留下 `search_files` 结果，打开桌面必须留下 `open_folder` 结果；脚本只管理自己启动的 PID，并检查正式数据文件未被改动。
 
 ### 2.9 面板整体外置独立窗口（2026-08-16，大工程 Phase A1-A5）— QQ 式可被遮挡
 

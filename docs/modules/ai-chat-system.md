@@ -47,6 +47,7 @@
 - 对未被确定性规则直接处理的请求，工具规划按任务分层：普通歧义请求继续用 `LocalLLMClient.ModelName`（默认 `qwen2.5:3b`）；PDF、Office、OpenClaw、多步骤/网页操作等信息密集请求使用 `LocalLLMClient.ChatModelName`（默认 `qwen3:8b`），8B 不可用时自动降级到 3B。最终角色回复仍使用聊天模型。
 - 对 `compile_latex`、Office 生成和无模板 `openclaw_task`，`TryHardenPlanArguments` 将用户原始消息写入 `description/task`，保留模型提取的标题等可选字段；需求超过 60000 字符或 PDF 编译器不在白名单时直接拦截。
 - 计划仍必须经过意图白名单、工具注册、危险审批和统一 `ToolEngine`；规则层只生成计划，不绕过执行安全层。
+- 2026-09-12 起，意图工具子集统一由 `LocalToolRouter` 提供，避免本地执行链与云端工具子集维护两份白名单。对“打开/搜索/列目录”等非破坏性工具，分类误差会先触发一次确定性关键词修正；参数保护仍失败时会把明确失败原因交给本地回复，不静默伪装为普通对话，也不自动升级到云端/OpenClaw。
 
 ### 2.1.2 请求生命周期分层（2026-08-26）
 
