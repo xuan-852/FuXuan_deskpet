@@ -327,6 +327,13 @@ public partial class RightPanel
             OpenAbout();
         RegisterExtHit(aboutRect, OpenAbout);
 
+        Rect homeRect = new Rect(x + 420f, y, 190f, 40f);
+        if (homeRect.Contains(mp))
+            UiTextureFactory.DrawPixelRect(homeRect, new Color(0.50f, 0.35f, 0.80f, 0.22f));
+        if (GUI.Button(homeRect, "⌂ 桌宠回到左侧", _subBtnStyle) && _pet != null)
+            _pet.ResetPetPosition();
+        RegisterExtHit(homeRect, () => { if (_pet != null) _pet.ResetPetPosition(); });
+
         // —— 节日皮肤命令说明 ——
         float themeHelpY = y + 56f;
         Rect themeSec = new Rect(x, themeHelpY, w, 32f);

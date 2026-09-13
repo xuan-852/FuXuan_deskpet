@@ -1096,6 +1096,9 @@ public partial class RightPanel : MonoBehaviour
             case "model":
             case "model-settings": OpenModelSettings(); break;
             case "model-check": BeginChatModelHealthCheck(); break;
+            case "pet-home":
+                if (_pet != null) _pet.ResetPetPosition();
+                break;
             case "reminders": OpenSubPanel(BallPanel.PanelType.Reminders); break;
             case "report": OpenSubPanel(BallPanel.PanelType.Report); break;
             case "usage": OpenSubPanel(BallPanel.PanelType.Usage); break;

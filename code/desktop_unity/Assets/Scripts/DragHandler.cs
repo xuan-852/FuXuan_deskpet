@@ -433,6 +433,7 @@ public class DragHandler : MonoBehaviour
                 int vy = Mathf.RoundToInt(Mathf.Clamp(avgVelocity.y * throwScale,
                     -maxThrowSpeed, maxThrowSpeed));
                 _pet.ApplyDragVelocity(vx, vy);
+                _pet.SavePetPosition();
                 Debug.Log($"[DragHandler] 抛掷: ({vx}, {vy})");
                 OnDragEnded?.Invoke();
             }

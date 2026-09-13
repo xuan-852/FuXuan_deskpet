@@ -592,6 +592,7 @@ public class DesktopPet : MonoBehaviour
         petVy = 0;
         petWidth = 100;
         petHeight = 170;
+        RestorePetPosition();
 
         // 强制落地检测
         if (petY + petHeight >= groundFloor)
@@ -1439,6 +1440,58 @@ public class DesktopPet : MonoBehaviour
     {
         petX = x;
         petY = y;
+    }
+
+    [System.Serializable]
+    private class PetPositionState
+    {
+        public int version = 2;
+        public float normalizedX;
+    }
+
+    private static string PetPositionPath => System.IO.Path.Combine(DataPathConfig.DataRoot, "pet_position.json");
+
+    /// <summary>拖拽结束后保存水平停靠位置；安装更新不会触及 DataRoot。</summary>
+    public void SavePetPosition()
+    {
+        try
+        {
+            int maxX = Mathf.Max(1, Screen.width - petWidth);
+            PetPositionState state = new PetPositionState
+            {
+                normalizedX = Mathf.Clamp01(petX / (float)maxX)
+            };
+            AtomicFileWriter.WriteAllText(PetPositionPath, JsonUtility.ToJson(state, true), new System.Text.UTF8Encoding(false));
+        }
+        catch (Exception ex) { Debug.LogWarning($"[DesktopPet] 保存桌宠位置失败（无害）: {ex.Message}"); }
+    }
+
+    private void RestorePetPosition()
+    {
+        try
+        {
+            if (!System.IO.File.Exists(PetPositionPath)) return;
+            PetPositionState state = JsonUtility.FromJson<PetPositionState>(System.IO.File.ReadAllText(PetPositionPath));
+            // v1 曾保存纵坐标，但地面物理会在下一帧把它归位；保留横坐标以兼容旧数据。
+            if (state == null || (state.version != 1 && state.version != 2)) return;
+            int maxX = Mathf.Max(0, Screen.width - petWidth);
+            petX = Mathf.Clamp(Mathf.RoundToInt(state.normalizedX * maxX), 0, maxX);
+            // 桌宠的既定行为是地面行走，重启后始终落在地面，避免保存一个不会保持的“空中位置”。
+            petY = _screenHeight + GROUND_Y_MARGIN - petHeight;
+            Debug.Log($"[DesktopPet] 已恢复桌宠水平位置: x={petX}，屏幕 {Screen.width}x{Screen.height}");
+        }
+        catch (Exception ex) { Debug.LogWarning($"[DesktopPet] 恢复桌宠位置失败，使用默认位置: {ex.Message}"); }
+    }
+
+    /// <summary>回到默认停靠点并保存；用于用户把桌宠拖到不便找到的位置时恢复。</summary>
+    public void ResetPetPosition()
+    {
+        petX = Mathf.Clamp(startX, 0, Mathf.Max(0, Screen.width - petWidth));
+        petY = _screenHeight + GROUND_Y_MARGIN - petHeight;
+        petVx = 0;
+        petVy = 0;
+        SavePetPosition();
+        Debug.Log($"[DesktopPet] 已回到默认停靠点: x={petX}");
     }
 
     /// <summary>
