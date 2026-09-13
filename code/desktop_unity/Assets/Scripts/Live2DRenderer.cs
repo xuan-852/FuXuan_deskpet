@@ -703,6 +703,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
             // 编辑器下也创建叠加相机（供 VisualActionTester 截图用）
             SetupOverlayRendering();
+#if !UNITY_EDITOR
+            ConfigurePlayerOverlayCamera();
+#endif
 
             // ★ 初始化参数映射器 + 新动作系统
             InitActionSystem();

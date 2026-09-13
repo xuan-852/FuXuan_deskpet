@@ -77,6 +77,33 @@ public partial class Live2DRenderer
         Debug.Log($"[Live2DRenderer] 局部叠加相机就绪 RT=({_overlayScreenW}x{_overlayScreenH}), drawRect={_overlayDrawRect}");
     }
 
+    /// <summary>
+    /// Windows 播放器的 DWM 透明窗不可靠地合成 IMGUI 中的 RenderTexture。
+    /// 模型仍由专用叠加相机直接绘到窗口帧缓冲：主相机保留黑色透明底，
+    /// 叠加相机只清深度并绘制 Layer 31，从而既不遮挡桌面也不丢失 Live2D。
+    /// </summary>
+    private void ConfigurePlayerOverlayCamera()
+    {
+        if (_overlayCamera == null) return;
+        Camera mainCam = Camera.main;
+        if (mainCam == null) return;
+
+        _overlayCamera.targetTexture = null;
+        _overlayCamera.transform.position = mainCam.transform.position;
+        _overlayCamera.transform.rotation = mainCam.transform.rotation;
+        _overlayCamera.orthographic = mainCam.orthographic;
+        _overlayCamera.orthographicSize = mainCam.orthographicSize;
+        _overlayCamera.fieldOfView = mainCam.fieldOfView;
+        _overlayCamera.aspect = mainCam.aspect;
+        _overlayCamera.rect = new Rect(0f, 0f, 1f, 1f);
+        _overlayCamera.clearFlags = CameraClearFlags.Depth;
+        _overlayCamera.depth = mainCam.depth + 1f;
+
+        // 不再由 OnGUI 回贴 RT；RT 仍保留给 CaptureModelSnapshot 测试入口。
+        _overlayReady = false;
+        Debug.Log("[Live2DRenderer] 播放器使用叠加相机直绘 Live2D（跳过 IMGUI RT 回贴）");
+    }
+
     private static int QuantizeOverlaySize(int value)
     {
         int safe = Mathf.Max(LOCAL_OVERLAY_SIZE_QUANTUM, value);

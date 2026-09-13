@@ -142,6 +142,8 @@
 | `@@view:extclick:x,y[,dbl]` | 模拟独立窗口点击（坐标=面板逻辑坐标；dbl=true 双击） |
 | `@@approval:命令` | 注入 OpenClaw 审批弹窗（仅测试模式） |
 | `@@emote:xxx` | 注入表情（不走 LLM） |
+| `@@sim:model-snapshot` | 保存 Live2D 叠加 RT 快照，确认模型相机实际渲染（仅测试模式） |
+| `@@sim:screen-snapshot` | 保存 Unity 最终帧，确认透明桌面中的 Live2D 已进入最终画面（仅测试模式） |
 | 其他文本 | 作为用户消息发送（走 LLM）；工具验收可直接写入“请搜索项目里的 README.md 文件”“请打开桌面文件夹”等自然语言 |
 
 命令处理在 `HandleTestViewCommand()`（未知命令 `Debug.LogWarning` 列出支持列表），命令执行留痕 `[TestInbox] @@view 命令: xxx` 于 Player.log。**新增 UI 视图/按钮时必须在命令表中补等价命令。**

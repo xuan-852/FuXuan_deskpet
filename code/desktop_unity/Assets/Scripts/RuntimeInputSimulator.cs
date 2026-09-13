@@ -54,6 +54,34 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.Equals("model-snapshot", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            byte[] png = renderer != null ? renderer.CaptureModelSnapshot() : null;
+            if (png == null || png.Length == 0)
+            {
+                Debug.LogWarning("[TestInbox] model snapshot failed: 叠加相机或 RT 不可用");
+                return true;
+            }
+
+            string dir = System.IO.Path.Combine(DataPathConfig.DataRoot, "test_screenshots");
+            System.IO.Directory.CreateDirectory(dir);
+            string path = System.IO.Path.Combine(dir, "model_rt_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".png");
+            System.IO.File.WriteAllBytes(path, png);
+            Debug.Log("[TestInbox] model snapshot saved: " + path + " (" + png.Length + " bytes)");
+            return true;
+        }
+
+        if (body.Equals("screen-snapshot", StringComparison.OrdinalIgnoreCase))
+        {
+            string dir = System.IO.Path.Combine(DataPathConfig.DataRoot, "test_screenshots");
+            System.IO.Directory.CreateDirectory(dir);
+            string path = System.IO.Path.Combine(dir, "screen_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".png");
+            ScreenCapture.CaptureScreenshot(path);
+            Debug.Log("[TestInbox] screen snapshot queued: " + path);
+            return true;
+        }
+
         DragHandler drag = UnityEngine.Object.FindObjectOfType<DragHandler>();
         if (drag == null)
         {

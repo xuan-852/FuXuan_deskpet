@@ -27,6 +27,13 @@ HybridRenderer → Live2DRenderer (恒走 Live2D)
   → SetParameterValue(name, value) ← Live2DParameterMapper 双向映射 (语义名 ↔ 参数 ID)
 ```
 
+### 2.1.1 Windows 透明桌面叠加（2026-09-13）
+
+- `WindowOverlay` 让 Unity 主窗口的纯黑背景透出桌面；主相机剔除 Live2D 专用 Layer 31，避免模型与透明底混合出错。
+- 旧播放器路径是“Layer 31 叠加相机 → 局部 RenderTexture → `OnGUI` 回贴”。在本机 DWM 合成下，模型 RT 本身完整，但 IMGUI 回贴不会进入最终透明窗口帧，表现为动作日志持续输出而桌面本体消失。
+- 播放器现在改为：叠加相机直接渲染 Layer 31 到窗口帧缓冲（只清深度，主相机继续提供黑色透明底），跳过 RT 的 IMGUI 回贴；编辑器仍保留局部 RT，供动作截图与视觉工具使用。
+- 验证入口只在 `.test_mode` 下启用：`@@sim:model-snapshot` 保存叠加 RT，`@@sim:screen-snapshot` 保存 Unity 最终帧。后者必须可见 Live2D 本体，不能用普通桌面/`PrintWindow` 截图替代——Windows 对分层透明窗会返回黑底。
+
 ### 2.2 模型加载双保险
 
 ```
