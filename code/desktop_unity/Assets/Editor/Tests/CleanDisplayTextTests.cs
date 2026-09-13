@@ -8,6 +8,16 @@ using NUnit.Framework;
 public class CleanDisplayTextTests
 {
     [Test]
+    public void GetToolDisplayName_UsesUserReadableActions()
+    {
+        Assert.AreEqual("搜索文件", ChatManager.GetToolDisplayName("search_files"));
+        Assert.AreEqual("打开文件夹", ChatManager.GetToolDisplayName("open_folder"));
+        Assert.AreEqual("执行复杂任务", ChatManager.GetToolDisplayName("openclaw_task"));
+        Assert.AreEqual("执行「custom_tool」", ChatManager.GetToolDisplayName("custom_tool"));
+        Assert.AreEqual("执行「本地工具」", ChatManager.GetToolDisplayName(null));
+    }
+
+    [Test]
     public void Strip_BoldMarkdown()
     {
         Assert.AreEqual("符玄大人驾到，尔等退下！", ChatManager.CleanDisplayText("**符玄大人**驾到，尔等退下！"));

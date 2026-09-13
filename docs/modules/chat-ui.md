@@ -43,6 +43,8 @@
 | 步骤日志 | 日志区系统行（kind=2） | 新步骤 | `[openclaw] 第n步: tool summary` 灰字追加 |
 | 审批弹窗 | OnGUI 末尾模态（最上层） | 待审批 | 全面板 62% 黑色遮罩 + 居中红边（0.85,0.35,0.35）弹窗：命令高亮 + 60s 倒计时自动拒绝 + 三按钮「✓ 允许一次 / ↻ 总是允许 / ✕ 拒绝」 |
 
+**工具执行状态**（2026-09-13）：标题栏直接读取 `ChatManager.RequestStatusText`。本地规划和云端 tool-call 在执行前均调用 `GetToolDisplayName()`，显示“正在搜索文件… / 正在打开文件夹…”等用户可读动作，而非 `search_files` 等内部标识；未知工具保留其名称，便于如实定位问题。
+
 > 数据流：`OpenClawBridge` 后台轮询 `RefreshTaskProgress` 写静态原子属性 → RightPanel `Update` 第 4c 步 `CheckOpenClawTaskProgress()`（新步骤写日志、新审批开弹窗 + `_approvalShownAt` 计时、60s 超时 `AutoDenyApproval`）→ 按钮调 `ResolveApproval(decision)`（用 `ActiveTaskId`→`LastTaskId` 兜底）→ `ApproveTaskAsync` POST 回执。任务结束自动关弹窗、清 `PendingApproval`。
 
 ### 2.2 对话核心事件链

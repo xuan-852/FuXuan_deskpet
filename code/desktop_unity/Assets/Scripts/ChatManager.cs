@@ -656,6 +656,11 @@ public partial class ChatManager : MonoBehaviour
             yield break;
         }
 
+        // 本地规划此前只在工具结束后写日志，标题栏会长时间停在“本地灵识判断中”。
+        // 与云端工具回环共用同一用户可读状态，避免把内部 tool id 暴露给用户。
+        SetRequestStatus("正在" + GetToolDisplayName(plan.ToolName) + "…", RequestStage.RunningTool);
+        OnToolCalled?.Invoke(plan.ToolName);
+
         if (ToolRegistry.IsDangerous(plan.ToolName))
         {
             bool confirmed = false;
@@ -684,6 +689,25 @@ public partial class ChatManager : MonoBehaviour
         OnToolResult?.Invoke(plan.ToolName, result);
         RecordMemoryForTool(plan.ToolName, plan.ArgumentsJson, result);
         onResult?.Invoke(result);
+    }
+
+    /// <summary>将内部工具标识转换为聊天状态栏的用户可读动作。</summary>
+    public static string GetToolDisplayName(string toolName)
+    {
+        switch (toolName)
+        {
+            case "search_files":
+            case "search_file": return "搜索文件";
+            case "search":
+            case "search_web": return "搜索网页";
+            case "open_folder": return "打开文件夹";
+            case "open_app": return "打开应用";
+            case "open_url": return "打开链接";
+            case "file_open": return "打开文件";
+            case "list_files": return "查看文件列表";
+            case "openclaw_task": return "执行复杂任务";
+            default: return "执行「" + (string.IsNullOrEmpty(toolName) ? "本地工具" : toolName) + "」";
+        }
     }
 
     void Update()

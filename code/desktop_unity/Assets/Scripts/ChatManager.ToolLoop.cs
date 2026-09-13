@@ -150,7 +150,7 @@ public partial class ChatManager
 
             foreach (var call in calls)
             {
-                SetRequestStatus($"执行：{call.name}", RequestStage.RunningTool);
+                SetRequestStatus("正在" + GetToolDisplayName(call.name) + "…", RequestStage.RunningTool);
                 OnToolCalled?.Invoke(call.name);
                 Debug.Log($"[ChatManager] ⚡ 施法: {call.name}({ToolHelpers.SanitizeLogValue(call.name, call.arguments)})");
 
