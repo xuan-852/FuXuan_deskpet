@@ -73,6 +73,8 @@ public partial class RightPanel : MonoBehaviour
     private const float FADE_SPEED = 5f; // 淡入淡出速度（/秒）
     private bool _isDragging = false;    // 标题栏拖动中
     private Vector2 _dragOffset;         // 拖动偏移
+    private Rect _lastObservedWorkArea;
+    private bool _hasObservedWorkArea;
 
     private ChatManager _chat;
     private BallPanel _ballPanel;
@@ -573,6 +575,7 @@ public partial class RightPanel : MonoBehaviour
     {
         RefreshRefs();
         EnsureTrayHelpSubscription();
+        RepositionForWorkAreaChange();
 
         // 透明窗口在部分 DWM/无输入组合下可能接受 RequestRepaint 却不再进入 IMGUI Repaint。
         // 测试截图不能无限等待该事件；半秒后用当前面板区域回读兜底，并保留请求以便下帧再试。
@@ -819,6 +822,26 @@ public partial class RightPanel : MonoBehaviour
 
         // Test/editor fallback: retain a bottom reserve even when Windows work-area lookup is unavailable.
         return Rect.MinMaxRect(SAFE_EDGE, SAFE_EDGE, Mathf.Max(SAFE_EDGE, Screen.width - SAFE_EDGE), Mathf.Max(SAFE_EDGE, Screen.height - 48f));
+    }
+
+    private void RepositionForWorkAreaChange()
+    {
+        Rect workArea = GetSafeWorkArea();
+        if (!_hasObservedWorkArea)
+        {
+            _lastObservedWorkArea = workArea;
+            _hasObservedWorkArea = true;
+            return;
+        }
+        if (Mathf.Abs(workArea.x - _lastObservedWorkArea.x) < 0.5f
+            && Mathf.Abs(workArea.y - _lastObservedWorkArea.y) < 0.5f
+            && Mathf.Abs(workArea.width - _lastObservedWorkArea.width) < 0.5f
+            && Mathf.Abs(workArea.height - _lastObservedWorkArea.height) < 0.5f) return;
+
+        _lastObservedWorkArea = workArea;
+        if (_isDragging) return;
+        ApplyViewSize();
+        Debug.Log($"[RightPanel] 工作区变化，已重新夹紧面板: {workArea}");
     }
 
     /// <summary>双击会话 → 进入聊天视图（窗口展开，左会话栏+右聊天区）</summary>
