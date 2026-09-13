@@ -236,5 +236,5 @@ Windows D3D11 Player 的 Unity 主窗口不再承担 Live2D 像素合成：DWM �
 - 模型窗口在 `WM_NCHITTEST` 返回 `HTTRANSPARENT`，拖动和点击仍交给下方 Unity
   `DragHandler`；不要添加 `WS_EX_TRANSPARENT`，它会把模型延后绘制到 Unity 主窗之后。
 - 覆盖层依据 `_overlayDrawRect` 定位，并将首帧可能产生的负 Bounds 限制到可见屏幕内。
-- 像素数据由局部 RT 以 20 FPS 读回，转换为预乘 Alpha 的 BGRA，再交给 Win32；RT 快照
+- 像素数据由局部 RT 以 45 FPS 读回，转换为预乘 Alpha 的 BGRA，再交给 Win32；RT 快照
   入口仍可用于视觉验收。

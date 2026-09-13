@@ -73,7 +73,7 @@ public sealed class NativeLive2DOverlay : MonoBehaviour
     private void LateUpdate()
     {
         if (_failed || _source == null || !_source.IsCreated() || Time.unscaledTime < _nextFrame) return;
-        _nextFrame = Time.unscaledTime + 1f / 20f;
+        _nextFrame = Time.unscaledTime + 1f / 45f;
         try { Present(); }
         catch (Exception e) { _failed = true; Debug.LogError("[NativeLive2DOverlay] 逐像素透明层失败: " + e.Message); DisposeOverlay(); }
     }
