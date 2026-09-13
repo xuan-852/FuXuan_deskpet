@@ -13,6 +13,12 @@ using UnityEngine;
 /// </summary>
 public static class ToolHelpers
 {
+    public sealed class IndexedSearchResult
+    {
+        public bool Succeeded;
+        public List<string> Results;
+        public string FailureReason;
+    }
     /// <summary>
     /// 仅供 EditMode 测试替换 Shell 打开行为。生产环境保持 null，仍使用系统默认关联程序。
     /// 返回非空异常表示模拟启动失败。
@@ -21,6 +27,9 @@ public static class ToolHelpers
 
     /// <summary>仅供 EditMode 覆盖 Everything 探测结果，null 表示按真实环境探测。</summary>
     public static Func<string> EverythingCliOverrideForTests;
+
+    /// <summary>仅供 EditMode 替换 Windows 搜索索引，生产环境为 null。</summary>
+    public static Func<string, string, int, IndexedSearchResult> WindowsSearchOverrideForTests;
 
     /// <summary>日志脱敏：工具参数/结果不得把凭据或隐私内容写入 Player.log。</summary>
     public static string SanitizeLogValue(string toolName, string value)
@@ -691,6 +700,60 @@ public static class ToolHelpers
     }
 
     /// <summary>
+    /// 查询 Windows Search 的 SYSTEMINDEX。它只覆盖用户在 Windows 中已建立索引的位置，
+    /// 因此只能作为 Everything 不可用后的快速后备，而不是伪装成全盘搜索。
+    /// </summary>
+    public static bool TrySearchWindowsIndex(string query, string rootDir, int maxResults,
+        out List<string> results, out string failureReason)
+    {
+        results = null;
+        failureReason = null;
+        if (WindowsSearchOverrideForTests != null)
+        {
+            IndexedSearchResult simulated = WindowsSearchOverrideForTests(query, rootDir, maxResults);
+            results = simulated?.Results;
+            failureReason = simulated?.FailureReason;
+            return simulated != null && simulated.Succeeded;
+        }
+
+        try
+        {
+            string safeQuery = (query ?? "").Replace("'", "''");
+            string where = $"System.FileName LIKE '%{safeQuery}%'";
+            if (!string.IsNullOrWhiteSpace(rootDir))
+            {
+                string safeRoot = Path.GetFullPath(rootDir).TrimEnd('\\', '/').Replace("'", "''");
+                where += $" AND System.ItemPathDisplay LIKE '{safeRoot.Replace("\\", "\\\\")}\\\\%'";
+            }
+            string script = "$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.Encoding]::UTF8;" +
+                "$c=New-Object -ComObject ADODB.Connection;$c.Open(\"Provider=Search.CollatorDSO;Extended Properties='Application=Windows';\");" +
+                $"$r=$c.Execute(\"SELECT TOP {Math.Max(1, Math.Min(maxResults, 200))} System.ItemPathDisplay FROM SYSTEMINDEX WHERE {where}\");" +
+                "while(-not $r.EOF){$p=$r.Fields.Item('System.ItemPathDisplay').Value;if($p){[Console]::WriteLine($p)};$r.MoveNext()};$r.Close();$c.Close();";
+            string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+            var psi = new ProcessStartInfo("powershell.exe", "-NoProfile -NonInteractive -EncodedCommand " + encoded)
+            {
+                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
+                CreateNoWindow = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
+            };
+            using (var p = Process.Start(psi))
+            {
+                if (p == null) { failureReason = "无法启动 Windows Search 查询"; return false; }
+                string stdout = p.StandardOutput.ReadToEnd();
+                string stderr = p.StandardError.ReadToEnd();
+                if (!p.WaitForExit(5000)) { try { p.Kill(); } catch { } failureReason = "Windows Search 查询超时"; return false; }
+                if (p.ExitCode != 0)
+                {
+                    failureReason = "Windows 搜索索引不可用";
+                    return false;
+                }
+                results = stdout.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries).ToList();
+                return true;
+            }
+        }
+        catch { failureReason = "Windows 搜索索引不可用"; return false; }
+    }
+
+    /// <summary>
     /// 使用 Everything 搜索，并保留不可用原因供界面作诚实的降级说明。
     /// Everything 的 CLI 是通过当前用户会话中的 IPC 窗口通信；找到 es.exe 不等于 IPC 一定可用。
     /// </summary>
@@ -952,14 +1015,26 @@ public static class ToolHelpers
                 return sb0.ToString();
             }
 
+            bool usedWindowsIndex = TrySearchWindowsIndex(query, rootDir, 100, out var indexedResults, out string windowsSearchFailure);
+            if (usedWindowsIndex)
+            {
+                string scope = string.IsNullOrEmpty(rootDir) ? "Windows 已索引位置" : $"Windows 索引中的「{rootDir}」";
+                if (indexedResults.Count == 0)
+                    return $"🔍 在{scope}中未找到与「{query}」匹配的文件（Everything 不可用，已使用 Windows 搜索索引）";
+                var indexed = new StringBuilder();
+                indexed.AppendLine($"⚡Everything 不可用，已使用 Windows 搜索索引（范围：{scope}），找到 {indexedResults.Count} 项与「{query}」相关的文件：");
+                foreach (var f in indexedResults) indexed.AppendLine($"  📄 {f}");
+                return indexed.ToString();
+            }
+
             var results = new List<string>();
             List<string> roots = GetSafeSearchRoots(rootDir);
             SearchSafeRoots(roots, query, results, 100);
             string scope2 = FormatSearchRoots(roots);
             if (results.Count == 0)
-                return $"🔍 在{scope2}中未找到与「{query}」匹配的文件（{everythingFailure}，已使用安全目录递归搜索）";
+                return $"🔍 在{scope2}中未找到与「{query}」匹配的文件（{everythingFailure}；{windowsSearchFailure}，已使用安全目录递归搜索）";
             var sb = new StringBuilder();
-            sb.AppendLine($"🔍{everythingFailure}，已使用安全目录递归搜索（范围：{scope2}），找到 {results.Count} 项与「{query}」相关的文件：");
+            sb.AppendLine($"🔍{everythingFailure}；{windowsSearchFailure}，已使用安全目录递归搜索（范围：{scope2}），找到 {results.Count} 项与「{query}」相关的文件：");
             foreach (var f in results) sb.AppendLine($"  📄 {f}");
             return sb.ToString();
         }

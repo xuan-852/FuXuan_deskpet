@@ -64,6 +64,7 @@ public class ToolEngineTests
         ResetRegistry();
         ToolHelpers.ShellOpenOverrideForTests = null;
         ToolHelpers.EverythingCliOverrideForTests = null;
+        ToolHelpers.WindowsSearchOverrideForTests = null;
     }
 
     [TearDown]
@@ -71,6 +72,7 @@ public class ToolEngineTests
     {
         ToolHelpers.ShellOpenOverrideForTests = null;
         ToolHelpers.EverythingCliOverrideForTests = null;
+        ToolHelpers.WindowsSearchOverrideForTests = null;
     }
 
     // ================================================================
@@ -253,6 +255,38 @@ public class ToolEngineTests
         Assert.IsNull(ToolHelpers.SearchWithEverything("README.md", "", 1));
         Assert.IsNotEmpty(ToolHelpers.GetSafeSearchRoots(""),
             "Everything 不可用时必须仍有安全目录降级路径");
+    }
+
+    [Test]
+    public void WindowsSearchIndex_可作为Everything失败后的快速后备()
+    {
+        ToolHelpers.WindowsSearchOverrideForTests = (query, root, max) => new ToolHelpers.IndexedSearchResult
+        {
+            Succeeded = true,
+            Results = new List<string> { @"C:\Users\Tester\Documents\README.md" }
+        };
+
+        bool ok = ToolHelpers.TrySearchWindowsIndex("README.md", "", 10, out var results, out var failure);
+
+        Assert.IsTrue(ok);
+        Assert.IsNull(failure);
+        CollectionAssert.Contains(results, @"C:\Users\Tester\Documents\README.md");
+    }
+
+    [Test]
+    public void WindowsSearchIndex_不可用时保留失败原因供递归降级()
+    {
+        ToolHelpers.WindowsSearchOverrideForTests = (query, root, max) => new ToolHelpers.IndexedSearchResult
+        {
+            Succeeded = false,
+            FailureReason = "Windows 搜索索引不可用"
+        };
+
+        bool ok = ToolHelpers.TrySearchWindowsIndex("README.md", "", 10, out var results, out var failure);
+
+        Assert.IsFalse(ok);
+        Assert.IsNull(results);
+        Assert.AreEqual("Windows 搜索索引不可用", failure);
     }
 
     // ⚠️ 注意：不遍历所有工具测试空参数执行！

@@ -54,7 +54,7 @@ qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请�
 ### 2.2.3 本地搜索与打开可靠性（2026-09-12）
 
 - `LocalToolRouter` 是本地与云端意图子集的唯一来源；`ChatManager` 不再维护第二份白名单。`open_app` / `open_folder` / `open_url` / `file_open` 与搜索、列目录工具属于跨意图安全工具，避免意图分类把“打开桌面”误判为 knowledge 后被错误拒绝；危险工具仍先过 `ToolRegistry.DangerousTools` 与确认弹窗。
-- 文件搜索规则会从“项目里”、桌面/下载/文档别名和现有 Windows 路径提取 `root`。Everything 的 `es.exe` 可由 `FU_XUAN_EVERYTHING_ES` 指定；运行时会校验 `es.exe` 退出码，并依次兼容默认、IPC1/IPC2/IPC3 协议。若 CLI 缺失或 IPC 因不同用户/权限上下文不可达，会如实显示原因后改为用户目录、数据目录和开发项目的安全递归搜索，并显示降级范围，跳过系统/缓存/构建目录。
+- 文件搜索规则会从“项目里”、桌面/下载/文档别名和现有 Windows 路径提取 `root`。搜索按三层后备执行：Everything 的 `es.exe`（可由 `FU_XUAN_EVERYTHING_ES` 指定，校验退出码并依次兼容默认、IPC1/IPC2/IPC3）→ Windows Search `SYSTEMINDEX`（仅声明已索引范围）→ 用户目录、数据目录和开发项目的安全递归搜索。若 CLI 缺失、IPC 因不同用户/权限上下文不可达或 Windows 索引不可用，结果会如实显示原因和实际范围，递归层跳过系统/缓存/构建目录。
 - `open_folder` 在路径安全校验前先解析已知目录别名；`open_folder` / `open_app` / `open_url` / `file_open` 的 Shell 启动异常统一转换为可读失败消息。EditMode 通过可替换 Shell 启动器验证，不会真的打开浏览器或资源管理器。
 - 本地规划的白名单或参数校验失败时，`ChatManager` 会基于高置信度关键词修正一次；仍失败则把具体阻断原因交给最终回复，不伪装为执行成功，也不自动转云端/OpenClaw。
 

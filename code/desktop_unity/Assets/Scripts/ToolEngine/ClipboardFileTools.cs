@@ -521,26 +521,36 @@ public class SearchFilesTool : IPetTool
         {
             bool useEverything = ToolHelpers.TrySearchWithEverything(query, rootDir, 200,
                 out var results, out string everythingFailure);
+            bool useWindowsIndex = false;
+            string windowsSearchFailure = null;
             List<string> searchRoots = null;
             if (!useEverything)
             {
-                results = new List<string>();
-                searchRoots = ToolHelpers.GetSafeSearchRoots(rootDir);
-                ToolHelpers.SearchSafeRoots(searchRoots, query, results, 200);
+                useWindowsIndex = ToolHelpers.TrySearchWindowsIndex(query, rootDir, 200,
+                    out results, out windowsSearchFailure);
+                if (!useWindowsIndex)
+                {
+                    results = new List<string>();
+                    searchRoots = ToolHelpers.GetSafeSearchRoots(rootDir);
+                    ToolHelpers.SearchSafeRoots(searchRoots, query, results, 200);
+                }
             }
 
             string scope = useEverything
                 ? (string.IsNullOrEmpty(rootDir) ? "全盘" : $"「{rootDir}」")
+                : useWindowsIndex ? (string.IsNullOrEmpty(rootDir) ? "Windows 已索引位置" : $"Windows 索引中的「{rootDir}」")
                 : ToolHelpers.FormatSearchRoots(searchRoots);
             if (results.Count == 0)
             {
-                string fallbackNote = useEverything ? "" : $"（{everythingFailure}，已使用安全目录递归搜索）";
+                string fallbackNote = useEverything ? "" : useWindowsIndex ? "（Everything 不可用，已使用 Windows 搜索索引）"
+                    : $"（{everythingFailure}；{windowsSearchFailure}，已使用安全目录递归搜索）";
                 return $"🔍 在{scope}中未找到与「{query}」匹配的文件{fallbackNote}";
             }
 
             string method = useEverything
                 ? "⚡已使用 Everything 全盘索引"
-                : $"🔍{everythingFailure}，已使用安全目录递归搜索";
+                : useWindowsIndex ? "⚡Everything 不可用，已使用 Windows 搜索索引"
+                : $"🔍{everythingFailure}；{windowsSearchFailure}，已使用安全目录递归搜索";
             var sb = new StringBuilder();
             sb.AppendLine($"{method}（范围：{scope}），找到 {results.Count} 项与「{query}」相关的文件：");
             foreach (var f in results)
