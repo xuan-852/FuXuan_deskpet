@@ -493,6 +493,7 @@ public partial class ChatManager : MonoBehaviour
         // 发送消息时主动重试，确保 Ollama 后启动或模型刚加载完成后仍能恢复对话。
         bool chatReady = LocalLLMAgentService.Instance != null
             && LocalLLMAgentService.Instance.CanProcessChat;
+        string healthDetail = LocalLLMClient.LastHealthMessage ?? "";
         float deadline = Time.realtimeSinceStartup + 20f;
         while (!chatReady && Time.realtimeSinceStartup < deadline)
         {
@@ -500,6 +501,7 @@ public partial class ChatManager : MonoBehaviour
             yield return LocalLLMClient.CheckHealthAsync((ok, msg) =>
             {
                 checkedNow = true;
+                healthDetail = msg ?? "";
                 chatReady = ok && LocalLLMAgentService.Instance != null
                     && !LocalLLMClient.Paused;
                 if (!string.IsNullOrEmpty(msg))
@@ -513,9 +515,9 @@ public partial class ChatManager : MonoBehaviour
 
         if (!chatReady)
         {
-            _lastError = "Ollama 未就绪或本地模型生成失败";
-            SetRequestStatus("请求失败", RequestStage.Error);
-            OnRequestError?.Invoke($"⚠ 本地 Ollama 未就绪，请确认 Ollama 已启动且已安装聊天模型 {LocalLLMClient.ChatModelName}");
+            _lastError = string.IsNullOrEmpty(healthDetail) ? "本地模型不可用" : healthDetail;
+            SetRequestStatus("本地模型不可用", RequestStage.Error);
+            OnRequestError?.Invoke(DescribeLocalModelFailure(healthDetail));
             yield break;
         }
 
@@ -637,10 +639,18 @@ public partial class ChatManager : MonoBehaviour
             ok => handled = ok, "ollama_mode", localToolContext));
         if (!handled)
         {
-            _lastError = "Ollama 未就绪或本地模型生成失败";
-            SetRequestStatus("请求失败", RequestStage.Error);
-            OnRequestError?.Invoke($"⚠ 本地 Ollama 未就绪，请确认 Ollama 已启动且已安装聊天模型 {LocalLLMClient.ChatModelName}");
+            _lastError = "本地模型生成失败";
+            SetRequestStatus("生成失败，请重试", RequestStage.Error);
+            OnRequestError?.Invoke("⚠ 本地模型这次没有完成生成。请稍后重试；若持续失败，请在设置 → 模型中点击“检查连接”。");
         }
+    }
+
+    private static string DescribeLocalModelFailure(string detail)
+    {
+        string model = LocalLLMClient.ChatModelName;
+        if (!string.IsNullOrEmpty(detail) && detail.IndexOf("未找到", StringComparison.OrdinalIgnoreCase) >= 0)
+            return $"⚠ 聊天模型“{model}”尚未安装。请在命令行运行：ollama pull {model}，完成后到设置 → 模型点击“检查连接”。";
+        return $"⚠ 本地 Ollama 服务未启动或暂不可达。请启动 Ollama 后，在设置 → 模型点击“检查连接”。{(string.IsNullOrEmpty(detail) ? "" : " 原因：" + detail)}";
     }
 
     /// <summary>
