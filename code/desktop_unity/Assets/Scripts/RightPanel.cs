@@ -75,6 +75,8 @@ public partial class RightPanel : MonoBehaviour
     private Vector2 _dragOffset;         // 拖动偏移
     private Rect _lastObservedWorkArea;
     private bool _hasObservedWorkArea;
+    private bool _hasTestWorkArea;
+    private Rect _testWorkArea;
 
     private ChatManager _chat;
     private BallPanel _ballPanel;
@@ -809,6 +811,7 @@ public partial class RightPanel : MonoBehaviour
     /// <summary>Returns the primary display work area in Unity GUI coordinates, with a small auto-hide taskbar guard.</summary>
     private Rect GetSafeWorkArea()
     {
+        if (_hasTestWorkArea) return _testWorkArea;
         WorkAreaRect native = new WorkAreaRect();
         if (SystemParametersInfoW(SPI_GETWORKAREA, 0, ref native, 0)
             && native.Right > native.Left && native.Bottom > native.Top)
@@ -1185,6 +1188,19 @@ public partial class RightPanel : MonoBehaviour
             case "embed":
                 // 退回内嵌聊天窗口
                 if (_externalMode) DisableExternalMode();
+                break;
+            case "workarea-small":
+                _hasTestWorkArea = true;
+                _testWorkArea = new Rect(0f, 0f, Mathf.Min(640f, Screen.width), Mathf.Min(480f, Screen.height));
+                _hasObservedWorkArea = false;
+                ApplyViewSize();
+                Debug.Log($"[TestInbox] 工作区模拟: {_testWorkArea}");
+                break;
+            case "workarea-reset":
+                _hasTestWorkArea = false;
+                _hasObservedWorkArea = false;
+                ApplyViewSize();
+                Debug.Log("[TestInbox] 工作区模拟已清除");
                 break;
             default:
                 // ★ 带参数命令（@@view:extclick:x,y[,dbl] / @@view:exthover:x,y）：前缀匹配
