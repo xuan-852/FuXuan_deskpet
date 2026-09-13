@@ -11,8 +11,8 @@ using UnityEngine;
 /// 使用 DWM 玻璃层扩展 (DwmExtendFrameIntoClientArea) 使黑色像素透明，
 /// 实现透明窗口效果，支持置顶、无边框、点击穿透。
 ///
-/// 相比色键抠图 (Color Key) 方案，此方案不会产生绿色残留问题，
-/// 因为 Live2D 模型的半透明/抗锯齿像素是黑色系的，不会混入绿色。
+/// Live2D 的逐像素 Alpha 内容由 NativeLive2DOverlay 独立窗口负责合成，
+/// 不依赖色键抠图，避免抗锯齿边缘和 D3D11 swap chain 的兼容性问题。
 ///
 /// 用法：
 /// 1. 挂到任意 GameObject
@@ -381,10 +381,10 @@ public class WindowOverlay : MonoBehaviour
         if (cam != null)
         {
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0f, 0f, 0f, 0f); // 纯黑透明背景
+            cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
             cam.allowHDR = false;
             cam.allowMSAA = false;
-            Log("已强制相机背景为纯黑+关HDR");
+            Log("已强制相机背景为透明黑+关HDR");
         }
     }
 
@@ -562,18 +562,14 @@ public class WindowOverlay : MonoBehaviour
         // ---- 步骤4: 重新显示窗口，确保新样式生效 ----
         ShowWindow(_hwnd, SW_SHOWNA);
 
-        // ---- 步骤5: DWM 玻璃层扩展（黑色=透明） ----
-        // 关键：将整个客户区扩展为 DWM 玻璃区域，使纯黑 (0,0,0) 变透明
+        // ---- 步骤5: DWM 玻璃层扩展 ----
+        // Unity 主窗口只承担透明输入层；模型由独立 NativeLive2DOverlay 用逐像素 Alpha 显示。
         MARGINS margins = new MARGINS { cxLeftWidth = -1, cxRightWidth = 0, cyTopHeight = 0, cyBottomHeight = 0 };
         uint dwmResult = DwmExtendFrameIntoClientArea(_hwnd, ref margins);
         if (dwmResult != 0)
-        {
             LogError($"DwmExtendFrameIntoClientArea 失败, error={dwmResult}");
-        }
         else
-        {
-            Log("已应用 DWM 玻璃层透明（黑色=透明）");
-        }
+            Log("已应用 DWM 透明输入层；Live2D 由逐像素 Alpha 覆盖层显示");
 
         // 刷新窗口使 DWM 生效
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, w, h, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);

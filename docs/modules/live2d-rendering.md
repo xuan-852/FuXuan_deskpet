@@ -29,10 +29,10 @@ HybridRenderer → Live2DRenderer (恒走 Live2D)
 
 ### 2.1.1 Windows 透明桌面叠加（2026-09-13）
 
-- `WindowOverlay` 让 Unity 主窗口的纯黑背景透出桌面；主相机剔除 Live2D 专用 Layer 31，避免模型与透明底混合出错。
-- 旧播放器路径是“Layer 31 叠加相机 → 局部 RenderTexture → `OnGUI` 回贴”。在本机 DWM 合成下，模型 RT 本身完整，但 IMGUI 回贴不会进入最终透明窗口帧，表现为动作日志持续输出而桌面本体消失。
-- 播放器现在改为：叠加相机直接渲染 Layer 31 到窗口帧缓冲（只清深度，主相机继续提供黑色透明底），跳过 RT 的 IMGUI 回贴；编辑器仍保留局部 RT，供动作截图与视觉工具使用。
-- 验证入口只在 `.test_mode` 下启用：`@@sim:model-snapshot` 保存叠加 RT，`@@sim:screen-snapshot` 保存 Unity 最终帧。后者必须可见 Live2D 本体，不能用普通桌面/`PrintWindow` 截图替代——Windows 对分层透明窗会返回黑底。
+- `WindowOverlay` 让 Unity 主窗口的纯黑背景透出桌面，并保留拖动/点击输入；主相机剔除 Live2D 专用 Layer 31。
+- 播放器使用“Layer 31 叠加相机 → 局部 RenderTexture → `NativeLive2DOverlay`”路径。后者以 `UpdateLayeredWindow(ULW_ALPHA)` 输出逐像素 Alpha 窗口，因此不再受 DWM 对 IMGUI RT 回贴和色键的兼容性影响。
+- 编辑器仍由 `OnGUI` 回贴局部 RT，供 VisualActionTester 与截图工具使用；Player 不回贴该 RT，避免重复显示。
+- 验证入口只在 `.test_mode` 下启用：`@@sim:model-snapshot` 保存叠加 RT，另须以真实桌面截图确认 Native 覆盖层可见且无矩形背景。
 
 ### 2.2 模型加载双保险
 
@@ -226,3 +226,15 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 6. **测试模式**：涉及表情/动作的自动化测试须开 `.test_mode`，且 `set_expression`/`play_action` 属 operation 意图白名单
 7. **参数语义映射**：新参数先查 `Live2DParameterMapper` 与 `KnownParameterPatterns.cs`（KNOW_PATTERNS 单源），勿重复硬编码参数 ID
 8. **单写入者铁则**：每个可见参数在一个帧阶段只能有一个动作来源。新预设/协程必须先终止旧协程；AI 关键帧、旧式动作和表情要受同一控制锁约束；网格强制更新应在该帧全部参数写完后最多提交一次。
+## 2026-09-13 Windows 桌面逐像素透明层
+
+Windows D3D11 Player 的 Unity 主窗口不再承担 Live2D 像素合成：DWM 玻璃层仅保留
+透明输入与窗口生命周期，`NativeLive2DOverlay` 将局部 `ModelOverlayRT` 以
+`UpdateLayeredWindow(ULW_ALPHA)` 输出为独立、置顶、逐像素 Alpha 的 Win32 窗口。
+这避免了色键方案在本机表现为整块洋红背景，以及 DWM 直接合成时吞掉模型的两类故障。
+
+- 模型窗口在 `WM_NCHITTEST` 返回 `HTTRANSPARENT`，拖动和点击仍交给下方 Unity
+  `DragHandler`；不要添加 `WS_EX_TRANSPARENT`，它会把模型延后绘制到 Unity 主窗之后。
+- 覆盖层依据 `_overlayDrawRect` 定位，并将首帧可能产生的负 Bounds 限制到可见屏幕内。
+- 像素数据由局部 RT 以 20 FPS 读回，转换为预乘 Alpha 的 BGRA，再交给 Win32；RT 快照
+  入口仍可用于视觉验收。

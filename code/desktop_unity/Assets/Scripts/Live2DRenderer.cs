@@ -267,6 +267,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private bool _overlayReady = false;
     private int _overlayScreenW = 0;
     private int _overlayScreenH = 0;
+    private NativeLive2DOverlay _nativeOverlay;
 
     // ===== 射线触摸检测 =====
     private CubismRaycaster _cubismRaycaster;
@@ -703,9 +704,6 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
             // 编辑器下也创建叠加相机（供 VisualActionTester 截图用）
             SetupOverlayRendering();
-#if !UNITY_EDITOR
-            ConfigurePlayerOverlayCamera();
-#endif
 
             // ★ 初始化参数映射器 + 新动作系统
             InitActionSystem();

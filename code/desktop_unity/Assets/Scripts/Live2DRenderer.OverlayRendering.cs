@@ -74,34 +74,12 @@ public partial class Live2DRenderer
 
         _overlayReady = true;
         UpdateOverlayFraming();
+#if !UNITY_EDITOR
+        _nativeOverlay = gameObject.GetComponent<NativeLive2DOverlay>();
+        if (_nativeOverlay == null) _nativeOverlay = gameObject.AddComponent<NativeLive2DOverlay>();
+        _nativeOverlay.SetSource(_overlayRT, _overlayDrawRect);
+#endif
         Debug.Log($"[Live2DRenderer] 局部叠加相机就绪 RT=({_overlayScreenW}x{_overlayScreenH}), drawRect={_overlayDrawRect}");
-    }
-
-    /// <summary>
-    /// Windows 播放器的 DWM 透明窗不可靠地合成 IMGUI 中的 RenderTexture。
-    /// 模型仍由专用叠加相机直接绘到窗口帧缓冲：主相机保留黑色透明底，
-    /// 叠加相机只清深度并绘制 Layer 31，从而既不遮挡桌面也不丢失 Live2D。
-    /// </summary>
-    private void ConfigurePlayerOverlayCamera()
-    {
-        if (_overlayCamera == null) return;
-        Camera mainCam = Camera.main;
-        if (mainCam == null) return;
-
-        _overlayCamera.targetTexture = null;
-        _overlayCamera.transform.position = mainCam.transform.position;
-        _overlayCamera.transform.rotation = mainCam.transform.rotation;
-        _overlayCamera.orthographic = mainCam.orthographic;
-        _overlayCamera.orthographicSize = mainCam.orthographicSize;
-        _overlayCamera.fieldOfView = mainCam.fieldOfView;
-        _overlayCamera.aspect = mainCam.aspect;
-        _overlayCamera.rect = new Rect(0f, 0f, 1f, 1f);
-        _overlayCamera.clearFlags = CameraClearFlags.Depth;
-        _overlayCamera.depth = mainCam.depth + 1f;
-
-        // 不再由 OnGUI 回贴 RT；RT 仍保留给 CaptureModelSnapshot 测试入口。
-        _overlayReady = false;
-        Debug.Log("[Live2DRenderer] 播放器使用叠加相机直绘 Live2D（跳过 IMGUI RT 回贴）");
     }
 
     private static int QuantizeOverlaySize(int value)
@@ -237,6 +215,9 @@ public partial class Live2DRenderer
             _overlayCamera.orthographicSize = mainCam.orthographicSize;
             _overlayCamera.fieldOfView = mainCam.fieldOfView;
             _overlayCamera.aspect = (float)_overlayScreenW / _overlayScreenH;
+#if !UNITY_EDITOR
+            _nativeOverlay?.SetSource(_overlayRT, _overlayDrawRect);
+#endif
             return;
         }
 
@@ -268,7 +249,11 @@ public partial class Live2DRenderer
         cropWidth = targetWidth / Mathf.Max(0.01f, scale);
         cropHeight = targetHeight / Mathf.Max(0.01f, scale);
 
-        _overlayDrawRect = new Rect(centerX - cropWidth * 0.5f, centerY - cropHeight * 0.5f,
+        // Cubism 的初始 Bounds 可能在首帧仍是 prefab 坐标（出现负数屏幕坐标）。
+        // 覆盖窗口不能因此整个落到显示器外；保留完整尺寸并把左上角限制到当前屏幕。
+        float drawX = Mathf.Clamp(centerX - cropWidth * 0.5f, 0f, Mathf.Max(0f, Screen.width - cropWidth));
+        float drawY = Mathf.Clamp(centerY - cropHeight * 0.5f, 0f, Mathf.Max(0f, Screen.height - cropHeight));
+        _overlayDrawRect = new Rect(drawX, drawY,
             cropWidth, cropHeight);
         RebuildOverlayTexture(targetWidth, targetHeight);
 
@@ -280,10 +265,18 @@ public partial class Live2DRenderer
         _overlayCamera.orthographicSize = mainCam.orthographicSize * cropHeight / Mathf.Max(1f, Screen.height);
         _overlayCamera.aspect = (float)_overlayScreenW / Mathf.Max(1, _overlayScreenH);
         _overlayCamera.fieldOfView = mainCam.fieldOfView;
+#if !UNITY_EDITOR
+        _nativeOverlay?.SetSource(_overlayRT, _overlayDrawRect);
+#endif
     }
 
     private void OnGUI()
     {
+#if !UNITY_EDITOR
+        // Windows Player 由 NativeLive2DOverlay 以逐像素 Alpha 合成，不能再把 RT
+        // 回贴到 DWM 透明主窗口，否则 D3D11 下会再次出现整块背景或模型被吞掉。
+        return;
+#else
         if (!_overlayReady || _overlayRT == null || _pet == null) return;
 
         // Framing 在 LateUpdate 中更新；这里仅处理首次初始化或极端情况下的兜底。
@@ -295,10 +288,16 @@ public partial class Live2DRenderer
 
         // 局部绘制 RT；原生窗口仍是全屏透明窗口，透明区域露出下方桌面/UI。
         GUI.DrawTexture(_overlayDrawRect, _overlayRT, ScaleMode.StretchToFill, true);
+#endif
     }
 
     private void OnDestroy()
     {
+        if (_nativeOverlay != null)
+        {
+            _nativeOverlay.DisposeOverlay();
+            _nativeOverlay = null;
+        }
         if (_overlayRT != null)
         {
             _overlayRT.Release();
