@@ -510,10 +510,11 @@ public partial class RightPanel : MonoBehaviour
         }
         // QQ 式两级界面：初始为第一级「会话列表」窄条（324×846，贴 QQ 实测），热键打开后双击进聊天
         _currentView = PanelView.SessionList;
-        float w = Mathf.Min(SESSION_LIST_W, Screen.width - 20f);
-        float h = Mathf.Min(SESSION_LIST_H, Screen.height - 40f);
-        float x = (Screen.width - w) / 2f;
-        float y = (Screen.height - h) / 2f;
+        Rect workArea = GetSafeWorkArea();
+        float w = Mathf.Min(SESSION_LIST_W, workArea.width);
+        float h = Mathf.Min(SESSION_LIST_H, workArea.height);
+        float x = workArea.x + (workArea.width - w) / 2f;
+        float y = workArea.y + (workArea.height - h) / 2f;
         _panelRect = new Rect(x, y, w, h);
         Debug.Log($"[RightPanel] 已就绪，屏幕={Screen.width}x{Screen.height}，视图=会话列表 {w}x{h} 居中=({x},{y})");
 
@@ -701,6 +702,7 @@ public partial class RightPanel : MonoBehaviour
             _chat.OnNewReply += OnMascotReply;
             _chat.OnExpressionTag += OnMascotExpression;
             _chat.OnDeveloperCommandReply += OnDeveloperCommandReply;
+            _chat.OnRequestError += OnChatRequestError;
         }
 
         // 4b. 表情徽章计时（到时清除）
@@ -2329,6 +2331,13 @@ public partial class RightPanel : MonoBehaviour
         _mascotJumpStart = Time.time;
     }
 
+    private void OnChatRequestError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        AddLiveLog(message, 2);
+        Debug.LogWarning("[RightPanel] 聊天状态反馈: " + message);
+    }
+
     /// <summary>开发者指令回执只作为当前 UI 动态日志显示，不进入聊天历史。</summary>
     private void OnDeveloperCommandReply(string reply)
     {
@@ -2778,6 +2787,7 @@ public partial class RightPanel : MonoBehaviour
             _chat.OnNewReply -= OnMascotReply;
             _chat.OnExpressionTag -= OnMascotExpression;
             _chat.OnDeveloperCommandReply -= OnDeveloperCommandReply;
+            _chat.OnRequestError -= OnChatRequestError;
         }
         foreach (var kv in _emblemTex)
             if (kv.Value != null) Destroy(kv.Value);
