@@ -1949,7 +1949,9 @@ public partial class RightPanel : MonoBehaviour
         Color cAccentDim  = new Color(0.40f, 0.28f, 0.65f, 0.6f);  // 暗紫
         Color cAccentGlow = new Color(0.65f, 0.50f, 0.95f, 0.30f); // 紫光晕
         Color cTextMain   = new Color(0.92f, 0.90f, 0.96f, 1.0f);  // 主文字白紫
-        Color cTextDim    = new Color(0.60f, 0.55f, 0.70f, 0.6f);  // 淡文字
+        // Secondary/system feedback remains intentionally quieter than message text,
+        // but must stay readable on the dark pixel panel at common DPI scales.
+        Color cTextDim    = new Color(0.72f, 0.68f, 0.82f, 0.92f);
         Color cGold       = new Color(0.85f, 0.75f, 0.50f, 1.0f);  // 金色点缀
 
         // ——— 面板背景 ——— 太卜司星空（藏蓝夜空：上深蓝 → 下墨蓝，α≈0.95；蓝底紫饰双色调避免单紫色治）
@@ -2085,7 +2087,7 @@ public partial class RightPanel : MonoBehaviour
         _emptyStateHintStyle = new GUIStyle
         {
             font = _monoFont, fontSize = 13,
-            normal = { textColor = new Color(0.55f, 0.54f, 0.64f, 0.82f) },
+            normal = { textColor = new Color(0.70f, 0.68f, 0.80f, 0.94f) },
             alignment = TextAnchor.MiddleCenter
         };
         _termPromptStyle = new GUIStyle
