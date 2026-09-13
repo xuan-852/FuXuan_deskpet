@@ -84,3 +84,7 @@ The data root must be temporary and contain `.test_mode`; production memory and 
 - 2026-09-04 节日统一预验收：五个正式主题分别在临时数据根目录完成 `@@view:open`、`@@view:list/chat`、主题切换、`list/status/off`、四张 Unity 截图和 `@@test:quit`；每个目录无 NRE，截图视觉预评分 91/92/91/91/91。`@@view:list/chat` 只证明自动化的小/大界面状态，真实 GUI 双击展开和拖拽/收回仍需负责人签字后才能关闭 T3/T5。
 - 2026-09-04 动态复测：提交 `b531d03` 后，节日动态时钟由 `UpdateMotion()` 统一推进，RightPanel 按 30～60 FPS 主动请求透明窗口重绘；五个主题的隔离评测、完整构建和 `runtime_smoke.cjs --verbose` 均通过，生产数据零污染。
 - 2026-09-04 系统会话结束复测：`WindowOverlay` 增加 `WM_QUERYENDSESSION`/`WM_ENDSESSION` 处理；对隔离实例发送非破坏性的会话消息探针后，收到 Windows 会话结束日志并进入 `DesktopPet.BeginShutdown`，无异常。Quick、完整构建和隔离 `runtime_smoke.cjs --verbose` 均通过；真实关机/注销仍待人工观察。
+## 2026-09-13 本地模型状态与自启隔离
+
+- 模型设置页的“检查连接”复用真实聊天健康检查；服务不可达、缺少当前模型和模型就绪三种结果会直接反馈给用户。
+- `SystemTrayManager` 在 `DataPathConfig.IsTestMode` 时不读取、迁移或写入 HKCU 开机自启项；`SetAutoStart` 只更新进程内状态，避免临时构建把正式自启指向 `%TEMP%`。

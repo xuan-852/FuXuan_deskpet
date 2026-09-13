@@ -301,6 +301,15 @@ public class SystemTrayManager : MonoBehaviour
 
     private void Start()
     {
+        // 隔离运行绝不能读取、迁移或改写真实 HKCU。否则临时构建会把
+        // 正式用户的开机项指向 %TEMP% 中即将清理的 DesktopPet.exe。
+        if (DataPathConfig.IsTestMode)
+        {
+            _autoStartEnabled = false;
+            Log("测试模式：跳过真实开机自启注册表读取与迁移");
+            return;
+        }
+
         // 读取当前开机自启状态
         _autoStartEnabled = ReadAutoStartRegistry();
         Log($"开机自启状态: {_autoStartEnabled}");
@@ -393,6 +402,13 @@ public class SystemTrayManager : MonoBehaviour
     /// <param name="enabled">是否启用</param>
     public void SetAutoStart(bool enabled)
     {
+        if (DataPathConfig.IsTestMode)
+        {
+            _autoStartEnabled = enabled;
+            Log($"测试模式：已记录开机自启={enabled}，未写入真实注册表");
+            return;
+        }
+
         try
         {
             string regPath = @"Software\Microsoft\Windows\CurrentVersion\Run";

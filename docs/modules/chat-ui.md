@@ -472,3 +472,8 @@
 - `HolidayFireworksField` 增加按聊天面板宽度启用的紧凑安全区，并按宽度而非高度选择诗词列数，避免窄而高的会话列表误用大界面排版，遮挡标题、会话项或输入栏。
 - 新春补充低对比门窗背板并延长烟花可见相位；元宵增加灯笼事件点亮和底部倒影、收紧灯笼横向范围；端午放大并减速龙舟、减少重复水纹；七夕提高诗词呼吸可读性；中秋按大小窗口调整月轮、放大大窗口玉兔并增强桂枝层次。
 - 最终隔离目录 `%TEMP%/fuxuan_visual_optimization_eval_20260904_final/test_screenshots/` 生成 16 张非空 Unity 截图（五主题各 `static/small/motion`，加统一 `default_recovery`）；EditMode `failed=0`、完整构建、异常检查和生产数据隔离均通过。该复测不替代真实 GUI 双击展开与拖拽/收回签字。
+## 本地模型状态入口（2026-09-13）
+
+- “AI 模型设置”页现在显示当前聊天模型的最近健康检查结果，并提供用户主动点击的“检查连接”。打开页面本身不会隐式启动 Ollama。
+- 检查复用实际聊天前的 `LocalLLMClient.CheckHealthAsync`，明确区分服务不可达、服务在线但缺少模型、以及模型已就绪。
+- 隔离 UI 测试可写入 `@@view:model-settings` 后再写 `@@view:model-check`，不依赖鼠标坐标。

@@ -831,6 +831,13 @@ public partial class RightPanel : MonoBehaviour
     {
         _prevView = _currentView;
         _currentView = PanelView.ModelSettings;
+        EnsureModelSelection();
+        // 只展示上一次结果；不在打开设置页时偷偷启动外部服务。
+        // 用户点击“检查连接”后才会执行健康检查及必要的 Ollama 自启动尝试。
+        if (string.IsNullOrEmpty(_modelHealthMessage))
+            _modelHealthMessage = string.IsNullOrEmpty(LocalLLMClient.LastHealthMessage)
+                ? "尚未检测。点击“检查连接”确认本地服务和聊天模型。"
+                : LocalLLMClient.LastHealthMessage;
         ApplyViewSize();
         Debug.Log($"[RightPanel] 打开模型设置页（当前聊天模型 {LocalLLMClient.ChatModelName}）");
     }
@@ -1088,6 +1095,7 @@ public partial class RightPanel : MonoBehaviour
             case "settings": OpenSubPanel(BallPanel.PanelType.Settings); break;
             case "model":
             case "model-settings": OpenModelSettings(); break;
+            case "model-check": BeginChatModelHealthCheck(); break;
             case "reminders": OpenSubPanel(BallPanel.PanelType.Reminders); break;
             case "report": OpenSubPanel(BallPanel.PanelType.Report); break;
             case "usage": OpenSubPanel(BallPanel.PanelType.Usage); break;

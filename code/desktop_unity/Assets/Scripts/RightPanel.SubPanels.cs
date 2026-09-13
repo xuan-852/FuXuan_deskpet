@@ -53,6 +53,10 @@ public partial class RightPanel
     private Coroutine _modelDemoCoroutine;
     private bool _modelDemoLoading;
     private string _modelDemoLoadingModel = "";
+    private Coroutine _modelHealthCoroutine;
+    private bool _modelHealthChecking;
+    private string _modelHealthMessage = "";
+    private Color _modelHealthColor = Color.gray;
 
     private void DrawSubPanelView(float px, float py, float pw, float ph, Vector2 mp)
     {
@@ -500,10 +504,16 @@ public partial class RightPanel
         }
 
         float applyY = optionY + ModelSettingsProfiles.Length * 72f + 14f;
-        if (new Rect(contentX, applyY, leftW, 42f).Contains(new Vector2(x, y)))
+        float actionW = (leftW - 8f) * 0.5f;
+        if (new Rect(contentX, applyY, actionW, 42f).Contains(new Vector2(x, y)))
         {
             if (_selectedChatModelIndex >= 0 && !ModelSettingsProfiles[_selectedChatModelIndex].Cloud)
                 ApplySelectedChatModel();
+            return true;
+        }
+        if (new Rect(contentX + actionW + 8f, applyY, actionW, 42f).Contains(new Vector2(x, y)))
+        {
+            BeginChatModelHealthCheck();
             return true;
         }
 
@@ -552,16 +562,57 @@ public partial class RightPanel
         }
 
         float applyY = optionY + ModelSettingsProfiles.Length * 72f + 14f;
-        Rect applyRect = new Rect(x, applyY, w, 42f);
+        float actionW = (w - 8f) * 0.5f;
+        Rect applyRect = new Rect(x, applyY, actionW, 42f);
+        Rect healthRect = new Rect(x + actionW + 8f, applyY, actionW, 42f);
         bool cloud = ModelSettingsProfiles[_selectedChatModelIndex].Cloud;
         if (!cloud && GUI.Button(applyRect, "✓ 应用本地模型", _modelButtonStyle))
             ApplySelectedChatModel();
         RegisterExtHit(applyRect, () => { if (!cloud) ApplySelectedChatModel(); });
+        string healthButton = _modelHealthChecking ? "正在检查…" : "检查连接";
+        if (GUI.Button(healthRect, healthButton, _modelButtonStyle) && !_modelHealthChecking)
+            BeginChatModelHealthCheck();
+        RegisterExtHit(healthRect, () => { if (!_modelHealthChecking) BeginChatModelHealthCheck(); });
 
         GUI.Label(new Rect(x, applyY + 52f, w, 64f),
             "当前聊天：" + LocalLLMClient.ChatModelName + "\n策略：" + LocalChatModelProfiles.Get(LocalLLMClient.ChatModelName).Summary
             + "\n动作/摘要：" + LocalLLMClient.ModelName + "（独立轻量链路）",
             _modelSmallStyle);
+        GUI.Label(new Rect(x, applyY + 118f, w, 48f),
+            string.IsNullOrEmpty(_modelHealthMessage) ? "尚未检测本地服务。" : _modelHealthMessage,
+            new GUIStyle(_modelSmallStyle) { wordWrap = true, normal = { textColor = _modelHealthColor } });
+    }
+
+    /// <summary>
+    /// 用户主动触发的本地聊天模型检查。它复用实际对话前的检查链路，
+    /// 因而“服务未启动 / 模型未安装 / 已就绪”与真实发送消息的判定完全一致。
+    /// </summary>
+    private void BeginChatModelHealthCheck()
+    {
+        if (_modelHealthChecking) return;
+        if (_modelHealthCoroutine != null) StopCoroutine(_modelHealthCoroutine);
+        _modelHealthCoroutine = StartCoroutine(CheckChatModelHealthCoroutine());
+    }
+
+    private IEnumerator CheckChatModelHealthCoroutine()
+    {
+        _modelHealthChecking = true;
+        _modelHealthMessage = "正在检查 Ollama 与聊天模型…";
+        _modelHealthColor = new Color(0.88f, 0.78f, 0.55f, 1f);
+        bool ready = false;
+        string message = "";
+        yield return LocalLLMClient.CheckHealthAsync((ok, detail) =>
+        {
+            ready = ok;
+            message = detail ?? "";
+        }, LocalLLMClient.ChatModelName);
+        _modelHealthChecking = false;
+        _modelHealthCoroutine = null;
+        _modelHealthMessage = string.IsNullOrEmpty(message)
+            ? (ready ? "✅ 本地聊天模型已就绪。" : "⚠ 本地模型检查未返回详细原因。")
+            : message;
+        _modelHealthColor = ready ? new Color(0.55f, 0.85f, 0.55f, 1f) : new Color(1f, 0.55f, 0.45f, 1f);
+        Debug.Log($"[RightPanel] 本地聊天模型检查完成: ready={ready}, model={LocalLLMClient.ChatModelName}");
     }
 
     private void SelectModelProfile(int index)
