@@ -46,6 +46,12 @@ public partial class RightPanel : MonoBehaviour
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WorkAreaRect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SystemParametersInfoW(uint action, uint parameter, ref WorkAreaRect workArea, uint flags);
+    private const uint SPI_GETWORKAREA = 0x0030;
+
     // ==================== 工具按钮定义（不用 emoji，用中文单字） ====================
     private readonly (string icon, string label, BallPanel.PanelType? panelType)[] _tools = new (string, string, BallPanel.PanelType?)[]
     {
@@ -407,7 +413,7 @@ public partial class RightPanel : MonoBehaviour
     // ==================== 窗口拉伸 ====================
     private bool _isResizing = false;
     private const float MIN_PANEL_W = 300f;
-    private const float MIN_VISIBLE = 56f;  // 常规窗口式拖出屏幕：最小可见条（≈标题栏高度），保证还能抓住拖回
+    private const float SAFE_EDGE = 12f;
     private const float MIN_PANEL_H = 480f;
     private const float MAX_PANEL_W = 1920f;
     private const float MAX_PANEL_H = 1600f;
@@ -680,9 +686,9 @@ public partial class RightPanel : MonoBehaviour
                 Vector2 mp = Input.mousePosition;
                 mp.y = Screen.height - mp.y; // 转 GUI 坐标
                 Vector2 newPos = mp - _dragOffset;
-                // ★ 常规窗口式拖动：允许部分拖出屏幕（保留 MIN_VISIBLE 可见条便于抓回），不再强制全屏内
-                newPos.x = Mathf.Clamp(newPos.x, MIN_VISIBLE - panelWidth, Mathf.Max(Screen.width - MIN_VISIBLE, MIN_VISIBLE));
-                newPos.y = Mathf.Clamp(newPos.y, MIN_VISIBLE - panelHeight, Mathf.Max(Screen.height - MIN_VISIBLE, MIN_VISIBLE));
+                Rect workArea = GetSafeWorkArea();
+                newPos.x = Mathf.Clamp(newPos.x, workArea.xMin, Mathf.Max(workArea.xMin, workArea.xMax - panelWidth));
+                newPos.y = Mathf.Clamp(newPos.y, workArea.yMin, Mathf.Max(workArea.yMin, workArea.yMax - panelHeight));
                 _panelRect.x = newPos.x;
                 _panelRect.y = newPos.y;
             }
@@ -767,7 +773,7 @@ public partial class RightPanel : MonoBehaviour
         _inputFocused = true; // 打开后自动聚焦输入框
     }
 
-    /// <summary>按当前视图应用窗口尺寸（窄条 ⇄ 展开，左上角保持，允许停在屏外但保留最小可见条）</summary>
+    /// <summary>按当前视图应用窗口尺寸，并确保全部操作区都留在 Windows 可用工作区内。</summary>
     private void ApplyViewSize()
     {
         InvalidateExternalHitZones();
@@ -777,11 +783,11 @@ public partial class RightPanel : MonoBehaviour
         float h = _currentView == PanelView.SessionList ? SESSION_LIST_H
             : IsSubPanelView(_currentView) ? SUB_PANEL_H
             : CHAT_PANEL_H;
-        w = Mathf.Min(w, Screen.width - 20f);
-        h = Mathf.Min(h, Screen.height - 40f);
-        // ★ 与拖动一致：允许停在屏外，仅夹到最小可见条可见（常规窗口行为），不再强制全屏内收拢
-        float nx = Mathf.Clamp(_panelRect.x, MIN_VISIBLE - w, Mathf.Max(Screen.width - MIN_VISIBLE, MIN_VISIBLE));
-        float ny = Mathf.Clamp(_panelRect.y, MIN_VISIBLE - h, Mathf.Max(Screen.height - MIN_VISIBLE, MIN_VISIBLE));
+        Rect workArea = GetSafeWorkArea();
+        w = Mathf.Min(w, workArea.width);
+        h = Mathf.Min(h, workArea.height);
+        float nx = Mathf.Clamp(_panelRect.x, workArea.xMin, Mathf.Max(workArea.xMin, workArea.xMax - w));
+        float ny = Mathf.Clamp(_panelRect.y, workArea.yMin, Mathf.Max(workArea.yMin, workArea.yMax - h));
         _panelRect = new Rect(nx, ny, w, h);
         panelWidth = w;
         panelHeight = h;
@@ -793,6 +799,24 @@ public partial class RightPanel : MonoBehaviour
             UnityEngine.GUI.changed = true;
         }
         Debug.Log($"[RightPanel] 视图切换 → {_currentView}，窗口={w}x{h} @ ({_panelRect.x:F0},{_panelRect.y:F0})");
+    }
+
+    /// <summary>Returns the primary display work area in Unity GUI coordinates, with a small auto-hide taskbar guard.</summary>
+    private Rect GetSafeWorkArea()
+    {
+        WorkAreaRect native = new WorkAreaRect();
+        if (SystemParametersInfoW(SPI_GETWORKAREA, 0, ref native, 0)
+            && native.Right > native.Left && native.Bottom > native.Top)
+        {
+            float left = Mathf.Clamp(native.Left + SAFE_EDGE, 0f, Screen.width);
+            float top = Mathf.Clamp(native.Top + SAFE_EDGE, 0f, Screen.height);
+            float right = Mathf.Clamp(native.Right - SAFE_EDGE, left, Screen.width);
+            float bottom = Mathf.Clamp(native.Bottom - SAFE_EDGE, top, Screen.height);
+            return Rect.MinMaxRect(left, top, right, bottom);
+        }
+
+        // Test/editor fallback: retain a bottom reserve even when Windows work-area lookup is unavailable.
+        return Rect.MinMaxRect(SAFE_EDGE, SAFE_EDGE, Mathf.Max(SAFE_EDGE, Screen.width - SAFE_EDGE), Mathf.Max(SAFE_EDGE, Screen.height - 48f));
     }
 
     /// <summary>双击会话 → 进入聊天视图（窗口展开，左会话栏+右聊天区）</summary>
