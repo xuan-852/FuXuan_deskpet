@@ -88,3 +88,4 @@ The data root must be temporary and contain `.test_mode`; production memory and 
 
 - 模型设置页的“检查连接”复用真实聊天健康检查；服务不可达、缺少当前模型和模型就绪三种结果会直接反馈给用户。
 - `SystemTrayManager` 在 `DataPathConfig.IsTestMode` 时不读取、迁移或写入 HKCU 开机自启项；`SetAutoStart` 只更新进程内状态，避免临时构建把正式自启指向 `%TEMP%`。
+> **2026-09-14 稳定发布基线**：桌宠维持主屏运行策略。聊天面板按 Windows 工作区夹紧，工作区变化后切换视图会重新计算安全位置；本地模型错误会保留实际健康检查原因并显示给用户，不会因打开设置页隐式启动 Ollama。

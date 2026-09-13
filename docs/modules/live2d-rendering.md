@@ -238,3 +238,4 @@ Windows D3D11 Player 的 Unity 主窗口不再承担 Live2D 像素合成：DWM �
 - 覆盖层依据 `_overlayDrawRect` 定位，并将首帧可能产生的负 Bounds 限制到可见屏幕内。
 - 像素数据由局部 RT 以 45 FPS 读回，转换为预乘 Alpha 的 BGRA，再交给 Win32；RT 快照
   入口仍可用于视觉验收。
+> **2026-09-14 稳定发布基线**：正式透明展示固定为同步 RGBA32 → 预乘 BGRA 的 Win32 分层窗口路径，45 FPS 输出。`NativeLive2DOverlay` 只在模型尺寸变化时重建像素缓冲，不使用 `AsyncGPUReadback`；首次可见与失败诊断会记录矩形、帧率、最后成功提交和失败原因。
