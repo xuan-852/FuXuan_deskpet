@@ -1,6 +1,8 @@
 ﻿using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
+using UnityEngine.SceneManagement;
 using UnityEngine;
 using System.IO;
 using System.Linq;
@@ -96,6 +98,42 @@ public class BuildScript
             EditorApplication.Exit(1);
         else
             EditorApplication.Exit(0);
+    }
+
+    /// <summary>
+    /// 构建独立 Live2D 参数探测窗口。它只有目标 Prefab 与 ProbeWindowController，
+    /// 不包含桌宠场景或桌宠行为链路。
+    /// </summary>
+    public static void BuildLive2DProbeWindow()
+    {
+        const string prefabPath = "Assets/Live2D/Models/Fuxuan/符玄.prefab";
+        const string scenePath = "Assets/Live2DProbe/ProbeWindow.unity";
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        if (prefab == null) throw new FileNotFoundException("Probe prefab not found", prefabPath);
+
+        var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        GameObject host = new GameObject("Live2DProbeWindow");
+        ProbeWindowController controller = host.AddComponent<ProbeWindowController>();
+        GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+        instance.name = "ProbeModel";
+        var field = typeof(ProbeWindowController).GetField("modelRoot",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        field.SetValue(controller, instance);
+        Directory.CreateDirectory(Path.GetDirectoryName(scenePath));
+        EditorSceneManager.SaveScene(scene, scenePath);
+
+        string output = System.Environment.GetEnvironmentVariable("FU_XUAN_BUILD_OUTPUT");
+        if (string.IsNullOrWhiteSpace(output)) output = @"D:\Unity\projects\Desktop_per_pro\Build";
+        output = Path.GetFullPath(output);
+        Directory.CreateDirectory(output);
+        string path = Path.Combine(output, "Live2DProbe.exe");
+        BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions {
+            scenes = new[] { scenePath }, locationPathName = path,
+            targetGroup = BuildTargetGroup.Standalone, target = BuildTarget.StandaloneWindows,
+            options = BuildOptions.None
+        });
+        Debug.Log("[BuildScript] Probe window build: " + report.summary.result + " -> " + path);
+        EditorApplication.Exit(report.summary.result == BuildResult.Succeeded ? 0 : 1);
     }
 
     /// <summary>

@@ -9,6 +9,7 @@
         .\build.ps1                     # 完整构建（默认）
         .\build.ps1 -Quick              # 仅验证编译
         .\build.ps1 -RunTests           # 运行 Editor 测试套件
+        .\build.ps1 -ProbeWindow -OutputDir "D:\tmp\probe" # 构建独立 Live2D 探测窗口
         .\build.ps1 -OutputDir "D:\tmp" # 指定输出目录
 .EXAMPLE
     .\build.ps1
@@ -24,6 +25,7 @@ param(
     [string]$OutputDir = "",
     [switch]$Quick,
     [switch]$RunTests,
+    [switch]$ProbeWindow,
     [switch]$ResetLicensingClient,
     [switch]$NoKill,
     [switch]$CleanBeeCache,
@@ -216,7 +218,21 @@ if (Test-Path -LiteralPath $IlppPidPath) {
 
 # ---- Determine build/test mode ----
 $TestResultsFile = Join-Path $RootDir "logs\build\test_results.xml"
-if ($RunTests) {
+if ($RunTests -and $ProbeWindow) {
+    throw "-RunTests 与 -ProbeWindow 不能同时使用"
+}
+
+if ($ProbeWindow) {
+    $Label = "Live2D Probe Window build"
+    $unityArgs = @(
+        "-batchmode"
+        "-nographics"
+        "-quit"
+        "-projectPath", "."
+        "-logFile", $LogFile
+        "-executeMethod", "BuildScript.BuildLive2DProbeWindow"
+    )
+} elseif ($RunTests) {
     $Label = "Run Tests (EditMode)"
     # 先删旧结果，确保能校验本次新鲜结果；去掉 -quit（否则测试运行器会提前退出不写结果）
     Remove-Item $TestResultsFile -Force -ErrorAction SilentlyContinue
@@ -406,17 +422,18 @@ try {
         # this invocation's DesktopPet.exe timestamp.
         if (-not $Quick -and -not $RunTests) {
             $exeOutputDir = if ([string]::IsNullOrWhiteSpace($BuildOutputDir)) { $DefaultOutputDir } else { $BuildOutputDir }
-            $exe = Join-Path $exeOutputDir "DesktopPet.exe"
+            $exeName = if ($ProbeWindow) { "Live2DProbe.exe" } else { "DesktopPet.exe" }
+            $exe = Join-Path $exeOutputDir $exeName
             if (Test-Path $exe) {
                 $exeItem = Get-Item $exe
                 if ($exeItem.LastWriteTime -lt $buildStartedAt.AddSeconds(-2)) {
-                    Write-Host "[FAIL] 构建未产出本次 DesktopPet.exe：$exe 的修改时间为 $($exeItem.LastWriteTime.ToString('s'))，早于本次构建开始时间 $($buildStartedAt.ToString('s'))" -ForegroundColor Red
+                    Write-Host "[FAIL] 构建未产出本次 $exeName：$exe 的修改时间为 $($exeItem.LastWriteTime.ToString('s'))，早于本次构建开始时间 $($buildStartedAt.ToString('s'))" -ForegroundColor Red
                     exit 1
                 }
                 $size = [math]::Round($exeItem.Length / 1MB, 1)
                 Write-Host "[OK] Output: $exe ($size MB)"
             } else {
-                Write-Host "[FAIL] Build succeeded but DesktopPet.exe not found at expected path" -ForegroundColor Red
+                Write-Host "[FAIL] Build succeeded but $exeName not found at expected path" -ForegroundColor Red
                 exit 1
             }
         }

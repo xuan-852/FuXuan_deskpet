@@ -1,0 +1,13 @@
+{
+  "packageId":"probe-skeleton-mechanical-batch-v1",
+  "primaryGuide":"docs/guides/approved/probe-evaluation-accuracy.md",
+  "requirementIds":["FR-ACC-01","AC-ACC-01","AC-ACC-02"],
+  "acceptanceObjective":"Run an isolated mechanical batch for head, torso, and arm/hand candidates with three repetitions and controls.",
+  "allowedPaths":["code/desktop_unity/Assets/Scripts/Live2DProbe/","scripts/live2d-probe/","docs/truth/"],
+  "forbiddenPaths":["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/","docs/guides/approved/"],
+  "verificationCommands":[".\\build.ps1 -Quick"],
+  "expectedTruthDocuments":["docs/truth/l3-capability-census-mechanical.md"],
+  "evidenceOutputs":["isolated capability-report.json","control and repetition metrics"],
+  "riskLevel":"medium","externalEvidence":false,
+  "notes":"Cloud review is a later package; no map writes."
+}

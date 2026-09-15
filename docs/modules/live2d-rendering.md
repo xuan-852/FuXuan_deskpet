@@ -64,6 +64,14 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 | 手臂 | Param31-37, 92-120 | 36+ |
 | 呼吸 | ParamBreath | 1 |
 
+### 2.4.1 独立参数探针窗口（2026-09-16）
+
+- `Assets/Scripts/Live2DProbe/ProbeWindowController.cs` 是与 `DesktopPet`、`Live2DRenderer` 和桌宠场景隔离的采样运行时；它只加载目标 Cubism Prefab，冻结非渲染参数写入者，再逐个写入目标 `CubismParameter`。
+- 构建入口为 `build.ps1 -ProbeWindow -OutputDir <隔离目录>`，实际 Player 仅包含自动生成的 `Assets/Live2DProbe/ProbeWindow.unity`、目标 Prefab 与探针控制器，输出 `Live2DProbe.exe`，不会替换或控制正式 `DesktopPet.exe`。
+- 运行必须提供隔离的 `FU_XUAN_DATA` 和 `.test_mode`；可用 `FU_XUAN_PROBE_PARAMETER=ParamAngleX` 限定单参。每个参数固定采集三轮 `baseline/min/mid/max/reset`，在数据根写出 `capability-report-probe-window.json` 和 15 张 PNG。
+- 本地验收已用新构建产物复跑 `ParamAngleX`：3 轮/15 帧，最小/最大平均像素差为 2.319/2.361，复位差为 0 且 `resetStable=true`；人工查看最小/最大帧确认是头部左右朝向变化。该事实只证明独立采样和复位链路可用，不认证其他参数的语义。
+- 默认“冻结”模式会让 `ParamBodyAngleX/Y/Z` 为零差异；设置 `FU_XUAN_PROBE_WRITER_MODE=physics` 时，探针仅额外保留 `CubismPhysicsController`，每个采样点等待 8 帧并调用 SDK `Stabilization()`，仍不启用桌宠行为。该模式已三轮复验三轴均可见且复位稳定；云端视觉复核仍须取得对隔离模型帧外发的单独授权。
+
 ### 2.5 Perlin 噪声微动（8 通道）
 
 | 参数 | 通道 | 描述 |

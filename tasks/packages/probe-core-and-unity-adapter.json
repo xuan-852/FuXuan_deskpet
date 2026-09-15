@@ -1,0 +1,13 @@
+{
+  "packageId":"probe-core-and-unity-adapter-v1",
+  "primaryGuide":"docs/guides/approved/generic-live2d-capability-probe.md",
+  "requirementIds":["FR-PROBE-01","FR-PROBE-02","AC-PROBE-01","AC-PROBE-02"],
+  "acceptanceObjective":"Create a read-only generic probe core and Unity Cubism adapter skeleton with no cloud or map writes.",
+  "allowedPaths":["code/desktop_unity/Assets/Scripts/Live2DProbe/","scripts/live2d_probe/","docs/truth/"],
+  "forbiddenPaths":["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/","docs/decisions/","docs/guides/approved/"],
+  "verificationCommands":[".\\build.ps1 -Quick","node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments":["docs/truth/generic-live2d-probe-core.md"],
+  "evidenceOutputs":["isolated capability-report.json","model and map hashes"],
+  "riskLevel":"medium","externalEvidence":false,
+  "notes":"No cloud, no user data, no map writes."
+}
