@@ -25,6 +25,27 @@
 
 ---
 
+## 0. 文档治理架构（迁移中）
+
+从 2026-09-15 起，项目采用“决策 → 指导 → 任务包 → 代码真相”的分层方式。目录位置是唯一状态来源；不要手工维护另一份完成状态表。
+
+```text
+docs/decisions/        跨模块决策与方向边界
+docs/guides/proposed/  讨论中的功能指导
+docs/guides/approved/  可下发实施任务的功能指导
+tasks/packages/        机器可读任务包（只引用 approved 指导）
+docs/truth/            已验证的代码/运行时事实
+docs/archive/          迁移后的历史材料
+docs/generated/        自动生成索引，禁止手工编辑
+```
+
+- 必读：[产品方向基线](decisions/2026-09-15-product-direction-baseline.md) 与 [文档治理规范](decisions/documentation-governance.md)。
+- 功能文档使用 [指导文档模板](templates/feature-guide.md)；任务使用 [任务包模板](../tasks/templates/task-package.example.json)。
+- 运行 `node scripts/docs/generate_document_map.cjs` 更新 [自动索引](generated/document-map.md)。
+- 现有顶层规划、路线图、报告和 `modules/` 尚处迁移前形态：除已明确引用的代码事实外，不能以它们的“完成”描述代替新体系的验收证据。
+
+---
+
 ## 一、文档地图
 
 ### 1.1 顶层权威文档（优先阅读）
@@ -47,11 +68,16 @@
 | [`ui-acceptance-checklist.md`](ui-acceptance-checklist.md) | **UI 验收清单（考评师版）**（排版/功能/进阶/回归红线，含多模态验证项） | **UI 回归验收 / 交付签发前** |
 | [`ui-external-window-test-plan-2026-08-17.md`](ui-external-window-test-plan-2026-08-17.md) | **外置独立面板专项测评方案**（真实鼠标/键盘优先，点击/拖动 P0 项） | **外置窗口交互回归（codex 第三轮）** |
 | [`code-truth-architecture.md`](code-truth-architecture.md) | 代码真相架构审计（六层架构） | 改架构/子系统前 |
-| [`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) | 项目演进路线图（v0.3，2026-08-29） | 规划新功能前 |
+| [`embodied-ai-optimization-architecture.md`](embodied-ai-optimization-architecture.md) | **具身 AI 优化设计**（分层仲裁、状态/命令接口、安全约束与实施阶段） | 规划或修改 ActionAgent 架构前 |
+| [`embodied-intelligence-guidance.md`](embodied-intelligence-guidance.md) | **具身智能指导文档**（已确认边界、能力普查、LLM 控制与验收规范） | 设计、实现或验收具身智能前 |
+| [`decisions/2026-09-15-product-direction-baseline.md`](decisions/2026-09-15-product-direction-baseline.md) | **产品方向决策基线**（L0–L6 已确认目标、边界与待细化项；非代码真相） | 编写功能指导文档、下发任务或处理方向冲突前 |
+| [`decisions/documentation-governance.md`](decisions/documentation-governance.md) | **文档治理与任务分发规范**（目录即状态、任务包边界、冲突阻断与生成索引） | 新建/迁移文档、下发任务包或验收前 |
+| [`generated/document-map.md`](generated/document-map.md) | **自动文档与任务索引**（由脚本生成，禁止手工编辑） | 快速查看当前决策、指导文档、代码真相与任务包 |
+| [`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) | **冻结的旧路线图**（v0.3，2026-08-29） | 只查历史背景；新方向以决策/指导文档为准 |
 | [`installer-plan.md`](installer-plan.md) | 安装包与分发方案（Inno Setup、组件安装、移植障碍清单） | 打包/分发/换机部署前 |
 | [`data-directory-cleanup-manifest-2026-08-21.md`](data-directory-cleanup-manifest-2026-08-21.md) | 数据分类、整理映射与安装/卸载生命周期约定（默认根目录由 `DataPathConfig` 决定） | 整理用户数据或修改安装器前 |
-| [`task-inventory.md`](task-inventory.md) | 项目任务清单（N40+，65 工具） | 接任务/汇报进度时 |
-| [`optimization.md`](optimization.md) | 当前已验证优化、后续优先级与统一验收标准 | 规划重构、性能、稳定性或成本优化前 |
+| [`task-inventory.md`](task-inventory.md) | **冻结的旧任务清单**（N40+，65 工具） | 只查历史；新任务只能使用 `tasks/packages/` |
+| [`optimization.md`](optimization.md) | **冻结的旧优化路线** | 只查历史；新优化以批准指导文档和代码真相为准 |
 | [`holiday-skin-development-guide.md`](holiday-skin-development-guide.md) | 节日皮肤设计、实现、测试、任务目标与交付规范 | 新增或修改节日主题前 |
 | [`holiday-skin-review-standard.md`](holiday-skin-review-standard.md) | 节日皮肤视觉、功能、性能、安全、标准验收流程与截图审核标准 | 节日主题验收、提交或发布前 |
 | [`holiday-skin-evaluation-2026-08-31.md`](holiday-skin-evaluation-2026-08-31.md) | 删除前 8 主题历史逐主题评价 + 当前 5 主题状态附录 | 查看历史评分和当前验收状态 |

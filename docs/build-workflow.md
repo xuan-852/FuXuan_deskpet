@@ -161,6 +161,13 @@ Stop-Process -Name Tuanjie.Licensing.Client -Force -ErrorAction SilentlyContinue
 - 五个节日主题：各自完成 `list/status/off`、四类 Unity 截图和退出检查；OS 级截图仅作辅助，正式视觉证据以 Unity 截图为准。
 - 本轮为文档同步，不重新运行上述构建；若后续修改 C#，必须重新执行完整闭环。
 
+### 2026-09-14 构建管线稳定性复测
+
+- `build.ps1` 默认保留 Hub 已刷新的 `Tuanjie.Licensing.Client`；只有传入 `-ResetLicensingClient` 才会显式重置授权客户端，避免普通构建在授权握手前主动丢失令牌。
+- `-RunTests` 仅验证新生成的 EditMode 结果，不要求生成 `DesktopPet.exe`；Player 输出时间戳校验只适用于完整构建。
+- 在 8/32 逻辑核、`BelowNormal` 优先级下，Quick、EditMode（175 total、174 passed、0 failed、1 ignored）与临时输出目录的完整构建均通过；完整构建 CPU 均值 20%、峰值 30%。
+- 对本次临时 Player 的隔离首启/页面切换/截图/正常退出冒烟通过，测试目录自动清理，生产数据 SHA-256 未变化；运行中的生产桌宠未被终止。
+
 ## 五、给 codex 等代理的执行建议
 
 1. **卡住先诊断，别盲目重试**：`diagnose_tuanjie.ps1` 30 秒内给出结论，比反复 `build.ps1` 干等 4 分钟高效。

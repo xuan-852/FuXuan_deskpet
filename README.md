@@ -381,6 +381,8 @@ Desktop_per_pro/
 | 文档 | 用途 |
 |------|------|
 | [`docs/code-truth-architecture.md`](docs/code-truth-architecture.md) | 代码真相架构审计（六层架构 + 工具清单） |
+| [`docs/embodied-ai-optimization-architecture.md`](docs/embodied-ai-optimization-architecture.md) | 具身 AI 优化设计（动作仲裁、状态接口、安全约束与实施阶段） |
+| [`docs/embodied-intelligence-guidance.md`](docs/embodied-intelligence-guidance.md) | 具身智能指导规范（身体能力普查、控制边界与验收） |
 | [`docs/development-standards.md`](docs/development-standards.md) | 开发规范（9 章，AI + 人类通用） |
 | [`docs/quality-measurement-test-guide.md`](docs/quality-measurement-test-guide.md) | 编译产物核验与 Ollama 本地质量采样说明 |
 | [`docs/quality-comparison-test-guide.md`](docs/quality-comparison-test-guide.md) | 本地 / 云端配对质量对照说明 |

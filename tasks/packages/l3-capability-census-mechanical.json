@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-capability-census-mechanical-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-01", "FR-L3-04", "AC-L3-01", "AC-L3-05"],
+  "acceptanceObjective": "Produce an isolated, read-only mechanical capability census of the current Live2D model without modifying mappings, user data, or calling cloud models.",
+  "allowedPaths": ["scripts/param_mapper/", "scripts/test/", "docs/truth/", "docs/generated/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "docs/decisions/", "docs/guides/approved/", "docs/generated/"],
+  "verificationCommands": [".\\build.ps1 -Quick", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-capability-census-mechanical.md"],
+  "evidenceOutputs": ["isolated parameter schema, read/write/reset evidence, model/map hashes"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "No cloud calls; no mapping writes; no production data. Visual review is a separate package."
+}

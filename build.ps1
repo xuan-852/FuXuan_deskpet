@@ -24,6 +24,7 @@ param(
     [string]$OutputDir = "",
     [switch]$Quick,
     [switch]$RunTests,
+    [switch]$ResetLicensingClient,
     [switch]$NoKill,
     [switch]$CleanBeeCache,
     [int]$MaxCores = 0,
@@ -119,15 +120,22 @@ if ($ActiveUnityProc) {
     exit 1
 }
 
-# Tuanjie can leave its licensing helper alive after a batchmode timeout.  A
-# stale helper may block the next editor during the licensing handshake before
-# -logFile is opened, which looks like a compiler hang.  Keep the editor check
-# above conservative (never terminate an interactive editor), but reset only
-# the helper/crash-handler processes that are safe to restart before a build.
+# Do not terminate the licensing client during an ordinary build.  It owns the
+# Hub-authenticated access token; killing it immediately before launching the
+# editor can make a valid GUI license look unavailable in batchmode.  Only the
+# crash handler is routine stale-build cleanup.  A licensing reset remains an
+# explicit recovery action for a genuinely stuck client.
 $BuildHelperProcs = @(
-    (Get-Process -Name "Tuanjie.Licensing.Client" -ErrorAction SilentlyContinue),
     (Get-Process -Name "TuanjieCrashHandler32" -ErrorAction SilentlyContinue)
 ) | Where-Object { $null -ne $_ }
+$LicensingClients = @(Get-Process -Name "Tuanjie.Licensing.Client" -ErrorAction SilentlyContinue)
+if ($ResetLicensingClient -and $LicensingClients) {
+    $BuildHelperProcs += $LicensingClients
+    Write-Host "[WARN] 已显式请求重置 Tuanjie Licensing Client；本次构建会重新建立授权会话"
+} elseif ($LicensingClients) {
+    $LicensingPids = ($LicensingClients | ForEach-Object { $_.Id }) -join ", "
+    Write-Host "[INFO] 保留 Tuanjie Licensing Client (PID: $LicensingPids)，以复用 Hub 已刷新的授权令牌"
+}
 if ($BuildHelperProcs) {
     $BuildHelperPids = ($BuildHelperProcs | ForEach-Object { $_.Id }) -join ", "
     if ($NoKill) {
@@ -138,7 +146,7 @@ if ($BuildHelperProcs) {
 
     $Host.UI.RawUI.ForegroundColor = "Yellow"
     Write-Host "[WARN] 检测到上次构建遗留的 Tuanjie 辅助进程 (PID: $BuildHelperPids)"
-    Write-Host "[BUILD] 终止 Licensing/CrashHandler 辅助进程，避免授权握手阻塞..."
+    Write-Host "[BUILD] 终止遗留 CrashHandler/显式重置的 Licensing Client..."
     $BuildHelperProcs | Stop-Process -Force
     Write-Host "[OK] Tuanjie 构建辅助进程已清理"
 }
@@ -309,6 +317,10 @@ try {
     Write-Host "[Build] Args: $($unityArgs -join ' ')"
     Write-Host ""
 
+    # Full-player output must be demonstrably produced by this invocation.
+    # A pre-existing Build directory can otherwise make an exit-code fallback
+    # look successful while the installer still packages yesterday's player.
+    $buildStartedAt = Get-Date
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $process = Start-Process -FilePath $UnityExe -ArgumentList $unityArgs -NoNewWindow -PassThru
 
@@ -389,14 +401,23 @@ try {
         $Host.UI.RawUI.ForegroundColor = "Green"
         Write-Host "[OK] Build succeeded! ($elapsed)"
 
-        if (-not $Quick) {
+        # EditMode test runs compile assemblies but intentionally do not emit a
+        # Player executable.  Only a full Player build may be verified against
+        # this invocation's DesktopPet.exe timestamp.
+        if (-not $Quick -and -not $RunTests) {
             $exeOutputDir = if ([string]::IsNullOrWhiteSpace($BuildOutputDir)) { $DefaultOutputDir } else { $BuildOutputDir }
             $exe = Join-Path $exeOutputDir "DesktopPet.exe"
             if (Test-Path $exe) {
-                $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+                $exeItem = Get-Item $exe
+                if ($exeItem.LastWriteTime -lt $buildStartedAt.AddSeconds(-2)) {
+                    Write-Host "[FAIL] 构建未产出本次 DesktopPet.exe：$exe 的修改时间为 $($exeItem.LastWriteTime.ToString('s'))，早于本次构建开始时间 $($buildStartedAt.ToString('s'))" -ForegroundColor Red
+                    exit 1
+                }
+                $size = [math]::Round($exeItem.Length / 1MB, 1)
                 Write-Host "[OK] Output: $exe ($size MB)"
             } else {
-                Write-Host "[WARN] Build succeeded but DesktopPet.exe not found at expected path"
+                Write-Host "[FAIL] Build succeeded but DesktopPet.exe not found at expected path" -ForegroundColor Red
+                exit 1
             }
         }
         exit 0

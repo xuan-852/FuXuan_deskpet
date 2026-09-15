@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "packageId": "example-single-acceptance-goal",
+  "primaryGuide": "docs/guides/approved/example.md",
+  "requirementIds": ["FR-01", "AC-01"],
+  "acceptanceObjective": "Replace this text with one independently testable objective.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Example/"],
+  "forbiddenPaths": ["docs/decisions/", "docs/guides/approved/", "docs/generated/"],
+  "verificationCommands": [".\\build.ps1 -Quick"],
+  "expectedTruthDocuments": ["docs/truth/example.md"],
+  "evidenceOutputs": ["logs/build/test_results.xml"],
+  "riskLevel": "low",
+  "externalEvidence": false,
+  "notes": "This is a template and must not be dispatched."
+}
