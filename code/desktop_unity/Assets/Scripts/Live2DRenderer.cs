@@ -366,6 +366,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private Live2DInputLease _actionInputLease;
     private Live2DInputLease _candidateTestInputLease;
     private EmbodiedActionRequest _candidateActionRequest;
+    private readonly EmbodiedPoseState _embodiedPoseState = new EmbodiedPoseState();
     public CubismModel CubismModel => _cubismModel;
 
     /// <summary>截取当前模型渲染快照（PNG bytes）；默认裁切到模型区域，供视觉分析用。</summary>
@@ -2924,6 +2925,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         for (float elapsed = 0f; elapsed < duration; elapsed += Time.deltaTime)
         {
             _testParam94GestureValue = peak * Mathf.Sin(Mathf.PI * Mathf.Clamp01(elapsed / duration));
+            _embodiedPoseState.RecordWrite("Param94", _testParam94GestureValue, 0f);
             yield return null;
         }
         _testParam94GestureValue = 0f; yield return null;
@@ -2961,6 +2963,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         CancelInvoke(nameof(ReleaseActionLock));
         if (_actionLocked) ReleaseActionLock("action-test-exit");
         _inputCoordinator.ReleaseAll("test-exit-fallback");
+        Debug.Log("[EmbodiedSafeRecovery] recovered: test-exit");
         Debug.Log("[Live2DRenderer] test-exit input cleanup completed");
     }
 
@@ -2973,6 +2976,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _testParam94GestureValue = 0f;
         _testParam94GestureActive = false;
         _actionLocked = false;
+        var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+        if (restored.Count > 0) Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
         _inputCoordinator.Release(_candidateTestInputLease, reason);
         _candidateTestInputLease = default;
         EmbodiedRuntimeAdmission.CompleteSkill(_candidateActionRequest, reason);

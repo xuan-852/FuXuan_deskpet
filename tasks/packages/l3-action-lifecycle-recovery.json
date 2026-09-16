@@ -1,0 +1,37 @@
+{
+  "packageId": "l3-action-lifecycle-recovery-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["C-L3-07", "FR-L3-02", "AC-L3-03", "AC-L3-06"],
+  "acceptanceObjective": "Introduce a minimal embodied pose-state (restore records for certified-skill parameter writes) and a single auditable SafeRecovery choke point in the renderer, so cancellation, renderer disable, application quit and test-exit all pass through one recovery sequence that restores pose values, releases input leases and admission, and resumes L2 movement. Full-skeleton PoseState remains future work.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/",
+    "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "docs/truth/",
+    "docs/modules/",
+    "docs/generated/",
+    "tasks/packages/",
+    "scripts/test/"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/",
+    "docs/decisions/",
+    "docs/guides/approved/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    "node scripts/test/param94_gesture_drive.cjs <exe>",
+    "node scripts/test/param94_cancel_recovery_drive.cjs <exe>",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": [
+    "docs/truth/l3-action-lifecycle-recovery.md"
+  ],
+  "evidenceOutputs": ["logs/build/test_results.xml", "<isolated-data-root>/logs/player_log.txt"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Recovery must be idempotent and must not change behavior outside .test_mode; existing drives keep passing with recovery logs visible."
+}

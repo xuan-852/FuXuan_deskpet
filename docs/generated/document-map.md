@@ -27,6 +27,7 @@
 
 ## 代码真相
 
+- [L3 动作生命周期与安全收束（最小集）](../../docs/truth/l3-action-lifecycle-recovery.md) — `docs/truth/l3-action-lifecycle-recovery.md`
 - [L3 参数能力普查：机械基线证据](../../docs/truth/l3-capability-census-mechanical.md) — `docs/truth/l3-capability-census-mechanical.md`
 - [L3 认证技能基础骨架](../../docs/truth/l3-certified-skill-foundation.md) — `docs/truth/l3-certified-skill-foundation.md`
 - [L3 Live2D 输入边界审计](../../docs/truth/l3-live2d-input-boundary-audit.md) — `docs/truth/l3-live2d-input-boundary-audit.md`
@@ -41,6 +42,7 @@
 
 ## 任务包
 
+- `l3-action-lifecycle-recovery-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-action-lifecycle-recovery.json）
 - `l3-candidate-deepseek-review-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-candidate-deepseek-review.json）
 - `l3-candidate-review-packet-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-candidate-review-packet.json）
 - `l3-capability-census-mechanical-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-capability-census-mechanical.json）

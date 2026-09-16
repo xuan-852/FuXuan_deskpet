@@ -29,6 +29,8 @@
 
 `VirtualSkeletonCandidateLedger` 将当前 Root、头部、躯干和画面侧单臂证据结构化为 `Supporting/Conditional` 候选节点；只有未来 `Certified` 节点可被读取为运行时骨架。它不保存正式参数映射，也不把画面侧定义转成模型人体左右。
 
+2026-09-17 新增 `EmbodiedPoseState` 最小集与统一安全收束：具身执行器的参数写入全部登记还原记录，`FinishTestParam94Gesture` 收束点依次执行姿势还原（`[EmbodiedSafeRecovery] pose-restored`）→ 租约释放 → 准入释放 → 移动锁解除，完成/取消/禁用/退出同路径收束。运行时帧对照确认执行协程复现评审包视觉（基线-抬臂-复位）。详见 [L3 动作生命周期与安全收束](../truth/l3-action-lifecycle-recovery.md)。
+
 ### 2.1 ActionAgent 文件清单（15 个 .cs）
 
 | 文件 | 职责 |
