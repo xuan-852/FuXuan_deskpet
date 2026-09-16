@@ -56,7 +56,12 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 Name: "autostart"; Description: "登录时自动启动桌宠"; GroupDescription: "附加任务:"; Flags: unchecked
 
 [Files]
-Source: "portable\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs; Components: core; Excludes: "crash_log.txt,test-bridge*.log,test-bridge*.err.log"
+; Unity player PE files retain the engine version across application releases.
+; Without ignoreversion, Inno Setup treats a new FuXuan release as the same
+; file version and silently preserves the old player, including stale license
+; state.  User-owned data is outside {app} (DataPathConfig), so replacing the
+; application directory here does not overwrite conversations or preferences.
+Source: "portable\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion; Components: core; Excludes: "crash_log.txt,test-bridge*.log,test-bridge*.err.log"
 
 [Icons]
 Name: "{group}\符玄桌宠"; Filename: "{app}\{#MyAppExeName}"; Components: core
