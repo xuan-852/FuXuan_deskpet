@@ -1,0 +1,31 @@
+{
+  "packageId": "l3-external-motion-import-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-01", "FR-L3-03", "C-L3-04", "AC-L3-04", "AC-L3-05"],
+  "acceptanceObjective": "Import official Live2D sample motions as uncertified external LegacyCandidate definitions: match curve parameters against the isolated capability catalog, clamp values into probed ranges, rank motions by dual-model-confirmed parameter coverage, and keep all raw/derived material data out of version control per the Free Material License.",
+  "allowedPaths": [
+    "scripts/live2d-probe/",
+    "assets/external_motions/",
+    ".gitignore",
+    "docs/truth/",
+    "docs/generated/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/",
+    "docs/decisions/",
+    "docs/guides/approved/"
+  ],
+  "verificationCommands": [
+    "node --check scripts/live2d-probe/import_motion3.cjs",
+    "node scripts/live2d-probe/import_motion3.cjs <motions-root> <capability-catalog.json> <output-dir>",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": ["docs/truth/l3-external-motion-import.md"],
+  "evidenceOutputs": ["assets/external_motions/imported/motion-import-report.json (local only)"],
+  "riskLevel": "medium",
+  "externalEvidence": true,
+  "notes": "Source: https://github.com/Live2D/CubismWebSamples (develop) + Free Material License https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html, verified 2026-09-17. Redistribution of material data is prohibited: raw motions, the downloaded archive and derived curve definitions stay local (gitignored); only tooling and aggregate statistics are committed. Imported candidates are uncertified and must pass the four-layer pipeline before any runtime use."
+}

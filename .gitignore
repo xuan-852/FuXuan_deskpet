@@ -167,3 +167,6 @@ code/desktop unity/*.VC.opendb
 
 # Tuanjie 构建备份的旧 Library（codex build.ps1 增强产生）
 code/desktop_unity/Library_stale_*/
+
+# Live2D 官方示例动作素材（Free Material License 禁止再分发，仅本地使用）
+assets/external_motions/
