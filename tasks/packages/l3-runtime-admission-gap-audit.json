@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-runtime-admission-gap-audit-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-02", "FR-L3-03", "C-L3-02", "C-L3-06", "AC-L3-02"],
+  "acceptanceObjective": "Establish the verified production connection gap between single-lease Live2D input coordination and the empty certified-skill admission foundation, without altering user-visible action behavior.",
+  "allowedPaths": ["docs/truth/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": ["rg -n --glob '*.cs' \"new CertifiedSkillRegistry|new EmbodiedCoordinator|TryBeginGeneratedMotion\" code/desktop_unity/Assets", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-runtime-admission-gap-audit.md"],
+  "evidenceOutputs": ["docs/truth/l3-runtime-admission-gap-audit.md"],
+  "riskLevel": "low",
+  "externalEvidence": false,
+  "notes": "This audit must record a direction decision blocker rather than choose a runtime migration policy."
+}

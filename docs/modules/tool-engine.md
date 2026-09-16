@@ -1,6 +1,6 @@
-# 工具系统 ToolEngine — 65 工具插件架构与稳定性报告
+# 工具系统 ToolEngine — 62 工具插件架构与稳定性报告
 
-> **文档作用**: 本模块文档描述桌宠「工具系统」的**代码真相**——IPetTool 插件架构、ToolRegistry 反射自动发现、AsyncToolBase 异步基类、危险工具审批、12 个工具文件 65 个已注册工具的分类清单，以及 2026-08-08 全量稳定性测试报告（57 用例 0 真实 bug）。新增/修改/删除任何 AI 工具前必读。
+> **文档作用**: 本模块文档描述桌宠「工具系统」的**代码真相**——IPetTool 插件架构、ToolRegistry 反射自动发现、AsyncToolBase 异步基类、危险工具审批、12 个工具文件 62 个已注册工具的分类清单，以及 2026-08-08 全量稳定性测试报告（57 用例 0 真实 bug）。新增/修改/删除任何 AI 工具前必读。
 > **基本架构**: `IPetTool`（接口）+ `ToolSchema`（参数 Schema）→ 实现类（12 个工具文件 + 7 个基础设施 .cs）→ `ToolRegistry`（AppDomain 反射自动发现 + 调度）→ `AsyncToolBase`（异步/协程基类）→ `ChatManager` 调用。云端通过 Function Calling 进入该链路；本地通过 `LocalToolRouter` 输出 JSON 计划后进入同一 `ToolCallInvoker`，不复制第二套工具实现。危险工具清单 `DangerousTools = {file_read, get_clipboard, take_screenshot, file_delete, power, lock_screen, run_command, set_volume, mute, openclaw_task}`，经 `ToolConfirmManager` 审批。关键文件：`Assets/Scripts/ToolEngine/`（20 个 .cs，含测试器 ToolBenchmarkRunner）。
 > **开发历史迭代**: N40 起工具数 40+→52→55（新增 Pogget/LaTeX 等）；2026-08-08 `9b94c09` 修复 4 类 benchmark 问题（emoji 误判、DANGER_GUARD 真执行、run_command GBK 崩溃、file_move 链式失败）；55 工具全量测试 44 OK / 6 DANGER_GUARD / 5 SKIP / 2 ERROR（均预期）；2026-08-12 P1 收尾 55→**59**（+OfficeTools 3 个补录 + openclaw_task 补录，任务外包 /task 端点落地）；2026-08-12 P4 新增 3 个偏好工具 → **62**（set_preference / query_preferences / remove_preference，PreferencesManager 配套）；2026-08-12 P5 新增 3 个任务模板工具 → **65**（query_task_templates / save_task_template / remove_task_template，TaskTemplateManager 配套）+ openclaw_task 支持 template/template_args + 轨迹记录（TaskTrajectoryManager，太卜手札）。
 > **编写注意事项**: ①测试**禁止空参数遍历调用所有工具**（lock_screen 真锁屏、file_delete 真删文件、set_volume 真改音量）；`get_clipboard`、截图和文件内容工具也不属于自动化只读白名单，必须以替身或显式受控夹具验证。空参执行只限 `get_system_info`、`get_mouse_pos`；②新增工具自动被反射发现，无需手动注册；③工具执行须返回中文 ✅/❌ 前缀消息；④危险工具须入 DangerousTools 清单并走 ToolConfirmManager 审批；⑤run_command 输出必须 UTF-8 解码（`chcp 65001`），Unity Mono 无 I18N.CJK 会抛异常。
@@ -12,7 +12,7 @@
 - **服务对象**: 开发者 + AI 编码代理。任何涉及工具新增、工具改名、危险工具清单、工具 Schema、工具稳定性验证的改动。
 - **回答的问题**:
   - 工具是怎么被发现的？新增工具要做什么？
-  - 65 个工具分别在哪几个文件？名字是什么？
+  - 64 个工具分别在哪几个文件？名字是什么？
   - 哪些是危险工具？审批流程怎么走？
   - 全量工具稳定性测试结果如何？有哪些已知环境限制？
 - **关联文档**: `code-truth-architecture.md` 四章（工具系统真相）｜`modules/ai-chat-system.md`（工具子集 T4 注入）｜`modules/bridge-communication.md`（桥接依赖工具）｜`modules/action-agent.md`（动作工具）｜`development-standards.md`（工具新增标准流程）
@@ -60,21 +60,25 @@ qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请�
 
 ### 2.2.2 自然语言工具覆盖（2026-08-25）
 
-- 65 个已注册工具均至少出现在 `LocalToolRouter` 的一个自然语言意图目录中，并同步存在于 `ChatManager.IntentToolMap`；偏好、任务模板、动作复盘/验证、文件读写等此前容易漏路由的工具已补齐关键词和白名单。
+- 64 个已注册工具均至少出现在 `LocalToolRouter` 的一个自然语言意图目录中，并同步存在于 `ChatManager.IntentToolMap`；偏好、任务模板、动作复盘/验证、文件读写等此前容易漏路由的工具已补齐关键词和白名单。
 - `DesktopPet` 启动时自动挂载 `PreferencesManager` 与 `TaskTemplateManager`，确保 `set/query/remove_preference` 和 `query/save/remove_task_template` 不会因单例未初始化而失效。
-- `ToolBenchmarkRunner` 当前定义 65 个用例，其中 10 个 DANGER_GUARD、8 个 SKIP；危险工具只核验注册与危险标记，未执行真实副作用。历史隔离运行记录中的文件写入由 `ToolHelpers.IsPathAllowed` 按 Windows 安全策略拦截，知识库索引因测试目录不存在而返回预期错误，均不属于自然语言路由断链。
+- `ToolBenchmarkRunner` 当前定义 64 个用例，其中 10 个 DANGER_GUARD、8 个 SKIP；危险工具只核验注册与危险标记，未执行真实副作用。历史隔离运行记录中的文件写入由 `ToolHelpers.IsPathAllowed` 按 Windows 安全策略拦截，知识库索引因测试目录不存在而返回预期错误，均不属于自然语言路由断链。
 - 2026-08-25 的自然语言隔离验收为 5/5：系统信息、文件搜索、打开文件夹、剪贴板、Excel 均命中预期工具；其中剪贴板误路由曾被复现并由“高置信度规则先行”修复。
 - 文档/PDF/OpenClaw 任务不再完全依赖本地 3B 模型转述：原始用户需求由 `TryHardenPlanArguments` 确定性回填；`openclaw_bridge.js` 额外限制 LaTeX 请求体 2 MiB、编译器为 xelatex/pdflatex/lualatex，输出路径仅允许配置的数据根目录 `DataPathConfig.DocumentsDir`。
 - 规划模型按任务分层：轻量/普通歧义请求使用 `LocalLLMClient.ModelName`（默认 qwen2.5:3b），PDF、Office、OpenClaw 和多步骤请求使用 `LocalLLMClient.ChatModelName`（默认 qwen3:8b）；8B 不可用自动降级 3B，最终执行仍走同一白名单与审批链。
 
-### 2.3 文件清单与工具分类（真实注册名，65 个）
+### 2.3 文件清单与工具分类（真实注册名，64 个）
 
 | 文件 | 工具数 | 工具列表 | 类别 |
 |------|--------|----------|------|
 | `WebSystemTools.cs` | 14 | search_web / open_url / search / open_app / open_folder / get_system_info / lock_screen / set_volume / mute / get_mouse_pos / list_files / notify / run_command / power | 观星/封印/洞观/开阵 |
 | `ClipboardFileTools.cs` | 14 | get_clipboard / set_clipboard / get_weather / file_open / file_move / file_copy / file_delete / file_rename / file_info / file_create / dir_create / file_read / search_files / search_file | 传音/摄形/调音/文件 |
 | `ReminderAcademicTools.cs` | 8 | set_reminder / query_reminders / mark_reminder_done / delete_reminder / query_exams / query_scores / query_schedule / query_user_status | 卜算记事簿/传讯 |
-| `Live2DSyncTools.cs` | 7 | set_expression / play_action / stop_action / inspect_motion_memory / inspect_personality / explore_body / control_body | 演武/表情/动作 |
+| `Live2DSyncTools.cs` | 6 | set_expression / play_action / stop_action / inspect_motion_memory / inspect_personality / explore_body | 演武/表情/动作 |
+
+`control_body`、`play_action` 与 `generate_motion` 已按 L3 人工决策从正式注册、LLM Function Schema、本地路由与 benchmark 中移除。遗留 `ToolRegistry.Execute(...)` 调用会明确返回“已禁用”，不会降级为参数写入或旧动作播放；原始参数知识也不再注入运行时 LLM 提示词。未来只能通过已认证的语义技能重新开放身体动作能力。
+
+> **当前计数说明（2026-09-16）**：运行时实际注册数为 **62**。历史表格中的 64/65 是迁移前盘点，不能用于推断当前 Schema；以 `ToolRegistry.ToolCount` 和本节 L3 准入说明为准。
 | `VisionKnowledgeTools.cs` | 5 | take_screenshot / knowledge_search / knowledge_index / openclaw_search / openclaw_task | 摄形/藏书阁 RAG/OpenClaw 搜索+任务外包 |
 | `OfficeTools.cs` | 3 | generate_ppt / generate_docx / generate_xlsx（经 OpenClawBridge 调 `/generate_office`，输出 `DataPathConfig.DocumentsDir`） | 办公文档生成 |
 | `MotionCoroutineTools.cs` | 5 | generate_motion / explore_body_vision / run_verification / vis_verify / self_review | 异步动作生成(协程)/视觉验证 |

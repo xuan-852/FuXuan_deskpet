@@ -18,7 +18,7 @@ code/desktop_unity/Assets/
 │   ├── Editor/                       # 编辑器工具（6 个，非运行时）
 │   ├── Live2DFramework/              # Live2D 参数框架（8 个 .cs：ParameterMapper/ModelAnalyzer 等）
 │   │   └── ActionAgent/              # 具身动作闭环（15 个文件，AutoMotionCollector 已于 N39 删除）
-│   └── ToolEngine/                   # 工具系统（20 个 .cs = 12 个工具文件 + 7 个基础设施 + 1 测试器，65 个工具）
+│   └── ToolEngine/                   # 工具系统（20 个 .cs = 12 个工具文件 + 7 个基础设施 + 1 测试器，62 个已注册工具）
 ├── StreamingAssets/Live2D/Fuxuan/    # 符玄 Live2D 模型（唯一模型）
 └── Resources/                        # 运行时资源
 ```
@@ -145,7 +145,7 @@ flowchart TB
 ### 3.1.1 工具子集（T4）与测试模式
 
 - **`BuildToolSubsetForRound()`**（N40 T4）：首轮有意图 → 意图候选子集（27 个）；首轮无意图 → 纯对话（不发 tools）；后续回环 → 已用工具 ∪ 意图候选 ∪ `CoreToolSubset`
-- **`CoreToolSubset`** = {play_action, set_expression, stop_action, generate_motion, get_system_info, get_mouse_pos}
+- **`CoreToolSubset`** = {set_expression, stop_action, get_system_info, get_mouse_pos}
 - **`InjectMultiActionCapability()`**（N40 T7）：一次预测 2-3 步工具调用（UFO² Speculative Multi-Action）
 - **`IsTestMode`**：存在 `D:\DesktopPetData\.test_mode` 标记文件时为测试模式（跳过睡眠判断等）
 - **`DeveloperCommandSet`**：桌宠本地指令入口；支持 `/mode set test`、`/mode set normality`、`/tell mode` 和 `/tell theme <主题ID>`，在 `ChatManager` 写历史/启动 LLM 前处理，回执只进入当前 UI 动态日志。`RuntimeInputSimulator` 是测试模式 inbox 输入模拟入口，支持 `@@sim`/`@@input`，自身不调用 OS 鼠标 API；点击/拖动仍会复用真实交互回调，并可用 `@@sim:screenshot[:name]` 通过 Unity 保存当前帧
@@ -185,7 +185,7 @@ flowchart TB
 | `WebSystemTools.cs` | **14 个**：search_web / open_url / search / open_app / open_folder / get_system_info / lock_screen / set_volume / mute / get_mouse_pos / list_files / notify / run_command / power |
 | `ClipboardFileTools.cs` | **14 个**：get_clipboard / set_clipboard / get_weather / file_open / file_move / file_copy / file_delete / file_rename / file_info / file_create / dir_create / file_read / search_files / search_file |
 | `ReminderAcademicTools.cs` | **8 个**：set_reminder / query_reminders / mark_reminder_done / delete_reminder / query_exams / query_scores / query_schedule / query_user_status |
-| `Live2DSyncTools.cs` | **7 个**：set_expression / play_action / stop_action / inspect_motion_memory / inspect_personality / explore_body / control_body |
+| `Live2DSyncTools.cs` | **6 个**：set_expression / play_action / stop_action / inspect_motion_memory / inspect_personality / explore_body |
 | `VisionKnowledgeTools.cs` | **5 个**：take_screenshot / knowledge_search / knowledge_index / openclaw_search / **openclaw_task**（太卜神行法，任务外包 + 审批 + 轨迹） |
 | `MotionCoroutineTools.cs` | **5 个**：generate_motion / explore_body_vision / run_verification / vis_verify / self_review |
 | `OfficeTools.cs` ★P1 补录 | **3 个**：generate_ppt / generate_docx / generate_xlsx（经 OpenClawBridge `/generate_office`） |
@@ -203,7 +203,7 @@ flowchart TB
 | `GlmModels.cs` | GLM 模型配置 |
 | `ToolBenchmarkRunner.cs` | 测试器（非运行时工具，全量稳定性测试用） |
 
-> **合计：65 个已注册工具**（12 个工具文件；README 未提及 Pogget、LaTeX、Office、偏好、任务模板等新工具）。
+> **合计：64 个已注册工具**（12 个工具文件；`control_body` 已按 L3 决策 A 禁用，不会出现在 LLM 工具 Schema 中）。
 > **注意**：`get_time`、`get_memories`、`write_memory`、`start_conversation` 等旧文档列出的工具在代码中**不存在**。
 > **工具清单权威参照**：逐工具签名 / 参数 / 审批配置见 [`docs/modules/tool-engine.md`](modules/tool-engine.md)（与本文档 2026-08-13 同步核对）。
 >

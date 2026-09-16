@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-candidate-review-packet-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-03", "FR-L3-04", "C-L3-04", "AC-L3-04", "AC-L3-05"],
+  "acceptanceObjective": "Freeze an isolated candidate-action frame sequence into a content-hashed, model-independent review packet without making a certification decision or cloud request.",
+  "allowedPaths": ["scripts/live2d-probe/", "tasks/packages/", "docs/truth/", "docs/modules/", "docs/generated/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": ["node scripts/live2d-probe/build_candidate_review_packet.cjs <isolated-root> screen_side_arm_raise", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-screen-side-arm-raise-candidate.md"],
+  "evidenceOutputs": ["<isolated-root>/candidate-review-packet-screen_side_arm_raise.json"],
+  "riskLevel": "low",
+  "externalEvidence": false,
+  "notes": "The packet stays in the isolated capture root; it neither calls a provider nor promotes a Candidate."
+}

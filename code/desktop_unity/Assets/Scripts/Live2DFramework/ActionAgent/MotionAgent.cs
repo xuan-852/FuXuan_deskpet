@@ -954,6 +954,13 @@ public class MotionAgent : MonoBehaviour
         // 2) 回退: 本地表情模板优先（零 API），未命中才走 MotionTranslator
         else if (_mapper != null && _model != null)
         {
+            if (!LegacyGeneratedMotionPolicy.TryAllowOfflineTest(out var admissionReason))
+            {
+                _skippedCount++;
+                Debug.Log($"[MotionAgent] 已阻止未认证自主表情生成回退: {admissionReason}");
+                yield break;
+            }
+
             string desc = target switch
             {
                 "happy_smile" => "开心地微笑",
@@ -999,8 +1006,14 @@ public class MotionAgent : MonoBehaviour
 
             if (plan != null)
             {
+                if (_renderer == null || !_renderer.TryBeginGeneratedMotion(desc, out Live2DInputLease inputLease))
+                {
+                    Debug.Log("[MotionAgent] 跳过表情动作：统一 Live2D 输入租约不可用");
+                    yield break;
+                }
                 var generator = new MotionGenerator(_mapper, _model);
                 yield return generator.PlayAsync(plan);
+                _renderer.EndGeneratedMotion(inputLease, "autonomous-expression-completed");
             }
         }
     }
@@ -1064,6 +1077,13 @@ public class MotionAgent : MonoBehaviour
 
     private IEnumerator ExecuteMotion(string target, float intensity, float duration)
     {
+        if (!LegacyGeneratedMotionPolicy.TryAllowOfflineTest(out var admissionReason))
+        {
+            _skippedCount++;
+            Debug.Log($"[MotionAgent] 已阻止未认证自主生成动作: {admissionReason}");
+            yield break;
+        }
+
         // 用 MotionMemoryManager 统一映射（与 GetFailurePenalty 共享）
         string cnDescription = MotionMemoryManager.GetChineseName(target);
 
@@ -1093,6 +1113,12 @@ public class MotionAgent : MonoBehaviour
 
             if (plan != null)
             {
+                if (_renderer == null || !_renderer.TryBeginGeneratedMotion(fullDesc, out Live2DInputLease inputLease))
+                {
+                    Debug.Log("[MotionAgent] 跳过自主动作：统一 Live2D 输入租约不可用");
+                    yield break;
+                }
+
                 // ── 锁定 AI 控制权，防止空闲动画/走路系统争抢参数 ──
                 BeginAiMotionHandoff(duration + 0.5f);
 
@@ -1113,6 +1139,7 @@ public class MotionAgent : MonoBehaviour
 
                 // ★ 播放完毕 → 立即释放 AI 控制锁（让空闲动画恢复）
                 EndAiMotionHandoff();
+                _renderer.EndGeneratedMotion(inputLease, "autonomous-motion-completed");
 
                 // ★ 闭环学习-写入演武心经
                 string snapshot = BuildParamSnapshot(plan);
@@ -1145,6 +1172,13 @@ public class MotionAgent : MonoBehaviour
 
     private IEnumerator ExecuteCombo(string description, float duration)
     {
+        if (!LegacyGeneratedMotionPolicy.TryAllowOfflineTest(out var admissionReason))
+        {
+            _skippedCount++;
+            Debug.Log($"[MotionAgent] 已阻止未认证自主组合动作: {admissionReason}");
+            yield break;
+        }
+
         // 复合动作：先查本地模板（零 API），未命中才传给 MotionTranslator
         if (_mapper != null && _model != null)
         {
@@ -1164,6 +1198,12 @@ public class MotionAgent : MonoBehaviour
 
             if (plan != null)
             {
+                if (_renderer == null || !_renderer.TryBeginGeneratedMotion(description, out Live2DInputLease inputLease))
+                {
+                    Debug.Log("[MotionAgent] 跳过组合动作：统一 Live2D 输入租约不可用");
+                    yield break;
+                }
+
                 // ── 锁定 AI 控制权（与 ExecuteMotion 一致：播放前加锁，防止空闲动画争抢参数）──
                 BeginAiMotionHandoff(duration + 0.5f);
 
@@ -1190,6 +1230,7 @@ public class MotionAgent : MonoBehaviour
 
                 // 播放完毕 → 立即释放 AI 控制锁
                 EndAiMotionHandoff();
+                _renderer.EndGeneratedMotion(inputLease, "autonomous-combo-completed");
 
                 // ★ GLM 验证移入后台（同 ExecuteMotion）
                 string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);

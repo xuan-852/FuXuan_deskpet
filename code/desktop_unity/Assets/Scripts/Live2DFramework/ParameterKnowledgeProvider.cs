@@ -41,8 +41,8 @@ public static class ParameterKnowledgeProvider
         var knowledge = new StringBuilder();
         knowledge.AppendLine("\n\n【你的身体参数 — 符玄】");
         knowledge.AppendLine("你拥有以下可控制的身体部位和参数。每个参数有：语义名、取值范围、当前值、部位归属、值域类型。");
-        knowledge.AppendLine("你可以通过 `control_body` 工具直接设置参数值，或用 `generate_motion` 工具描述你想做的动作。");
-        knowledge.AppendLine("注意：取值范围外的值会被自动截断。对称参数通常应一起控制。");
+        knowledge.AppendLine("这些参数仅用于离线诊断和认证；不得直接控制或输出参数值。");
+        knowledge.AppendLine("运行时只能请求已经认证的语义技能；当前没有可用的身体参数控制技能。");
         knowledge.AppendLine();
 
         // 1. 解析完整映射数据
@@ -117,7 +117,7 @@ public static class ParameterKnowledgeProvider
             return "";
 
         var sb = new StringBuilder();
-        sb.AppendLine("\n【身体参数概要】可通过 control_body(语义名, 值) 控制:");
+        sb.AppendLine("\n【身体参数概要】仅供离线诊断；运行时不可直接控制:");
 
         var fullMap = LoadFullMappingData();
         if (fullMap.groups != null)

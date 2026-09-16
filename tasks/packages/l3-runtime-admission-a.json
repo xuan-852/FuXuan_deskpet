@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-runtime-admission-a-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-02", "FR-L3-03", "C-L3-04", "C-L3-06", "AC-L3-02", "AC-L3-06"],
+  "acceptanceObjective": "Apply approved migration A: deny LLM and proactive legacy body-action generation in production while preserving walking, physics, expressions, and isolated offline review.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Embodied/", "code/desktop_unity/Assets/Scripts/ToolEngine/", "code/desktop_unity/Assets/Scripts/Live2DFramework/ActionAgent/", "code/desktop_unity/Assets/Scripts/ChatManager.cs", "code/desktop_unity/Assets/Scripts/LocalToolRouter.cs", "code/desktop_unity/Assets/Editor/Tests/", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/", "AGENTS.md"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/", "code/desktop_unity/Assets/Scripts/DesktopPet.cs", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": [".\\build.ps1 -RunTests", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-runtime-admission-gap-audit.md"],
+  "evidenceOutputs": ["logs/build/test_results.xml"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "No cloud calls, production memory writes, model mappings, or certified-skill registration."
+}

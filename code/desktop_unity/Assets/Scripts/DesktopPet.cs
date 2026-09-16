@@ -176,6 +176,10 @@ public class DesktopPet : MonoBehaviour
     public GroundTask lastTask = GroundTask.None;
 
     private float _taskEndTime = 0f;
+    // Authoritative intent flag for consumers that must reject body actions
+    // before the next physics/render frame has observed petVx.
+    private bool _movementTaskPendingOrActive;
+    public bool IsMovementTaskPendingOrActive => _movementTaskPendingOrActive;
 
     #endregion
 
@@ -1127,6 +1131,9 @@ public class DesktopPet : MonoBehaviour
             return;
         }
 
+        _movementTaskPendingOrActive = task == GroundTask.MoveLeftEdge
+            || task == GroundTask.MoveRightEdge || task == GroundTask.MoveLeftTime
+            || task == GroundTask.MoveRightTime;
         currentTask = task;
         lastTask = task;
         _taskEndTime = 0f;
@@ -1386,6 +1393,7 @@ public class DesktopPet : MonoBehaviour
         petVx = Mathf.Clamp(vx, -maxHorizontalSpeed, maxHorizontalSpeed);
         petVy = Mathf.Clamp(vy, -maxFallSpeed, maxFallSpeed);
         onGround = false;
+        _movementTaskPendingOrActive = false;
         currentTask = GroundTask.None;
         Debug.Log($"[DesktopPet] 拖拽释放: vx={petVx}, vy={petVy}");
     }
@@ -1425,6 +1433,7 @@ public class DesktopPet : MonoBehaviour
         _actionMovementLocked = locked;
         if (locked)
         {
+            _movementTaskPendingOrActive = false;
             petVx = 0;
             currentTask = GroundTask.StopTime;
             _taskEndTime = 0f;

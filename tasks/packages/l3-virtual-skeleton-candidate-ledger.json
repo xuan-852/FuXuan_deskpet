@@ -1,0 +1,13 @@
+{
+  "packageId": "l3-virtual-skeleton-candidate-ledger-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-01", "FR-L3-03", "AC-L3-01", "AC-L3-06"],
+  "acceptanceObjective": "Represent current Live2D evidence as non-executable virtual-skeleton candidates with explicit status, dependencies, and version evidence.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Embodied/", "code/desktop_unity/Assets/Editor/Tests/", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": [".\\build.ps1 -RunTests", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-virtual-skeleton-candidate-ledger.md"],
+  "evidenceOutputs": ["logs/build/test_results.xml"],
+  "riskLevel": "medium",
+  "externalEvidence": false
+}

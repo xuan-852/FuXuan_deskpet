@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-candidate-deepseek-review-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-03", "FR-L3-04", "C-L3-04", "AC-L3-04", "AC-L3-05"],
+  "acceptanceObjective": "Perform one authorized, cached DeepSeek offline review of the hash-verified screen-side arm candidate packet without certifying, registering, or executing the skill.",
+  "allowedPaths": ["scripts/live2d-probe/", "docs/truth/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": ["node --check scripts/live2d-probe/review_candidate_packet_deepseek.cjs", "node scripts/live2d-probe/review_candidate_packet_deepseek.cjs <isolated-root> screen_side_arm_raise", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-screen-side-arm-raise-candidate.md"],
+  "evidenceOutputs": ["<isolated-root>/cloud_review/screen_side_arm_raise-deepseek-<fingerprint>.json"],
+  "riskLevel": "medium",
+  "externalEvidence": true,
+  "notes": "Explicit user authorization required. Six hash-verified model-only frames, one provider, cached success/error response, no retry flag."
+}

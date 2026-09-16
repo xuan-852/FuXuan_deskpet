@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-certified-skill-foundation-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-02", "FR-L3-03", "C-L3-02", "C-L3-03", "C-L3-04", "C-L3-06", "AC-L3-02", "AC-L3-03", "AC-L3-06"],
+  "acceptanceObjective": "Create an empty-by-default four-layer certification and semantic action admission foundation without exposing raw Live2D parameters or registering any candidate skill.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Embodied/", "code/desktop_unity/Assets/Editor/Tests/", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/", "code/desktop_unity/Assets/Scripts/DesktopPet.cs", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": [".\\build.ps1 -RunTests", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-certified-skill-foundation.md"],
+  "evidenceOutputs": ["logs/build/test_results.xml"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Registry remains empty; no runtime cloud, parameter, mapping, resource, or production-memory writes."
+}

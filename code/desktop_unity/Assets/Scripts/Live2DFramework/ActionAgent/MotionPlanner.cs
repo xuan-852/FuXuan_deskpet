@@ -117,7 +117,7 @@ public static class MotionPlanner
         var plan = new MotionPlan
         {
             TotalDuration = duration + 0.5f,
-            Description = $"control_body: {string.Join(", ", targetParams.Select(kv => $"{kv.Key}={kv.Value:F2}"))}",
+            Description = $"offline-parameter-plan: {string.Join(", ", targetParams.Select(kv => $"{kv.Key}={kv.Value:F2}"))}",
             Looping = false
         };
 

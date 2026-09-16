@@ -21,6 +21,14 @@
 
 ## 二、基本架构
 
+### 2.0 L3 认证技能基础（2026-09-16）
+
+`Assets/Scripts/Embodied/CertifiedSkillFoundation.cs` 新增四层认证的安全骨架：`SkillCertificationRecord → CertifiedSkillRegistry → EmbodiedActionRequest → EmbodiedCoordinator`。注册要求机械、视觉、语义、自然度、模型版本和映射版本均完整，且自然度不少于首版默认 75；请求没有原始参数字段，只能按技能声明资源占用。2026-09-16 首个生产认证记录 `screen_side_arm_raise`（`ScreenSideArmRaiseCertification`，基于 DeepSeek 85 + GLM glm-4.5v 92 双模型一致复核、自然度保守取 85）已可注册进 `CertifiedSkillRegistry` 并被协调器按 `RightArm` 资源仲裁（隔离 EditMode `FirstSkillCertificationTests` 通过）；但注册表尚未接入生产运行时准入，旧动作生成链也尚未迁移为 `ActionRequest`，LLM 工具面仍无任何身体控制技能。详见 [L3 认证技能基础](../truth/l3-certified-skill-foundation.md) 与 [画面侧单臂候选真相](../truth/l3-screen-side-arm-raise-candidate.md)。
+
+2026-09-16 的运行时迁移决策采用 A：在首个认证技能出现前，`MotionAgent` 的旧生成、组合生成和生成式表情回退只允许隔离 `.test_mode` 离线复核；生产运行时拒绝。`play_action` 与 `generate_motion` 同时从 LLM 工具入口移除。步行、物理与表情基线未改动。详见 [L3 运行时认证准入审计](../truth/l3-runtime-admission-gap-audit.md)。
+
+`VirtualSkeletonCandidateLedger` 将当前 Root、头部、躯干和画面侧单臂证据结构化为 `Supporting/Conditional` 候选节点；只有未来 `Certified` 节点可被读取为运行时骨架。它不保存正式参数映射，也不把画面侧定义转成模型人体左右。
+
 ### 2.1 ActionAgent 文件清单（15 个 .cs）
 
 | 文件 | 职责 |
@@ -28,7 +36,7 @@
 | `MotionAgent.cs` | 自主动作决策引擎（tick 驱动） |
 | `MotionPlanner.cs` | 10 模板 + 6 曲线 + 3 阶段 |
 | `MotionTranslator.cs` | LLM 自然语言→关键帧（10 规则 + 10 特殊模式） |
-| `MotionGenerator.cs` | 协程插值播放 |
+| `MotionGenerator.cs` | 协程插值播放；所有当前调用者（`GenerateMotionTool`、`MotionAgent`、`VisionMotionVerifier`）均须先取得 `Live2DRenderer` 的统一输入租约 |
 | `MotionMemoryManager.cs` | 闭环学习核心 |
 | `DualModelValidator.cs` | GLM-4V 拼图评分（**单模型**，Qwen-VL 已删） |
 | `VisionMotionVerifier.cs` | GLM-4V 视觉验证（10 测试序列） |

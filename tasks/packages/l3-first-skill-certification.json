@@ -1,0 +1,33 @@
+{
+  "packageId": "l3-first-skill-certification-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-03", "C-L3-04", "C-L3-05", "AC-L3-01", "AC-L3-04", "AC-L3-06"],
+  "acceptanceObjective": "After independent dual-model agreement on the frozen candidate packet, promote the four evidence layers of screen_side_arm_raise to Passed and register the first production certification record. No runtime admission wiring, no LLM exposure, no parameter map writes.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "docs/truth/",
+    "docs/generated/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "docs/decisions/",
+    "docs/guides/approved/",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": [
+    "docs/truth/l3-screen-side-arm-raise-candidate.md",
+    "docs/truth/l3-certified-skill-foundation.md"
+  ],
+  "evidenceOutputs": ["logs/build/test_results.xml"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Promotion basis: on packet b7045039e5b9edf25e4431dccf705bb6479020252f0a45e72bf0984acdade091, DeepSeek deepseek-v4-flash (85/100) and GLM glm-4.5v (92/100, authorized substitute for rate-limited glm-4.6v-flash) both returned supported semantic boundary, continuous sequence, stable reset, no visual fault, meets walk baseline, high confidence; no divergence to arbitrate. The registry stays unconnected to runtime admission; production runtime behavior is unchanged."
+}

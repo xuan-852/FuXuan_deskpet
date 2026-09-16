@@ -102,7 +102,6 @@ public class ToolBenchmarkRunner : MonoBehaviour
         list.Add(new TestCase("set_expression", "Live2D", "{\"expression\": \"happy\"}"));
         list.Add(new TestCase("play_action", "Live2D", "{\"action\": \"wave\"}"));
         list.Add(new TestCase("stop_action", "Live2D", "{}"));
-        list.Add(new TestCase("control_body", "Live2D", "{\"expression\": \"tilt_head\"}", "", 15f));
 
         // ── C. 文件写操作组（临时路径 + 事后清理）──────────────
         list.Add(new TestCase("file_create", "文件写", "{\"path\": \"" + BenchRoot + "_a.txt\", \"content\": \"bench\"}"));
@@ -151,7 +150,6 @@ public class ToolBenchmarkRunner : MonoBehaviour
 
         // ── G. GLM 视觉/慢速组（实弹，注意耗时）───────────────
         list.Add(new TestCase("take_screenshot", "隐私/GLM", "{}", "DANGER_GUARD", SlowTimeout));
-        list.Add(new TestCase("generate_motion", "GLM", "{\"description\": \"点头微笑\"}", "", SlowTimeout));
         list.Add(new TestCase("explore_body_vision", "GLM", "{}", "", SlowTimeout));
         list.Add(new TestCase("self_review", "GLM", "{\"action\": \"wave\"}", "", SlowTimeout));
         list.Add(new TestCase("knowledge_index", "GLM", "{\"path\": \"" + JsonDataRoot + "\\\\Documents\", \"recursive\": false}", "", 60f));

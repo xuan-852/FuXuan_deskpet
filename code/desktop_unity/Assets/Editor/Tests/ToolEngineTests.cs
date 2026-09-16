@@ -189,6 +189,33 @@ public class ToolEngineTests
     }
 
     [Test]
+    public void ControlBody_禁用且不出现在LLM工具Schema中()
+    {
+        Assert.IsTrue(ToolRegistry.IsDisabled("control_body"));
+        Assert.IsFalse(ToolRegistry.HasTool("control_body"));
+        StringAssert.DoesNotContain("\"name\": \"control_body\"", ToolRegistry.GetToolsJson());
+        StringAssert.Contains("已禁用", ToolRegistry.Execute("control_body", "{\"params\":{\"ParamAngleX\":15}}"));
+        Assert.IsFalse(LocalToolRouter.IsAllowed("control_body", "operation"));
+        Assert.IsFalse(LocalToolRouter.IsAllowed("control_body", "fallback"));
+    }
+
+    [Test]
+    public void 未认证旧动作不得出现在LLM工具Schema中()
+    {
+        Assert.IsTrue(ToolRegistry.IsDisabled("play_action"));
+        Assert.IsTrue(ToolRegistry.IsDisabled("generate_motion"));
+        Assert.IsFalse(ToolRegistry.HasTool("play_action"));
+        Assert.IsFalse(ToolRegistry.HasTool("generate_motion"));
+        string schema = ToolRegistry.GetToolsJson();
+        StringAssert.DoesNotContain("\"name\": \"play_action\"", schema);
+        StringAssert.DoesNotContain("\"name\": \"generate_motion\"", schema);
+        StringAssert.Contains("已禁用", ToolRegistry.Execute("play_action", "{\"action\":\"stretch\"}"));
+        StringAssert.Contains("已禁用", ToolRegistry.Execute("generate_motion", "{\"description\":\"挥手\"}"));
+        Assert.IsFalse(LocalToolRouter.IsAllowed("play_action", "operation"));
+        Assert.IsFalse(LocalToolRouter.IsAllowed("generate_motion", "fallback"));
+    }
+
+    [Test]
     public void OpenFolder_ResolvesKnownFolderBeforeSafetyCheck_AndUsesShellAdapter()
     {
         string launched = null;

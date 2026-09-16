@@ -1095,7 +1095,7 @@ public partial class RightPanel : MonoBehaviour
             return;
         }
 
-        // ★ 测试退出命令：@@test:quit → 走与托盘「退出」完全相同的回调（2026-08-17 验收 P10）
+        // ★ 测试退出命令：@@test:quit → 在测试专用输入收束后走托盘「退出」同一回调。
         //   （不直接 taskkill：必须验证 ExternalChatWindow.Shutdown + OnDestroy 清理链）
         if (content.StartsWith("@@test:quit"))
         {
@@ -1103,6 +1103,9 @@ public partial class RightPanel : MonoBehaviour
             var pet = GameObject.FindObjectOfType<DesktopPet>();
             if (pet != null)
             {
+                var renderer = GameObject.FindObjectOfType<Live2DRenderer>();
+                if (renderer != null)
+                    renderer.PrepareForTestExit();
                 // 先关外置窗口线程，再走托盘退出回调（OnDestroy 会释放互斥体 + Application.Quit）
                 if (ExternalChatWindow.IsCreated) ExternalChatWindow.Shutdown();
                 pet.QuitFromTestCommand();

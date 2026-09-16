@@ -35,6 +35,20 @@ public static class ToolRegistry
         "openclaw_task",   // 外包给 OpenClaw 的任务可能含浏览器操作/命令执行等
     };
 
+    // Explicit product-boundary denials. A disabled name is neither registered
+    // nor emitted in the function schema; callers receive a deterministic
+    // explanation instead of falling through to an accidental raw control path.
+    private static readonly Dictionary<string, string> DisabledToolReasons =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["control_body"] = "原始 Live2D 参数控制已关闭；仅已认证的语义技能可在后续开放。",
+            ["play_action"] = "旧预设身体动作尚未完成四层认证；当前仅保留步行、物理与表情基线。",
+            ["generate_motion"] = "旧生成动作尚未完成四层认证；当前仅保留步行、物理与表情基线。"
+        };
+
+    public static bool IsDisabled(string name) =>
+        !string.IsNullOrEmpty(name) && DisabledToolReasons.ContainsKey(name);
+
     /// <summary>危险工具是否需要用户确认</summary>
     public static bool IsDangerous(string name) => DangerousTools.Contains(name);
 
@@ -99,6 +113,12 @@ public static class ToolRegistry
             return;
         }
 
+        if (DisabledToolReasons.TryGetValue(tool.ToolName, out var disabledReason))
+        {
+            Debug.Log($"[ToolRegistry] 术式「{tool.ToolName}」已禁用：{disabledReason}");
+            return;
+        }
+
         var dict = tool.IsAsync ? _asyncTools : _syncTools;
         if (dict.ContainsKey(tool.ToolName))
         {
@@ -120,6 +140,9 @@ public static class ToolRegistry
     {
         if (!_initialized) Initialize();
 
+        if (DisabledToolReasons.TryGetValue(name ?? "", out var disabledReason))
+            return $"❌ 术式「{name}」已禁用：{disabledReason}";
+
         if (_syncTools == null || !_syncTools.TryGetValue(name, out var tool))
         {
             return $"❌ 不识此术：「{name}」";
@@ -132,6 +155,12 @@ public static class ToolRegistry
     public static IEnumerator ExecuteAsync(string name, string argsJson, Action<string> onResult)
     {
         if (!_initialized) Initialize();
+
+        if (DisabledToolReasons.TryGetValue(name ?? "", out var disabledReason))
+        {
+            onResult?.Invoke($"❌ 术式「{name}」已禁用：{disabledReason}");
+            yield break;
+        }
 
         if (_asyncTools == null || !_asyncTools.TryGetValue(name, out var tool))
         {

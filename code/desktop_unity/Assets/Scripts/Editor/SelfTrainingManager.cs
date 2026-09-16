@@ -627,7 +627,7 @@ public class SelfTrainingManager : EditorWindow
                 else
                 {
                     // 未达标 + 还有迭代次数 → 暂不自动修正（由训练报告给出建议方向）
-                    // 告知用户当前差异，让 AI 在后续聊天中自行调用 control_body 微调
+                    // 告知用户当前差异；不得把原始参数交给运行时聊天链路微调
                     SetStatus($"🔄 {_currentAction.displayName} 第 {_currentIteration} 轮未达标，差异已记录");
                     _state = TrainState.WaitThenNext;
                     _stateEnterTime = EditorApplication.timeSinceStartup;

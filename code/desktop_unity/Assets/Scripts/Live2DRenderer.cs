@@ -301,6 +301,10 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     // ★ 阶段五：JSON 驱动的空闲动作调度器
     private IdleActionScheduler _idleScheduler;
+    private bool _idleActionSchedulingEnabled = true;
+    private bool _testParam94GestureActive;
+    private float _testParam94GestureValue;
+    private Coroutine _testParam94GestureCoroutine;
     // 复合动作相位（用于特殊硬编码动作，如法阵/星辉）
     private float _complexActionPhase = 0f;
     // 向后兼容：当前动作 ID（兼作"是否有动作"标志）
@@ -354,10 +358,18 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private Live2DParameterMapper _mapper;
     public Live2DActionController ActionController { get; private set; }
     public Live2DParameterMapper Mapper => _mapper;
+    // Baseline renderer/physics writes remain legacy internals until the
+    // parameter commit bridge can migrate them as one verified unit.
+    private readonly Live2DInputCoordinator _inputCoordinator = new Live2DInputCoordinator();
+    private ParameterCommitBridge _parameterCommitBridge;
+    private Live2DInputLease _expressionInputLease;
+    private Live2DInputLease _actionInputLease;
+    private Live2DInputLease _candidateTestInputLease;
     public CubismModel CubismModel => _cubismModel;
 
-    /// <summary>截取当前模型渲染快照（PNG bytes），自动裁切到模型区域，供 GLM 视觉分析用</summary>
-    public byte[] CaptureModelSnapshot()
+    /// <summary>截取当前模型渲染快照（PNG bytes）；默认裁切到模型区域，供视觉分析用。</summary>
+    /// <param name="cropToModelArea">false 时保留固定 RT 画布，仅限可重复的本地时序测量。</param>
+    public byte[] CaptureModelSnapshot(bool cropToModelArea = true)
     {
         if (_overlayRT == null || !_overlayRT.IsCreated()) return null;
         if (_overlayCamera == null) return null;
@@ -397,8 +409,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
                 RenderTexture.active = saved;
             }
 
-            // ★ 自动裁切到模型区域（移除透明背景），使 GLM-4V 看到的模型更大更清晰
-            byte[] bytes = CropToModelArea(tex);
+            // 视觉模型需要裁切后的主体；时序测量必须保留固定画布，避免裁切边界被误判为动作。
+            byte[] bytes = cropToModelArea ? CropToModelArea(tex) : tex.EncodeToPNG();
             DestroyImmediate(tex);
             return bytes;
         }
@@ -1105,6 +1117,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         _wasWalkingLastFrame = isWalking;
 
+        if (_testParam94GestureActive)
+            SetParameter("Param94", _testParam94GestureValue);
+
         // ★ 屏幕边缘碰撞反弹动画：覆盖在现有参数之上
         if (_wallHitTime > 0f)
         {
@@ -1264,8 +1279,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
                 if (p != null)
                 {
                     float animVal = p.Value;                      // 动画已设置的值
-                    p.Value = Mathf.Clamp(animVal + kv.Value,     // 叠加偏移
-                        p.MinimumValue, p.MaximumValue);
+                    _parameterCommitBridge?.Commit(kv.Key,
+                        Mathf.Clamp(animVal + kv.Value,           // 叠加偏移
+                            p.MinimumValue, p.MaximumValue));
                 }
             }
 
@@ -2845,7 +2861,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// </summary>
     private int PickNextIdleAction()
     {
-        if (_idleScheduler != null)
+        if (_idleActionSchedulingEnabled && _idleScheduler != null)
         {
             float timeOfDay = (_timeController != null) ? (float)_timeController.hour : 12f;
             bool isRaining = (_timeController != null && _timeController.weatherFetched &&
@@ -2859,6 +2875,110 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
 
         return 0;
+    }
+
+    /// <summary>仅供隔离测试暂停空闲动作调度，避免污染被测动作的时序证据。</summary>
+    public void SetIdleActionSchedulingEnabled(bool enabled)
+    {
+        _idleActionSchedulingEnabled = enabled;
+        if (!enabled)
+        {
+            ResetIdleAction(true);
+            Debug.Log("[Live2DRenderer] 测试隔离：已暂停空闲动作调度");
+        }
+    }
+
+    /// <summary>仅供隔离验收播放固定 Param94 抬臂候选，不是产品或 LLM 参数入口。</summary>
+    public bool StartTestParam94Gesture()
+    {
+        DesktopPet gatePet = _pet != null ? _pet : FindObjectOfType<DesktopPet>();
+        bool movementTaskActive = gatePet != null && gatePet.IsMovementTaskPendingOrActive;
+        bool locomotionActive = gatePet != null && (movementTaskActive || gatePet.petVx != 0
+            || _walkBlendRemaining > 0f || _walkFadeInRemaining > 0f);
+        Debug.Log($"[Live2DRenderer] Param94 gate: pet={gatePet != null}, intent={movementTaskActive}, velocity={(gatePet != null ? gatePet.petVx : 0)}, task={(gatePet != null ? gatePet.currentTask.ToString() : "none")}, walking={locomotionActive}");
+        if (_testParam94GestureActive || _actionLocked || _aiControlLocked || locomotionActive)
+        {
+            Debug.Log("[Live2DRenderer] Param94 候选测试已拒绝：动作只允许在稳定静止状态启动");
+            Debug.Log("[CandidateTest] rejected-static-gate");
+            return false;
+        }
+        if (!_inputCoordinator.TryBegin(Live2DInputKind.CandidateTest, "param94-gesture", out _candidateTestInputLease))
+            return false;
+        _testParam94GestureCoroutine = StartCoroutine(PlayTestParam94Gesture());
+        return true;
+    }
+
+    private System.Collections.IEnumerator PlayTestParam94Gesture()
+    {
+        const float duration = 2.4f, peak = 15f;
+        ResetIdleAction(true); _actionLocked = true; _testParam94GestureActive = true;
+        if (_pet != null) _pet.SetActionMovementLock(true);
+        for (float elapsed = 0f; elapsed < duration; elapsed += Time.deltaTime)
+        {
+            _testParam94GestureValue = peak * Mathf.Sin(Mathf.PI * Mathf.Clamp01(elapsed / duration));
+            yield return null;
+        }
+        _testParam94GestureValue = 0f; yield return null;
+        FinishTestParam94Gesture("candidate-test-completed", stopCoroutine: false);
+    }
+
+    /// <summary>
+    /// Cancels the isolated candidate sequence and restores the pre-existing
+    /// movement path. This is deliberately test-only: it is not an action API.
+    /// </summary>
+    public bool CancelTestParam94Gesture(string reason = "candidate-test-cancelled")
+    {
+        if (!_testParam94GestureActive && !_candidateTestInputLease.IsValid)
+            return false;
+
+        FinishTestParam94Gesture(reason, stopCoroutine: true);
+        return true;
+    }
+
+    /// <summary>
+    /// Deterministic cleanup point for the isolated @@test:quit harness.
+    /// This is deliberately unavailable outside test mode and is not a product
+    /// action/cancellation API.
+    /// </summary>
+    public void PrepareForTestExit()
+    {
+        if (!ChatManager.IsTestMode)
+        {
+            Debug.LogWarning("[Live2DRenderer] ignored test-exit cleanup outside test mode");
+            return;
+        }
+
+        CancelTestParam94Gesture("candidate-test-before-test-exit");
+        StopExpressionForInputTransition();
+        CancelInvoke(nameof(ReleaseActionLock));
+        if (_actionLocked) ReleaseActionLock("action-test-exit");
+        _inputCoordinator.ReleaseAll("test-exit-fallback");
+        Debug.Log("[Live2DRenderer] test-exit input cleanup completed");
+    }
+
+    private void FinishTestParam94Gesture(string reason, bool stopCoroutine)
+    {
+        if (stopCoroutine && _testParam94GestureCoroutine != null)
+            StopCoroutine(_testParam94GestureCoroutine);
+
+        _testParam94GestureCoroutine = null;
+        _testParam94GestureValue = 0f;
+        _testParam94GestureActive = false;
+        _actionLocked = false;
+        _inputCoordinator.Release(_candidateTestInputLease, reason);
+        _candidateTestInputLease = default;
+        if (_pet != null) _pet.SetActionMovementLock(false);
+        Debug.Log("[CandidateTest] cleanup: " + reason);
+    }
+
+    private void OnDisable()
+    {
+        CancelTestParam94Gesture("candidate-test-renderer-disabled");
+    }
+
+    private void OnApplicationQuit()
+    {
+        CancelTestParam94Gesture("candidate-test-application-quitting");
     }
 
     /// <summary>
@@ -3065,8 +3185,15 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     private void SetParameter(string name, float value)
     {
-        var param = FindCachedParameter(name);
-        if (param != null) param.Value = value;
+        if (_parameterCommitBridge != null)
+        {
+            _parameterCommitBridge.Commit(name, value);
+            return;
+        }
+
+        // The model is not ready until InitActionSystem installs the bridge.
+        // Do not silently create a second Cubism mutation path during startup.
+        Debug.LogWarning($"[Live2DRenderer] 忽略初始化前参数写入: {name}");
     }
 
     /// <summary>
@@ -3172,6 +3299,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (_cubismModel == null) return;
 
         _mapper = new Live2DParameterMapper(_cubismModel);
+        _parameterCommitBridge = new ParameterCommitBridge(FindCachedParameter);
+        _mapper.ParameterCommitter = (parameterId, value) => _parameterCommitBridge.Commit(parameterId, value);
 
         // 从 Resources 加载映射文件
         TextAsset mapAsset = Resources.Load<TextAsset>("Live2D/ParamMaps/fuxuan_map");
@@ -3239,6 +3368,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             Debug.Log($"[Live2DRenderer] 忽略表情 {name}：当前动作正在独占参数写入");
             return;
         }
+        StopExpressionForInputTransition();
+        if (!_inputCoordinator.TryBegin(Live2DInputKind.Expression, name, out _expressionInputLease))
+            return;
         ActionController.PlayExpression(name, fadeTime);
     }
 
@@ -3246,6 +3378,13 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     public void StopExpression(float fadeTime = -1f)
     {
         ActionController?.StopExpression(fadeTime);
+
+        CancelInvoke(nameof(ReleaseExpressionInputLease));
+        float releaseDelay = fadeTime >= 0f ? fadeTime : 0.3f;
+        if (releaseDelay <= 0f)
+            ReleaseExpressionInputLease();
+        else
+            Invoke(nameof(ReleaseExpressionInputLease), releaseDelay);
 
         // ★ 修复：表情停止后眼睛保持暗色的问题
         //   根因：表情/动作修改了 ArtMesh MultiplyColor → GPU 被写入暗色。
@@ -3293,6 +3432,20 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
     }
 
+    private void StopExpressionForInputTransition()
+    {
+        if (!_expressionInputLease.IsValid) return;
+        ActionController?.StopExpression(0f);
+        CancelInvoke(nameof(ReleaseExpressionInputLease));
+        ReleaseExpressionInputLease();
+    }
+
+    private void ReleaseExpressionInputLease()
+    {
+        _inputCoordinator.Release(_expressionInputLease, "expression-stopped");
+        _expressionInputLease = default;
+    }
+
     /// <summary>
     /// 恢复 OverrideFlag，让 CubismRenderController 重新控制 MultiplyColor/ScreenColor。
     /// 法阵/动作期间 ForceRefreshModelAfterFade() 设了这些 flag，
@@ -3316,6 +3469,13 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (ActionController == null)
         {
             onComplete?.Invoke();
+            return;
+        }
+
+        StopExpressionForInputTransition();
+        if (!_inputCoordinator.TryBegin(Live2DInputKind.LegacyAction, name, out _actionInputLease))
+        {
+            Debug.Log($"[Live2DRenderer] 忽略动作 {name}：已有统一 Live2D 输入租约");
             return;
         }
 
@@ -3347,6 +3507,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             if (!_actionLocked) return;
             CancelInvoke(nameof(ReleaseActionLock));
             _actionLocked = false;
+            _inputCoordinator.Release(_actionInputLease, "action-completed");
+            _actionInputLease = default;
             // ★ 动作完毕重置所有动作参数（含 Param132 等眼睛白色覆盖层），
             //   防止 ActionPreset 残留的值导致眼睛发白
             ResetIdleAction();
@@ -3384,9 +3546,16 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// <summary>强制释放动作锁（Invoke 回调），恢复宠物运动</summary>
     private void ReleaseActionLock()
     {
+        ReleaseActionLock("action-timeout");
+    }
+
+    private void ReleaseActionLock(string releaseReason)
+    {
         if (!_actionLocked) return;
-        Debug.LogWarning($"[Live2DRenderer] ⏰ 动作超时强制释放锁 (ActionLocked={_actionLocked})");
+        Debug.LogWarning($"[Live2DRenderer] 强制释放动作锁 ({releaseReason}, ActionLocked={_actionLocked})");
         _actionLocked = false;
+        _inputCoordinator.Release(_actionInputLease, releaseReason);
+        _actionInputLease = default;
         // ★ 超时强制清理动作参数（含 Param132 眼睛白色覆盖层）
         ResetIdleAction();
         ForceUpdateModelNow();
@@ -4174,10 +4343,15 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// <summary>是否有 AI 参数动作正在独占模型参数写入。</summary>
     public bool IsAiControlLocked => _aiControlLocked;
 
-    /// <summary>设置参数值（公开版）</summary>
-    public void SetParameterValue(string name, float value)
+    /// <summary>Semantic gateway for generated motion; no parameter access is exposed.</summary>
+    public bool TryBeginGeneratedMotion(string owner, out Live2DInputLease lease)
     {
-        SetParameter(name, value);
+        return _inputCoordinator.TryBegin(Live2DInputKind.GeneratedMotion, owner, out lease);
+    }
+
+    public void EndGeneratedMotion(Live2DInputLease lease, string reason)
+    {
+        _inputCoordinator.Release(lease, reason);
     }
 
     /// <summary>获取参数当前值，失败返回 0</summary>

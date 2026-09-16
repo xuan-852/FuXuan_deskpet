@@ -123,6 +123,8 @@ AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
 |------|------|
 | `@@idle:1` … `@@idle:9` | 触发对应旧空闲动作；4、7 走硬编码实现，其余走 JSON 调度器 |
 | `@@shot:<name>` | 保存当前 Live2D 模型快照到 `{FU_XUAN_DATA}/action_captures/<name>.png` |
+| `@@sim:idle-actions:off` | **仅测试模式**暂停并复位已启动的空闲动作，供单一动作时序取证 |
+| `@@sim:model-measurement-snapshot` | **仅测试模式**保存未裁切的模型 RT；用于时序测量，不能替代给视觉模型看的裁切快照 |
 
 ### 2.10 停止过渡与物理输入稳定（2026-08-26）
 
@@ -204,6 +206,60 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 - 普通动作的最终 `ForceUpdateModelNow()` 延后到本帧后处理参数全部写完后统一提交，消除了左臂物理拦截与基础路径在偶数帧重复强制 Cubism Core 更新的问题。法阵的 `MaterialPropertyBlock` 刷新从每帧两遍 Drawable 遍历收束为最终阶段的一遍。
 - 动作结束后，头发/衣摆的小幅 Bounds 波动曾使局部 RT 在相邻的 32px 量化尺寸之间反复重建（实测 `320×480 ↔ 320×512`），透明窗口会短暂闪黑，表现为头发闪烁。局部取景现在对一个量化单位的尺寸差保留现有 RT；只有至少 64px 的真实扩张才重建，64px 裁切边距覆盖该波动。
 - `ForceUpdateCountThisFrame`、`ForceUpdateCountLastFrame`、`ForceUpdateCountLastSecond` 和 `ForceUpdateMaxPerFrame` 保留为可见播放器 Profiling 的观测口。2026-09-06 已通过 `build.ps1 -Quick` 和隔离 EditMode 测试（failed=0）；仍需在可见播放器中连续触发预设切换、`@@idle:7` 与 AI 动作，结合 Profiler 验收帧时间和视觉连贯性。
+
+### 2.20 外部动作输入单租约（2026-09-16）
+
+- `Assets/Scripts/Embodied/Live2DInputCoordinator.cs` 为表情、旧预设动作与 AI 生成动作分配递增的 `Live2DInputLease`；当前采用安全优先的全局单租约，活动租约未释放时第二个外部输入必定拒绝。
+- `Live2DRenderer.PlayExpression()`、`PlayAction()`、`GenerateMotionTool`、`MotionAgent` 的自主/组合/表情动作以及 `VisionMotionVerifier` 已接入该协调器。动作或生成动作开始前以零淡出收束表情；动作正常完成、超时以及 Renderer 销毁会释放租约。非当前 `requestId` 不能释放活动租约。
+- 本轮没有迁移 `Live2DRenderer` 自身的行走、掉落、拖拽、物理与空闲逐帧基线写入；它们仍是未经外部租约仲裁的内部基线。其最终参数提交现已经 `ParameterCommitBridge`，但这不等同于全模型已经完成动作资源级仲裁或唯一语义动作所有者。
+- 已新增 `Live2DInputCoordinatorTests` 覆盖互斥、错误释放、防重用与 `ReleaseAll`；2026-09-16 隔离 `build.ps1 -RunTests` 通过（failed=0）。实施边界与后续桥接要求见 `docs/guides/approved/live2d-input-coordination.md`。
+
+- 为 `AC-INPUT-04` 增加了只在 `.test_mode` 下可用的语义测试命令：`@@sim:lease:generated:begin|release` 只取得/释放 `GeneratedMotion` 租约，`@@sim:legacy:stretch` 只请求既有 `PlayAction("stretch")`；它们不接受参数 ID 或数值。2026-09-16 的隔离运行时复核中，生成动作租约活动时旧动作记录 `Rejected LegacyAction/stretch`；旧动作租约活动时生成动作记录 `Rejected GeneratedMotion/runtime-input-conflict-test`；旧动作最终记录 `Released LegacyAction/stretch#2: action-completed`。临时实例随后经 `@@test:quit` 正常退出。该证据只验证全局单租约互斥与收束，不认证任何动作语义或自然度。
+- `@@test:quit` 在测试模式下会先调用 `Live2DRenderer.PrepareForTestExit()`：它收束测试候选、表情和旧动作，再以 `ReleaseAll("test-exit-fallback")` 处理未知活动租约，最后才走既有托盘退出回调；非测试模式调用会被拒绝。2026-09-16 隔离复核中，执行中的 `LegacyAction/stretch#1` 在退出前记录 `Released ...: action-test-exit`，随后记录 `test-exit input cleanup completed`，临时进程正常退出。此项只提供测试退出的确定性收束证据，不替代 Windows 关机/注销等真实系统生命周期验收。
+
+### 2.21 参数提交桥接（2026-09-16）
+
+- `ParameterCommitBridge` 持有 `参数 ID → CubismParameter` 的解析边界；`Live2DRenderer.SetParameter()`、调试偏移以及 `Live2DParameterMapper.Set()` 的运行时写入均经由其 `Commit()` 赋值。Mapper 仍负责语义解析与范围钳制，桥接层不承载动作策略。
+- 独立探针和 `Assets/Scripts/Editor/` 标定工具仍直接写入模型参数，这是隔离诊断协议的一部分，不会链接入桌宠 Player 运行时；它们不得作为产品动作入口使用。
+- 2026-09-16 `build.ps1 -Quick` 通过。动作原语尚未开放：能力目录条目仍为 `not-certified`，下一步是骨架候选组合验证，而不是把参数名交给 LLM。
+
+### 2.22 骨架组合本地验证（2026-09-16）
+
+- 独立 `Live2DProbe.exe` 新增 `FU_XUAN_PROBE_COMBINATIONS=skeleton` 模式；它固定检测 7 组证据：躯干+头部三轴、左右手臂，以及躯干+单臂。每组保存成员单项、组合最小/最大、复位帧，重复三轮。
+- 本次在隔离目录完成 204 帧：7 组的复位差均为 `0`、`resetStable=true`；组合可见差为 0.722–7.176。人工抽查显示 Z 组合有可见的侧向头发/朝向变化，右臂候选组有可见抬臂。
+- 这些仅构成组合视觉复核候选；没有自然度、方向稳定性与独立视觉认证前，任何组不得成为 `Certified` 或 LLM 可调用动作。
+- DeepSeek 组合复核（2026-09-16，约 12.5k tokens）对 7 组均返回“可见、自然、复位一致、高置信”。头/躯干三轴组显示稳定的左右倾斜、俯仰与侧向摆动；两组手臂及躯干+单臂组则均被识别为双臂变化，尚无法可靠归因到单侧或确认躯干贡献。因此它们保持 `Supporting` 候选而非 `Certified`；下一轮必须用已有单成员帧完成归因复核。
+- 成员归因复核（2026-09-16，约 21.6k tokens）已使用同一隔离证据包完成：`ParamAngleX` 为头部左右朝向候选，`ParamAngleY` 为头部俯仰候选，均为可见变化、复位一致、高置信；`ParamAngleZ` 的主影响是头发/配饰侧摆，头部仅为次级影响，不能提前命名为独立的头部横滚。DeepSeek 当时把 `Param31` 误判为双臂收拢/展开，后续全量帧差分、独立复验及交叉组合已将其更正为画面左侧单臂姿态候选；`Param34`、`Param36` 仍仅为双臂下垂/平举候选。`ParamBodyAngleX/Y/Z`、`Param32/33/37` 在冻结画面中无可见变化，其中 BodyAngle 三项仅保留为“待物理模式复验”的条件输入，不能判为无效或动作原语。
+- 上述所有结果保持 `Supporting`：证据来自单一 DeepSeek 视觉裁判，且尚无资源归属与第二模型交叉验证。下一阶段是从全参数目录筛选单臂候选做隔离本地发现，先证明左右独立性，再决定是否申请第二轮云端复核；不得把这些参数 ID 暴露给 LLM 或写入 `fuxuan_map.json`。
+- 单臂发现第一轮已在新的隔离目录重跑 `Param94`、`Param97`、`Param100`、`Param68`（各三轮、均复位稳定）。`Param94` 的峰值像素差为 `2.46979`，直接图像复核确认仅模型画面右侧手臂抬起，保留为单臂视觉复核候选；`Param97` 仅 `0.361097`，`Param100`/`Param68` 分别为 `0.039680`/`0.001096`，本轮均不具备足够的本地可见证据。该结果仍不等同于模型左右语义、资源归属或正式动作认证。
+- 对 `Param94` 的 GLM 第二裁判复核已在用户授权后发起，但接口返回 `429`，未产生可用视觉结论。该失败必须保留为“第二模型暂不可用”，不得把 DeepSeek 结果重复计算为双模型通过，也不得据此降低认证门槛；待服务恢复后可复用相同帧哈希缓存协议重试。
+- 经用户授权，GLM 不可用时由 Codex 以可见帧作替代审查：已逐帧核对 `Param94` 第一轮的 baseline/min/max/reset。max 仅使模型画面右侧的一只手臂由下垂抬起；min 与基线近似一致，reset 回到基线，未见头、躯干或另一侧手臂的连带变化。此人工裁判结论与本地像素指标和 DeepSeek 结论一致，允许其继续作为“单臂候选”参与后续组合发现；它不是 GLM 结果，不得将“画面右侧”擅自转换为模型语义左/右臂，也不足以单独授予 `Certified`。
+- 全量截图的左右区域差分和逐帧复核纠正了此前 DeepSeek 对 `Param31` 的“双臂联动”误判：`Param31` 实际只影响画面左侧手臂的外展/收束姿态，三轮冻结复验峰值差为 `1.416524`、复位差为 `0`；`Param94` 只影响画面右侧手臂的抬起姿态。两者均保持 `Supporting`，且不使用模型语义左/右命名。
+- 探针已新增通用 `FU_XUAN_PROBE_COMBINATION_IDS` 入口。双参数除了同向最小/最大外还采集 `min/max` 与 `max/min` 交叉角点，解决“两个参数有效方向相反”被遗漏的问题。`Param31 + Param94` 的交叉 `min/max` 三轮可见差为 `3.886314`、复位差为 `0`；直接帧审查未见互相覆盖或异常形变，证明两条单臂通道能并存，但它们不是镜像动作。
+- `ParamBodyAngleX/Y/Z` 已在只保留 Cubism 物理控制器的隔离模式重跑，三者均三轮稳定并复位为零：X 峰值 `5.375540`、Y 峰值 `13.831004`、Z 峰值 `27.043394`。帧审查显示它们带动躯干/重心及头发、衣物等附属物，Z 的侧倾尤其大。三者归类为 `Conditional` 的物理躯干输入：后续只可经限幅、渐变和资源仲裁的内部技能使用，不得直接暴露给 LLM，也不得以冻结模式的“无变化”判定为无效。
+- 保守幅度首轮已完成三轮隔离验证且全部复位稳定：`Param31` 以 `[-0.5, 0.5]`（峰值 `0.780912`）形成轻度画面左侧手臂姿态；`Param94` 以 `[-15, 30]`（峰值 `2.414272`）时，中间值 `7.5` 为自然的轻度画面右侧手臂外展，最大 `30` 接近平举，只能作为显式手势上限。物理躯干 X/Y 暂取 `[-3, 3]`（峰值 `2.767720`/`7.969861`）；Z 即使 `[-2, 2]` 仍过大，进一步收至 `[-0.75, 0.75]` 后为可见但轻微的侧倾（峰值 `8.092014`）。这些是测试通过的内部默认候选范围，不是正式 `fuxuan_map.json` 映射、LLM 接口或最终动作认证；实际运行仍须经渐变、资源仲裁和组合自然度测试。
+- 保守组合首轮：自定义组合探针以 `FU_XUAN_PROBE_COMBINATION_RANGE_SCALE=0.25` 对 `ParamAngleX + Param94` 采样，三轮交叉角点可见差为 `3.261844`、复位差为 `0`。直接帧审查显示转头与轻度画面右侧手臂外展可同时出现，无穿模或层级覆盖；该组合可进入语义动作原语设计，但仍是 `Supporting` 证据，未开放给 LLM。
+- 同一保守缩放下，`ParamBodyAngleX + Param31`（物理模式）三轮组合差为 `2.502688`/`2.471063`、复位差为 `0`，躯干物理跟随未覆盖画面左侧手臂姿态；`ParamBodyAngleX + ParamAngleY` 的交叉角点差为 `3.633059`、复位差为 `0`，帧审查确认躯干重心变化期间头部俯仰仍独立可控。两组均无穿模或异常层级，形成头—躯干—单臂首轮组合证据；仍需后续做动态渐变、抢占和长时间稳定性测试。
+- 连续可感知性首轮：`Param94` 从 `0 → 15 → 0` 的 12 步扫动峰值差为 `2.085081`、复位差为 `0`，可作为显式手势候选；`Param31` 必须扫向负向 `0 → -0.5 → 0`，修复目标方向后峰值仅 `0.780912`、复位差为 `0`。因此 `Param31` 只保留为细微姿态层，不满足用户可明显感知的显式动作门槛；不得把连续可达误写成显式动作可用。
+- 保守动态复验补充了 `ParamAngleX`：在独立探针中以 `[-15,15]` 的 12 步 `0 → 15 → 0` 扫动，峰值差 `1.721964`、复位差 `0`，相邻 RGB 均值/峰值 `0.3472/0.3520`。同批 `Param94` 的相邻 RGB 均值/峰值为 `0.7585/0.9114`。两者均说明离线插值不是只在端点跳变；它们仍不构成运行时自然度、组合认证或 LLM 接口。
+- 独立探针现支持 `FU_XUAN_PROBE_COMBINATION_SWEEP_IDS`：对两个或更多参数在保守 `FU_XUAN_PROBE_COMBINATION_RANGE_SCALE` 内同步扫动、三轮重复并输出 `custom-combination-sweep-report.json`。`ParamAngleX + Param94` 在 `0.25` 缩放、12 步下得到组合峰值差 `3.238710`、最大复位差 `0`，全序列相邻 RGB 均值/峰值 `0.9336/1.1142`；首轮基线/峰值/复位帧审查未见明显穿模或层级反转。该能力只用于离线组合证据，结果仍为 `Supporting`，不开放 LLM 或正式映射。
+- `scripts/test/run_probe_combination_sweep.cjs` 可选传入 `physics`，让独立探针只保留 Cubism 物理写入者；`ParamBodyAngleX + Param94` 在该模式、`0.1` 缩放、12 步下三轮复位差为 `0`，峰值差 `2.934924`，未见物理跟随覆盖手臂。躯干本身变化较轻微，仍仅是 `Conditional/Supporting` 组合证据，不构成单独躯干技能或自然度认证。
+
+### 2.23 走路可感知性标定（2026-09-16）
+
+- 用户确认现有硬编码走路的可感知幅度可作为首版动作质量的参照。参照对象是**内部姿态的时序变化**，不是桌宠根窗口横向位移；静态手势无需、也不应以屏幕移动距离达标。
+- `scripts/test/walk_baseline_drive.cjs <独立构建 DesktopPet.exe>` 会创建临时 `FU_XUAN_DATA`/`.test_mode`，等待落地后暂停空闲动作、额外等待 2.5 秒使既有特效和 RT 尺寸收敛，再强制向右走并保存 16 张相位帧和 1 张停止恢复帧。它只启动隔离实例，不能用于生产数据目录或正在使用的正式 exe。
+- `CaptureModelSnapshot(cropToModelArea: false)` 和 `@@sim:model-measurement-snapshot` 为该测量保留完整模型 RT；默认裁切快照行为不变，仍服务视觉审查。`scripts/live2d-probe/analyze_perceptibility_sequence.cjs <png目录>` 以同批最大 RT 画布、模型轮廓水平中心对齐后计算差异，剔除根横移但保留走路弹跳。
+- 已在隔离临时构建复录纯走路周期：17 帧均为 `320×480`，空闲动作只发生在隔离命令前，走路期间未再启动。前 16 个行走相位的相邻 RGB 平均差为 `41.8427`、峰值 `97.6475`；相对首相位的峰值 RGB 差为 `109.7859`，轮廓变化峰值为 `0.3345`。可见帧复核确认头身左右摆动、衣饰/发饰跟随与步态变化。
+- 这些数值仅是同一模型、同一 RT 路径、同一采样节奏下的**相对基线**，不是跨模型绝对评分，也尚不构成“动作已认证”。后续显式动作应以同一测量链路比较：先满足无干扰、连续变化、复位与自然度硬门槛，再按动作类型决定其应接近走路基准的全身/局部比例；微姿态层不适用该阈值。
+
+### 2.24 Param94 开发者候选手势（2026-09-16）
+
+- `@@sim:gesture:param94` 仅在 `.test_mode` 下可触发固定的 `0 → 15 → 0`、2.4 秒正弦缓入缓出序列。它只证明画面右侧单臂可上抬再放下；不赋予招呼、示意、挥手等语义，也不是正式用户技能、高层语义接口或 LLM 参数入口。
+- 该候选必须通过 `Live2DInputCoordinator` 获取 `CandidateTest` 单租约，且只允许稳定静止状态启动；走路或其淡入/收束期间一律拒绝。隔离运行日志已验证：正常静止启动会记录 `Accepted CandidateTest/param94-gesture#1`，正常完成会记录 `Released ... candidate-test-completed`；另一次在已落地、`velocity=(1,0)`、`task=MoveRightTime` 的真实行走中触发，门禁记录 `walking=True` 与 `[CandidateTest] rejected-static-gate`，候选未启动。动作期间保留移动锁，完成时清零参数、释放租约和移动锁。
+- 恢复验收已在独立隔离实例完成：在显式停止自动边缘移动并确认 `velocity=(0,0)` 后，候选被接受并正常释放；其后强制普通走路可再次达到 `velocity=(1,0)`。因此“正常完成后不遗留候选租约或移动锁”已获运行时证据。中途取消、渲染器异常与进程退出期间的恢复仍须单列测试，不得由本结论外推。
+- 中途取消验收已完成：测试专用 `@@sim:gesture:param94:cancel` 在候选序列中段停止协程，记录 `candidate-test-cancelled` 释放和 `[CandidateTest] cleanup`，随后普通走路再次达到 `velocity=(1,0)`。测试退出验收也已完成：`@@test:quit` 在进入原有桌宠退出链前显式清理仍在运行的测试候选，并记录 `candidate-test-before-test-exit` 释放；这只为隔离测试提供可审计证据，不改变托盘退出或 Windows 关机/注销的既有验收结论。
+- 它仍为 `Supporting` 候选：只允许用于开发者时序、抢占和恢复实验；不得注册为 `CertifiedSkillRegistry` 项、不得加入自主动作、不得改写正式参数映射。
 
 ## 三、开发历史迭代
 

@@ -34,6 +34,12 @@ public class Live2DParameterMapper
 
     private bool _loaded = false;
 
+    /// <summary>
+    /// Optional renderer-owned commit boundary. The mapper keeps semantic
+    /// lookup and range clamping; Cubism mutation is delegated when present.
+    /// </summary>
+    public Action<string, float> ParameterCommitter { get; set; }
+
     /// <summary>映射是否已加载</summary>
     public bool IsLoaded => _loaded;
 
@@ -223,14 +229,14 @@ public class Live2DParameterMapper
         if (!_parameterCache.TryGetValue(paramId, out var param) || param == null) return;
 
         // 钳制到有效范围
-        if (_ranges.TryGetValue(paramId, out var range))
-        {
-            param.Value = Mathf.Clamp(value, range.Min, range.Max);
-        }
+        float clamped = _ranges.TryGetValue(paramId, out var range)
+            ? Mathf.Clamp(value, range.Min, range.Max)
+            : value;
+
+        if (ParameterCommitter != null)
+            ParameterCommitter(paramId, clamped);
         else
-        {
-            param.Value = value;
-        }
+            param.Value = clamped;
     }
 
     /// <summary>按语义名读取参数当前值</summary>

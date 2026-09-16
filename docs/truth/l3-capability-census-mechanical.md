@@ -37,6 +37,7 @@
 - 在用户明确授权后，11 个强候选各上传 4 张隔离模型帧给 DeepSeek `deepseek-v4-flash`；全部 HTTP 200、结构化结果可解析、报告 `visible_change=true` 与 `reset_matches_baseline=true`。合计 19,111 tokens；证据和 UTF-8 汇总仅保存在隔离数据根的 `cloud_review/`。
 - DeepSeek 的语义候选：`ParamAngleX/Z` 为头部左右转动，`ParamAngleY` 为小幅头部轴向偏转；`Param31/34` 为手臂/手部抬起姿态；传统 `ParamBodyAngleX/Y/Z` 与 `*2` 身体参数均报告躯干/上半身的侧倾或偏转。模型对 X/Y/Z 的命名并不完全一致，因此该结果只可作为“视觉语义候选”，不能自动改写参数轴向含义。
 - GLM `glm-4.6v-flash` 曾成功复核 `ParamAngleX` 与 `ParamBodyAngleX2`，也报告可见变化和复位一致；其他候选连续返回 HTTP 429。显式退避后单项 `ParamAngleY` 仍为 429，因此停止重试。未取得 GLM 成功结果的条目仍缺少独立交叉判。
+- 后续（同日）经用户授权，候选证据包 `screen_side_arm_raise` 的第二模型复核以同 Key `glm-4.5v` 完成（详见 [候选真相](l3-screen-side-arm-raise-candidate.md)）；其余普查条目的独立交叉判仍缺，不因该单例视为已完成。
 - 结论：11 项可保留为 `Supporting` 的视觉/机械候选（非正式映射、非 `Certified`）；最终认证仍被“全部目标的第二模型成功复核 + 自然度门槛”阻断。
 
 ## 2026-09-16 DeepSeek 单模型补测
@@ -53,3 +54,13 @@
 - `batch_deepseek_review.cjs` 以 20 项可恢复批次完成 244/244 DeepSeek V4 视觉评价；单项证据缓存、批次进度和 UTF-8 汇总均位于隔离数据根。全量 DeepSeek usage 合计 423,328 tokens，结果无缺失。
 - `build_parameter_catalog.cjs` 已生成只读 `parameter-capability-catalog.json`：87 个 `pose-candidate`、67 个 `effect-only`、64 个 `unclassified-visible`、26 个 `no-visible-evidence`。目录只用于后续 JSON 动作配置的查询与人工/后续验收排序；全部参数仍为 `not-certified`，且 `mapWriteAllowed=false`。
 - 此次全参数普查是冻结写入者下的基础层；已单独完成传统 `ParamBodyAngleX/Y/Z` 的物理模式复验。其他依赖物理、组合参数或时序的条目不因本轮静态采样被判为不可用。
+## 2026-09-16 保守动态连续性复验
+
+- 以独立 `Live2DProbe.exe` 的单参数扫动模式，在隔离 `.test_mode` 数据根中复验了两个后续组合候选。`ParamAngleX` 使用 `[-15, 15]`、12 步、从基线扫向 `15` 再回基线：峰值平均像素差 `1.721964`、复位差 `0`；帧序列分析的相邻 RGB 均值/峰值为 `0.3472/0.3520`，相位峰值 `1.7245`。`Param94` 使用同一保守区间与步数：峰值平均像素差 `2.085081`、复位差 `0`；相邻 RGB 均值/峰值为 `0.7585/0.9114`，相位峰值 `2.0882`。
+- 两次探针均正常退出且输出 25 张时序帧。结果只证明离线参数变化在该采样密度下连续、可见并可复位；它不证明运行时插值、组合自然度、人体语义或 `Certified` 状态，所有参数继续保持 `mapWriteAllowed=false`。
+
+## 2026-09-16 保守动态组合复验
+
+- 独立探针新增通用同步组合扫动入口，并以 `ParamAngleX + Param94` 在 `0.25` 保守范围、12 步、三轮中执行同步 `baseline → targets → baseline`。实际 targets 为 `7.5/15`，共保存 75 帧；组合峰值平均像素差 `3.238710`、最大复位差 `0`。全序列相邻 RGB 均值/峰值 `0.9336/1.1142`，相位峰值 `3.2435`。
+- 首轮基线、峰值、复位帧直接审查未见明显穿模、层级反转或残留：画面右侧单臂外展/抬起可与轻微头部偏转并存，复位回到基线。该人工帧审查仅支持保留为 `Supporting` 组合候选；它不替代完整时序自然度评审、运行时资源仲裁或 `Certified` 状态。
+- 同一同步扫动在 `physics` 写入模式下复验 `ParamBodyAngleX + Param94`：`0.1` 缩放的实际 targets 为 `1/6`，三轮 75 帧，组合峰值平均像素差 `2.934924`、最大复位差 `0`；相邻 RGB 均值/峰值 `0.4680/0.5513`，相位峰值 `2.9388`。基线/峰值/复位帧审查未见躯干物理跟随覆盖手臂、明显穿模或残留；躯干可见变化较轻微，故该结果只能作为受物理前置条件约束的 `Conditional/Supporting` 组合证据。

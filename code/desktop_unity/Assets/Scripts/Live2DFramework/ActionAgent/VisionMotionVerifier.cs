@@ -174,9 +174,16 @@ public static class VisionMotionVerifier
             // ——— 4. 播放动作并截图 ———
             string base64Snapshot = null;
 
+            if (renderer == null || !renderer.TryBeginGeneratedMotion(tc.Description, out Live2DInputLease inputLease))
+            {
+                result.ErrorMessage = "统一 Live2D 输入租约不可用";
+                result.Score = 1;
+                results.Add(result);
+                continue;
+            }
+
             // 锁定 AI 控制
-            if (renderer != null)
-                renderer.SetAiControlLock(plan.TotalDuration + 2f);
+            renderer.SetAiControlLock(plan.TotalDuration + 2f);
 
             var generator = new MotionGenerator(mapper, model);
             generator.ResetState(plan.Description);
@@ -184,6 +191,8 @@ public static class VisionMotionVerifier
             // 用协程播放，在进度约 55% 时截图（更靠近动作峰值，40% 太早了）
             yield return PlayAndCapture(generator, plan, 0.55f, renderer,
                 capturedBase64 => base64Snapshot = capturedBase64);
+            renderer.ReleaseAiControlLock();
+            renderer.EndGeneratedMotion(inputLease, "vision-verification-motion-completed");
 
             if (string.IsNullOrEmpty(base64Snapshot))
             {

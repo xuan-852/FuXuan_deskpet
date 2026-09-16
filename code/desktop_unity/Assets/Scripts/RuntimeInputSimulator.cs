@@ -12,6 +12,9 @@ public static class RuntimeInputSimulator
 {
     private const string SIM_PREFIX = "@@sim:";
     private const string INPUT_PREFIX = "@@input:";
+    // Test-mode-only lease used to exercise the legacy/generated-motion conflict
+    // without exposing a parameter-writing or production control surface.
+    private static Live2DInputLease _testGeneratedMotionLease;
 
     /// <summary>
     /// 处理 @@sim / @@input 命令。返回 true 表示该文本已被识别，不能继续进入聊天。
@@ -69,6 +72,94 @@ public static class RuntimeInputSimulator
             string path = System.IO.Path.Combine(dir, "model_rt_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".png");
             System.IO.File.WriteAllBytes(path, png);
             Debug.Log("[TestInbox] model snapshot saved: " + path + " (" + png.Length + " bytes)");
+            return true;
+        }
+
+        if (body.Equals("model-measurement-snapshot", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            byte[] png = renderer != null ? renderer.CaptureModelSnapshot(cropToModelArea: false) : null;
+            if (png == null || png.Length == 0)
+            {
+                Debug.LogWarning("[TestInbox] measurement snapshot failed: 叠加相机或 RT 不可用");
+                return true;
+            }
+
+            string dir = System.IO.Path.Combine(DataPathConfig.DataRoot, "test_screenshots");
+            System.IO.Directory.CreateDirectory(dir);
+            string path = System.IO.Path.Combine(dir, "model_measurement_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".png");
+            System.IO.File.WriteAllBytes(path, png);
+            Debug.Log("[TestInbox] measurement snapshot saved: " + path + " (" + png.Length + " bytes)");
+            return true;
+        }
+
+        if (body.Equals("idle-actions:off", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer == null) Debug.LogWarning("[TestInbox] idle-actions failed: 未找到 Live2DRenderer");
+            else renderer.SetIdleActionSchedulingEnabled(false);
+            return true;
+        }
+
+        if (body.Equals("gesture:param94:cancel", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && renderer.CancelTestParam94Gesture())
+                Debug.Log("[CandidateTest] cancel-command-accepted");
+            else
+                Debug.LogWarning("[CandidateTest] cancel-command-ignored");
+            return true;
+        }
+
+        if (body.Equals("gesture:param94", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && renderer.StartTestParam94Gesture()) Debug.Log("[TestInbox] Param94 候选手势已开始");
+            else Debug.LogWarning("[TestInbox] Param94 候选手势无法启动：渲染器缺失或已有动作占用");
+            return true;
+        }
+
+        if (body.Equals("lease:generated:begin", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && !_testGeneratedMotionLease.IsValid
+                && renderer.TryBeginGeneratedMotion("runtime-input-conflict-test", out _testGeneratedMotionLease))
+            {
+                Debug.Log("[TestInbox] generated-motion lease accepted");
+            }
+            else
+            {
+                Debug.Log("[TestInbox] generated-motion lease rejected");
+            }
+            return true;
+        }
+
+        if (body.Equals("lease:generated:release", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && _testGeneratedMotionLease.IsValid)
+            {
+                renderer.EndGeneratedMotion(_testGeneratedMotionLease, "runtime-input-conflict-test-release");
+                Debug.Log("[TestInbox] generated-motion lease released");
+            }
+            else
+            {
+                Debug.LogWarning("[TestInbox] generated-motion lease release ignored");
+            }
+            _testGeneratedMotionLease = default;
+            return true;
+        }
+
+        if (body.Equals("legacy:stretch", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer == null)
+                Debug.LogWarning("[TestInbox] legacy action failed: Live2DRenderer unavailable");
+            else
+            {
+                renderer.PlayAction("stretch");
+                Debug.Log("[TestInbox] legacy action requested: stretch");
+            }
             return true;
         }
 

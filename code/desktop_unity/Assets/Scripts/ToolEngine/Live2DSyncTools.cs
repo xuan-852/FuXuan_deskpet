@@ -33,7 +33,6 @@ public class SetExpressionTool : IPetTool
         yield break;
     }
 }
-
 public class PlayActionTool : IPetTool
 {
     public string ToolName => "play_action";
@@ -59,7 +58,6 @@ public class PlayActionTool : IPetTool
         yield break;
     }
 }
-
 public class StopActionTool : IPetTool
 {
     public string ToolName => "stop_action";
@@ -203,94 +201,5 @@ public class ExploreBodySyncTool : IPetTool
         string result = string.Join("\n", lines);
         if (result.Length > 1500) result = result[..1500] + "\n...（截断，完整版请使用异步内观）";
         onResult?.Invoke(result);
-    }
-}
-
-public class ControlBodyTool : IPetTool
-{
-    public string ToolName => "control_body";
-    public string ToolDescription => "【法身·御形】精确控制身体参数或套用表情模板。用户说「把头转过来」「抬起右手」「歪头笑」时调用。可指定具体参数值（如 ParamAngleX=15）或表情名称。自动锁定防空闲动画覆盖，持续到下次解锁。";
-    public string ToolParametersJson => ToolSchema.Schema(
-        ToolSchema.Opt("expression", "string", "表情/姿势模板名称，如 happy/sad/angry/tilt_head 等（可选）"),
-        ToolSchema.Opt("params", "object", "具体参数映射，如 {\"ParamAngleX\":15,\"ParamAngleY\":5}（可选）")
-    );
-    public bool IsAsync => false;
-
-    public string Execute(string argsJson)
-    {
-        var renderer = GameObject.FindObjectOfType<Live2DRenderer>();
-        if (renderer == null || renderer.Mapper == null) return "❌ 本座法身未现";
-
-        var mapper = renderer.Mapper;
-
-        // 设置 AI 控制锁
-        renderer.SetAiControlLock();
-
-        // 解析 expression
-        string expression = ToolHelpers.JsonRead(argsJson, "expression");
-        if (!string.IsNullOrEmpty(expression))
-        {
-            var templates = MotionPlanner.PlanFromDescription(expression, 1f, mapper);
-            if (templates.KeyFrames.Count > 0)
-            {
-                foreach (var kv in templates.KeyFrames[0].Values)
-                    mapper.Set(kv.Key, kv.Value);
-            }
-        }
-
-        var controlKeys = new HashSet<string> { "expression", "duration" };
-        var paramValues = new Dictionary<string, float>();
-        var warnings = new List<string>();
-
-        // 解析顶层参数
-        foreach (string rawPair in argsJson.Split(','))
-        {
-            string pair = rawPair.Trim().TrimStart('{').TrimEnd('}');
-            int colonIdx = pair.IndexOf(':');
-            if (colonIdx < 0) continue;
-
-            string key = pair.Substring(0, colonIdx).Trim().Trim('"');
-            string valStr = pair.Substring(colonIdx + 1).Trim().Trim('"');
-            if (controlKeys.Contains(key)) continue;
-            if (valStr.StartsWith("{") || valStr.StartsWith("[")) continue;
-
-            if (float.TryParse(valStr, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out float val))
-            {
-                paramValues[key] = val;
-            }
-        }
-
-        // 从 params 字段读取
-        var fromParams = ToolHelpers.JsonReadDict(argsJson, "params");
-        foreach (var kv in fromParams)
-            paramValues[kv.Key] = kv.Value;
-
-        if (paramValues.Count == 0 && string.IsNullOrEmpty(expression))
-            return "❌ 未指定任何参数或表情";
-
-        // 安全校验
-        var results = SafetyValidator.ValidateBulk(paramValues, mapper);
-        foreach (var r in results)
-            warnings.AddRange(r.Warnings);
-
-        // 应用参数
-        int applied = 0;
-        foreach (var kv in paramValues)
-        {
-            mapper.Set(kv.Key, kv.Value);
-            applied++;
-        }
-
-        string result = $"✅ 已御形：{applied} 个参数已调整";
-        if (warnings.Count > 0)
-            result += "\n⚠ 注意：\n" + string.Join("\n", warnings);
-        return result;
-    }
-
-    public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
-    {
-        onResult?.Invoke(Execute(argsJson));
-        yield break;
     }
 }

@@ -11,7 +11,7 @@
 
 ## 提案指导文档
 
-- [动作原语与单写入协调器指导文档](../../docs/guides/proposed/action-primitive-coordinator.md) — `docs/guides/proposed/action-primitive-coordinator.md`
+暂无。
 
 ## 批准指导文档
 
@@ -22,11 +22,17 @@
 - [L4 对话意图、工具与桥接指导文档](../../docs/guides/approved/l4-intent-tools-and-bridge.md) — `docs/guides/approved/l4-intent-tools-and-bridge.md`
 - [L5 记忆、人格与主动互动指导文档](../../docs/guides/approved/l5-memory-personality-proactive.md) — `docs/guides/approved/l5-memory-personality-proactive.md`
 - [L6 办公、知识、提醒与发布指导文档](../../docs/guides/approved/l6-user-services-and-release.md) — `docs/guides/approved/l6-user-services-and-release.md`
+- [Live2D 输入协调与单租约指导文档](../../docs/guides/approved/live2d-input-coordination.md) — `docs/guides/approved/live2d-input-coordination.md`
 - [Live2D 探测评测准确性指导文档](../../docs/guides/approved/probe-evaluation-accuracy.md) — `docs/guides/approved/probe-evaluation-accuracy.md`
 
 ## 代码真相
 
 - [L3 参数能力普查：机械基线证据](../../docs/truth/l3-capability-census-mechanical.md) — `docs/truth/l3-capability-census-mechanical.md`
+- [L3 认证技能基础骨架](../../docs/truth/l3-certified-skill-foundation.md) — `docs/truth/l3-certified-skill-foundation.md`
+- [L3 Live2D 输入边界审计](../../docs/truth/l3-live2d-input-boundary-audit.md) — `docs/truth/l3-live2d-input-boundary-audit.md`
+- [L3 运行时认证准入缺口审计](../../docs/truth/l3-runtime-admission-gap-audit.md) — `docs/truth/l3-runtime-admission-gap-audit.md`
+- [L3 画面侧单臂上抬候选技能](../../docs/truth/l3-screen-side-arm-raise-candidate.md) — `docs/truth/l3-screen-side-arm-raise-candidate.md`
+- [L3 虚拟骨架候选账本](../../docs/truth/l3-virtual-skeleton-candidate-ledger.md) — `docs/truth/l3-virtual-skeleton-candidate-ledger.md`
 
 ## 历史归档
 
@@ -34,10 +40,17 @@
 
 ## 任务包
 
+- `l3-candidate-deepseek-review-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-candidate-deepseek-review.json）
+- `l3-candidate-review-packet-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-candidate-review-packet.json）
 - `l3-capability-census-mechanical-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-capability-census-mechanical.json）
+- `l3-certified-skill-foundation-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-certified-skill-foundation.json）
+- `l3-first-skill-certification-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-first-skill-certification.json）
+- `l3-runtime-admission-a-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-a.json）
+- `l3-runtime-admission-gap-audit-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-gap-audit.json）
+- `l3-virtual-skeleton-candidate-ledger-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-virtual-skeleton-candidate-ledger.json）
 - `probe-core-and-unity-adapter-v1` → `docs/guides/approved/generic-live2d-capability-probe.md`（tasks/packages/probe-core-and-unity-adapter.json）
 - `probe-skeleton-mechanical-batch-v1` → `docs/guides/approved/probe-evaluation-accuracy.md`（tasks/packages/probe-skeleton-mechanical-batch.json）
 
 ## 检查结果
 
-- 失败：docs/guides/approved/l4-intent-tools-and-bridge.md: 批准指导文档缺少“实施授权边界”章节或声明
+- 通过：任务包引用均满足目录规则。

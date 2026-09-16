@@ -59,8 +59,8 @@ public static class LocalToolRouter
 
     private static readonly string[] OperationTools =
     {
-        "set_expression", "play_action", "stop_action", "generate_motion", "take_screenshot",
-        "control_body", "inspect_motion_memory", "inspect_personality",
+        "set_expression", "stop_action", "take_screenshot",
+        "inspect_motion_memory", "inspect_personality",
         "explore_body", "explore_body_vision", "run_verification", "vis_verify", "self_review",
         "knowledge_index", "get_system_info", "get_mouse_pos", "query_reminders",
         "set_reminder", "mark_reminder_done", "delete_reminder",
@@ -71,14 +71,14 @@ public static class LocalToolRouter
 
     private static readonly string[] FallbackTools =
     {
-        "compile_latex", "control_body", "delete_reminder", "dir_create", "explore_body",
+        "compile_latex", "delete_reminder", "dir_create", "explore_body",
         "explore_body_vision", "file_copy", "file_create", "file_delete", "file_info",
         "file_move", "file_open", "file_read", "file_rename", "generate_docx",
-        "generate_motion", "generate_ppt", "generate_xlsx", "get_clipboard", "get_mouse_pos",
+        "generate_ppt", "generate_xlsx", "get_clipboard", "get_mouse_pos",
         "get_system_info", "get_weather", "inspect_motion_memory", "inspect_personality",
         "knowledge_index", "knowledge_search", "launch_pogget", "list_files", "mark_reminder_done",
         "notify", "open_app", "open_folder", "open_url", "openclaw_search", "openclaw_task",
-        "play_action", "pogget_agent", "query_exams", "query_preferences", "query_reminders",
+        "pogget_agent", "query_exams", "query_preferences", "query_reminders",
         "query_schedule", "query_scores", "query_task_templates", "query_user_status",
         "remove_preference", "remove_task_template", "run_command", "run_verification",
         "save_task_template", "search", "search_file", "search_files", "search_web",

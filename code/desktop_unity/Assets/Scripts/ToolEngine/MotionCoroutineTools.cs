@@ -26,6 +26,12 @@ public class GenerateMotionTool : IPetTool
 
     public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
+        if (!LegacyGeneratedMotionPolicy.TryAllowOfflineTest(out _))
+        {
+            onResult?.Invoke("❌ 旧生成动作尚未完成四层认证；当前仅保留步行、物理与表情基线。");
+            yield break;
+        }
+
         var renderer = GameObject.FindObjectOfType<Live2DRenderer>();
         if (renderer == null || renderer.Mapper == null || renderer.CubismModel == null)
         {
@@ -80,6 +86,15 @@ public class GenerateMotionTool : IPetTool
             yield break;
         }
 
+        // An expression owns the same global input lease. Stop it through the
+        // renderer gateway before the generated motion asks for exclusivity.
+        renderer.StopExpression(0f);
+        if (!renderer.TryBeginGeneratedMotion(description, out Live2DInputLease inputLease))
+        {
+            onResult?.Invoke("⏳ 当前已有 Live2D 输入正在收束，请等待完成后再开始演武");
+            yield break;
+        }
+
         // 表情也会在 LateUpdate 写入面部参数；生成动作开始前立即停止它，避免
         // 淡出阶段仍与 MotionGenerator 的关键帧交叠。
         renderer.ActionController?.StopAll();
@@ -103,6 +118,7 @@ public class GenerateMotionTool : IPetTool
             }
         });
         renderer.ReleaseAiControlLock();
+        renderer.EndGeneratedMotion(inputLease, "generated-motion-completed");
 
         string baseResult = $"✅ 演武完成：「{plan.Description}」，持续 {plan.TotalDuration:F1} 秒，共 {plan.KeyFrames.Count} 个关键帧";
 
