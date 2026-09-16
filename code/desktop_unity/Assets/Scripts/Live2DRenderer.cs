@@ -367,6 +367,15 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private Live2DInputLease _candidateTestInputLease;
     private EmbodiedActionRequest _candidateActionRequest;
     private readonly EmbodiedPoseState _embodiedPoseState = new EmbodiedPoseState();
+    private bool _certifiedMotionActive;
+    private Coroutine _certifiedMotionCoroutine;
+    private EmbodiedActionRequest _certifiedMotionRequest;
+    private Live2DInputLease _certifiedMotionLease;
+    private EmbodiedMotionCurve[] _certifiedMotionCurves;
+    private CubismParameter[] _certifiedMotionParameters;
+    private float[] _certifiedMotionBaselines;
+    private float _certifiedMotionElapsed;
+    private float _certifiedMotionDuration;
     public CubismModel CubismModel => _cubismModel;
 
     /// <summary>截取当前模型渲染快照（PNG bytes）；默认裁切到模型区域，供视觉分析用。</summary>
@@ -2959,6 +2968,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
 
         CancelTestParam94Gesture("candidate-test-before-test-exit");
+        CancelCertifiedMotion("certified-motion-before-test-exit");
         StopExpressionForInputTransition();
         CancelInvoke(nameof(ReleaseActionLock));
         if (_actionLocked) ReleaseActionLock("action-test-exit");
@@ -2989,11 +2999,121 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private void OnDisable()
     {
         CancelTestParam94Gesture("candidate-test-renderer-disabled");
+        CancelCertifiedMotion("certified-motion-renderer-disabled");
     }
 
     private void OnApplicationQuit()
     {
         CancelTestParam94Gesture("candidate-test-application-quitting");
+        CancelCertifiedMotion("certified-motion-application-quitting");
+    }
+
+    /// <summary>
+    /// 生产执行器：播放一项已认证的身体技能（多参数曲线）。
+    /// 唯一入口是 EmbodiedRuntimeAdmission 准入 + 输入租约；曲线数据来自
+    /// 数据根 certified_motions/&lt;skillId&gt;.json（不入版本库）。失败返回中文原因。
+    /// </summary>
+    public string PlayCertifiedMotion(string skillId)
+    {
+        if (string.IsNullOrWhiteSpace(skillId)) return "❌ 未指定身体技能";
+        if (!CertifiedMotionLibrary.TryGet(skillId, out var entry)) return $"❌ 技能 {skillId} 未认证或不存在";
+        if (_certifiedMotionActive || _testParam94GestureActive) return "❌ 已有身体动作正在执行，请稍后再试";
+        DesktopPet gatePet = _pet != null ? _pet : FindObjectOfType<DesktopPet>();
+        bool movementTaskActive = gatePet != null && gatePet.IsMovementTaskPendingOrActive;
+        bool locomotionActive = gatePet != null && (movementTaskActive || gatePet.petVx != 0
+            || _walkBlendRemaining > 0f || _walkFadeInRemaining > 0f);
+        if (_actionLocked || _aiControlLocked || locomotionActive) return "❌ 当前未处于稳定静止状态，动作已拒绝";
+
+        string dataPath = System.IO.Path.Combine(DataPathConfig.DataRoot, "certified_motions", skillId + ".json");
+        if (!System.IO.File.Exists(dataPath)) return $"❌ 动作数据未安装：{skillId}";
+        EmbodiedMotionCandidate def = JsonUtility.FromJson<EmbodiedMotionCandidate>(System.IO.File.ReadAllText(dataPath));
+        if (def == null || !def.IsValid || def.candidateId != skillId) return $"❌ 动作数据无效：{skillId}";
+
+        CubismModel model = CubismModel;
+        if (model == null) return "❌ 模型未就绪";
+        var curves = new EmbodiedMotionCurve[def.curves.Length];
+        var parameters = new CubismParameter[def.curves.Length];
+        for (int i = 0; i < def.curves.Length; i++)
+        {
+            EmbodiedMotionCurveEntry curveEntry = def.curves[i];
+            CubismParameter parameter = FindParameterById(model, curveEntry.parameterId);
+            if (parameter == null) return $"❌ 动作参数在模型上缺失：{curveEntry.parameterId}";
+            if (curveEntry.segments == null || curveEntry.segments.Length < 2) return $"❌ 动作曲线无效：{curveEntry.parameterId}";
+            parameters[i] = parameter;
+            curves[i] = new EmbodiedMotionCurve(curveEntry.parameterId,
+                System.Array.ConvertAll(curveEntry.segments, v => (double)v), def.durationSeconds);
+        }
+
+        if (!_inputCoordinator.TryBegin(Live2DInputKind.GeneratedMotion, "certified-motion:" + skillId, out _certifiedMotionLease))
+            return "❌ 动作通道被占用";
+        if (!EmbodiedRuntimeAdmission.TryBeginSkill(skillId, out _certifiedMotionRequest, out var admissionReason))
+        {
+            _inputCoordinator.Release(_certifiedMotionLease, "certified-motion-admission-rejected");
+            _certifiedMotionLease = default;
+            return $"❌ 动作准入被拒绝：{admissionReason}";
+        }
+
+        _certifiedMotionCurves = curves;
+        _certifiedMotionParameters = parameters;
+        _certifiedMotionBaselines = System.Array.ConvertAll(parameters, p => p.Value);
+        _certifiedMotionDuration = def.durationSeconds;
+        _certifiedMotionElapsed = 0f;
+        _certifiedMotionActive = true;
+        ResetIdleAction(true);
+        _actionLocked = true;
+        if (_pet != null) _pet.SetActionMovementLock(true);
+        _certifiedMotionCoroutine = StartCoroutine(PlayCertifiedMotionRoutine());
+        Debug.Log($"[CertifiedMotion] started: {skillId} ({def.durationSeconds:F2}s, {curves.Length} params)");
+        return $"✅ 已开始执行身体技能「{skillId}」（约 {def.durationSeconds:F1} 秒）";
+    }
+
+    private System.Collections.IEnumerator PlayCertifiedMotionRoutine()
+    {
+        while (_certifiedMotionElapsed < _certifiedMotionDuration)
+        {
+            _certifiedMotionElapsed += Time.deltaTime;
+            float time = Mathf.Min(_certifiedMotionElapsed, _certifiedMotionDuration);
+            for (int i = 0; i < _certifiedMotionCurves.Length; i++)
+            {
+                float value = _certifiedMotionCurves[i].Evaluate(time);
+                _embodiedPoseState.RecordWrite(_certifiedMotionCurves[i].ParameterId, value, _certifiedMotionBaselines[i]);
+                SetParameter(_certifiedMotionCurves[i].ParameterId, value);
+            }
+            yield return null;
+        }
+        FinishCertifiedMotion("certified-motion-completed");
+    }
+
+    private void FinishCertifiedMotion(string reason)
+    {
+        if (_certifiedMotionCoroutine != null) StopCoroutine(_certifiedMotionCoroutine);
+        _certifiedMotionCoroutine = null;
+        _certifiedMotionActive = false;
+        _actionLocked = false;
+        var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+        if (restored.Count > 0) Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
+        _inputCoordinator.Release(_certifiedMotionLease, reason);
+        _certifiedMotionLease = default;
+        EmbodiedRuntimeAdmission.CompleteSkill(_certifiedMotionRequest, reason);
+        _certifiedMotionRequest = null;
+        _certifiedMotionCurves = null;
+        _certifiedMotionParameters = null;
+        _certifiedMotionBaselines = null;
+        if (_pet != null) _pet.SetActionMovementLock(false);
+        Debug.Log("[CertifiedMotion] cleanup: " + reason);
+    }
+
+    public void CancelCertifiedMotion(string reason = "certified-motion-cancelled")
+    {
+        if (!_certifiedMotionActive) return;
+        FinishCertifiedMotion(reason);
+    }
+
+    private static CubismParameter FindParameterById(CubismModel model, string id)
+    {
+        foreach (CubismParameter item in model.Parameters)
+            if (item != null && item.Id == id) return item;
+        return null;
     }
 
     /// <summary>

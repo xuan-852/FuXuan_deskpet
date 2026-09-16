@@ -17,11 +17,19 @@ public static class EmbodiedRuntimeAdmission
     private static CertifiedSkillRegistry CreateRegistry()
     {
         var registry = new CertifiedSkillRegistry();
-        if (!registry.TryRegister(ScreenSideArmRaiseCertification.CreateRecord(), out var reason)
-            || !registry.TryRegister(HeadSwayBlinkIdleCertification.CreateRecord(), out reason))
+        if (!registry.TryRegister(ScreenSideArmRaiseCertification.CreateRecord(), out var reason))
             Debug.LogError($"[EmbodiedRuntimeAdmission] 认证技能注册被拒绝，准入保持为空：{reason}");
+        foreach (var motion in CertifiedMotionLibrary.Entries)
+        {
+            if (registry.TryGet(motion.SkillId, out _)) continue;
+            if (!registry.TryRegister(motion.CreateRecord(), out reason))
+                Debug.LogError($"[EmbodiedRuntimeAdmission] 认证动作 {motion.SkillId} 注册被拒绝：{reason}");
+        }
+        if (RegistryHasNoSkills(registry)) Debug.LogError("[EmbodiedRuntimeAdmission] 准入注册表为空。");
         return registry;
     }
+
+    private static bool RegistryHasNoSkills(CertifiedSkillRegistry registry) => registry.Count == 0;
 
     public static bool IsSkillAdmissible(string skillId) => Registry.TryGet(skillId ?? "", out _);
 
@@ -40,6 +48,12 @@ public static class EmbodiedRuntimeAdmission
                 duration = TimeSpan.FromSeconds(HeadSwayBlinkIdleCertification.DurationSeconds);
                 return true;
             default:
+                if (CertifiedMotionLibrary.TryGet(skillId, out var motion))
+                {
+                    semanticTarget = motion.SemanticBoundary;
+                    duration = TimeSpan.FromSeconds(motion.DurationSeconds);
+                    return true;
+                }
                 semanticTarget = null;
                 duration = default;
                 return false;

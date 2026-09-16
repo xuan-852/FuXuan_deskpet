@@ -60,6 +60,7 @@ public static class LocalToolRouter
     private static readonly string[] OperationTools =
     {
         "set_expression", "stop_action", "take_screenshot",
+        "request_body_skill",
         "inspect_motion_memory", "inspect_personality",
         "explore_body", "explore_body_vision", "run_verification", "vis_verify", "self_review",
         "knowledge_index", "get_system_info", "get_mouse_pos", "query_reminders",

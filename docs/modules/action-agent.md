@@ -31,6 +31,8 @@
 
 2026-09-17 新增 `EmbodiedPoseState` 最小集与统一安全收束：具身执行器的参数写入全部登记还原记录，`FinishTestParam94Gesture` 收束点依次执行姿势还原（`[EmbodiedSafeRecovery] pose-restored`）→ 租约释放 → 准入释放 → 移动锁解除，完成/取消/禁用/退出同路径收束。运行时帧对照确认执行协程复现评审包视觉（基线-抬臂-复位）。详见 [L3 动作生命周期与安全收束](../truth/l3-action-lifecycle-recovery.md)。
 
+2026-09-17 LLM 接入具身控制 MVP：`CertifiedMotionLibrary` 登记 5 个认证动作技能（官方示例重定向，双模型 82–92 分），生产执行器 `Live2DRenderer.PlayCertifiedMotion`（准入→租约→曲线播放→姿势还原→收束），LLM 工具 `request_body_skill`（只接受认证白名单，拒绝即终态）入 operation 意图白名单。隔离真机驱动验证 23 参数播放与全量还原。详见 [L3 LLM 接入具身控制](../truth/l3-llm-embodied-integration.md)。
+
 ### 2.1 ActionAgent 文件清单（15 个 .cs）
 
 | 文件 | 职责 |

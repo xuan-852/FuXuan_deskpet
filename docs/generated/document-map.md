@@ -32,6 +32,7 @@
 - [L3 认证技能基础骨架](../../docs/truth/l3-certified-skill-foundation.md) — `docs/truth/l3-certified-skill-foundation.md`
 - [L3 外部动作素材导入（官方示例 motions）](../../docs/truth/l3-external-motion-import.md) — `docs/truth/l3-external-motion-import.md`
 - [L3 Live2D 输入边界审计](../../docs/truth/l3-live2d-input-boundary-audit.md) — `docs/truth/l3-live2d-input-boundary-audit.md`
+- [L3 LLM 接入具身控制（架构试验）](../../docs/truth/l3-llm-embodied-integration.md) — `docs/truth/l3-llm-embodied-integration.md`
 - [L3 运行时认证准入缺口审计](../../docs/truth/l3-runtime-admission-gap-audit.md) — `docs/truth/l3-runtime-admission-gap-audit.md`
 - [L3 运行时认证准入接线](../../docs/truth/l3-runtime-admission-wiring.md) — `docs/truth/l3-runtime-admission-wiring.md`
 - [L3 画面侧单臂上抬候选技能](../../docs/truth/l3-screen-side-arm-raise-candidate.md) — `docs/truth/l3-screen-side-arm-raise-candidate.md`

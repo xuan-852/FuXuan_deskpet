@@ -19,7 +19,7 @@ const semanticClaim = process.argv[5] || '';
 if (!exe || !fs.existsSync(exe)) throw new Error('Missing probe exe.');
 if (!candidateFile || !fs.existsSync(candidateFile)) throw new Error('Missing candidate json.');
 if (!skillId || !/^[a-z0-9_\-]+$/i.test(skillId)) throw new Error('Missing valid skill id.');
-if (skillId !== 'screen_side_arm_raise' && !semanticClaim) throw new Error('Non-default skill requires a semantic boundary claim (argv[5]).');
+// semanticClaim 缺省时仅取证（capture-only）；候选包/评审阶段才强制要求声明。
 const candidate = JSON.parse(fs.readFileSync(candidateFile, 'utf8'));
 if (candidate.candidateId !== skillId) throw new Error(`candidateId mismatch: ${candidate.candidateId} != ${skillId}`);
 
@@ -50,6 +50,10 @@ function awaitExit(child, timeoutMs) {
   }
   const report = JSON.parse(fs.readFileSync(path.join(root, 'motion-playback-report.json'), 'utf8'));
   console.log(`[capture] frames=${report.frames.length} peak=${report.peakMeanDifference?.toFixed(3)} adjacent=${report.maxAdjacentMeanDifference?.toFixed(3)} reset=${report.resetMeanDifference?.toFixed(3)} resetStable=${report.resetStable}`);
+  if (!semanticClaim) {
+    console.log(`[capture] capture-only done (no claim). frame dir: ${path.join(root, 'probe_window')}`);
+    return;
+  }
 
   const run = (args) => {
     const r = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 240000, env: process.env });

@@ -103,21 +103,6 @@ public sealed class ProbeWindowController : MonoBehaviour
         public string[] frames;
     }
 
-    [Serializable]
-    private sealed class MotionCandidateFile
-    {
-        public string candidateId;
-        public float durationSeconds;
-        public MotionCurveEntry[] curves;
-    }
-
-    [Serializable]
-    private sealed class MotionCurveEntry
-    {
-        public string parameterId;
-        public float[] segments;
-    }
-
     private sealed class CapturedFrame { public byte[] png; public Color32[] pixels; }
 
     private void Start()
@@ -565,7 +550,7 @@ public sealed class ProbeWindowController : MonoBehaviour
     private IEnumerator CaptureMotionPlayback(CubismModel model, Camera camera, string candidatePath, string dir,
         bool preservePhysics, Action<MotionPlaybackResult> done)
     {
-        MotionCandidateFile candidate = JsonUtility.FromJson<MotionCandidateFile>(File.ReadAllText(candidatePath));
+        EmbodiedMotionCandidate candidate = JsonUtility.FromJson<EmbodiedMotionCandidate>(File.ReadAllText(candidatePath));
         if (candidate == null || candidate.curves == null || candidate.curves.Length == 0 || string.IsNullOrEmpty(candidate.candidateId))
             throw new InvalidOperationException("Motion candidate file is missing curves or candidateId: " + candidatePath);
         float duration = candidate.durationSeconds > 0f ? candidate.durationSeconds : 1f;
@@ -574,7 +559,7 @@ public sealed class ProbeWindowController : MonoBehaviour
         var baselines = new float[candidate.curves.Length];
         for (int i = 0; i < candidate.curves.Length; i++)
         {
-            MotionCurveEntry entry = candidate.curves[i];
+            EmbodiedMotionCurveEntry entry = candidate.curves[i];
             parameters[i] = FindParameter(model, entry.parameterId);
             if (parameters[i] == null) throw new InvalidOperationException("Motion parameter missing on model: " + entry.parameterId);
             if (entry.segments == null || entry.segments.Length < 2) throw new InvalidOperationException("Motion curve has no segments: " + entry.parameterId);

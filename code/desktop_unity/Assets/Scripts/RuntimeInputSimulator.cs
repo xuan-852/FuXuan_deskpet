@@ -119,6 +119,15 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.StartsWith("certified-motion:", StringComparison.OrdinalIgnoreCase))
+        {
+            string skillId = body.Substring("certified-motion:".Length).Trim();
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer == null) Debug.LogWarning("[TestInbox] certified-motion failed: 未找到 Live2DRenderer");
+            else Debug.Log("[TestInbox] certified-motion result: " + renderer.PlayCertifiedMotion(skillId));
+            return true;
+        }
+
         if (body.Equals("lease:generated:begin", StringComparison.OrdinalIgnoreCase))
         {
             Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
