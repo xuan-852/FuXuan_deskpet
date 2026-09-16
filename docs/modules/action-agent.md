@@ -23,7 +23,7 @@
 
 ### 2.0 L3 认证技能基础（2026-09-16）
 
-`Assets/Scripts/Embodied/CertifiedSkillFoundation.cs` 新增四层认证的安全骨架：`SkillCertificationRecord → CertifiedSkillRegistry → EmbodiedActionRequest → EmbodiedCoordinator`。注册要求机械、视觉、语义、自然度、模型版本和映射版本均完整，且自然度不少于首版默认 75；请求没有原始参数字段，只能按技能声明资源占用。2026-09-16 首个生产认证记录 `screen_side_arm_raise`（`ScreenSideArmRaiseCertification`，基于 DeepSeek 85 + GLM glm-4.5v 92 双模型一致复核、自然度保守取 85）已可注册进 `CertifiedSkillRegistry` 并被协调器按 `RightArm` 资源仲裁（隔离 EditMode `FirstSkillCertificationTests` 通过）；但注册表尚未接入生产运行时准入，旧动作生成链也尚未迁移为 `ActionRequest`，LLM 工具面仍无任何身体控制技能。详见 [L3 认证技能基础](../truth/l3-certified-skill-foundation.md) 与 [画面侧单臂候选真相](../truth/l3-screen-side-arm-raise-candidate.md)。
+`Assets/Scripts/Embodied/CertifiedSkillFoundation.cs` 新增四层认证的安全骨架：`SkillCertificationRecord → CertifiedSkillRegistry → EmbodiedActionRequest → EmbodiedCoordinator`。注册要求机械、视觉、语义、自然度、模型版本和映射版本均完整，且自然度不少于首版默认 75；请求没有原始参数字段，只能按技能声明资源占用。2026-09-16 首个生产认证记录 `screen_side_arm_raise`（`ScreenSideArmRaiseCertification`，基于 DeepSeek 85 + GLM glm-4.5v 92 双模型一致复核、自然度保守取 85）注册进 `CertifiedSkillRegistry` 并被协调器按 `RightArm` 资源仲裁。2026-09-17 `EmbodiedRuntimeAdmission` 作为生产准入汇点接线：隔离 Param94 候选手势执行前必须取得 `ActionRequest` 准入，完成/取消/退出同步释放（隔离运行时驱动与 EditMode `RuntimeAdmissionTests` 验证，failed=0）。LLM 工具面仍无任何身体控制技能，主动行为开放属后续任务包。详见 [L3 认证技能基础](../truth/l3-certified-skill-foundation.md)、[运行时认证准入接线](../truth/l3-runtime-admission-wiring.md) 与 [画面侧单臂候选真相](../truth/l3-screen-side-arm-raise-candidate.md)。
 
 2026-09-16 的运行时迁移决策采用 A：在首个认证技能出现前，`MotionAgent` 的旧生成、组合生成和生成式表情回退只允许隔离 `.test_mode` 离线复核；生产运行时拒绝。`play_action` 与 `generate_motion` 同时从 LLM 工具入口移除。步行、物理与表情基线未改动。详见 [L3 运行时认证准入审计](../truth/l3-runtime-admission-gap-audit.md)。
 

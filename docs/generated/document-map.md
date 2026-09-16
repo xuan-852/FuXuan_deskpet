@@ -31,6 +31,7 @@
 - [L3 认证技能基础骨架](../../docs/truth/l3-certified-skill-foundation.md) — `docs/truth/l3-certified-skill-foundation.md`
 - [L3 Live2D 输入边界审计](../../docs/truth/l3-live2d-input-boundary-audit.md) — `docs/truth/l3-live2d-input-boundary-audit.md`
 - [L3 运行时认证准入缺口审计](../../docs/truth/l3-runtime-admission-gap-audit.md) — `docs/truth/l3-runtime-admission-gap-audit.md`
+- [L3 运行时认证准入接线](../../docs/truth/l3-runtime-admission-wiring.md) — `docs/truth/l3-runtime-admission-wiring.md`
 - [L3 画面侧单臂上抬候选技能](../../docs/truth/l3-screen-side-arm-raise-candidate.md) — `docs/truth/l3-screen-side-arm-raise-candidate.md`
 - [L3 虚拟骨架候选账本](../../docs/truth/l3-virtual-skeleton-candidate-ledger.md) — `docs/truth/l3-virtual-skeleton-candidate-ledger.md`
 
@@ -46,6 +47,7 @@
 - `l3-certified-skill-foundation-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-certified-skill-foundation.json）
 - `l3-first-skill-certification-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-first-skill-certification.json）
 - `l3-runtime-admission-a-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-a.json）
+- `l3-runtime-admission-b-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-b.json）
 - `l3-runtime-admission-gap-audit-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-gap-audit.json）
 - `l3-virtual-skeleton-candidate-ledger-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-virtual-skeleton-candidate-ledger.json）
 - `probe-core-and-unity-adapter-v1` → `docs/guides/approved/generic-live2d-capability-probe.md`（tasks/packages/probe-core-and-unity-adapter.json）

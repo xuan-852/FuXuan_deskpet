@@ -1,0 +1,41 @@
+{
+  "packageId": "l3-runtime-admission-b-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-02", "FR-L3-03", "C-L3-01", "C-L3-06", "C-L3-07", "AC-L3-02", "AC-L3-03", "AC-L3-06"],
+  "acceptanceObjective": "Instantiate the certified-skill registry and coordinator in production as the single admission point, and route the only existing certified-skill executor (the isolated Param94 candidate gesture) through ActionRequest admission with guaranteed release on completion, cancellation and exit. No LLM exposure; no new production action entry; runtime behavior outside .test_mode unchanged.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/",
+    "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "docs/truth/",
+    "docs/modules/",
+    "docs/generated/",
+    "tasks/packages/",
+    "scripts/test/"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/",
+    "docs/decisions/",
+    "docs/guides/approved/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    ".\\build.ps1 -OutputDir <isolated-output-dir>",
+    "node scripts/test/param94_gesture_drive.cjs <isolated-output-dir>\\DesktopPet.exe",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": [
+    "docs/truth/l3-runtime-admission-wiring.md",
+    "docs/truth/l3-runtime-admission-gap-audit.md"
+  ],
+  "evidenceOutputs": [
+    "logs/build/test_results.xml",
+    "<isolated-data-root>/logs/player_log.txt (EmbodiedRuntimeAdmission admitted/released lines)"
+  ],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "The admission hub registers only the first certified record; registration failure must leave admission empty rather than degrade. The gesture executor keeps its static gate, Live2DInputCoordinator lease, cancel paths and test-mode gating; the admission request is additional, never a bypass. LLM tool surface remains empty."
+}

@@ -365,6 +365,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private Live2DInputLease _expressionInputLease;
     private Live2DInputLease _actionInputLease;
     private Live2DInputLease _candidateTestInputLease;
+    private EmbodiedActionRequest _candidateActionRequest;
     public CubismModel CubismModel => _cubismModel;
 
     /// <summary>截取当前模型渲染快照（PNG bytes）；默认裁切到模型区域，供视觉分析用。</summary>
@@ -2904,6 +2905,13 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
         if (!_inputCoordinator.TryBegin(Live2DInputKind.CandidateTest, "param94-gesture", out _candidateTestInputLease))
             return false;
+        if (!EmbodiedRuntimeAdmission.TryBeginSkill(ScreenSideArmRaiseCertification.SkillId, out _candidateActionRequest, out var admissionReason))
+        {
+            _inputCoordinator.Release(_candidateTestInputLease, "candidate-test-admission-rejected");
+            _candidateTestInputLease = default;
+            Debug.Log("[CandidateTest] rejected-admission: " + admissionReason);
+            return false;
+        }
         _testParam94GestureCoroutine = StartCoroutine(PlayTestParam94Gesture());
         return true;
     }
@@ -2967,6 +2975,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _actionLocked = false;
         _inputCoordinator.Release(_candidateTestInputLease, reason);
         _candidateTestInputLease = default;
+        EmbodiedRuntimeAdmission.CompleteSkill(_candidateActionRequest, reason);
+        _candidateActionRequest = null;
         if (_pet != null) _pet.SetActionMovementLock(false);
         Debug.Log("[CandidateTest] cleanup: " + reason);
     }

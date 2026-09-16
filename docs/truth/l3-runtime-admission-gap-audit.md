@@ -9,7 +9,9 @@
 
 `CertifiedSkillRegistry`、`EmbodiedCoordinator` 和 `EmbodiedActionRequest` 已存在于 `Assets/Scripts/Embodied/`，但静态检索生产 `Assets/Scripts/` 未发现 `new CertifiedSkillRegistry` 或 `new EmbodiedCoordinator`。当前唯一具名候选 `screen_side_arm_raise` 保持 `Candidate`，未注册任何生产 `Certified` 技能。
 
-因此当前状态是：**输入互斥已接入生产；L3 的“仅认证技能可准入”尚未接入生产。** 这不影响候选不可调用的事实，也不构成 L3 完成声明。
+因此当时的状态是：**输入互斥已接入生产；L3 的“仅认证技能可准入”尚未接入生产。** 这不影响候选不可调用的事实，也不构成 L3 完成声明。
+
+**2026-09-17 更新**：上述缺口已部分闭合——`EmbodiedRuntimeAdmission` 已作为生产准入汇点实例化注册表与协调器，唯一执行路径（隔离 Param94 候选手势）已经 `ActionRequest` 准入并验证完成/取消双路径释放；证据见 [运行时认证准入接线](l3-runtime-admission-wiring.md)。「LLM/主动行为经准入调用认证技能」仍属后续任务包，注册表对 LLM 依旧不可达。
 
 ## 已解决决策：BD-L3-RUNTIME-01
 
