@@ -11,16 +11,17 @@
 
 ## 提案指导文档
 
-- [L1 运行时稳定性与恢复指导文档](../../docs/guides/proposed/l1-runtime-foundation.md) — `docs/guides/proposed/l1-runtime-foundation.md`
-- [L2 桌面身体、窗口与输入指导文档](../../docs/guides/proposed/l2-desktop-body-and-window.md) — `docs/guides/proposed/l2-desktop-body-and-window.md`
-- [L4 对话意图、工具与桥接指导文档](../../docs/guides/proposed/l4-intent-tools-and-bridge.md) — `docs/guides/proposed/l4-intent-tools-and-bridge.md`
-- [L5 记忆、人格与主动互动指导文档](../../docs/guides/proposed/l5-memory-personality-proactive.md) — `docs/guides/proposed/l5-memory-personality-proactive.md`
-- [L6 办公、知识、提醒与发布指导文档](../../docs/guides/proposed/l6-user-services-and-release.md) — `docs/guides/proposed/l6-user-services-and-release.md`
+暂无。
 
 ## 批准指导文档
 
 - [通用 Live2D 参数能力探测器指导文档](../../docs/guides/approved/generic-live2d-capability-probe.md) — `docs/guides/approved/generic-live2d-capability-probe.md`
+- [l1-runtime-foundation.md](../../docs/guides/approved/l1-runtime-foundation.md) — `docs/guides/approved/l1-runtime-foundation.md`
+- [l2-desktop-body-and-window.md](../../docs/guides/approved/l2-desktop-body-and-window.md) — `docs/guides/approved/l2-desktop-body-and-window.md`
 - [L3 具身技能认证与动作协调指导文档](../../docs/guides/approved/l3-embodied-skill-certification.md) — `docs/guides/approved/l3-embodied-skill-certification.md`
+- [l4-intent-tools-and-bridge.md](../../docs/guides/approved/l4-intent-tools-and-bridge.md) — `docs/guides/approved/l4-intent-tools-and-bridge.md`
+- [l5-memory-personality-proactive.md](../../docs/guides/approved/l5-memory-personality-proactive.md) — `docs/guides/approved/l5-memory-personality-proactive.md`
+- [l6-user-services-and-release.md](../../docs/guides/approved/l6-user-services-and-release.md) — `docs/guides/approved/l6-user-services-and-release.md`
 - [Live2D 输入协调与单租约指导文档](../../docs/guides/approved/live2d-input-coordination.md) — `docs/guides/approved/live2d-input-coordination.md`
 - [Live2D 探测评测准确性指导文档](../../docs/guides/approved/probe-evaluation-accuracy.md) — `docs/guides/approved/probe-evaluation-accuracy.md`
 
