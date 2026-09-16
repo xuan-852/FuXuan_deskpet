@@ -54,6 +54,14 @@
 - `batch_deepseek_review.cjs` 以 20 项可恢复批次完成 244/244 DeepSeek V4 视觉评价；单项证据缓存、批次进度和 UTF-8 汇总均位于隔离数据根。全量 DeepSeek usage 合计 423,328 tokens，结果无缺失。
 - `build_parameter_catalog.cjs` 已生成只读 `parameter-capability-catalog.json`：87 个 `pose-candidate`、67 个 `effect-only`、64 个 `unclassified-visible`、26 个 `no-visible-evidence`。目录只用于后续 JSON 动作配置的查询与人工/后续验收排序；全部参数仍为 `not-certified`，且 `mapWriteAllowed=false`。
 - 此次全参数普查是冻结写入者下的基础层；已单独完成传统 `ParamBodyAngleX/Y/Z` 的物理模式复验。其他依赖物理、组合参数或时序的条目不因本轮静态采样被判为不可用。
+
+## 2026-09-17 GLM glm-4.5v 姿势候选批量交叉判
+
+- 经用户授权，`cloud_review.cjs` 新增 `FU_XUAN_GLM_MODEL` 模型参数化（限流期以 `glm-4.5v` 替代 `glm-4.6v-flash`），并以新脚本 `batch_glm_review.cjs`（分批 20 项、单项缓存、可续跑、记录用量）对能力目录 87 个 `pose-candidate` 完成第二模型复核：87/87 HTTP 200 且结构化可解析，合计 291,284 tokens、87 次调用，证据与对比汇总保留在隔离数据根 `cloud_review/`（含 `glm-cross-compare-pose87.json`）。
+- **36 项双模型一致判可见**：这批候选现在具备双模型可见性证据，仍为探索语义候选（`not-certified`、`mapWriteAllowed=false`）。其中 32 项两模型语义措辞存在差异：方向/部位措辞级差异（如「头发摆动」vs「头发侧向摆动」）由主代理记录不改分类；**左右归属类类别分歧**（如 `Param97` 左臂 vs 右臂、`Param_Angle_Rotation_*` 左右衣摆归属）涉及人体/画面语义，按阈值决策交人工裁决。
+- **51 项 GLM 判不可见，本轮不采信为否决证据**：这些参数恰为全局峰值像素差 ≤0.378（中位数 0.000）的局部细微效果项，与本地像素指标及人工帧审查证据冲突（反例：`ParamAngleX` 人工帧确认左右转头而本地全局峰值差仅 ~1.7）。依 [探评测准确性](../guides/approved/probe-evaluation-accuracy.md) AC-ACC-02，本批未含正/负控制样本，无法证明 GLM 在全画布 4096px 帧下采样后的判别下限；后续复核应加入正/负/复位控制样本，并对细微项采用模型可见区域的局部裁切帧提高有效分辨率。
+- `Param94` 在本批的语义措辞出现「挥手」字样；该措辞来自 4 帧普查复核，弱于候选包 14 帧专项复核（其明确「无挥手特征」），不改变 `screen_side_arm_raise` 的认证结论。
+- 本节不改变任何参数的认证状态；所有条目继续 `not-certified`。
 ## 2026-09-16 保守动态连续性复验
 
 - 以独立 `Live2DProbe.exe` 的单参数扫动模式，在隔离 `.test_mode` 数据根中复验了两个后续组合候选。`ParamAngleX` 使用 `[-15, 15]`、12 步、从基线扫向 `15` 再回基线：峰值平均像素差 `1.721964`、复位差 `0`；帧序列分析的相邻 RGB 均值/峰值为 `0.3472/0.3520`，相位峰值 `1.7245`。`Param94` 使用同一保守区间与步数：峰值平均像素差 `2.085081`、复位差 `0`；相邻 RGB 均值/峰值为 `0.7585/0.9114`，相位峰值 `2.0882`。

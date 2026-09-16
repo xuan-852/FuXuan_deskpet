@@ -82,7 +82,9 @@ async function call(name, endpoint, model, key) {
   }
   const reviews = [];
   if (providerFilter === 'both' || providerFilter === 'deepseek') reviews.push(await call('deepseek', 'https://api.deepseek.com/chat/completions', 'deepseek-v4-flash', process.env.DEEPSEEK_API_KEY));
-  if (providerFilter === 'both' || providerFilter === 'glm') reviews.push(await call('glm', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', 'glm-4.6v-flash', process.env.GLM_API_KEY));
+  // GLM 默认仍为 glm-4.6v-flash；限流期可经 FU_XUAN_GLM_MODEL 指定替代档位（如 glm-4.5v，需用户授权）。
+  const glmModel = process.env.FU_XUAN_GLM_MODEL || 'glm-4.6v-flash';
+  if (providerFilter === 'both' || providerFilter === 'glm') reviews.push(await call('glm', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', glmModel, process.env.GLM_API_KEY));
   const merged = new Map(existingReviews.map(item => [item.provider, item]));
   for (const review of reviews) merged.set(review.provider, review);
   const summary = { parameterId, isolatedRoot: root, frames: frames.map(x => path.basename(x.file)), reviews: [...merged.values()] };
