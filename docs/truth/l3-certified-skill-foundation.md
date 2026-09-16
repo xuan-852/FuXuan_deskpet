@@ -22,6 +22,8 @@
 
 2026-09-16 对首个候选的 DeepSeek 离线复核得到语义支持与自然度 85/100；同日 `glm-4.6v-flash` 因限流改用授权替代 `glm-4.5v` 完成独立交叉复核（92/100，与 DeepSeek 全字段一致、无分歧），四层证据据此提升为 `Passed`。
 
-`ScreenSideArmRaiseCertification.CreateRecord()` 已生成首个生产认证记录（自然度保守取 85，含 moc3 与映射源版本证据），隔离 EditMode `FirstSkillCertificationTests` 验证注册成功且协调器按 `RightArm` 资源仲裁。**注册表仍以实例形式存在于测试与数据定义层，尚未接入生产运行时准入；`LLM` 工具面仍无任何身体控制技能。** 真实执行该技能需要后续运行时准入接线与执行层任务包。
+`ScreenSideArmRaiseCertification.CreateRecord()` 已生成首个生产认证记录（自然度保守取 85，含 moc3 与映射源版本证据），隔离 EditMode `FirstSkillCertificationTests` 验证注册成功且协调器按 `RightArm` 资源仲裁。
+
+**2026-09-17 第二个认证技能**：外部动作候选 `external_Hiyori_Hiyori_m02`（头部摇摆+眨眼待机，5.93s）四层通过（双模型 85/92 一致 supported，包 `674bdaec…`），记录 `HeadSwayBlinkIdleCertification` 注册进准入汇点，资源 `Face|Body`。`EmbodiedRuntimeAdmission` 同步改为集合式活动请求（不相交资源可并行准入，C-L3-02）；该技能尚无生产执行器，回放取证在隔离探针完成，LLM 工具面仍为零。
 
 `CandidateReviewAssessment` 定义离线评审结果的最小可追溯边界：必须匹配候选技能、绑定 64 位复核包 SHA-256、声明评审者与模型、独立给出语义和自然度结论，并通过 `NaturalnessGate`。它最多只能“贡献认证证据”，不能改写候选状态、注册技能或发起动作。隔离 EditMode 测试通过（failed=0）：缺包指纹、100 分但低于步行基线均被拒绝；满足所有离线评审条件也仍不等同于候选已认证。

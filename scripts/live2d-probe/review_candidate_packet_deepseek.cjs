@@ -18,6 +18,9 @@ if (!fs.existsSync(packetPath)) throw new Error(`Missing frozen review packet: $
 const packet = JSON.parse(fs.readFileSync(packetPath, 'utf8'));
 if (packet.schema !== 'live2d-candidate-review-packet/v1' || packet.skillId !== skillId)
   throw new Error('Packet schema or skill ID mismatch.');
+const claim = packet.constraints?.semanticBoundary
+  || (skillId === 'screen_side_arm_raise' ? '画面侧单臂上抬后回落；它明确不是挥手、问候或招手' : '');
+if (!claim) throw new Error('Packet lacks a semantic boundary claim.');
 const sha256 = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 for (const frame of packet.frames || []) {
   const file = path.join(root, frame.file);
@@ -29,7 +32,7 @@ const reviewFrames = wantedOrders.map(order => packet.frames[order]);
 if (new Set(reviewFrames.map(x => x.order)).size !== 6) throw new Error('Packet lacks six distinct deterministic review phases.');
 const prompt = [
   '你在离线复核同一 Live2D 模型的固定时序动作证据。图像顺序必须严格按以下 phase 解读：' + reviewFrames.map(x => x.phase).join(' → ') + '。',
-  '不得根据参数名、文件名或人物左右臂猜测语义；只根据画面判断。该候选宣称的唯一语义边界是：画面侧单臂上抬后回落；它明确不是挥手、问候或招手。',
+  '不得根据参数名、文件名或人物左右臂猜测语义；只根据画面判断。该候选宣称的唯一语义边界是：' + claim,
   '评估动作是否在整段中连续、是否在最后回到基线、是否存在明显变形/突跳/不自然，以及相对普通可接受的桌宠步行基线是否至少不更差。',
   '仅返回 JSON：',
   '{"semantic_boundary":"supported|unsupported|uncertain","observed_motion":"不超过100字","sequence_continuous":true|false,"reset_stable":true|false,"obvious_visual_fault":true|false,"meets_walk_baseline":true|false,"naturalness_score":0-100,"confidence":"high|medium|low","summary":"不超过140字"}'

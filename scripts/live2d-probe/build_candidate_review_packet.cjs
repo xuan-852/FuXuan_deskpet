@@ -11,11 +11,16 @@ const path = require('path');
 
 const root = process.argv[2];
 const skillId = process.argv[3] || 'screen_side_arm_raise';
+const frameDirRelative = process.argv[4] || 'test_screenshots';
+const semanticClaim = process.argv[5] || (skillId === 'screen_side_arm_raise'
+  ? '画面侧单臂上抬后回落；它明确不是挥手、问候或招手'
+  : '');
 if (!root || !path.isAbsolute(root)) throw new Error('Pass an absolute isolated capture root.');
 if (!fs.existsSync(path.join(root, '.test_mode'))) throw new Error('Capture root must contain .test_mode.');
 if (!/^[a-z0-9_\-]+$/i.test(skillId)) throw new Error('Skill ID must be a simple identifier.');
+if (!semanticClaim) throw new Error('A semantic boundary claim is required for non-default skills (argv[5]).');
 
-const frameDirectory = path.join(root, 'test_screenshots');
+const frameDirectory = path.join(root, frameDirRelative);
 if (!fs.existsSync(frameDirectory)) throw new Error('Missing test_screenshots in isolated root.');
 const frames = fs.readdirSync(frameDirectory)
   .filter(name => name.toLowerCase().endsWith('.png'))
@@ -46,6 +51,7 @@ const packet = {
   capture: { isolated: true, rootMarker: '.test_mode', frameCount: packetFrames.length },
   constraints: {
     evaluationMode: 'offline-only',
+    semanticBoundary: semanticClaim,
     requiredJudgements: ['semantic-boundary', 'sequence-continuity', 'reset-stability', 'walk-baseline-comparison'],
     prohibitedConclusion: 'certified-without-four-passed-evidence-layers'
   },

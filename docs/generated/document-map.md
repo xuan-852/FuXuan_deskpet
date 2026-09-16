@@ -50,6 +50,7 @@
 - `l3-certified-skill-foundation-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-certified-skill-foundation.json）
 - `l3-external-motion-import-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-external-motion-import.json）
 - `l3-first-skill-certification-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-first-skill-certification.json）
+- `l3-motion-pipeline-certification-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-motion-pipeline-certification.json）
 - `l3-runtime-admission-a-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-a.json）
 - `l3-runtime-admission-b-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-b.json）
 - `l3-runtime-admission-gap-audit-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-gap-audit.json）

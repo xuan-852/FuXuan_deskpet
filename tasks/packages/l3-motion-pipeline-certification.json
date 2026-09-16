@@ -1,0 +1,41 @@
+{
+  "packageId": "l3-motion-pipeline-certification-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-01", "FR-L3-03", "C-L3-02", "C-L3-03", "C-L3-04", "AC-L3-02", "AC-L3-04", "AC-L3-06"],
+  "acceptanceObjective": "Build the motion certification pipeline for imported external candidates: an offline probe playback mode that captures timed multi-parameter frame sequences on the Fuxuan model, packet freezing with per-candidate semantic boundary claims, dual-model review, and promotion of the first fully passing candidate into a certification record registered at the admission hub with parallel-resource arbitration.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/",
+    "code/desktop_unity/Assets/Scripts/Live2DProbe/",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "scripts/live2d-probe/",
+    "docs/truth/",
+    "docs/modules/",
+    "docs/generated/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/",
+    "docs/decisions/",
+    "docs/guides/approved/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -RunTests",
+    "node scripts/live2d-probe/capture_motion_candidate.cjs <probe-exe> <candidate.json> <skill-id> <semantic-claim>",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": [
+    "docs/truth/l3-external-motion-import.md",
+    "docs/truth/l3-certified-skill-foundation.md"
+  ],
+  "evidenceOutputs": [
+    "logs/build/test_results.xml",
+    "<isolated-root>/motion-playback-report.json",
+    "<isolated-root>/candidate-review-packet-<skillId>.json",
+    "<isolated-root>/cloud_review/<skillId>-{deepseek,glm}-*.json"
+  ],
+  "riskLevel": "medium",
+  "externalEvidence": true,
+  "notes": "Uncertified candidates can never enter production admission: certification playback runs only in the isolated probe window. Semantic boundary claims are declared per candidate and carried inside the packet; reviewers read them from the packet. Registry admission is data-level until a production executor exists."
+}

@@ -88,6 +88,36 @@ public sealed class ProbeWindowController : MonoBehaviour
         public string[] frames;
     }
 
+    [Serializable]
+    private sealed class MotionPlaybackResult
+    {
+        public string candidateId;
+        public string candidateFile;
+        public float durationSeconds;
+        public int steps;
+        public string[] parameterIds;
+        public bool resetStable;
+        public float peakMeanDifference;
+        public float maxAdjacentMeanDifference;
+        public float resetMeanDifference;
+        public string[] frames;
+    }
+
+    [Serializable]
+    private sealed class MotionCandidateFile
+    {
+        public string candidateId;
+        public float durationSeconds;
+        public MotionCurveEntry[] curves;
+    }
+
+    [Serializable]
+    private sealed class MotionCurveEntry
+    {
+        public string parameterId;
+        public float[] segments;
+    }
+
     private sealed class CapturedFrame { public byte[] png; public Color32[] pixels; }
 
     private void Start()
@@ -157,6 +187,16 @@ public sealed class ProbeWindowController : MonoBehaviour
                 combinationRangeScale, value => captured = value);
             File.WriteAllText(Path.Combine(root, "custom-combination-sweep-report.json"), JsonUtility.ToJson(captured, true));
             Debug.Log("[Live2DProbe] custom combination sweep completed: " + string.Join(",", combinationIds));
+            Application.Quit(0);
+            yield break;
+        }
+        string motionCandidate = Environment.GetEnvironmentVariable("FU_XUAN_PROBE_MOTION_PLAYBACK");
+        if (!string.IsNullOrWhiteSpace(motionCandidate))
+        {
+            MotionPlaybackResult playback = null;
+            yield return CaptureMotionPlayback(model, camera, motionCandidate, dir, preservePhysics, value => playback = value);
+            File.WriteAllText(Path.Combine(root, "motion-playback-report.json"), JsonUtility.ToJson(playback, true));
+            Debug.Log("[Live2DProbe] motion playback completed: " + playback.candidateId);
             Application.Quit(0);
             yield break;
         }
@@ -519,6 +559,86 @@ public sealed class ProbeWindowController : MonoBehaviour
         result.maxResetMeanDifference = resetMax;
         result.resetStable = resetMax <= 0.1f;
         done(result);
+    }
+
+    // 外部动作候选回放：按候选定义的多参数曲线随时间写入并采帧，供候选包与双模型评审取证。
+    private IEnumerator CaptureMotionPlayback(CubismModel model, Camera camera, string candidatePath, string dir,
+        bool preservePhysics, Action<MotionPlaybackResult> done)
+    {
+        MotionCandidateFile candidate = JsonUtility.FromJson<MotionCandidateFile>(File.ReadAllText(candidatePath));
+        if (candidate == null || candidate.curves == null || candidate.curves.Length == 0 || string.IsNullOrEmpty(candidate.candidateId))
+            throw new InvalidOperationException("Motion candidate file is missing curves or candidateId: " + candidatePath);
+        float duration = candidate.durationSeconds > 0f ? candidate.durationSeconds : 1f;
+        var curves = new EmbodiedMotionCurve[candidate.curves.Length];
+        var parameters = new CubismParameter[candidate.curves.Length];
+        var baselines = new float[candidate.curves.Length];
+        for (int i = 0; i < candidate.curves.Length; i++)
+        {
+            MotionCurveEntry entry = candidate.curves[i];
+            parameters[i] = FindParameter(model, entry.parameterId);
+            if (parameters[i] == null) throw new InvalidOperationException("Motion parameter missing on model: " + entry.parameterId);
+            if (entry.segments == null || entry.segments.Length < 2) throw new InvalidOperationException("Motion curve has no segments: " + entry.parameterId);
+            curves[i] = new EmbodiedMotionCurve(entry.parameterId, entry.segments.Select(v => (double)v).ToArray(), duration);
+            baselines[i] = parameters[i].Value;
+        }
+        int steps = ReadMotionPlaybackSteps();
+        var result = new MotionPlaybackResult
+        {
+            candidateId = candidate.candidateId,
+            candidateFile = candidatePath,
+            durationSeconds = duration,
+            steps = steps,
+            parameterIds = candidate.curves.Select(item => item.parameterId).ToArray(),
+            frames = new string[steps + 2],
+        };
+        int index = 0;
+        CapturedFrame baseFrame = null;
+        CapturedFrame previousFrame = null;
+        float peak = 0f, maxAdjacent = 0f;
+        for (int point = 0; point <= steps + 1; point++)
+        {
+            bool isReset = point == steps + 1;
+            if (isReset)
+            {
+                for (int i = 0; i < parameters.Length; i++) parameters[i].Value = baselines[i];
+            }
+            else if (point > 0)
+            {
+                float time = duration * point / (float)steps;
+                for (int i = 0; i < curves.Length; i++) parameters[i].Value = curves[i].Evaluate(time);
+            }
+            model.ForceUpdateNow();
+            int settleFrames = preservePhysics ? 8 : 1;
+            for (int settle = 0; settle < settleFrames; settle++) yield return null;
+            if (preservePhysics) StabilizePhysics(model.gameObject);
+            model.ForceUpdateNow();
+            CapturedFrame frame = Capture(camera);
+            string path = Path.Combine(dir, candidate.candidateId + "_playback_" + point.ToString("D3") + ".png");
+            File.WriteAllBytes(path, frame.png);
+            result.frames[index++] = path;
+            if (previousFrame != null) maxAdjacent = Mathf.Max(maxAdjacent, MeanPixelDifference(previousFrame.pixels, frame.pixels));
+            previousFrame = frame;
+            if (point == 0) baseFrame = frame;
+            else if (!isReset) peak = Mathf.Max(peak, MeanPixelDifference(baseFrame.pixels, frame.pixels));
+            else
+            {
+                result.resetMeanDifference = MeanPixelDifference(baseFrame.pixels, frame.pixels);
+                result.resetStable = result.resetMeanDifference <= 0.1f;
+            }
+        }
+        for (int i = 0; i < parameters.Length; i++) parameters[i].Value = baselines[i];
+        result.peakMeanDifference = peak;
+        result.maxAdjacentMeanDifference = maxAdjacent;
+        done(result);
+    }
+
+    private static int ReadMotionPlaybackSteps()
+    {
+        string raw = Environment.GetEnvironmentVariable("FU_XUAN_PROBE_MOTION_STEPS");
+        if (string.IsNullOrWhiteSpace(raw)) return 14;
+        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int steps) || steps < 4 || steps > 60)
+            throw new InvalidOperationException("FU_XUAN_PROBE_MOTION_STEPS must be an integer in [4, 60].");
+        return steps;
     }
 
     private static CubismParameter FindParameter(CubismModel model, string id)

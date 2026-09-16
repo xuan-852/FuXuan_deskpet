@@ -80,10 +80,11 @@ for (const file of files) {
     candidateCurves.push({ parameterId: id, segments: curve.Segments, samples });
   }
   const motionId = path.basename(file).replace(/\.motion3\.json$/, '');
+  const candidateId = `external_${modelName}_${motionId}`;
   const fullyCovered = matched > 0 && paramCoverage.filter(p => p.matched === false).length === 0;
   const def = {
     schema: 'l3-external-motion-candidate/v1',
-    candidateId: `external_${modelName}_${motionId}`,
+    candidateId,
     sourceModel: modelName,
     sourceFile: rel,
     durationSeconds: meta.Duration || null,
@@ -94,7 +95,7 @@ for (const file of files) {
     curves: candidateCurves,
     certification: { status: 'uncertified', note: 'LegacyCandidate from external sample motions; requires four-layer certification on Fuxuan model.' }
   };
-  const defPath = path.join(outputDir, `${path.parse(motionId).name}-candidate.json`);
+  const defPath = path.join(outputDir, `${candidateId}-candidate.json`);
   fs.writeFileSync(defPath, JSON.stringify(def, null, 1) + '\n', 'utf8');
   report.motions.push({ file: rel, model: modelName, motionId, duration: meta.Duration || null, paramCurves: curves.filter(c => (c.Id || '').startsWith('Param')).length, partCurves, matched, unmatched: def.unmatchedParameterIds.length, fullyCovered, clamped, candidateFile: defPath });
   report.totals.motions += 1;
