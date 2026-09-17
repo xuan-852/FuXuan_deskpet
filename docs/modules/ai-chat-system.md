@@ -50,6 +50,7 @@
 - 2026-09-12 起，意图工具子集统一由 `LocalToolRouter` 提供，避免本地执行链与云端工具子集维护两份白名单。对“打开/搜索/列目录”等非破坏性工具，分类误差会先触发一次确定性关键词修正；参数保护仍失败时会把明确失败原因交给本地回复，不静默伪装为普通对话，也不自动升级到云端/OpenClaw。
 - 2026-09-13 起，本地计划执行与云端工具回环会在工具启动前统一写入 `RequestStage.RunningTool`；`GetToolDisplayName()` 将常用工具名映射为“搜索文件”“打开文件夹”等可读状态，聊天标题栏可准确反映当前阶段，不泄露内部工具 ID。
 - 2026-09-17 起，用户明确要求桌宠本人做动作会被分类为 `body` 意图；本地规划目录严格只含 `request_body_skill` 与 `stop_action`。`request_body_skill` 不再属于普通 `operation` 或跨意图安全目录，且系统提示词只列出已认证技能并禁止原始 Live2D 参数、关键帧与映射。规划失败按 L4 降级为文字，不猜测执行。
+- 2026-09-18 起，身体意图增加确定性路由：`LocalToolRouter.IsExplicitBodyRequest` 用强祈使短语（摇头/笑一个/看左边等）识别明确动作请求，本地规划路径与云端首轮 `_lastIntent` 均确定性置为 `body`，不再依赖 3B 分类器（真人首测中「摇摇头给我看」曾被误判为 knowledge 并规划 `self_review`）。`TryHardenPlanArguments` 对 `request_body_skill` 只放行已认证且已暴露的 `skill_id`，缺失或未暴露时按关键词确定性修复，仍失败即终态拒绝。详见 [L4 身体意图确定性路由](../truth/l4-body-intent-deterministic-routing.md)。
 
 ### 2.1.2 请求生命周期分层（2026-08-26）
 

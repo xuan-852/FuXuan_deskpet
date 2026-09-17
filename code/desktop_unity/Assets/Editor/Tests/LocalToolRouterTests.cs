@@ -246,4 +246,37 @@ public class LocalToolRouterTests
         Assert.IsFalse(LocalToolRouter.ShouldUseQualityPlanner("请查看当前系统信息"));
         Assert.IsFalse(LocalToolRouter.ShouldUseQualityPlanner("今天天气怎么样"));
     }
+    [Test]
+    public void 确定性身体请求识别与误路由防护()
+    {
+        Assert.IsTrue(LocalToolRouter.IsExplicitBodyRequest("摇摇头给我看"));
+        Assert.IsTrue(LocalToolRouter.IsExplicitBodyRequest("笑一个"));
+        Assert.IsTrue(LocalToolRouter.IsExplicitBodyRequest("帮我放松一下"));
+        Assert.IsFalse(LocalToolRouter.IsExplicitBodyRequest("搜索摇头的原理"));
+        Assert.IsFalse(LocalToolRouter.IsExplicitBodyRequest("今天天气怎么样"));
+    }
+
+    [Test]
+    public void 身体请求确定性映射到已认证技能()
+    {
+        Assert.IsTrue(LocalToolRouter.TryBuildKeywordPlan("body", "摇摇头给我看", out LocalToolPlan shake));
+        Assert.AreEqual("request_body_skill", shake.ToolName);
+        StringAssert.Contains("external_Hiyori_Hiyori_m02", shake.ArgumentsJson);
+        Assert.IsTrue(LocalToolRouter.TryBuildKeywordPlan("body", "笑一个", out LocalToolPlan smile));
+        StringAssert.Contains("external_Haru_haru_g_m10", smile.ArgumentsJson);
+    }
+
+    [Test]
+    public void 身体技能参数加固拒绝未暴露技能并可用确定性匹配修复()
+    {
+        Assert.IsFalse(LocalToolRouter.TryHardenPlanArguments("request_body_skill", "随便动一下",
+            "{\"skill_id\":\"not_certified\"}", out _, out string rejectReason));
+        StringAssert.Contains("未认证或未向 AI 开放", rejectReason);
+        Assert.IsTrue(LocalToolRouter.TryHardenPlanArguments("request_body_skill", "摇摇头给我看",
+            "{\"skill_id\":\"not_certified\"}", out string repaired, out _));
+        StringAssert.Contains("external_Hiyori_Hiyori_m02", repaired);
+        Assert.IsFalse(LocalToolRouter.TryHardenPlanArguments("request_body_skill", "跟我聊聊天气",
+            "{}", out _, out string missingSkill));
+        StringAssert.Contains("无法从请求中确定认证技能", missingSkill);
+    }
 }

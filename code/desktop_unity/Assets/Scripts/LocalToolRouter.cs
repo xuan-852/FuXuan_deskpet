@@ -185,6 +185,108 @@ public static class LocalToolRouter
         return false;
     }
 
+    // ---- 身体意图的确定性路由（L4 BodyIntent / FR-L3-03）----
+    // 3B 分类器对「摇摇头给我看」这类祈使请求可能误判为 knowledge/chat；只要
+    // 用户用强祈使短语明确要求桌宠本人做动作，就不依赖概率分类。最终仍只允许
+    // 已认证且已向 AI 暴露的技能，未匹配到技能时安全退化为文字。
+
+    // 强祈使短语：出现即视为用户明确要求身体动作。
+    private static readonly string[] ExplicitBodyPhrases =
+    {
+        "摇摇头", "点点头", "转个头", "歪歪头", "挥挥手", "招招手", "眨眨眼",
+        "笑一个", "笑一下", "笑一笑", "伸个懒腰", "待机一下", "放松一下",
+        "往左看", "向左看", "看左边", "往右看", "向右看", "看右边",
+        "做个动作", "做动作", "表演一个", "活动一下"
+    };
+
+    // 弱动作词：必须与请求语气词同时出现才认定是身体请求（避免「搜索摇头的原理」误路由）。
+    private static readonly string[] BodyActionWords =
+    {
+        "摇头", "点头", "转头", "歪头", "挥手", "招手", "眨眼", "微笑",
+        "伸懒腰", "待机", "放松", "抬手"
+    };
+
+    private static readonly string[] BodyRequestMarkers =
+    {
+        "给我看", "给我", "看一下", "看看", "来一个", "来一次", "展示",
+        "做一个", "做个", "表演", "一下", "吧", "嘛", "呗"
+    };
+
+    /// <summary>确定性判断：用户是否明确要求桌宠本人做出身体动作。</summary>
+    public static bool IsExplicitBodyRequest(string userMessage)
+    {
+        string message = (userMessage ?? "").Trim();
+        if (message.Length == 0) return false;
+        if (ContainsAny(message, ExplicitBodyPhrases)) return true;
+        return ContainsAny(message, BodyActionWords) && ContainsAny(message, BodyRequestMarkers);
+    }
+
+    /// <summary>
+    /// 身体技能参数加固：模型给出的 skill_id 只有在已认证且已向 AI 暴露时才放行；
+    /// 否则尝试从用户原话确定性匹配一个认证技能，仍失败即拒绝（终态）。
+    /// </summary>
+    private static bool TryHardenBodySkillArguments(string userMessage, string argumentsJson,
+        out string hardenedArgumentsJson, out string error)
+    {
+        hardenedArgumentsJson = "{}";
+        string skillId = null;
+        if (!string.IsNullOrWhiteSpace(argumentsJson))
+        {
+            try { skillId = JObject.Parse(argumentsJson)["skill_id"]?.ToString()?.Trim(); }
+            catch { skillId = null; }
+        }
+        bool valid = !string.IsNullOrEmpty(skillId)
+            && CertifiedMotionLibrary.IsLlmExposed(skillId)
+            && EmbodiedRuntimeAdmission.IsSkillAdmissible(skillId);
+        if (valid)
+        {
+            hardenedArgumentsJson = JsonConvert.SerializeObject(new { skill_id = skillId });
+            error = "";
+            return true;
+        }
+        if (TryResolveCertifiedBodySkill(userMessage, out string resolved))
+        {
+            hardenedArgumentsJson = JsonConvert.SerializeObject(new { skill_id = resolved });
+            error = "";
+            return true;
+        }
+        error = string.IsNullOrEmpty(skillId)
+            ? "身体技能请求缺少 skill_id，且无法从请求中确定认证技能"
+            : $"技能 {skillId} 未认证或未向 AI 开放，请求被拒绝";
+        return false;
+    }
+
+    // 认证技能的确定性选择表：关键词 → 技能。技能必须在认证库中且已向 AI 暴露。
+    private static readonly (string[] Keywords, string SkillId)[] BodySkillKeywordMap =
+    {
+        (new[] { "看左边", "往左看", "向左看", "转头看左" }, "external_Hiyori_Hiyori_m05"),
+        (new[] { "看右边", "往右看", "向右看", "转头看右" }, "external_Haru_haru_g_m20"),
+        (new[] { "摇摇头", "摇头", "晃头", "摇摆" }, "external_Hiyori_Hiyori_m02"),
+        (new[] { "眨眨眼", "眨眼", "歪头", "歪歪头" }, "external_Hiyori_Hiyori_m06"),
+        (new[] { "笑一个", "笑一下", "笑一笑", "微笑" }, "external_Haru_haru_g_m10"),
+        (new[] { "待机", "放松", "休息", "缓一缓" }, "external_Haru_haru_g_idle"),
+    };
+
+    /// <summary>
+    /// 按确定性关键词把明确的身体请求映射到一个已认证且已向 AI 暴露的技能；
+    /// 找不到匹配或技能不可用时返回 false，由调用方安全退化为文字。
+    /// </summary>
+    public static bool TryResolveCertifiedBodySkill(string userMessage, out string skillId)
+    {
+        skillId = "";
+        string message = (userMessage ?? "").Trim();
+        if (message.Length == 0) return false;
+        foreach (var pair in BodySkillKeywordMap)
+        {
+            if (!ContainsAny(message, pair.Keywords)) continue;
+            if (!CertifiedMotionLibrary.IsLlmExposed(pair.SkillId)) continue;
+            if (!EmbodiedRuntimeAdmission.IsSkillAdmissible(pair.SkillId)) continue;
+            skillId = pair.SkillId;
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// 判断是否需要质量优先的 8B 工具规划器。
     /// 简单查询继续使用 3B；文档、办公和 OpenClaw 多步骤任务更看重参数完整性。
@@ -251,6 +353,17 @@ public static class LocalToolRouter
         error = "";
 
         string normalizedTool = (toolName ?? "").Trim();
+        if (normalizedTool == "request_body_skill")
+        {
+            // FR-L3-03/C-L3-06：3B 模型给出的 skill_id 不可信。只接受已认证且已向
+            // AI 暴露的技能；缺失或未暴露时改用确定性匹配，仍失败则终态拒绝，绝不
+            // 降级为原始参数或未认证技能。
+            if (TryHardenBodySkillArguments(userMessage, argumentsJson, out hardenedArgumentsJson, out error))
+                return true;
+            hardenedArgumentsJson = "{}";
+            return false;
+        }
+
         bool needsOriginalRequest = normalizedTool == "compile_latex"
             || normalizedTool == "generate_ppt"
             || normalizedTool == "generate_docx"
@@ -437,6 +550,13 @@ public static class LocalToolRouter
 
         if (string.IsNullOrWhiteSpace(userMessage)) return false;
         string message = userMessage.Trim();
+
+        // 身体技能请求（FR-L3-03）：确定性映射到已认证且已暴露的技能；
+        // 未匹配到技能时不在此拦截，交给后续流程安全退化为文字。
+        if (IsExplicitBodyRequest(message) && TryResolveCertifiedBodySkill(message, out string bodySkill))
+            return AssignPlan(out plan, "request_body_skill",
+                JsonConvert.SerializeObject(new { skill_id = bodySkill }),
+                "用户明确要求的身体动作已匹配到认证技能");
 
         if (ContainsAny(message, "系统信息", "CPU", "内存状态", "电脑状态", "硬件信息"))
             return AssignPlan(out plan, "get_system_info", "{}", "用户明确查询系统状态");

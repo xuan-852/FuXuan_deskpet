@@ -525,6 +525,14 @@ public partial class ChatManager : MonoBehaviour
                 yield return null;
 
             string intentName = intent.success ? intent.intent : "";
+            // 确定性身体意图覆盖（L4 BodyIntent）：3B 分类器对祈使式动作请求可能
+            // 误判为 knowledge/chat；用户用强祈使语气明确要求身体动作时不依赖概率，
+            // 后续技能选择仍由白名单、参数加固与认证准入三道校验兜底。
+            if (intentName != "body" && LocalToolRouter.IsExplicitBodyRequest(userMessage))
+            {
+                intentName = "body";
+                Debug.Log("[ChatManager] 🎯 确定性身体意图：用户明确要求身体动作");
+            }
             if (LocalToolRouter.ShouldAttempt(intentName, userMessage))
             {
                 string[] allowedTools = LocalToolRouter.GetAllowedTools(intentName);

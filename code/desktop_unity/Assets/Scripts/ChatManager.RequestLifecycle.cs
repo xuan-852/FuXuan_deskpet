@@ -106,8 +106,12 @@ public partial class ChatManager
             {
                 if (intent.success)
                 {
-                    _lastIntent = intent.intent;  // ★ 存下来供 BuildRequestBody 过滤 tools
-                    UnityEngine.Debug.Log($"[ChatManager] 🏷️ 本地灵识判断: intent={intent.intent}, emotion={intent.emotion}");
+                    // 确定性身体意图覆盖：云端工具子集同样跟随强祈使身体请求，
+                    // 使 request_body_skill 进入首轮 tools（L4 BodyIntent）。
+                    _lastIntent = LocalToolRouter.IsExplicitBodyRequest(text.Trim())
+                        ? "body"
+                        : intent.intent;  // ★ 存下来供 BuildRequestBody 过滤 tools
+                    UnityEngine.Debug.Log($"[ChatManager] 🏷️ 本地灵识判断: intent={_lastIntent}, emotion={intent.emotion}");
                 }
                 _intentReady = true; // ★ 无论成败都标记就绪（失败 → 首轮走全量探测）
             });
