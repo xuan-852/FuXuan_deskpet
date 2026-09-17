@@ -113,7 +113,7 @@ public class LocalLLMAgentService : MonoBehaviour
     /// <summary>意图分类结果</summary>
     public struct IntentResult
     {
-        public string intent;    // chat/command/knowledge/emotion/operation
+        public string intent;    // chat/command/knowledge/emotion/operation/body
         public string emotion;   // positive/neutral/negative/surprised/anxious
         public string brief;     // 一句话摘要
         public bool success;
@@ -133,7 +133,8 @@ public class LocalLLMAgentService : MonoBehaviour
 - command — 指令、请求执行操作（打开网页、搜索等）
 - knowledge — 询问知识、信息查询
 - emotion — 情感表达、倾诉、分享感受
-- operation — 关于桌面宠物自身的操作（设置、控制等）
+- operation — 关于桌面宠物自身的设置或查询（偏好、提醒、模板等）
+- body — 用户明确要求桌面宠物本人做出可见的身体动作（如：摇摇头、点点头、挥挥手、眨眨眼、笑一个、抬抬手）。判定标准是祈使请求「你去做动作」，而不是对话里提到动作二字。拿不准时归入 chat。
 
 情绪标签（emotion）：positive / neutral / negative / surprised / anxious
 

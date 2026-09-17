@@ -23,7 +23,7 @@
 
 ### 2.0 L3 认证技能基础（2026-09-16）
 
-`Assets/Scripts/Embodied/CertifiedSkillFoundation.cs` 新增四层认证的安全骨架：`SkillCertificationRecord → CertifiedSkillRegistry → EmbodiedActionRequest → EmbodiedCoordinator`。注册要求机械、视觉、语义、自然度、模型版本和映射版本均完整，且自然度不少于首版默认 75；请求没有原始参数字段，只能按技能声明资源占用。2026-09-16 首个生产认证记录 `screen_side_arm_raise`（`ScreenSideArmRaiseCertification`，基于 DeepSeek 85 + GLM glm-4.5v 92 双模型一致复核、自然度保守取 85）注册进 `CertifiedSkillRegistry` 并被协调器按 `RightArm` 资源仲裁。2026-09-17 `EmbodiedRuntimeAdmission` 作为生产准入汇点接线：隔离 Param94 候选手势执行前必须取得 `ActionRequest` 准入，完成/取消/退出同步释放（隔离运行时驱动与 EditMode `RuntimeAdmissionTests` 验证，failed=0）。LLM 工具面仍无任何身体控制技能，主动行为开放属后续任务包。详见 [L3 认证技能基础](../truth/l3-certified-skill-foundation.md)、[运行时认证准入接线](../truth/l3-runtime-admission-wiring.md) 与 [画面侧单臂候选真相](../truth/l3-screen-side-arm-raise-candidate.md)。
+`Assets/Scripts/Embodied/CertifiedSkillFoundation.cs` 提供四层认证骨架：`SkillCertificationRecord → CertifiedSkillRegistry → EmbodiedActionRequest → EmbodiedCoordinator`。注册要求机械、视觉、语义、自然度、模型版本和映射版本均完整，且自然度不少于首版默认 75；请求没有原始参数字段，只能按技能声明资源占用。2026-09-17 `EmbodiedRuntimeAdmission` 作为生产准入汇点接线；认证工具 `request_body_skill` 仅可从 `body` 意图选择认证技能。协调器现为已接受请求登记 ID、UTC 开始时间、终态原因，并提供确定性取消/超时释放；超时扫描尚未接入渲染器帧循环。主动行为开放属后续任务包。详见 [L3 认证技能基础](../truth/l3-certified-skill-foundation.md)、[L3 LLM 接入](../truth/l3-llm-embodied-integration.md) 与 [协调器生命周期真相](../truth/l3-coordinator-lifecycle-timeout.md)。
 
 2026-09-16 的运行时迁移决策采用 A：在首个认证技能出现前，`MotionAgent` 的旧生成、组合生成和生成式表情回退只允许隔离 `.test_mode` 离线复核；生产运行时拒绝。`play_action` 与 `generate_motion` 同时从 LLM 工具入口移除。步行、物理与表情基线未改动。详见 [L3 运行时认证准入审计](../truth/l3-runtime-admission-gap-audit.md)。
 
@@ -31,7 +31,11 @@
 
 2026-09-17 新增 `EmbodiedPoseState` 最小集与统一安全收束：具身执行器的参数写入全部登记还原记录，`FinishTestParam94Gesture` 收束点依次执行姿势还原（`[EmbodiedSafeRecovery] pose-restored`）→ 租约释放 → 准入释放 → 移动锁解除，完成/取消/禁用/退出同路径收束。运行时帧对照确认执行协程复现评审包视觉（基线-抬臂-复位）。详见 [L3 动作生命周期与安全收束](../truth/l3-action-lifecycle-recovery.md)。
 
-2026-09-17 LLM 接入具身控制 MVP：`CertifiedMotionLibrary` 登记 5 个认证动作技能（官方示例重定向，双模型 82–92 分），生产执行器 `Live2DRenderer.PlayCertifiedMotion`（准入→租约→曲线播放→姿势还原→收束），LLM 工具 `request_body_skill`（只接受认证白名单，拒绝即终态）入 operation 意图白名单。隔离真机驱动验证 23 参数播放与全量还原。详见 [L3 LLM 接入具身控制](../truth/l3-llm-embodied-integration.md)。
+2026-09-17 LLM 接入具身控制 MVP：`CertifiedMotionLibrary` 登记 6 个认证动作技能（官方示例重定向，双模型 82–92 分），生产执行器 `Live2DRenderer.PlayCertifiedMotion`（准入→租约→曲线播放→姿势还原→收束），LLM 工具 `request_body_skill`（只接受认证白名单，拒绝即终态）入 operation 意图白名单。隔离真机驱动验证 23 参数播放与全量还原。认证执行器的开始、完成、取消和超时已同步到只读版本化 `EmbodiedPoseSnapshot`；取消不再被记作完成。详见 [L3 LLM 接入具身控制](../truth/l3-llm-embodied-integration.md)、[L3 姿势状态快照运行时接线](../truth/l3-pose-state-runtime-wiring.md) 与 [Hiyori m06 认证](../truth/l3-hiyori-m06-certification.md)。
+
+2026-09-17 运行时复验门禁补强：认证动作测试必须先停止行走并读取 `@@sim:status`，仅在 `velocity=(0,0)` 后触发。动作时长与安全超时之间保留 0.25 秒的受控收尾窗口，防止最后一帧被误判超时；姿态恢复和资源释放仍必须出现 `certified-motion-completed` 日志。m06 已按此门禁完成隔离真机复验。详见 [L3 认证动作静止门禁](../truth/l3-runtime-motion-static-gate.md)。
+
+2026-09-17 步行—动作边界复验：`external_Hiyori_Hiyori_m06` 在 `velocity=(1,0)` 时被生产静止门禁拒绝且未启动；独立步行基线连续采集 17 帧后正常停止。详见 [L3 步行与认证动作边界](../truth/l3-walk-action-boundary-runtime-verification.md)。
 
 ### 2.1 ActionAgent 文件清单（15 个 .cs）
 

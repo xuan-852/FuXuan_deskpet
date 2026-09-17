@@ -1,0 +1,41 @@
+{
+  "packageId": "l4-body-intent-certified-skill-routing-v1",
+  "primaryGuide": "docs/guides/approved/l4-intent-tools-and-bridge.md",
+  "requirementIds": ["FR-L4-01", "AC-L4-01", "FR-L3-03", "C-L3-06"],
+  "acceptanceObjective": "Close the user-explicit BodyIntent route: only the certified-skill request and stop action may be planned; the runtime prompt accurately describes the semantic-only certified-skill boundary; malformed, non-body, and uncertified requests safely degrade or reject without raw Live2D parameter access.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/LocalLLMAgentService.cs",
+    "code/desktop_unity/Assets/Scripts/LocalToolRouter.cs",
+    "code/desktop_unity/Assets/Scripts/ChatManager.cs",
+    "code/desktop_unity/Assets/Editor/Tests/LocalToolRouterTests.cs",
+    "code/desktop_unity/Assets/Editor/Tests/CertifiedMotionLibraryTests.cs",
+    "docs/truth/",
+    "docs/modules/",
+    "docs/generated/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "docs/decisions/",
+    "docs/guides/approved/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    ".\\build.ps1 -OutputDir <isolated-output-dir>",
+    "node scripts/test/certified_motion_runtime_drive.cjs <isolated-output-dir>\\DesktopPet.exe external_Hiyori_Hiyori_m02 <candidate-json>",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": [
+    "docs/truth/l3-llm-embodied-integration.md"
+  ],
+  "evidenceOutputs": [
+    "logs/build/test_results.xml",
+    "<isolated-data-root>/logs/player_log.txt",
+    "<isolated-data-root>/test_screenshots/"
+  ],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "This package does not expand the certification library, enable autonomous body behavior, permit raw parameters, or invoke cloud models. L3 certified execution remains separately validated through the existing isolated driver."
+}

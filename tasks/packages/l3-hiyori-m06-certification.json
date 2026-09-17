@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-hiyori-m06-certification-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-03", "FR-L3-04", "C-L3-03", "C-L3-04", "C-L3-05", "AC-L3-04", "AC-L3-06"],
+  "acceptanceObjective": "Promote the isolated, dual-reviewed external_Hiyori_Hiyori_m06 candidate into the data-level certified skill registry with its exact evidence packet, conservative semantic boundary, resource declaration, duration and naturalness gate.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Embodied/CertifiedMotionLibrary.cs", "code/desktop_unity/Assets/Editor/Tests/CertifiedMotionLibraryTests.cs", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/", "code/desktop_unity/Assets/Scripts/ToolEngine/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": [".\\build.ps1 -Quick", ".\\build.ps1 -RunTests", "node --check scripts/test/certified_motion_runtime_drive.cjs", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-hiyori-m06-certification.md"],
+  "evidenceOutputs": ["logs/build/test_results.xml", "<isolated-root>/candidate-review-packet-external_Hiyori_Hiyori_m06.json", "<isolated-root>/cloud_review/external_Hiyori_Hiyori_m06-{deepseek,glm}-*.json"],
+  "riskLevel": "medium",
+  "externalEvidence": true,
+  "notes": "Promotion is data-level only. The local curve remains license-restricted and outside version control; no parameter map write or autonomous behavior is enabled. Production runtime review must confirm velocity=(0,0) before triggering and must observe certified-motion-completed rather than a timeout."
+}

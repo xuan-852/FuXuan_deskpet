@@ -101,19 +101,27 @@ public partial class ChatManager : MonoBehaviour
         // PetMemory.CheckReflection() → DoReflection()（DeepSeek 提炼）→ CommitReflection()。
     }
 
+    /// <summary>构建仅含认证技能的身体动作边界提示。</summary>
+    public static string BuildCertifiedBodySkillBoundary()
+    {
+        var builder = new StringBuilder("\n【身体动作边界】仅当用户明确要求桌宠本人做出动作时，才可通过 request_body_skill 请求已认证的语义技能。不得请求或输出 Live2D 原始参数、关键帧或参数映射。可用技能：");
+        foreach (var skill in CertifiedMotionLibrary.Entries)
+            builder.Append("\n- ").Append(skill.SkillId).Append("：").Append(skill.SemanticBoundary);
+        builder.Append("\n- screen_side_arm_raise：画面侧单臂上抬后回落。\n");
+        return builder.ToString();
+    }
+
     /// <summary>注入身体参数知识 — 让 AI 理解自己的 Live2D 参数</summary>
     private string InjectParameterKnowledge()
     {
-        // Raw parameter names/ranges are offline diagnostic evidence, not an
-        // LLM control surface. Keep the runtime prompt semantic-only until a
-        // CertifiedSkillRegistry has approved an actual body skill.
-        return "\n【身体动作边界】当前没有可调用的身体控制技能。不得请求或输出 Live2D 原始参数、关键帧或参数映射。\n";
+        return BuildCertifiedBodySkillBoundary();
     }
 
     /// <summary>注入闭环演武能力 — 让 AI 知道演武后可自评自省</summary>
     private string InjectClosedLoopCapability()
     {
-        return "\n【身体动作边界】旧预设动作与旧生成动作正在重新认证。不得调用或承诺身体动作；当前仅可使用表情，以及桌宠自身的步行和物理基线。\n";
+        return BuildCertifiedBodySkillBoundary()
+            + "旧预设动作与旧生成动作仍在重新认证，不能调用或承诺。\n";
     }
 
     /// <summary>

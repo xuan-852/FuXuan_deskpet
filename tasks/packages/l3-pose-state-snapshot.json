@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-pose-state-snapshot-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-02", "C-L3-02", "C-L3-03", "C-L3-07", "AC-L3-03", "AC-L3-06"],
+  "acceptanceObjective": "Extend the minimal certified-executor restore record into an immutable, versioned pose snapshot that reports pending parameter writes, owned resources and current action identity without exposing raw parameter control or changing renderer behavior.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Embodied/EmbodiedPoseState.cs", "code/desktop_unity/Assets/Editor/Tests/EmbodiedRecoveryTests.cs", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DRenderer.cs", "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": [".\\build.ps1 -Quick", ".\\build.ps1 -RunTests", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-pose-state-snapshot.md"],
+  "evidenceOutputs": ["logs/build/test_results.xml"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "This is a data-model foundation only. Root, full skeleton, expressions and locomotion are represented as unavailable rather than inferred; runtime wiring is a later task."
+}

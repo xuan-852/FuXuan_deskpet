@@ -49,6 +49,14 @@ public static class CertifiedMotionLibrary
         },
         new Entry
         {
+            SkillId = "external_Hiyori_Hiyori_m06",
+            SemanticBoundary = "头部侧倾并伴随眨眼、视线与表情变化，随后回到基线；不是手臂动作或位移动作",
+            DurationSeconds = 5.37f, Resources = EmbodiedResource.Face | EmbodiedResource.Body,
+            PacketSha256 = "1c5b4f6edb705658b1648a3b5a1b2de5cce5d764183d47b21637ca0cb1b29c74",
+            DeepSeekNaturalnessScore = 82, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-1c5b4f6e-2026-09-17"
+        },
+        new Entry
+        {
             SkillId = "external_Haru_haru_g_idle",
             SemanticBoundary = "轻微的头部与视线摆动及呼吸起伏的待机动作，随后回到基线；不是手臂上抬或位移动作",
             DurationSeconds = 10f, Resources = EmbodiedResource.Face | EmbodiedResource.Body,

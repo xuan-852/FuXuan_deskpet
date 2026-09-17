@@ -21,6 +21,7 @@ fs.copyFileSync(candidateFile,path.join(root,'certified_motions',skillId+'.json'
 fs.writeFileSync(inbox,'');
 let p=spawn(exe,[],{env:{...process.env,FU_XUAN_DATA:root},stdio:'ignore'});
 try{await wait('[DesktopPet] 落地');await send('@@sim:idle-actions:off');await send('@@sim:walk:stop');await sleep(1600);
+await send('@@sim:status');await wait('velocity=(0,0)');await sleep(500);
 await send('@@sim:certified-motion:'+skillId);
 for(let i=0;i<6;i++){await send('@@sim:model-measurement-snapshot',450);await count(i+1)}
 await sleep(2500);await send('@@sim:model-measurement-snapshot');await count(7);

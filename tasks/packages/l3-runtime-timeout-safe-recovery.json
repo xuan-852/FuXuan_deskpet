@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-runtime-timeout-safe-recovery-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-02", "C-L3-07", "AC-L3-03", "AC-L3-06"],
+  "acceptanceObjective": "Connect certified-skill coordinator timeout expiration to the renderer's existing SafeRecovery path, so an expired request stops its coroutine, restores written parameters, releases its lease and movement lock, and cannot remain active.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Embodied/EmbodiedRuntimeAdmission.cs", "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs", "code/desktop_unity/Assets/Editor/Tests/RuntimeAdmissionTests.cs", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": [".\\build.ps1 -Quick", ".\\build.ps1 -RunTests", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-runtime-timeout-safe-recovery.md"],
+  "evidenceOutputs": ["logs/build/test_results.xml"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "No autonomous behavior or raw parameter access. This uses the existing certified-motion recovery sequence and does not migrate legacy action paths."
+}

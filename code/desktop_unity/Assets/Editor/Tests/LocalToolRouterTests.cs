@@ -116,6 +116,18 @@ public class LocalToolRouterTests
     }
 
     [Test]
+    public void BodyIntentOnlyExposesCertifiedSkillRequestAndStop()
+    {
+        Assert.IsTrue(LocalToolRouter.TryGetStrictIntentTools("body", out string[] tools));
+        CollectionAssert.AreEquivalent(new[] { "request_body_skill", "stop_action" }, tools);
+        Assert.IsTrue(LocalToolRouter.IsAllowed("request_body_skill", "body"));
+        Assert.IsFalse(LocalToolRouter.IsAllowed("request_body_skill", "operation"));
+        Assert.IsFalse(LocalToolRouter.IsAllowed("request_body_skill", "chat"));
+        Assert.IsFalse(LocalToolRouter.IsAllowed("file_delete", "body"));
+        Assert.IsTrue(LocalToolRouter.ShouldAttempt("body", "请你摇摇头"));
+    }
+
+    [Test]
     public void KeywordFallbackRecognizesScheduleQueries()
     {
         LocalToolPlan plan;
@@ -160,7 +172,8 @@ public class LocalToolRouterTests
             if (ToolRegistry.IsDangerous(name)) continue;
             bool routed = LocalToolRouter.IsAllowed(name, "command")
                 || LocalToolRouter.IsAllowed(name, "knowledge")
-                || LocalToolRouter.IsAllowed(name, "operation");
+                || LocalToolRouter.IsAllowed(name, "operation")
+                || LocalToolRouter.IsAllowed(name, "body");
             if (!routed) unrouted.Add(name);
         }
 

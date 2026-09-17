@@ -49,6 +49,7 @@
 - 计划仍必须经过意图白名单、工具注册、危险审批和统一 `ToolEngine`；规则层只生成计划，不绕过执行安全层。
 - 2026-09-12 起，意图工具子集统一由 `LocalToolRouter` 提供，避免本地执行链与云端工具子集维护两份白名单。对“打开/搜索/列目录”等非破坏性工具，分类误差会先触发一次确定性关键词修正；参数保护仍失败时会把明确失败原因交给本地回复，不静默伪装为普通对话，也不自动升级到云端/OpenClaw。
 - 2026-09-13 起，本地计划执行与云端工具回环会在工具启动前统一写入 `RequestStage.RunningTool`；`GetToolDisplayName()` 将常用工具名映射为“搜索文件”“打开文件夹”等可读状态，聊天标题栏可准确反映当前阶段，不泄露内部工具 ID。
+- 2026-09-17 起，用户明确要求桌宠本人做动作会被分类为 `body` 意图；本地规划目录严格只含 `request_body_skill` 与 `stop_action`。`request_body_skill` 不再属于普通 `operation` 或跨意图安全目录，且系统提示词只列出已认证技能并禁止原始 Live2D 参数、关键帧与映射。规划失败按 L4 降级为文字，不猜测执行。
 
 ### 2.1.2 请求生命周期分层（2026-08-26）
 
@@ -134,7 +135,7 @@
 ```text
 用户请求
   → qwen2.5:3b ClassifyIntent
-  → LocalToolRouter 按 command/knowledge/operation 选择小型工具目录
+  → LocalToolRouter 按 command/knowledge/operation/body 选择小型工具目录
   → qwen2.5:3b 输出 {action, tool, arguments, reason}
   → ChatManager 校验工具名、意图白名单和参数 JSON
   → ToolConfirmManager（危险工具）
@@ -147,7 +148,7 @@
 - `LocalToolRouter` 当前覆盖常用的打开、搜索、读取、查询、办公生成、动作和系统信息工具；明确“打开课表”会直接路由到本地课表 Web 看板，普通“查看/查询课表”仍走只读数据查询。
   `run_command`、`openclaw_task` 等危险/高影响工具仍会进入既有确认流程。
 - 本地模型只能调用当前目录中的工具；未知工具、未授权工具或格式错误计划会被拒绝，不会直接执行。
-- 普通闲聊不会额外调用规划模型；只有意图为 command/knowledge/operation，或消息包含明确操作关键词时才规划。
+- 普通闲聊不会额外调用规划模型；只有意图为 command/knowledge/operation/body，或消息包含明确操作关键词时才规划。`body` 只接受用户明确的桌宠动作请求。
 - 测试模式下可以执行只读本地工具，但所有记忆、人格和反思持久化仍被阻断。
 
 补充：本地规划输出无效时会以低温度短提示重试；若模型仍返回 `none` 或坏 JSON，`LocalToolRouter` 只对高置信度的日常表达做受限复核（系统信息、文件搜索、打开文件夹、剪贴板、办公生成、动作），最终仍经过同一意图白名单和 `ToolCallInvoker`。固定的“打开课表”导航在进入 Ollama 规划前就已确定为 `open_url`，避免轻量模型误选 `query_schedule`。办公生成属于慢任务，触发后还需等待 Node 桥接器和内容生成服务返回，不应按普通聊天的秒级延迟验收。
@@ -268,6 +269,7 @@
 | 2026-08-27 | **对话记忆 partial 拆分**：将明确记忆提取、确定性兜底和周期性摘要迁移至 `ChatManager.ReplyFinalizer.cs`；测试模式隔离、记忆治理和异步摘要回退行为不变，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 | 2026-08-27 | **请求收尾状态修复**：增加 `_replyPublished` 成功信号，避免失败状态被无条件覆盖为「就绪」，并在队列启动前清理旧协程引用；失败请求不再触发成功专属质量/记忆后台任务，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 | 2026-08-30 | **自动问候时段修复**：`AutoChat` 与 `TimeWeatherController` 共用有效小时；`IdleChatGenerator` 丢弃跨时段旧生成结果，并过滤明显时段不匹配的问候句，避免问候语与当前时间错位。Quick、完整构建和隔离运行时冒烟验证通过；自然语言观感待人工抽查。 | — |
+| 2026-09-17 | **认证身体意图收口**：新增 `body` 意图闭集，只允许认证技能请求与停止动作；移除身体技能在普通 operation/跨意图路径的可达性，系统提示词同步为认证技能语义边界。Quick、EditMode（215 total、214 passed、failed=0、1 ignored）与隔离认证动作驱动通过。 | — |
 
 ### 实测数据（2026-08-08，Player.log）
 

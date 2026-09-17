@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-pose-state-runtime-wiring-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-02", "C-L3-02", "C-L3-03", "C-L3-07", "AC-L3-03", "AC-L3-06"],
+  "acceptanceObjective": "Wire the versioned read-only pose snapshot into certified-motion start and every terminal recovery path, preserving Completed, Cancelled and TimedOut truthfully without exposing raw parameter control.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Embodied/EmbodiedRuntimeAdmission.cs", "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs", "code/desktop_unity/Assets/Editor/Tests/", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": [".\\build.ps1 -Quick", ".\\build.ps1 -RunTests", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-pose-state-runtime-wiring.md"],
+  "evidenceOutputs": ["logs/build/test_results.xml"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Runtime integration only: no new skill, parameter mapping, model asset, or autonomous behavior."
+}

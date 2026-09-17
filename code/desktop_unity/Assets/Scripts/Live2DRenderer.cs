@@ -375,6 +375,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private CubismParameter[] _certifiedMotionParameters;
     private float[] _certifiedMotionBaselines;
     private float _certifiedMotionElapsed;
+
+    // 只暴露由认证执行器生成的只读快照；它不提供任何参数写入能力。
+    public EmbodiedPoseSnapshot CertifiedPoseSnapshot => _embodiedPoseState.CaptureSnapshot();
     private float _certifiedMotionDuration;
     public CubismModel CubismModel => _cubismModel;
 
@@ -878,6 +881,13 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private void Update()
     {
         if (!_loaded || _cubismModel == null) return;
+
+        if (_certifiedMotionActive && _certifiedMotionRequest != null)
+        {
+            EmbodiedRuntimeAdmission.ExpireDue(System.DateTime.UtcNow);
+            if (_certifiedMotionRequest.Status == EmbodiedActionStatus.TimedOut)
+                FinishCertifiedMotion("certified-motion-timeout");
+        }
 
         // 在本帧第一次执行前封存上一帧统计，便于调试窗口/日志读取。
         ForceUpdateCountLastFrame = ForceUpdateCountThisFrame;
@@ -3052,6 +3062,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _certifiedMotionLease = default;
             return $"❌ 动作准入被拒绝：{admissionReason}";
         }
+        _embodiedPoseState.BeginAction(_certifiedMotionRequest);
 
         _certifiedMotionCurves = curves;
         _certifiedMotionParameters = parameters;
@@ -3094,7 +3105,14 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (restored.Count > 0) Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
         _inputCoordinator.Release(_certifiedMotionLease, reason);
         _certifiedMotionLease = default;
-        EmbodiedRuntimeAdmission.CompleteSkill(_certifiedMotionRequest, reason);
+        var terminalStatus = _certifiedMotionRequest != null && _certifiedMotionRequest.Status == EmbodiedActionStatus.TimedOut
+            ? EmbodiedActionStatus.TimedOut
+            : reason == "certified-motion-completed" ? EmbodiedActionStatus.Completed : EmbodiedActionStatus.Cancelled;
+        _embodiedPoseState.FinishAction(terminalStatus);
+        if (terminalStatus == EmbodiedActionStatus.Cancelled)
+            EmbodiedRuntimeAdmission.CancelSkill(_certifiedMotionRequest, reason);
+        else
+            EmbodiedRuntimeAdmission.CompleteSkill(_certifiedMotionRequest, reason);
         _certifiedMotionRequest = null;
         _certifiedMotionCurves = null;
         _certifiedMotionParameters = null;

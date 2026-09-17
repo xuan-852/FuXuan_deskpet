@@ -12,7 +12,9 @@ public class RuntimeAdmissionTests
             Assert.IsTrue(EmbodiedRuntimeAdmission.TryBeginSkill(HeadSwayBlinkIdleCertification.SkillId, out var request, out var reason), "motion begin refused: " + reason);
             held = request;
             Assert.AreEqual(EmbodiedResource.Face | EmbodiedResource.Body, request.Resources);
-            Assert.AreEqual(HeadSwayBlinkIdleCertification.DurationSeconds, (float)request.Timeout.TotalSeconds, 0.01f);
+            Assert.AreEqual(
+                HeadSwayBlinkIdleCertification.DurationSeconds + EmbodiedRuntimeAdmission.CompletionGraceSeconds,
+                (float)request.Timeout.TotalSeconds, 0.01f);
             // 脸部资源被占用期间，手臂技能不含冲突资源仍可并行准入
             Assert.IsTrue(EmbodiedRuntimeAdmission.TryBeginSkill("screen_side_arm_raise", out var armRequest, out var armReason), "arm begin refused: " + armReason);
             EmbodiedRuntimeAdmission.CompleteSkill(armRequest, "admission-test-parallel-release");
@@ -81,6 +83,45 @@ public class RuntimeAdmissionTests
         finally
         {
             EmbodiedRuntimeAdmission.CompleteSkill(held, "admission-test-cleanup");
+        }
+    }
+
+    [Test] public void 到期准入会标记超时并释放资源()
+    {
+        EmbodiedActionRequest held = null;
+        try
+        {
+            Assert.IsTrue(EmbodiedRuntimeAdmission.TryBeginSkill("screen_side_arm_raise", out var request, out _));
+            held = request;
+            Assert.AreEqual(1, EmbodiedRuntimeAdmission.ExpireDue(System.DateTime.UtcNow.AddSeconds(request.Timeout.TotalSeconds + 1)));
+            Assert.AreEqual(EmbodiedActionStatus.TimedOut, request.Status);
+            Assert.IsTrue(EmbodiedRuntimeAdmission.TryBeginSkill("screen_side_arm_raise", out var again, out _));
+            EmbodiedRuntimeAdmission.CompleteSkill(again, "admission-test-timeout-cleanup");
+            held = null;
+        }
+        finally
+        {
+            EmbodiedRuntimeAdmission.CompleteSkill(held, "admission-test-timeout-finally");
+        }
+    }
+
+    [Test] public void 取消准入保留取消终态并释放资源()
+    {
+        EmbodiedActionRequest held = null;
+        try
+        {
+            Assert.IsTrue(EmbodiedRuntimeAdmission.TryBeginSkill("screen_side_arm_raise", out var request, out _));
+            held = request;
+            EmbodiedRuntimeAdmission.CancelSkill(request, "admission-test-user-cancel");
+            held = null;
+            Assert.AreEqual(EmbodiedActionStatus.Cancelled, request.Status);
+            Assert.AreEqual("admission-test-user-cancel", request.TerminalReason);
+            Assert.IsTrue(EmbodiedRuntimeAdmission.TryBeginSkill("screen_side_arm_raise", out var again, out _));
+            EmbodiedRuntimeAdmission.CompleteSkill(again, "admission-test-cancel-cleanup");
+        }
+        finally
+        {
+            EmbodiedRuntimeAdmission.CompleteSkill(held, "admission-test-cancel-finally");
         }
     }
 }

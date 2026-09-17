@@ -46,4 +46,15 @@ public class EmbodiedRecoveryTests
         var state = new EmbodiedPoseState();
         Assert.Throws<ArgumentException>(() => state.RecordWrite("", 1f, 0f));
     }
+    [Test] public void 快照记录动作资源与待还原参数()
+    {
+        var state = new EmbodiedPoseState();
+        state.BeginAction(new EmbodiedActionRequest { SkillId = "certified", Resources = EmbodiedResource.Face });
+        state.RecordWrite("ParamA", 2f, 0f);
+        var snapshot = state.CaptureSnapshot();
+        Assert.AreEqual("certified", snapshot.ActiveSkillId); Assert.AreEqual(EmbodiedResource.Face, snapshot.OccupiedResources); CollectionAssert.Contains(snapshot.PendingParameterIds, "ParamA");
+        state.RestoreAll((id, value) => { }); state.FinishAction(EmbodiedActionStatus.Completed);
+        var final = state.CaptureSnapshot();
+        Assert.Greater(final.Version, snapshot.Version); Assert.IsNull(final.ActiveSkillId); Assert.IsEmpty(final.PendingParameterIds); Assert.AreEqual(EmbodiedActionStatus.Completed, final.ActionStatus);
+    }
 }

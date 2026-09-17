@@ -60,7 +60,6 @@ public static class LocalToolRouter
     private static readonly string[] OperationTools =
     {
         "set_expression", "stop_action", "take_screenshot",
-        "request_body_skill",
         "inspect_motion_memory", "inspect_personality",
         "explore_body", "explore_body_vision", "run_verification", "vis_verify", "self_review",
         "knowledge_index", "get_system_info", "get_mouse_pos", "query_reminders",
@@ -68,6 +67,13 @@ public static class LocalToolRouter
         "set_preference", "query_preferences", "remove_preference",
         "query_task_templates", "save_task_template", "remove_task_template",
         "generate_ppt", "generate_docx", "generate_xlsx", "compile_latex"
+    };
+
+    // body 意图（用户明确要求身体动作，L4 IntentEnvelope.BodyIntent）：闭集白名单——
+    // 只能选择认证技能或停止动作；规划失败退化为文字，不猜测执行。
+    private static readonly string[] BodyTools =
+    {
+        "request_body_skill", "stop_action"
     };
 
     private static readonly string[] FallbackTools =
@@ -106,7 +112,10 @@ public static class LocalToolRouter
         "脚本", "联网", "PPT", "Word", "Excel", "PDF", "LaTeX", "文档", "论文", "报告", "简历",
         "课表", "课程", "上课", "学业",
         "偏好", "习惯", "喜欢", "模板", "人格", "动作记忆", "身体", "姿势", "手势",
-        "验证动作", "视觉验证", "复盘", "自检", "索引", "知识库", "容器", "Pogget"
+        "验证动作", "视觉验证", "复盘", "自检", "索引", "知识库", "容器", "Pogget",
+        // 身体技能请求（触发本地工具规划以选择认证动作技能）
+        "摇头", "点头", "挥手", "招手", "抬手", "举手", "眨眼", "微笑", "笑一个",
+        "摇一摇", "动一动", "打个招呼", "打招呼", "做个动作", "表演"
     };
 
     public static string[] GetAllowedTools(string intent)
@@ -116,6 +125,7 @@ public static class LocalToolRouter
             case "command": return CommandTools;
             case "knowledge": return KnowledgeTools;
             case "operation": return OperationTools;
+            case "body": return BodyTools;
             default: return FallbackTools;
         }
     }
@@ -141,6 +151,9 @@ public static class LocalToolRouter
             case "operation":
                 tools = OperationTools;
                 return true;
+            case "body":
+                tools = BodyTools;
+                return true;
             default:
                 tools = null;
                 return false;
@@ -151,7 +164,8 @@ public static class LocalToolRouter
     public static bool ShouldAttempt(string intent, string userMessage)
     {
         string normalizedIntent = (intent ?? "").Trim().ToLowerInvariant();
-        if (normalizedIntent == "command" || normalizedIntent == "knowledge" || normalizedIntent == "operation")
+        if (normalizedIntent == "command" || normalizedIntent == "knowledge" || normalizedIntent == "operation"
+            || normalizedIntent == "body")
             return true;
 
         if (normalizedIntent == "chat" || normalizedIntent == "emotion")

@@ -10,6 +10,10 @@ using UnityEngine;
 // LLM 工具面仍为零。超时与取消由执行器生命周期负责。
 public static class EmbodiedRuntimeAdmission
 {
+    // Update 中的超时检查发生在协程收尾之前；给已知时长的动作留出一小段收尾窗口，
+    // 避免最后一帧与超时同刻时被误判。该窗口仍受统一超时保护，不能无限占用资源。
+    public const float CompletionGraceSeconds = 0.25f;
+
     private static readonly CertifiedSkillRegistry Registry = CreateRegistry();
     private static readonly EmbodiedCoordinator Coordinator = new EmbodiedCoordinator(Registry);
     private static readonly HashSet<EmbodiedActionRequest> Active = new HashSet<EmbodiedActionRequest>();
@@ -70,7 +74,7 @@ public static class EmbodiedRuntimeAdmission
             SkillId = skillId,
             SemanticTarget = semanticTarget,
             Priority = 0,
-            Timeout = duration,
+            Timeout = TimeSpan.FromSeconds(duration.TotalSeconds + CompletionGraceSeconds),
             Resources = skill.Resources
         };
         if (Coordinator.TryBegin(begun, out reason) != EmbodiedActionStatus.Executing) return false;
@@ -80,11 +84,36 @@ public static class EmbodiedRuntimeAdmission
         return true;
     }
 
+    // 由运行时执行器每帧调用；到期请求已经由协调器释放资源，随后从准入活动集移除。
+    public static int ExpireDue(DateTime nowUtc)
+    {
+        int expired = Coordinator.ExpireDue(nowUtc);
+        if (expired == 0) return 0;
+        var completed = new List<EmbodiedActionRequest>();
+        foreach (var request in Active)
+            if (request.Status == EmbodiedActionStatus.TimedOut) completed.Add(request);
+        foreach (var request in completed)
+        {
+            Active.Remove(request);
+            Debug.Log("[EmbodiedRuntimeAdmission] timed-out: " + request.SkillId);
+        }
+        return completed.Count;
+    }
+
     // 完成与取消都必须经过这里释放资源；重复释放或释放非当前请求被忽略。
     public static void CompleteSkill(EmbodiedActionRequest request, string reason)
     {
         if (request == null || !Active.Remove(request)) return;
         Coordinator.Complete(request);
         Debug.Log("[EmbodiedRuntimeAdmission] released: " + reason);
+    }
+
+    // 取消不应被伪装成完成；超时请求已在 ExpireDue 中释放，随后调用此方法仅记录
+    // 运行时收束，不会重复占用或改变其 TimedOut 终态。
+    public static void CancelSkill(EmbodiedActionRequest request, string reason)
+    {
+        if (request == null || !Active.Remove(request)) return;
+        Coordinator.Cancel(request, reason);
+        Debug.Log("[EmbodiedRuntimeAdmission] cancelled: " + reason);
     }
 }
