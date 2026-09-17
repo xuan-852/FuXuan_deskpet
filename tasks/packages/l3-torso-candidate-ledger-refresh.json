@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-torso-candidate-ledger-refresh-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-01", "FR-L3-03", "AC-L3-01", "AC-L3-06"],
+  "acceptanceObjective": "Refresh the non-executable torso virtual-skeleton ledger entry with the verified cropped dual-review evidence while proving that Supporting evidence cannot be read as a runtime node.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Embodied/VirtualSkeletonCandidateLedger.cs", "code/desktop_unity/Assets/Editor/Tests/VirtualSkeletonCandidateLedgerTests.cs", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/", "code/desktop_unity/Assets/Scripts/ToolEngine/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": [".\\build.ps1 -Quick", ".\\build.ps1 -RunTests", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-virtual-skeleton-candidate-ledger.md"],
+  "evidenceOutputs": ["logs/build/test_results.xml"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Supporting is evidence-only. No certification, skill registration, renderer write, map update, LLM access, autonomous behavior, or runtime node eligibility."
+}

@@ -26,7 +26,7 @@
 - 全参数普查：设定 `FU_XUAN_PROBE_SCOPE=all`（且不设单参数变量）时，按运行时 `CubismModel.Parameters` 的实际集合采集全部参数；默认仍只采集首轮骨架候选。全参数普查仍只输出证据，不写映射。
 - 物理复验：对默认冻结模式中零差异的物理输入，可显式设定 `FU_XUAN_PROBE_WRITER_MODE=physics`。此时只额外保留 Cubism 物理控制器；探针每点稳定 8 帧并调用 SDK `Stabilization()`，禁止同时启用任何桌宠行为组件。
 - 输出：`capability-report-probe-window.json`、`probe_window/*.png`，每参三轮 `baseline/min/mid/max/reset`（15 帧）以及本地像素差/复位稳定性指标。
-- 骨架组合验证：设定 `FU_XUAN_PROBE_COMBINATIONS=skeleton` 时，独立窗口只执行固定的躯干+头部、左右手臂、躯干+单臂证据组。每组以成员真实最小/最大值采集单项、组合、复位，三轮重复后写入 `skeleton-combination-report.json`；该模式不写正式映射、不开放运行时动作。
+- 骨架组合验证：设定 `FU_XUAN_PROBE_COMBINATIONS=skeleton` 时，独立窗口只执行固定的躯干+头部、左右手臂、躯干+单臂证据组。每组以成员真实最小/最大值采集单项、组合、复位，三轮重复后写入 `skeleton-combination-report.json`；报告同时列出每个成员相对基线的最小/最大平均像素差，不能以组合帧替代成员有效性。该模式不写正式映射、不开放运行时动作。
 - 任意已发现参数的局部组合可设定 `FU_XUAN_PROBE_COMBINATION_IDS=<参数ID1>,<参数ID2>[,...]`；探针会拒绝少于两个或重复的 ID，并写入独立 `custom-combination-report.json`。它与固定骨架组共用三轮、成员单项、组合最小/最大、复位证据格式；双参数额外采集 `min/max` 与 `max/min` 两个交叉角点，避免因两项的有效方向相反而遗漏真实组合。该入口始终只用于验证关系，不赋予语义或修改映射。
 - 自定义组合可选 `FU_XUAN_PROBE_COMBINATION_RANGE_SCALE=(0,1]`，按每项参数“基线到原生最小/最大”的比例缩放后再采样；未设置时为 `1`。该开关只缩放隔离探针取样，不改变模型范围、正式映射或运行时参数。
 - 经用户明确授权的离线视觉复核可运行 `review_skeleton_combinations.cjs <隔离数据根>`。它只发送每组第一轮的 `baseline/combined_min/combined_max/reset` 模型帧给 DeepSeek，并按提示词与帧哈希缓存结果；组合自然度通过不等于成员归因、资源归属或 `Certified`。

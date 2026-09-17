@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-torso-conservative-dynamic-boundary-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-01", "FR-L3-03", "C-L3-02", "C-L3-04", "AC-L3-04", "AC-L3-06"],
+  "acceptanceObjective": "Verify conservative physics-torso ranges through isolated three-repeat dynamic sweeps and record their boundary with certified-motion static admission; do not certify or expose a torso skill.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Live2DProbe/", "scripts/test/", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/", "code/desktop_unity/Assets/Scripts/ToolEngine/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": [".\\build.ps1 -Quick", ".\\build.ps1 -RunTests", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-torso-conservative-dynamic-boundary.md"],
+  "evidenceOutputs": ["<isolated-root>/parameter-sweep-report.json", "logs/build/test_results.xml", "static admission runtime logs"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Physics-mode probe only. Test ParamBodyAngleX/Y in [-3,3] and ParamBodyAngleZ in [-0.75,0.75], with at least 12 sweep steps and three repeats. Candidate remains Conditional/not-certified; no map write, raw LLM parameter access, autonomous behavior, or cloud review."
+}

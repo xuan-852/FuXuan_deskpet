@@ -30,7 +30,6 @@ public class DragHandler : MonoBehaviour
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
-
     #endregion
 
     private DesktopPet _pet;

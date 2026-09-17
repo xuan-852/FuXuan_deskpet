@@ -52,6 +52,9 @@ public sealed class ProbeWindowController : MonoBehaviour
     {
         public string combinationId;
         public string[] parameterIds;
+        // Keep member evidence separate from aggregate corners. A combined image can
+        // be visibly different even when one member is a no-op (or vice versa).
+        public CombinationMemberResult[] members;
         public bool resetStable;
         public float maxResetMeanDifference;
         public float minCombinedMeanDifference;
@@ -59,6 +62,14 @@ public sealed class ProbeWindowController : MonoBehaviour
         public float minMaxCombinedMeanDifference;
         public float maxMinCombinedMeanDifference;
         public string[] frames;
+    }
+
+    [Serializable]
+    private sealed class CombinationMemberResult
+    {
+        public string parameterId;
+        public float minMeanDifference;
+        public float maxMeanDifference;
     }
 
     [Serializable]
@@ -328,6 +339,7 @@ public sealed class ProbeWindowController : MonoBehaviour
         bool capturesCrossCorners = parameters.Length == 2;
         int framesPerRepeat = 2 * parameters.Length + 4 + (capturesCrossCorners ? 2 : 0);
         var result = new CombinationResult { combinationId = combinationId, parameterIds = ids,
+            members = ids.Select(id => new CombinationMemberResult { parameterId = id }).ToArray(),
             frames = new string[repeats * framesPerRepeat] };
         var baseline = parameters.Select(item => item.Value).ToArray();
         var minimums = parameters.Select((item, index) => Mathf.Lerp(baseline[index], item.MinimumValue, rangeScale)).ToArray();
@@ -343,7 +355,9 @@ public sealed class ProbeWindowController : MonoBehaviour
             for (int i = 0; i < parameters.Length; i++)
             {
                 SetValues(parameters, baseline); parameters[i].Value = minimums[i];
-                yield return CapturePoint(model, camera, dir, combinationId, repeat, "min_" + ids[i], result.frames, frameIndex++, preservePhysics, _ => { });
+                int memberIndex = i;
+                yield return CapturePoint(model, camera, dir, combinationId, repeat, "min_" + ids[i], result.frames, frameIndex++, preservePhysics,
+                    frame => result.members[memberIndex].minMeanDifference += MeanPixelDifference(baseFrame.pixels, frame.pixels));
             }
             for (int i = 0; i < parameters.Length; i++) parameters[i].Value = minimums[i];
             yield return CapturePoint(model, camera, dir, combinationId, repeat, "combined_min", result.frames, frameIndex++, preservePhysics,
@@ -359,7 +373,9 @@ public sealed class ProbeWindowController : MonoBehaviour
             for (int i = 0; i < parameters.Length; i++)
             {
                 SetValues(parameters, baseline); parameters[i].Value = maximums[i];
-                yield return CapturePoint(model, camera, dir, combinationId, repeat, "max_" + ids[i], result.frames, frameIndex++, preservePhysics, _ => { });
+                int memberIndex = i;
+                yield return CapturePoint(model, camera, dir, combinationId, repeat, "max_" + ids[i], result.frames, frameIndex++, preservePhysics,
+                    frame => result.members[memberIndex].maxMeanDifference += MeanPixelDifference(baseFrame.pixels, frame.pixels));
             }
             for (int i = 0; i < parameters.Length; i++) parameters[i].Value = maximums[i];
             yield return CapturePoint(model, camera, dir, combinationId, repeat, "combined_max", result.frames, frameIndex++, preservePhysics,
@@ -381,6 +397,11 @@ public sealed class ProbeWindowController : MonoBehaviour
         result.maxCombinedMeanDifference = maxSum / repeats;
         result.minMaxCombinedMeanDifference = minMaxSum / repeats;
         result.maxMinCombinedMeanDifference = maxMinSum / repeats;
+        foreach (CombinationMemberResult member in result.members)
+        {
+            member.minMeanDifference /= repeats;
+            member.maxMeanDifference /= repeats;
+        }
         result.maxResetMeanDifference = resetMax;
         result.resetStable = resetMax <= 0.1f;
         done(result);

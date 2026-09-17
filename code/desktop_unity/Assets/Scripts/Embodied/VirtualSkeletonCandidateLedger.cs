@@ -31,7 +31,7 @@ public sealed class VirtualSkeletonCandidateLedger
     {
         new VirtualSkeletonCandidate { NodeId="root.desktop-motion", EvidenceId="walk-baseline-2026-09-16", ModelEvidenceVersion="current-model", Status=SkeletonEvidenceStatus.Conditional, Resources=EmbodiedResource.Movement },
         new VirtualSkeletonCandidate { NodeId="head.orientation", ParentNodeId="root.desktop-motion", EvidenceId="ParamAngleX-dynamic-2026-09-16", ModelEvidenceVersion="current-model", Status=SkeletonEvidenceStatus.Supporting, Resources=EmbodiedResource.Face },
-        new VirtualSkeletonCandidate { NodeId="torso.physics-lean", ParentNodeId="root.desktop-motion", EvidenceId="ParamBodyAngleX-physics-2026-09-16", ModelEvidenceVersion="current-model", Status=SkeletonEvidenceStatus.Conditional, Resources=EmbodiedResource.Body },
+        new VirtualSkeletonCandidate { NodeId="torso.physics-lean", ParentNodeId="root.desktop-motion", EvidenceId="ParamBodyAngleZ-cropped-dual-2026-09-17", ModelEvidenceVersion="current-model", Status=SkeletonEvidenceStatus.Supporting, Resources=EmbodiedResource.Body },
         new VirtualSkeletonCandidate { NodeId="arm.screen-side-raise", ParentNodeId="torso.physics-lean", EvidenceId="Param94-dynamic-2026-09-16", ModelEvidenceVersion="current-model", Status=SkeletonEvidenceStatus.Supporting, Resources=EmbodiedResource.RightArm }
     });
 }

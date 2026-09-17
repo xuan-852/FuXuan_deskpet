@@ -27,7 +27,7 @@
 
 2026-09-16 的运行时迁移决策采用 A：在首个认证技能出现前，`MotionAgent` 的旧生成、组合生成和生成式表情回退只允许隔离 `.test_mode` 离线复核；生产运行时拒绝。`play_action` 与 `generate_motion` 同时从 LLM 工具入口移除。步行、物理与表情基线未改动。详见 [L3 运行时认证准入审计](../truth/l3-runtime-admission-gap-audit.md)。
 
-`VirtualSkeletonCandidateLedger` 将当前 Root、头部、躯干和画面侧单臂证据结构化为 `Supporting/Conditional` 候选节点；只有未来 `Certified` 节点可被读取为运行时骨架。它不保存正式参数映射，也不把画面侧定义转成模型人体左右。
+`VirtualSkeletonCandidateLedger` 将当前 Root、头部、躯干和画面侧单臂证据结构化为 `Supporting/Conditional` 候选节点；2026-09-17 的 `torso.physics-lean` 引用 Z 轴保守物理扫动和裁剪双模型复核，提升为 `Supporting`，但测试断言其仍不可作为运行时节点。只有未来 `Certified` 节点可被读取为运行时骨架。它不保存正式参数映射，也不把画面侧定义转成模型人体左右。
 
 2026-09-17 新增 `EmbodiedPoseState` 最小集与统一安全收束：具身执行器的参数写入全部登记还原记录，`FinishTestParam94Gesture` 收束点依次执行姿势还原（`[EmbodiedSafeRecovery] pose-restored`）→ 租约释放 → 准入释放 → 移动锁解除，完成/取消/禁用/退出同路径收束。运行时帧对照确认执行协程复现评审包视觉（基线-抬臂-复位）。详见 [L3 动作生命周期与安全收束](../truth/l3-action-lifecycle-recovery.md)。
 

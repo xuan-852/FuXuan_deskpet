@@ -246,6 +246,15 @@ public partial class Live2DRenderer
             targetHeight = _overlayScreenH;
         }
 
+        // Recreating the native layered overlay transfers focus on some Windows
+        // configurations. Keep its backing texture stable throughout a pointer
+        // drag; the latest bounds are applied immediately after the mouse releases.
+        if (_pet != null && _pet.isDragging && _overlayRT != null)
+        {
+            targetWidth = _overlayScreenW;
+            targetHeight = _overlayScreenH;
+        }
+
         cropWidth = targetWidth / Mathf.Max(0.01f, scale);
         cropHeight = targetHeight / Mathf.Max(0.01f, scale);
 

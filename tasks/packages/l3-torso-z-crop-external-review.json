@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-torso-z-crop-external-review-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-03", "FR-L3-04", "C-L3-04", "AC-L3-04", "AC-L3-05", "AC-L3-06"],
+  "acceptanceObjective": "Perform one explicitly authorized cached DeepSeek and GLM review each for the hash-verified cropped torso evidence packet, resolving evidence quality only without certifying or registering a skill.",
+  "allowedPaths": ["scripts/live2d-probe/", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": ["node --check scripts/live2d-probe/review_candidate_packet_deepseek.cjs", "node --check scripts/live2d-probe/review_candidate_packet_glm.cjs", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-torso-z-candidate-review.md"],
+  "evidenceOutputs": ["<isolated-root>/cloud_review/torso_physics_lean_z_cropped-{deepseek,glm}-*.json"],
+  "riskLevel": "medium",
+  "externalEvidence": true,
+  "notes": "User explicitly authorized sending the cropped isolated torso screenshots to DeepSeek and GLM on 2026-09-17. One request per provider; no retry after any error. A consensus can resolve review visibility evidence only; candidate certification remains governed by independent gates."
+}

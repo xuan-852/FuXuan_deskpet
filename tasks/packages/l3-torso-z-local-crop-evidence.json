@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-torso-z-local-crop-evidence-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-01", "FR-L3-03", "C-L3-04", "AC-L3-04", "AC-L3-06"],
+  "acceptanceObjective": "Derive a deterministic torso-only crop set from the existing isolated Z-axis sweep to assess whether full-frame review resolution caused the provider disagreement; no external request or certification decision.",
+  "allowedPaths": ["docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/", "scripts/live2d-probe/", "docs/decisions/", "docs/guides/approved/"],
+  "verificationCommands": ["node scripts/live2d-probe/build_candidate_review_packet.cjs <isolated-root> torso_physics_lean_z_cropped torso_crops <semantic-boundary>", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-torso-z-candidate-review.md"],
+  "evidenceOutputs": ["<isolated-root>/torso_crops/*.png", "<isolated-root>/candidate-review-packet-torso_physics_lean_z_cropped.json"],
+  "riskLevel": "low",
+  "externalEvidence": false,
+  "notes": "Crops remain beneath the isolated .test_mode root. Any subsequent provider request is a separate, explicitly authorized task."
+}

@@ -42,6 +42,8 @@
 - [L3 认证动作静止门禁与收尾竞态修复](../../docs/truth/l3-runtime-motion-static-gate.md) — `docs/truth/l3-runtime-motion-static-gate.md`
 - [L3 运行时超时安全收束接线](../../docs/truth/l3-runtime-timeout-safe-recovery.md) — `docs/truth/l3-runtime-timeout-safe-recovery.md`
 - [L3 画面侧单臂上抬候选技能](../../docs/truth/l3-screen-side-arm-raise-candidate.md) — `docs/truth/l3-screen-side-arm-raise-candidate.md`
+- [L3 躯干保守动态与动作边界验证](../../docs/truth/l3-torso-conservative-dynamic-boundary.md) — `docs/truth/l3-torso-conservative-dynamic-boundary.md`
+- [L3 躯干 Z 轴候选：双模型自然度评审](../../docs/truth/l3-torso-z-candidate-review.md) — `docs/truth/l3-torso-z-candidate-review.md`
 - [L3 虚拟骨架候选账本](../../docs/truth/l3-virtual-skeleton-candidate-ledger.md) — `docs/truth/l3-virtual-skeleton-candidate-ledger.md`
 - [L3 步行与认证动作边界：运行时验证](../../docs/truth/l3-walk-action-boundary-runtime-verification.md) — `docs/truth/l3-walk-action-boundary-runtime-verification.md`
 
@@ -67,6 +69,11 @@
 - `l3-runtime-admission-b-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-b.json）
 - `l3-runtime-admission-gap-audit-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-gap-audit.json）
 - `l3-runtime-timeout-safe-recovery-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-timeout-safe-recovery.json）
+- `l3-torso-candidate-ledger-refresh-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-candidate-ledger-refresh.json）
+- `l3-torso-conservative-dynamic-boundary-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-conservative-dynamic-boundary.json）
+- `l3-torso-z-candidate-review-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-z-candidate-review.json）
+- `l3-torso-z-crop-external-review-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-z-crop-external-review.json）
+- `l3-torso-z-local-crop-evidence-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-z-local-crop-evidence.json）
 - `l3-virtual-skeleton-candidate-ledger-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-virtual-skeleton-candidate-ledger.json）
 - `l4-body-intent-certified-skill-routing-v1` → `docs/guides/approved/l4-intent-tools-and-bridge.md`（tasks/packages/l4-body-intent-certified-skill-routing.json）
 - `probe-core-and-unity-adapter-v1` → `docs/guides/approved/generic-live2d-capability-probe.md`（tasks/packages/probe-core-and-unity-adapter.json）

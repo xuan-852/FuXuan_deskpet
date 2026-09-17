@@ -9,9 +9,11 @@
 |---|---|---|---|---|
 | `root.desktop-motion` | 已测步行基线 | Conditional | Movement | 否 |
 | `head.orientation` | ParamAngleX 动态证据 | Supporting | Face | 否 |
-| `torso.physics-lean` | ParamBodyAngleX 物理证据 | Conditional | Body | 否 |
+| `torso.physics-lean` | ParamBodyAngleZ 裁剪双模型证据（2026-09-17） | Supporting | Body | 否 |
 | `arm.screen-side-raise` | Param94 动态证据 | Supporting | RightArm | 否 |
 
 节点只引用证据 ID，不是正式参数映射；`screen-side` 是画面描述，不能推断为模型人体左右臂。`TryGetRuntimeNode` 只会返回 `Certified` 节点。
 
 隔离 EditMode 测试通过（failed=0）：当前四节点均不能作为运行时节点；独立构造的 `Certified` 节点才可返回。该账本不注册技能、不执行动作、不写映射或生产数据。
+
+2026-09-17 刷新：`torso.physics-lean` 现引用 `ParamBodyAngleZ-cropped-dual-2026-09-17`。该证据来自物理模式的保守幅度扫动、局部裁剪帧以及 DeepSeek/GLM 一致的语义与自然度复核；它只将节点提升为 `Supporting`，测试明确断言 `TryGetRuntimeNode("torso.physics-lean", out _)` 仍为 false。详见 [躯干 Z 轴候选双模型评审](l3-torso-z-candidate-review.md)。
