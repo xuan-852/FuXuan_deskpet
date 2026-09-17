@@ -316,6 +316,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private float _idleActionTime = 0f;
     // 向后兼容：冷却计时（scheduler 内部自己管理，此字段保留仅用于特殊动作冷却）
     private float _idleActionCooldown = 0f;
+    // 行为层冷却：空闲槽位经生产执行器播放认证技能的最小间隔
+    private float _certifiedIdleBehaviorCooldown = 45f;
     // Track whether a forced idle action paused the pet so completion can
     // restore only the state changed by that action.
     private bool _idleActionPausedPet = false;
@@ -1754,6 +1756,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         // 向后兼容：特殊动作冷却
         if (_idleActionCooldown > 0f) _idleActionCooldown -= Time.deltaTime;
+        if (_certifiedIdleBehaviorCooldown > 0f) _certifiedIdleBehaviorCooldown -= Time.deltaTime;
 
         // 空闲且可播新动作
         // Idle actions may only start while locomotion is stopped. Without
@@ -1763,19 +1766,24 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (_currentIdleAction == 0 && !isWalking && !locomotionSettling
             && !isPaused && !_actionLocked && !_aiControlLocked)
         {
-            int picked = PickNextIdleAction();
-            if (picked > 0)
+            // 行为层（C-L3-01/FR-L3-02）：空闲时机优先经生产执行器播放已认证且
+            // 已向 AI 暴露的技能；冷却未到、准入拒绝或数据缺失时回退旧空闲调度。
+            if (!TryStartCertifiedIdleBehavior())
             {
-                // 自动动作与强制动作一样，必须阻止地面任务在动作中途切换到走路。
-                if (_pet != null && !_pet.isPaused)
+                int picked = PickNextIdleAction();
+                if (picked > 0)
                 {
-                    _pet.SetActionMovementLock(true);
-                    _idleActionMovementLockedPet = true;
+                    // 自动动作与强制动作一样，必须阻止地面任务在动作中途切换到走路。
+                    if (_pet != null && !_pet.isPaused)
+                    {
+                        _pet.SetActionMovementLock(true);
+                        _idleActionMovementLockedPet = true;
+                    }
+                    _currentIdleAction = picked;
+                    _idleActionTime = 0f;
+                    _complexActionPhase = 0f;
+                    Debug.Log($"[Live2DRenderer] ▶ 动作 #{_currentIdleAction}");
                 }
-                _currentIdleAction = picked;
-                _idleActionTime = 0f;
-                _complexActionPhase = 0f;
-                Debug.Log($"[Live2DRenderer] ▶ 动作 #{_currentIdleAction}");
             }
         }
 
@@ -2901,6 +2909,49 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
 
         return 0;
+    }
+
+    // 行为层冷却：成功后 90 秒内不再占用空闲槽位播认证动作；失败 30 秒后重试，
+    // 避免曲线数据缺失或准入拒绝时每个空闲帧都重复尝试。
+    private const float CertifiedIdleBehaviorCooldownSeconds = 90f;
+    private const float CertifiedIdleBehaviorFailureCooldownSeconds = 30f;
+
+    /// <summary>
+    /// 行为层（FR-L3-02/C-L3-01）：空闲时机从已向 AI 暴露的认证技能中随机挑选一项，
+    /// 经生产执行器（静止门禁→租约→准入→曲线播放→姿势还原）播放。只复用既有
+    /// 认证技能，不产生新动作、不调用 LLM、不写原始参数。
+    /// </summary>
+    private bool TryStartCertifiedIdleBehavior()
+    {
+        if (_certifiedIdleBehaviorCooldown > 0f) return false;
+        string skillId = PickRandomExposedCertifiedSkill();
+        if (skillId == null)
+        {
+            _certifiedIdleBehaviorCooldown = CertifiedIdleBehaviorFailureCooldownSeconds;
+            return false;
+        }
+        string result = PlayCertifiedMotion(skillId);
+        if (result != null && result.StartsWith("✅"))
+        {
+            _certifiedIdleBehaviorCooldown = CertifiedIdleBehaviorCooldownSeconds;
+            Debug.Log("[EmbodiedBehaviorLayer] idle-certified: " + skillId);
+            return true;
+        }
+        _certifiedIdleBehaviorCooldown = CertifiedIdleBehaviorFailureCooldownSeconds;
+        Debug.Log("[EmbodiedBehaviorLayer] idle-certified-unavailable: " + result);
+        return false;
+    }
+
+    private string PickRandomExposedCertifiedSkill()
+    {
+        int count = 0;
+        foreach (var entry in CertifiedMotionLibrary.LlmExposedEntries) count++;
+        if (count == 0) return null;
+        int index = UnityEngine.Random.Range(0, count);
+        int i = 0;
+        foreach (var entry in CertifiedMotionLibrary.LlmExposedEntries)
+            if (i++ == index) return entry.SkillId;
+        return null;
     }
 
     /// <summary>仅供隔离测试暂停空闲动作调度，避免污染被测动作的时序证据。</summary>

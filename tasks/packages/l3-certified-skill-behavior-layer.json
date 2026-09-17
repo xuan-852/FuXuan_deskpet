@@ -1,0 +1,32 @@
+{
+  "packageId": "l3-certified-skill-behavior-layer-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-02", "FR-L3-03", "C-L3-01", "C-L3-02", "AC-L3-03", "AC-L3-06"],
+  "acceptanceObjective": "Certified idle-type skills become reachable from the local behavior layer: during idle slots, with a cooldown and only in stable static state, the renderer plays a random LlmExposed certified skill through the existing PlayCertifiedMotion path (static gate, input lease, admission, pose restore); failures or rejections fall back to the legacy idle scheduler without changing its behavior.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "docs/truth/",
+    "docs/modules/",
+    "docs/generated/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/CertifiedMotionLibrary.cs",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/",
+    "code/desktop_unity/Assets/Scripts/ChatManager.cs",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "docs/decisions/",
+    "docs/guides/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": ["docs/truth/l3-certified-skill-behavior-layer.md"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "No autonomous LLM proposals and no new skills are enabled by this package; the behavior layer only re-plays already certified and LLM-exposed skills through the production executor. Idle cadence and cooldown constants stay conservative; proactive scheduling policy remains a future decision."
+}

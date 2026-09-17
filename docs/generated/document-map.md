@@ -30,6 +30,7 @@
 
 - [L3 动作生命周期与安全收束（最小集）](../../docs/truth/l3-action-lifecycle-recovery.md) — `docs/truth/l3-action-lifecycle-recovery.md`
 - [L3 参数能力普查：机械基线证据](../../docs/truth/l3-capability-census-mechanical.md) — `docs/truth/l3-capability-census-mechanical.md`
+- [L3 认证技能行为层接入（空闲时机触发）](../../docs/truth/l3-certified-skill-behavior-layer.md) — `docs/truth/l3-certified-skill-behavior-layer.md`
 - [L3 认证技能基础骨架](../../docs/truth/l3-certified-skill-foundation.md) — `docs/truth/l3-certified-skill-foundation.md`
 - [L3 协调器生命周期与超时底座](../../docs/truth/l3-coordinator-lifecycle-timeout.md) — `docs/truth/l3-coordinator-lifecycle-timeout.md`
 - [L3 协调器优先级抢占仲裁](../../docs/truth/l3-coordinator-priority-preemption.md) — `docs/truth/l3-coordinator-priority-preemption.md`
@@ -50,6 +51,7 @@
 - [L3 躯干 Z 运行时连续性验证](../../docs/truth/l3-torso-z-runtime-continuity.md) — `docs/truth/l3-torso-z-runtime-continuity.md`
 - [L3 虚拟骨架候选账本](../../docs/truth/l3-virtual-skeleton-candidate-ledger.md) — `docs/truth/l3-virtual-skeleton-candidate-ledger.md`
 - [L3 步行与认证动作边界：运行时验证](../../docs/truth/l3-walk-action-boundary-runtime-verification.md) — `docs/truth/l3-walk-action-boundary-runtime-verification.md`
+- [L4 身体意图确定性路由（本地链路可达认证技能）](../../docs/truth/l4-body-intent-deterministic-routing.md) — `docs/truth/l4-body-intent-deterministic-routing.md`
 
 ## 历史归档
 
@@ -61,6 +63,7 @@
 - `l3-candidate-deepseek-review-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-candidate-deepseek-review.json）
 - `l3-candidate-review-packet-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-candidate-review-packet.json）
 - `l3-capability-census-mechanical-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-capability-census-mechanical.json）
+- `l3-certified-skill-behavior-layer-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-certified-skill-behavior-layer.json）
 - `l3-certified-skill-foundation-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-certified-skill-foundation.json）
 - `l3-coordinator-lifecycle-timeout-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-coordinator-lifecycle-timeout.json）
 - `l3-coordinator-priority-preemption-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-coordinator-priority-preemption.json）
