@@ -1,0 +1,12 @@
+{
+  "packageId": "l3-torso-z-runtime-continuity-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-02", "FR-L3-03", "C-L3-02", "C-L3-04", "C-L3-07", "AC-L3-03", "AC-L3-06"],
+  "acceptanceObjective": "Validate a test-mode-only conservative torso Z sequence through static admission, continuous playback and SafeRecovery without certifying, registering or exposing a skill.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Live2DRenderer.cs", "code/desktop_unity/Assets/Scripts/RuntimeInputSimulator.cs", "scripts/test/", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Embodied/CertifiedMotionLibrary.cs", "code/desktop_unity/Assets/Scripts/ToolEngine/", "code/desktop_unity/Assets/Scripts/ChatManager.cs", "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/"],
+  "verificationCommands": [".\\build.ps1 -Quick", ".\\build.ps1 -RunTests", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-torso-z-runtime-continuity.md"],
+  "riskLevel": "medium",
+  "externalEvidence": false
+}

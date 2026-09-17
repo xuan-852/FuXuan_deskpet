@@ -119,6 +119,22 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.Equals("gesture:torso-z", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && renderer.StartTestTorsoZGesture()) Debug.Log("[TorsoCandidateTest] started");
+            else Debug.LogWarning("[TorsoCandidateTest] start-rejected");
+            return true;
+        }
+
+        if (body.Equals("gesture:torso-z:cancel", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && renderer.CancelTestTorsoZGesture()) Debug.Log("[TorsoCandidateTest] cancel-command-accepted");
+            else Debug.LogWarning("[TorsoCandidateTest] cancel-command-ignored");
+            return true;
+        }
+
         if (body.StartsWith("certified-motion:", StringComparison.OrdinalIgnoreCase))
         {
             string skillId = body.Substring("certified-motion:".Length).Trim();

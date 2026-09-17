@@ -37,6 +37,8 @@
 
 2026-09-17 步行—动作边界复验：`external_Hiyori_Hiyori_m06` 在 `velocity=(1,0)` 时被生产静止门禁拒绝且未启动；独立步行基线连续采集 17 帧后正常停止。详见 [L3 步行与认证动作边界](../truth/l3-walk-action-boundary-runtime-verification.md)。
 
+2026-09-17 躯干 Z 候选运行时连续性：仅在隔离 `.test_mode` 下，`@@sim:gesture:torso-z` 以 1.2 秒保守曲线驱动 `ParamBodyAngleZ` 0→0.75→0，路径复用输入租约、动作移动锁与统一姿势还原收束；行走中请求被 `rejected-static-gate` 拒绝，中段取消后强制步行成功证明未遗留动作锁。该候选仍为 `Supporting`，未认证、未注册、未向 AI 开放。详见 [L3 躯干 Z 运行时连续性](../truth/l3-torso-z-runtime-continuity.md)。
+
 ### 2.1 ActionAgent 文件清单（15 个 .cs）
 
 | 文件 | 职责 |

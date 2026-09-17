@@ -305,6 +305,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private bool _testParam94GestureActive;
     private float _testParam94GestureValue;
     private Coroutine _testParam94GestureCoroutine;
+    private bool _testTorsoZGestureActive;
+    private float _testTorsoZGestureValue;
+    private Coroutine _testTorsoZGestureCoroutine;
     // 复合动作相位（用于特殊硬编码动作，如法阵/星辉）
     private float _complexActionPhase = 0f;
     // 向后兼容：当前动作 ID（兼作"是否有动作"标志）
@@ -1140,6 +1143,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         if (_testParam94GestureActive)
             SetParameter("Param94", _testParam94GestureValue);
+        if (_testTorsoZGestureActive)
+            SetParameter("ParamBodyAngleZ", _testTorsoZGestureValue);
 
         // ★ 屏幕边缘碰撞反弹动画：覆盖在现有参数之上
         if (_wallHitTime > 0f)
@@ -2936,6 +2941,48 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         return true;
     }
 
+    /// <summary>仅供隔离验收的保守躯干侧倾，不是认证技能或 AI 参数入口。</summary>
+    public bool StartTestTorsoZGesture()
+    {
+        if (!ChatManager.IsTestMode || _testTorsoZGestureActive || _testParam94GestureActive || _actionLocked || _aiControlLocked || _pet == null || _pet.IsMovementTaskPendingOrActive || _pet.petVx != 0 || _pet.petVy != 0 || _walkBlendRemaining > 0f || _walkFadeInRemaining > 0f)
+        {
+            Debug.Log("[TorsoCandidateTest] rejected-static-gate");
+            return false;
+        }
+        if (!_inputCoordinator.TryBegin(Live2DInputKind.CandidateTest, "torso-z-gesture", out _candidateTestInputLease)) return false;
+        _testTorsoZGestureCoroutine = StartCoroutine(PlayTestTorsoZGesture());
+        return true;
+    }
+
+    private System.Collections.IEnumerator PlayTestTorsoZGesture()
+    {
+        const float duration = 1.2f, peak = 0.75f;
+        ResetIdleAction(true); _actionLocked = true; _testTorsoZGestureActive = true; _pet.SetActionMovementLock(true);
+        for (float elapsed = 0f; elapsed < duration; elapsed += Time.deltaTime)
+        {
+            _testTorsoZGestureValue = peak * Mathf.Sin(Mathf.PI * Mathf.Clamp01(elapsed / duration));
+            _embodiedPoseState.RecordWrite("ParamBodyAngleZ", _testTorsoZGestureValue, 0f);
+            yield return null;
+        }
+        FinishTestTorsoZGesture("torso-z-candidate-completed", false);
+    }
+
+    public bool CancelTestTorsoZGesture(string reason = "torso-z-candidate-cancelled")
+    {
+        if (!_testTorsoZGestureActive && !_candidateTestInputLease.IsValid) return false;
+        FinishTestTorsoZGesture(reason, true); return true;
+    }
+
+    private void FinishTestTorsoZGesture(string reason, bool stopCoroutine)
+    {
+        if (stopCoroutine && _testTorsoZGestureCoroutine != null) StopCoroutine(_testTorsoZGestureCoroutine);
+        _testTorsoZGestureCoroutine = null; _testTorsoZGestureValue = 0f; _testTorsoZGestureActive = false; _actionLocked = false;
+        var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+        if (restored.Count > 0) Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
+        _inputCoordinator.Release(_candidateTestInputLease, reason); _candidateTestInputLease = default;
+        _pet.SetActionMovementLock(false); Debug.Log("[TorsoCandidateTest] cleanup: " + reason);
+    }
+
     private System.Collections.IEnumerator PlayTestParam94Gesture()
     {
         const float duration = 2.4f, peak = 15f;
@@ -2978,6 +3025,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
 
         CancelTestParam94Gesture("candidate-test-before-test-exit");
+        CancelTestTorsoZGesture("torso-z-candidate-before-test-exit");
         CancelCertifiedMotion("certified-motion-before-test-exit");
         StopExpressionForInputTransition();
         CancelInvoke(nameof(ReleaseActionLock));
@@ -3009,12 +3057,14 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private void OnDisable()
     {
         CancelTestParam94Gesture("candidate-test-renderer-disabled");
+        CancelTestTorsoZGesture("torso-z-candidate-renderer-disabled");
         CancelCertifiedMotion("certified-motion-renderer-disabled");
     }
 
     private void OnApplicationQuit()
     {
         CancelTestParam94Gesture("candidate-test-application-quitting");
+        CancelTestTorsoZGesture("torso-z-candidate-application-quitting");
         CancelCertifiedMotion("certified-motion-application-quitting");
     }
 

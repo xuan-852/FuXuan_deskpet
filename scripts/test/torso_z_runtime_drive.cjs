@@ -1,0 +1,8 @@
+'use strict';
+const fs=require('fs'),os=require('os'),path=require('path'),{spawn}=require('child_process');
+const exe=process.argv[2]; if(!exe||!fs.existsSync(exe))throw Error('missing exe');
+const root=path.join(os.tmpdir(),'fuxuan_torso_z_runtime_drive'); const inbox=path.join(root,'inbox.txt'); const sleep=n=>new Promise(r=>setTimeout(r,n));
+const log=()=>{try{return fs.readFileSync(path.join(root,'logs','player_log.txt'),'utf8')}catch{return ''}};
+async function wait(s){for(let end=Date.now()+90000;Date.now()<end;await sleep(150))if(log().includes(s))return;throw Error('timeout '+s)}
+async function send(s,n=500){fs.writeFileSync(inbox,s);await sleep(n);fs.writeFileSync(inbox,'')}
+(async()=>{fs.rmSync(root,{recursive:true,force:true});fs.mkdirSync(root,{recursive:true});fs.writeFileSync(path.join(root,'.test_mode'),'');fs.writeFileSync(inbox,'');const p=spawn(exe,[],{env:{...process.env,FU_XUAN_DATA:root},stdio:'ignore'});try{await wait('[DesktopPet] 落地');await send('@@sim:idle-actions:off');await send('@@sim:walk:stop',1800);await send('@@sim:gesture:torso-z');await wait('[TorsoCandidateTest] started');await wait('[TorsoCandidateTest] cleanup: torso-z-candidate-completed');console.log('torso-z-runtime-passed '+root)}finally{fs.writeFileSync(inbox,'@@test:quit');await sleep(700);if(!p.killed)p.kill()}})().catch(e=>{console.error(e.message);process.exitCode=1});

@@ -46,6 +46,7 @@
 - [L3 认证技能的 AI 暴露边界](../../docs/truth/l3-semantic-skill-exposure-boundary.md) — `docs/truth/l3-semantic-skill-exposure-boundary.md`
 - [L3 躯干保守动态与动作边界验证](../../docs/truth/l3-torso-conservative-dynamic-boundary.md) — `docs/truth/l3-torso-conservative-dynamic-boundary.md`
 - [L3 躯干 Z 轴候选：双模型自然度评审](../../docs/truth/l3-torso-z-candidate-review.md) — `docs/truth/l3-torso-z-candidate-review.md`
+- [L3 躯干 Z 运行时连续性验证](../../docs/truth/l3-torso-z-runtime-continuity.md) — `docs/truth/l3-torso-z-runtime-continuity.md`
 - [L3 虚拟骨架候选账本](../../docs/truth/l3-virtual-skeleton-candidate-ledger.md) — `docs/truth/l3-virtual-skeleton-candidate-ledger.md`
 - [L3 步行与认证动作边界：运行时验证](../../docs/truth/l3-walk-action-boundary-runtime-verification.md) — `docs/truth/l3-walk-action-boundary-runtime-verification.md`
 
@@ -77,6 +78,7 @@
 - `l3-torso-z-candidate-review-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-z-candidate-review.json）
 - `l3-torso-z-crop-external-review-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-z-crop-external-review.json）
 - `l3-torso-z-local-crop-evidence-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-z-local-crop-evidence.json）
+- `l3-torso-z-runtime-continuity-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-z-runtime-continuity.json）
 - `l3-virtual-skeleton-candidate-ledger-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-virtual-skeleton-candidate-ledger.json）
 - `l4-body-intent-certified-skill-routing-v1` → `docs/guides/approved/l4-intent-tools-and-bridge.md`（tasks/packages/l4-body-intent-certified-skill-routing.json）
 - `probe-core-and-unity-adapter-v1` → `docs/guides/approved/generic-live2d-capability-probe.md`（tasks/packages/probe-core-and-unity-adapter.json）
@@ -84,4 +86,4 @@
 
 ## 检查结果
 
-- 失败：docs/guides/approved/l3-semantic-skill-exposure-boundary.md: 批准指导文档缺少“实施授权边界”章节或声明
+- 通过：任务包引用均满足目录规则。
