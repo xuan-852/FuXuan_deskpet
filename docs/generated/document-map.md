@@ -11,7 +11,7 @@
 
 ## 提案指导文档
 
-暂无。
+- [认证动作曲线数据的生产部署与真人验收（提案）](../../docs/guides/proposed/certified-motion-data-deployment.md) — `docs/guides/proposed/certified-motion-data-deployment.md`
 
 ## 批准指导文档
 
