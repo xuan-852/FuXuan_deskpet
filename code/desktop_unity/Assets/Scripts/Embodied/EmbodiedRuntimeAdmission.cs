@@ -5,7 +5,8 @@ using UnityEngine;
 // 生产运行时唯一认证技能准入汇点（FR-L3-02/C-L3-01）：注册表只接受四层
 // 认证记录，ActionRequest 是唯一准入入口，没有原始参数字段。注册失败时
 // 准入保持为空并报错，绝不降级放行。并行由 EmbodiedCoordinator 按资源
-// 掩码仲裁（C-L3-02：不相交资源可并行）；完成与取消必须经 CompleteSkill。
+// 掩码仲裁（C-L3-02：不相交资源可并行）；生产请求固定 Priority=0，同优先级
+// 冲突仍拒绝、不被抢占。完成与取消必须经 CompleteSkill。
 // 当前仅隔离测试执行器（@@sim:gesture:param94，仅 .test_mode）经过本汇点；
 // LLM 工具面仍为零。超时与取消由执行器生命周期负责。
 public static class EmbodiedRuntimeAdmission

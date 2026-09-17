@@ -39,6 +39,8 @@
 
 2026-09-17 躯干 Z 候选运行时连续性：仅在隔离 `.test_mode` 下，`@@sim:gesture:torso-z` 以 1.2 秒保守曲线驱动 `ParamBodyAngleZ` 0→0.75→0，路径复用输入租约、动作移动锁与统一姿势还原收束；行走中请求被 `rejected-static-gate` 拒绝，中段取消后强制步行成功证明未遗留动作锁。该候选仍为 `Supporting`，未认证、未注册、未向 AI 开放。详见 [L3 躯干 Z 运行时连续性](../truth/l3-torso-z-runtime-continuity.md)。
 
+2026-09-18 协调器优先级抢占仲裁：`EmbodiedCoordinator.TryBegin` 在资源冲突时仅允许严格更高优先级的请求经正常取消路径（终态原因 `preempted`）抢占相交资源持有者；同级/更低维持拒绝，不相交资源并行不受影响。生产准入请求固定 `Priority=0`，运行时行为不变。延迟排队与旧动作入口迁移仍未实现。详见 [L3 协调器优先级抢占仲裁](../truth/l3-coordinator-priority-preemption.md)。
+
 ### 2.1 ActionAgent 文件清单（15 个 .cs）
 
 | 文件 | 职责 |

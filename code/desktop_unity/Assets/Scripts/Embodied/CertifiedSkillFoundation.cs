@@ -59,7 +59,10 @@ public sealed class EmbodiedCoordinator
         if (!_registry.TryGet(request.SkillId, out var skill)) { reason = "skill-not-certified"; return EmbodiedActionStatus.Rejected; }
         if (request.Resources != skill.Resources || request.Resources == EmbodiedResource.None) { reason = "resource-declaration-mismatch"; return EmbodiedActionStatus.Rejected; }
         if (request.Timeout <= TimeSpan.Zero) { reason = "positive-timeout-required"; return EmbodiedActionStatus.Rejected; }
-        if ((_occupied & request.Resources) != 0) { reason = "resource-busy"; return EmbodiedActionStatus.Rejected; }
+        if ((_occupied & request.Resources) != 0)
+        {
+            if (!TryPreemptConflicts(request)) { reason = "resource-busy"; return EmbodiedActionStatus.Rejected; }
+        }
         request.RequestId = ++_nextRequestId;
         request.Status = EmbodiedActionStatus.Executing;
         request.StartedAtUtc = nowUtc.ToUniversalTime();
@@ -86,6 +89,22 @@ public sealed class EmbodiedCoordinator
         _occupied &= ~resources;
         request.Status = terminalStatus;
         request.TerminalReason = reason;
+        return true;
+    }
+
+    // 优先级仲裁（FR-L3-02）：资源冲突时仅允许严格更高优先级的请求，经正常取消
+    // 路径抢占全部相交资源持有者；任一持有者优先级不低于请求即维持拒绝。不相交
+    // 资源持有者不受影响。生产准入固定 Priority=0，同优先级冲突仍拒绝，运行时行为不变。
+    private bool TryPreemptConflicts(EmbodiedActionRequest request)
+    {
+        var conflicts = new List<EmbodiedActionRequest>();
+        foreach (var pair in _active)
+        {
+            if ((pair.Value & request.Resources) == 0) continue;
+            if (pair.Key.Priority >= request.Priority) return false;
+            conflicts.Add(pair.Key);
+        }
+        foreach (var held in conflicts) Finish(held, EmbodiedActionStatus.Cancelled, "preempted");
         return true;
     }
 }

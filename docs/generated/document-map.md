@@ -32,6 +32,7 @@
 - [L3 参数能力普查：机械基线证据](../../docs/truth/l3-capability-census-mechanical.md) — `docs/truth/l3-capability-census-mechanical.md`
 - [L3 认证技能基础骨架](../../docs/truth/l3-certified-skill-foundation.md) — `docs/truth/l3-certified-skill-foundation.md`
 - [L3 协调器生命周期与超时底座](../../docs/truth/l3-coordinator-lifecycle-timeout.md) — `docs/truth/l3-coordinator-lifecycle-timeout.md`
+- [L3 协调器优先级抢占仲裁](../../docs/truth/l3-coordinator-priority-preemption.md) — `docs/truth/l3-coordinator-priority-preemption.md`
 - [L3 外部动作素材导入（官方示例 motions）](../../docs/truth/l3-external-motion-import.md) — `docs/truth/l3-external-motion-import.md`
 - [L3 Hiyori m06 候选认证](../../docs/truth/l3-hiyori-m06-certification.md) — `docs/truth/l3-hiyori-m06-certification.md`
 - [L3 Live2D 输入边界审计](../../docs/truth/l3-live2d-input-boundary-audit.md) — `docs/truth/l3-live2d-input-boundary-audit.md`
@@ -62,6 +63,7 @@
 - `l3-capability-census-mechanical-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-capability-census-mechanical.json）
 - `l3-certified-skill-foundation-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-certified-skill-foundation.json）
 - `l3-coordinator-lifecycle-timeout-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-coordinator-lifecycle-timeout.json）
+- `l3-coordinator-priority-preemption-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-coordinator-priority-preemption.json）
 - `l3-external-motion-import-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-external-motion-import.json）
 - `l3-first-skill-certification-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-first-skill-certification.json）
 - `l3-hiyori-m06-certification-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-hiyori-m06-certification.json）
