@@ -67,6 +67,7 @@
 - `l3-external-motion-import-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-external-motion-import.json）
 - `l3-first-skill-certification-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-first-skill-certification.json）
 - `l3-hiyori-m06-certification-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-hiyori-m06-certification.json）
+- `l3-legacy-template-recertification-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-legacy-template-recertification.json）
 - `l3-motion-pipeline-certification-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-motion-pipeline-certification.json）
 - `l3-pose-state-runtime-wiring-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-pose-state-runtime-wiring.json）
 - `l3-pose-state-snapshot-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-pose-state-snapshot.json）

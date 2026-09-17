@@ -1,0 +1,33 @@
+{
+  "packageId": "l3-legacy-template-recertification-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-01", "FR-L3-03", "FR-L3-04", "C-L3-04", "C-L3-05", "AC-L3-04", "AC-L3-05"],
+  "acceptanceObjective": "Re-certify head/face-feasible legacy MotionPlanner semantic templates (nod, head-shake, bow) through the standard four-layer pipeline with dual-model offline review and register them as production certified skills; arm-dependent templates stay blocked pending a physics-writer decision.",
+  "allowedPaths": [
+    "scripts/live2d-probe/",
+    "code/desktop_unity/Assets/Scripts/Embodied/",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "docs/truth/",
+    "docs/modules/",
+    "docs/generated/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/",
+    "code/desktop_unity/Assets/Scripts/ChatManager.cs",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "docs/decisions/",
+    "docs/guides/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    "node scripts/live2d-probe/capture_motion_candidate.cjs <probe-exe> <candidate.json> <skill-id> <semantic-claim>",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": ["docs/truth/l3-legacy-template-recertification.md"],
+  "riskLevel": "medium",
+  "externalEvidence": true,
+  "notes": "Cloud authorization granted by product owner on 2026-09-18: DeepSeek primary + GLM secondary offline review of isolated-environment model frames, within default-operational-thresholds budget (DeepSeek <=6 CNY per batch, off-peak, hash-cached). Scope note: head/face templates use runtime-verified parameters (ParamAngleX/Y/Z, body angles); arm-based templates (wave, hands-on-hips, cover-face, point, beckon, pray, stretch) are blocked by the physics-writer override finding (Param31-37 read zero under physics mode) and require a separate decision before inclusion. Playing goes through the existing PlayCertifiedMotion curve-data path; curve JSONs stay out of the repository per license."
+}
