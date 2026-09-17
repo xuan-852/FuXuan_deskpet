@@ -16,6 +16,8 @@ public static class CertifiedMotionLibrary
         public int DeepSeekNaturalnessScore;
         public int GlmNaturalnessScore;
         public string DualReviewId;
+        // Runtime certification and model exposure are separate decisions.
+        public bool LlmExposed;
 
         public int NaturalnessScore => Math.Min(DeepSeekNaturalnessScore, GlmNaturalnessScore);
         public SkillCertificationRecord CreateRecord() => new SkillCertificationRecord
@@ -37,7 +39,7 @@ public static class CertifiedMotionLibrary
             SemanticBoundary = "头部左右轻快摇摆并伴随眨眼与表情变化，随后回到基线；不是手臂上抬、挥手或位移动作",
             DurationSeconds = 5.93f, Resources = EmbodiedResource.Face | EmbodiedResource.Body,
             PacketSha256 = "674bdaec06ac91bd63638f44970ead7707a837fd8debacfbea990fd186832604",
-            DeepSeekNaturalnessScore = 85, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-674bdaec-2026-09-17"
+            DeepSeekNaturalnessScore = 85, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-674bdaec-2026-09-17", LlmExposed = true
         },
         new Entry
         {
@@ -45,7 +47,7 @@ public static class CertifiedMotionLibrary
             SemanticBoundary = "头部转向画面左侧并伴随张嘴表情变化，随后回到基线；不是手臂动作或位移动作",
             DurationSeconds = 8.6f, Resources = EmbodiedResource.Face | EmbodiedResource.Body,
             PacketSha256 = "266f87ff61b162d2cabae4f2612f8f293f2f3e56e12a59885ccac2335113cd65",
-            DeepSeekNaturalnessScore = 82, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-266f87ff-2026-09-17"
+            DeepSeekNaturalnessScore = 82, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-266f87ff-2026-09-17", LlmExposed = true
         },
         new Entry
         {
@@ -53,7 +55,7 @@ public static class CertifiedMotionLibrary
             SemanticBoundary = "头部侧倾并伴随眨眼、视线与表情变化，随后回到基线；不是手臂动作或位移动作",
             DurationSeconds = 5.37f, Resources = EmbodiedResource.Face | EmbodiedResource.Body,
             PacketSha256 = "1c5b4f6edb705658b1648a3b5a1b2de5cce5d764183d47b21637ca0cb1b29c74",
-            DeepSeekNaturalnessScore = 82, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-1c5b4f6e-2026-09-17"
+            DeepSeekNaturalnessScore = 82, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-1c5b4f6e-2026-09-17", LlmExposed = true
         },
         new Entry
         {
@@ -61,7 +63,7 @@ public static class CertifiedMotionLibrary
             SemanticBoundary = "轻微的头部与视线摆动及呼吸起伏的待机动作，随后回到基线；不是手臂上抬或位移动作",
             DurationSeconds = 10f, Resources = EmbodiedResource.Face | EmbodiedResource.Body,
             PacketSha256 = "a21ee43bd77d68d832ddff7c02fd7bd052ec5214402ae6639a2070ab0c2a0bcb",
-            DeepSeekNaturalnessScore = 85, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-a21ee43b-2026-09-17"
+            DeepSeekNaturalnessScore = 85, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-a21ee43b-2026-09-17", LlmExposed = true
         },
         new Entry
         {
@@ -69,7 +71,7 @@ public static class CertifiedMotionLibrary
             SemanticBoundary = "头部轻摆伴随闭眼微笑的表情变化，随后回到基线；不是手臂上抬、挥手或位移动作",
             DurationSeconds = 5.5f, Resources = EmbodiedResource.Face | EmbodiedResource.Body,
             PacketSha256 = "546596eb0fbb689332df49fb511f746d3938497424956f536c5c42be9a1e1428",
-            DeepSeekNaturalnessScore = 85, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-546596eb-2026-09-17"
+            DeepSeekNaturalnessScore = 85, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-546596eb-2026-09-17", LlmExposed = true
         },
         new Entry
         {
@@ -77,7 +79,7 @@ public static class CertifiedMotionLibrary
             SemanticBoundary = "头部转向画面右侧并伴随微笑表情，随后回到基线；不是手臂上抬、挥手或位移动作",
             DurationSeconds = 6f, Resources = EmbodiedResource.Face | EmbodiedResource.Body,
             PacketSha256 = "292f8c8b4cc802b7337d9a09285cda9397811b095db31c24b78d18d8667561a3",
-            DeepSeekNaturalnessScore = 88, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-292f8c8b-2026-09-17"
+            DeepSeekNaturalnessScore = 88, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-292f8c8b-2026-09-17", LlmExposed = true
         },
     };
 
@@ -87,5 +89,19 @@ public static class CertifiedMotionLibrary
         foreach (var item in Entries)
             if (item.SkillId == skillId) { entry = item; return true; }
         return false;
+    }
+
+    public static bool IsLlmExposed(string skillId)
+    {
+        return TryGet(skillId, out var entry) && entry.LlmExposed;
+    }
+
+    public static IEnumerable<Entry> LlmExposedEntries
+    {
+        get
+        {
+            foreach (var entry in Entries)
+                if (entry.LlmExposed) yield return entry;
+        }
     }
 }

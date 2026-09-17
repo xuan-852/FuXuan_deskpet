@@ -50,7 +50,20 @@ public class CertifiedMotionLibraryTests
         StringAssert.Contains("screen_side_arm_raise", prompt);
         StringAssert.Contains("原始参数", prompt);
         StringAssert.DoesNotContain("当前没有可调用", prompt);
-        foreach (var motion in CertifiedMotionLibrary.Entries)
+        foreach (var motion in CertifiedMotionLibrary.LlmExposedEntries)
             StringAssert.Contains(motion.SkillId, prompt);
+    }
+
+    [Test]
+    public void 认证与AI暴露必须是两道独立白名单()
+    {
+        var hidden = new CertifiedMotionLibrary.Entry { SkillId = "internal_candidate" };
+        Assert.IsFalse(hidden.LlmExposed);
+        Assert.IsFalse(CertifiedMotionLibrary.IsLlmExposed("not_registered"));
+        foreach (var motion in CertifiedMotionLibrary.Entries)
+        {
+            Assert.IsTrue(motion.LlmExposed, "existing behavior must remain explicit: " + motion.SkillId);
+            Assert.IsTrue(CertifiedMotionLibrary.IsLlmExposed(motion.SkillId));
+        }
     }
 }

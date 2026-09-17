@@ -19,6 +19,7 @@
 - [l1-runtime-foundation.md](../../docs/guides/approved/l1-runtime-foundation.md) — `docs/guides/approved/l1-runtime-foundation.md`
 - [l2-desktop-body-and-window.md](../../docs/guides/approved/l2-desktop-body-and-window.md) — `docs/guides/approved/l2-desktop-body-and-window.md`
 - [L3 具身技能认证与动作协调指导文档](../../docs/guides/approved/l3-embodied-skill-certification.md) — `docs/guides/approved/l3-embodied-skill-certification.md`
+- [L3 认证技能的 AI 暴露边界](../../docs/guides/approved/l3-semantic-skill-exposure-boundary.md) — `docs/guides/approved/l3-semantic-skill-exposure-boundary.md`
 - [l4-intent-tools-and-bridge.md](../../docs/guides/approved/l4-intent-tools-and-bridge.md) — `docs/guides/approved/l4-intent-tools-and-bridge.md`
 - [l5-memory-personality-proactive.md](../../docs/guides/approved/l5-memory-personality-proactive.md) — `docs/guides/approved/l5-memory-personality-proactive.md`
 - [l6-user-services-and-release.md](../../docs/guides/approved/l6-user-services-and-release.md) — `docs/guides/approved/l6-user-services-and-release.md`
@@ -42,6 +43,7 @@
 - [L3 认证动作静止门禁与收尾竞态修复](../../docs/truth/l3-runtime-motion-static-gate.md) — `docs/truth/l3-runtime-motion-static-gate.md`
 - [L3 运行时超时安全收束接线](../../docs/truth/l3-runtime-timeout-safe-recovery.md) — `docs/truth/l3-runtime-timeout-safe-recovery.md`
 - [L3 画面侧单臂上抬候选技能](../../docs/truth/l3-screen-side-arm-raise-candidate.md) — `docs/truth/l3-screen-side-arm-raise-candidate.md`
+- [L3 认证技能的 AI 暴露边界](../../docs/truth/l3-semantic-skill-exposure-boundary.md) — `docs/truth/l3-semantic-skill-exposure-boundary.md`
 - [L3 躯干保守动态与动作边界验证](../../docs/truth/l3-torso-conservative-dynamic-boundary.md) — `docs/truth/l3-torso-conservative-dynamic-boundary.md`
 - [L3 躯干 Z 轴候选：双模型自然度评审](../../docs/truth/l3-torso-z-candidate-review.md) — `docs/truth/l3-torso-z-candidate-review.md`
 - [L3 虚拟骨架候选账本](../../docs/truth/l3-virtual-skeleton-candidate-ledger.md) — `docs/truth/l3-virtual-skeleton-candidate-ledger.md`
@@ -69,6 +71,7 @@
 - `l3-runtime-admission-b-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-b.json）
 - `l3-runtime-admission-gap-audit-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-admission-gap-audit.json）
 - `l3-runtime-timeout-safe-recovery-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-runtime-timeout-safe-recovery.json）
+- `l3-semantic-skill-exposure-boundary-v1` → `docs/guides/approved/l3-semantic-skill-exposure-boundary.md`（tasks/packages/l3-semantic-skill-exposure-boundary.json）
 - `l3-torso-candidate-ledger-refresh-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-candidate-ledger-refresh.json）
 - `l3-torso-conservative-dynamic-boundary-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-conservative-dynamic-boundary.json）
 - `l3-torso-z-candidate-review-v1` → `docs/guides/approved/l3-embodied-skill-certification.md`（tasks/packages/l3-torso-z-candidate-review.json）
@@ -81,4 +84,4 @@
 
 ## 检查结果
 
-- 通过：任务包引用均满足目录规则。
+- 失败：docs/guides/approved/l3-semantic-skill-exposure-boundary.md: 批准指导文档缺少“实施授权边界”章节或声明
