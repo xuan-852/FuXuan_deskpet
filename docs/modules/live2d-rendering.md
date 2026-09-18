@@ -1,7 +1,7 @@
 ﻿# Live2D 渲染管道 — 渲染、参数映射与硬编码迁移
 
 > **文档作用**: 本模块文档描述桌宠「Live2D 渲染」子系统的**代码真相**——模型加载双保险、80+ 参数映射、Perlin 噪声微动、天气↔表情联动、以及 `Live2DRenderer.cs` 约 427 处 `SetParameter`/`SetParameterValue` 匹配的迁移清单（P0-P4 分级）。改渲染/表情/动作参数相关代码前必读。
-> **基本架构**: `HybridRenderer` → `Live2DRenderer`（恒走 Live2D，3D 分支不可用）→ Cubism SDK 5-r.4。模型加载：AssetDatabase → Resources.Load("Fuxuan") 降级。参数映射：`Live2DParameterMapper`（语义名 ↔ Cubism 参数 ID）双向映射，核心入口 `Live2DRenderer.SetParameterValue(string, float)`。渲染器现由 `Live2DRenderer.cs`（模型加载、动作与参数）+ `Live2DRenderer.OverlayRendering.cs`（置顶叠加相机、RT、OnGUI 和性能档位）组成同一 partial 类。执行顺序：DesktopPet.Update（0）→ CubismPhysicsController.LateUpdate（800）→ Live2DRenderer.LateUpdate（801，覆盖物理重置参数）。
+> **基本架构**: `HybridRenderer` → `Live2DRenderer`（恒走 Live2D，3D 分支不可用）→ Cubism SDK 5-r.4。当前渲染器是固定 Fuxuan fixture 的适配实现，不是通用模型 provider：编辑器优先读取 `Assets/Live2D/Models/Fuxuan/符玄.prefab`，构建运行时从 `StreamingAssets/Live2D/Fuxuan/符玄.model3.json` 读取，`Resources.Load("Fuxuan")` 仅作回退。参数映射：`Live2DParameterMapper`（语义名 ↔ Cubism 参数 ID）双向映射，核心入口 `Live2DRenderer.SetParameterValue(string, float)`。渲染器现由 `Live2DRenderer.cs`（模型加载、动作与参数）+ `Live2DRenderer.OverlayRendering.cs`（置顶叠加相机、RT、OnGUI 和性能档位）组成同一 partial 类。执行顺序：DesktopPet.Update（0）→ CubismPhysicsController.LateUpdate（800）→ Live2DRenderer.LateUpdate（801，覆盖物理重置参数）。
 > **开发历史迭代**: N38（2026-08-02）完成硬编码动作迁移清单（历史基线 379+ 处调用、15 方法、P0-P4 分级）；7 个 legacy 方法（~270 行）已删除由 JSON + IdleActionScheduler 替代，仅保留星辉（#4）与法阵（#7）硬编码；N40 空闲动作 9 种 JSON 驱动；2026-08-29 复核当前 `Live2DRenderer.cs` 仍有约 427 处参数写入匹配，普通参数数据化尚未完成。
 > **编写注意事项**: ①`LateUpdate`（801）必须晚于 Cubism Physics（800）执行，否则物理覆盖关键参数；②P0 安全网（Param132-71 眼睛保护等）每帧强制清零，**永远不应迁移**；③3D 分支恒不可用（HybridRenderer TODO / Model3DRenderer 注释与实现矛盾），勿修 3D；④默认空闲表情是 "surprise" 非 "curious"；⑤迁移 P1-P3 动作时保持「动作时冻结行走」（_pet.Pause/Resume）。
 
@@ -34,13 +34,16 @@ HybridRenderer → Live2DRenderer (恒走 Live2D)
 - 编辑器仍由 `OnGUI` 回贴局部 RT，供 VisualActionTester 与截图工具使用；Player 不回贴该 RT，避免重复显示。
 - 验证入口只在 `.test_mode` 下启用：`@@sim:model-snapshot` 保存叠加 RT，另须以真实桌面截图确认 Native 覆盖层可见且无矩形背景。
 
-### 2.2 模型加载双保险
+### 2.2 模型加载双保险（固定 Fuxuan fixture）
 
 ```
-AssetDatabase.LoadAssetAtPath<GameObject> (Editor)
-  → 成功 → 实例化
-  → 失败 → Resources.Load("Fuxuan") 降级 (Build)
+Editor: Assets/Live2D/Models/Fuxuan/符玄.prefab
+  → AssetDatabase.LoadAssetAtPath<GameObject>
+  → 失败时 Resources.Load("Fuxuan") 回退
+Player: StreamingAssets/Live2D/Fuxuan/符玄.model3.json
 ```
+
+这三层路径是当前项目的代码事实，不等于通用 Live2D 目录扫描、运行时换模或热插拔能力。任意新模型需要单独建立合法资源登记、适配器实现、隔离 Probe 证据和人工验收；现有 Fuxuan 参数映射只能作为本地适配案例。
 
 ### 2.3 执行顺序（关键）
 
@@ -180,7 +183,7 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 
 ### 2.16 参数写入缓存与物理刷新观测（2026-08-29）
 
-- `Live2DRenderer` 在模型加载完成后建立 `参数 ID → CubismParameter` 缓存；运行时的 `SetParameter()`、调试偏移和参数范围查询均复用缓存，避免高频路径反复调用 `Parameters.FindById()`。
+- `Live2DRenderer` 在固定 Fuxuan fixture 加载完成后建立 `参数 ID → CubismParameter` 缓存；运行时的 `SetParameter()`、调试偏移和参数范围查询均复用缓存，避免高频路径反复调用 `Parameters.FindById()`。当前没有通用模型注册表、任意 `.model3.json` 导入或运行时热插拔换模。
 - `Live2DParameterMapper` 现在也在映射加载或换模型时建立 `参数 ID → CubismParameter` 缓存；语义化动作的 `Set()`/`Get()` 复用该缓存，不再每帧重复 `FindById()`。换模型仍通过 `RefreshRanges()` 重建缓存，保持缺失参数和范围校验行为不变。
 - 所有 `ForceUpdateNow()` 入口统一经过 `ForceUpdateModelNow()`，保留原有调用条件和物理顺序，只增加本帧、上一帧、最近一秒和历史单帧峰值计数，供后续可见播放器性能观测使用。
 - 本轮不改变参数值、拖拽方向、物理频率或局部 RT 裁切策略；参数缓存与统计完成代码级和运行时链路验证，实际 CPU/GPU 收益仍需专项 Profiling 对照。

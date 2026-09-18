@@ -34,6 +34,10 @@ public sealed class CertifiedSkillRegistry
 public sealed class EmbodiedActionRequest
 {
     public long RequestId;
+    // 调用来源是控制面审计字段，不提供参数写入能力。未设置时调用方应显式
+    // 标记为 legacy/unknown，而不是伪装为已迁移的受控执行器。
+    public string Source;
+    public string CorrelationId;
     public string SkillId;
     public string SemanticTarget;
     public int Priority;

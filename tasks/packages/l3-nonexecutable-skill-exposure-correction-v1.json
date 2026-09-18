@@ -1,0 +1,26 @@
+{
+  "packageId": "l3-nonexecutable-skill-exposure-correction-v1",
+  "primaryGuide": "docs/guides/approved/l3-embodied-skill-certification.md",
+  "requirementIds": ["FR-L3-03", "C-L3-03", "C-L3-06", "AC-L3-06"],
+  "acceptanceObjective": "Ensure the LLM-facing body-skill prompt and tool enumerate only CertifiedMotionLibrary entries with a verified production curve executor; retain the test-only screen-side arm candidate as non-exposed.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/ChatManager.cs",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/EmbodiedSkillTool.cs",
+    "code/desktop_unity/Assets/Editor/Tests/CertifiedMotionLibraryTests.cs",
+    "docs/truth/",
+    "docs/modules/action-agent.md"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/Assets/StreamingAssets/",
+    "docs/decisions/",
+    "docs/guides/approved/"
+  ],
+  "verificationCommands": [".\\build.ps1 -Quick", ".\\build.ps1 -RunTests"],
+  "expectedTruthDocuments": ["docs/truth/l3-nonexecutable-skill-exposure-correction.md"],
+  "evidenceOutputs": ["EditMode body-skill boundary test"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Do not create a production executor, curve asset, raw parameter endpoint, or new LLM-exposed action in this correction."
+}

@@ -1,0 +1,33 @@
+{
+  "packageId": "l3-screen-side-arm-raise-isolated-human-review-v1",
+  "primaryGuide": "docs/guides/approved/generic-live2d-capability-probe.md",
+  "requirementIds": ["FR-01", "FR-02"],
+  "acceptanceObjective": "Install a self-authored screen-side arm-lift curve only into an isolated data root, bind it to a certified curve hash, and produce runtime screenshots plus a human-review artifact without LLM exposure or production deployment.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/CertifiedMotionLibrary.cs",
+    "code/desktop_unity/Assets/Editor/Tests/CertifiedMotionLibraryTests.cs",
+    "scripts/live2d-probe/",
+    "scripts/test/",
+    "docs/truth/",
+    "docs/modules/action-agent.md"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/ToolEngine/",
+    "code/desktop_unity/Assets/Scripts/ChatManager.cs",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/Assets/StreamingAssets/",
+    "docs/decisions/"
+  ],
+  "verificationCommands": [
+    "node --check scripts/live2d-probe/create_screen_side_arm_raise_fixture.cjs",
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    "node scripts/test/certified_motion_runtime_drive.cjs <isolated-player> screen_side_arm_raise <isolated-curve>"
+  ],
+  "expectedTruthDocuments": ["docs/truth/l3-screen-side-arm-raise-isolated-human-review.md"],
+  "evidenceOutputs": ["isolated certified_motions/screen_side_arm_raise.json", "seven isolated runtime screenshots", "human-review artifact"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "The curve is self-authored and evidence-only. Keep LlmExposed false and do not write production data or package assets."
+}

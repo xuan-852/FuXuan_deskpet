@@ -23,7 +23,7 @@ public class RequestBodySkillTool : IPetTool
     {
         string skillId = ToolHelpers.JsonRead(argsJson, "skill_id");
         if (string.IsNullOrEmpty(skillId)) return "❌ 未指定 skill_id";
-        if (!CertifiedMotionLibrary.IsLlmExposed(skillId) && skillId != "screen_side_arm_raise")
+        if (!CertifiedMotionLibrary.IsLlmExposed(skillId))
             return $"❌ 技能 {skillId} 未获 AI 调用授权，请求被拒绝";
         if (!EmbodiedRuntimeAdmission.IsSkillAdmissible(skillId))
             return $"❌ 技能 {skillId} 未认证或不存在，请求被拒绝";
@@ -43,7 +43,6 @@ public class RequestBodySkillTool : IPetTool
         var builder = new StringBuilder("【法身·具身】执行一项已认证的身体技能。仅在用户明确要求身体动作时调用，一次只执行一个技能。可用技能：");
         foreach (var motion in CertifiedMotionLibrary.LlmExposedEntries)
             builder.Append($"\n- {motion.SkillId}：{motion.SemanticBoundary}（约 {motion.DurationSeconds:F1} 秒）");
-        builder.Append("\n- screen_side_arm_raise：画面侧单臂上抬后回落（约 2.4 秒）");
         return builder.ToString();
     }
 }

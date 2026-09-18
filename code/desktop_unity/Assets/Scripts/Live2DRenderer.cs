@@ -305,6 +305,14 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private bool _testParam94GestureActive;
     private float _testParam94GestureValue;
     private Coroutine _testParam94GestureCoroutine;
+    private bool _testWaveCandidateActive;
+    private float _testWaveCandidateArm;
+    private float _testWaveCandidateElbow;
+    private float _testWaveCandidateWrist;
+    private float _testWaveCandidateHandMode;
+    private float _testWaveCandidateEyeSmile;
+    private float _testWaveCandidateMouthForm;
+    private Coroutine _testWaveCandidateCoroutine;
     private bool _testTorsoZGestureActive;
     private float _testTorsoZGestureValue;
     private Coroutine _testTorsoZGestureCoroutine;
@@ -369,6 +377,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private ParameterCommitBridge _parameterCommitBridge;
     private Live2DInputLease _expressionInputLease;
     private Live2DInputLease _actionInputLease;
+    private Live2DInputLease _idleInputLease;
     private Live2DInputLease _candidateTestInputLease;
     private EmbodiedActionRequest _candidateActionRequest;
     private readonly EmbodiedPoseState _embodiedPoseState = new EmbodiedPoseState();
@@ -1145,6 +1154,16 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         if (_testParam94GestureActive)
             SetParameter("Param94", _testParam94GestureValue);
+        if (_testWaveCandidateActive)
+        {
+            SetParameter("Param94", _testWaveCandidateArm);
+            SetParameter("Param97", _testWaveCandidateElbow);
+            SetParameter("Param99", _testWaveCandidateWrist);
+            SetParameter("Param93", _testWaveCandidateHandMode);
+            SetParameter("ParamEyeLSmile", _testWaveCandidateEyeSmile);
+            SetParameter("ParamEyeRSmile", _testWaveCandidateEyeSmile);
+            SetParameter("ParamMouthForm", _testWaveCandidateMouthForm);
+        }
         if (_testTorsoZGestureActive)
             SetParameter("ParamBodyAngleZ", _testTorsoZGestureValue);
 
@@ -1166,9 +1185,11 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _wallHitTime -= Time.deltaTime;
         }
 
-        // ★ 鼠标眼睛跟随覆盖：在所有动画参数之后、ForceUpdateNow 之前设置
-        //    但强制动作时禁用（如星辉/AI动作需控制眼珠方向）
-        bool eyeOverridden = (_eyeTargetX.HasValue || _eyeTargetY.HasValue) && !_actionLocked;
+        // 鼠标注视是低优先级 Face 叠加层：除强制动作外，任何已登记的
+        // 表情/旧动作/生成动作/认证动作租约都可抑制它，避免末尾写入覆盖
+        // 当前输入拥有者。租约释放后再从当前平滑状态自然衔接。
+        bool gazeWritable = !_actionLocked && _inputCoordinator.CanApplyLowPriorityOverlay;
+        bool eyeOverridden = (_eyeTargetX.HasValue || _eyeTargetY.HasValue) && gazeWritable;
         if (eyeOverridden)
         {
             // 平滑追踪目标值（用 lerp 防止眼球突变）
@@ -1182,7 +1203,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             SetParameter("ParamEyeBallX", _eyeSmoothX);
             SetParameter("ParamEyeBallY", _eyeSmoothY);
         }
-        else if (_eyeSmoothActive && !_actionLocked)
+        else if (_eyeSmoothActive && gazeWritable)
         {
             // 缓慢退回中心（让眼球自然回归，不跳）
             _eyeSmoothX = Mathf.Lerp(_eyeSmoothX, 0f, 0.04f);
@@ -2570,6 +2591,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         // ★ 保存当前动作ID（在清零前），用于特殊冷却判断
         int prevAction = _currentIdleAction;
+        _inputCoordinator.Release(_idleInputLease, "idle-action-reset");
+        _idleInputLease = default;
 
         bool wasLocked = _actionLocked;
         bool wasMovementLocked = _idleActionMovementLockedPet;
@@ -2772,8 +2795,16 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         if (!_loaded || _cubismModel == null) return;
 
-        // 旧式动作同样独占参数，先终止正在淡出的表情写入。
-        ActionController?.StopExpression(0f);
+        // 空闲动作通过输入租约登记。先收束此前空闲/表情，避免旧写入者
+        // 在当前帧继续写参数后才发现资源已交接。
+        if (_currentIdleAction != 0)
+            ResetIdleAction(true);
+        StopExpressionForInputTransition();
+        if (!_inputCoordinator.TryBegin(Live2DInputKind.LegacyAction, "idle-action", "idle:" + actionId, out _idleInputLease))
+        {
+            Debug.Log($"[Live2DRenderer] 忽略空闲动作 #{actionId}：输入通道被占用");
+            return;
+        }
 
         // Keep forced legacy actions consistent with PlayAction: stop the
         // pet's physical locomotion as well as the renderer's walk overlay.
@@ -2992,6 +3023,90 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         return true;
     }
 
+    /// <summary>仅供隔离人工验收的组合招手候选；不是认证技能、产品动作或 AI 参数入口。</summary>
+    public bool StartTestWaveCandidate()
+    {
+        DesktopPet gatePet = _pet != null ? _pet : FindObjectOfType<DesktopPet>();
+        bool moving = gatePet == null || gatePet.IsMovementTaskPendingOrActive || gatePet.petVx != 0 || gatePet.petVy != 0
+            || _walkBlendRemaining > 0f || _walkFadeInRemaining > 0f;
+        if (!ChatManager.IsTestMode || _testWaveCandidateActive || _testParam94GestureActive || _testTorsoZGestureActive
+            || _certifiedMotionActive || _actionLocked || _aiControlLocked || moving)
+        {
+            Debug.Log("[WaveCandidateTest] rejected-static-gate");
+            return false;
+        }
+        // A candidate owns the face layer itself. Release a transient test/idle
+        // expression before it requests the exclusive input lease, otherwise a
+        // stale expression can make a visible human review impossible.
+        StopExpressionForInputTransition();
+        if (!_inputCoordinator.TryBegin(Live2DInputKind.CandidateTest, "wave-candidate", out _candidateTestInputLease))
+            return false;
+        _testWaveCandidateCoroutine = StartCoroutine(PlayTestWaveCandidate());
+        Debug.Log("[WaveCandidateTest] admitted");
+        return true;
+    }
+
+    private System.Collections.IEnumerator PlayTestWaveCandidate()
+    {
+        const float duration = 5.0f;
+        ResetIdleAction(true);
+        _actionLocked = true;
+        _testWaveCandidateActive = true;
+        if (_pet != null) _pet.SetActionMovementLock(true);
+        for (float elapsed = 0f; elapsed < duration; elapsed += Time.deltaTime)
+        {
+            float t = Mathf.Clamp01(elapsed / duration);
+            float raise = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / 0.28f));
+            float lower = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.76f) / 0.24f));
+            float pose = Mathf.Min(raise, lower);
+            float wavePhase = Mathf.Clamp01((t - 0.30f) / 0.42f);
+            // The isolated pose sweep proves Param94 alone places an open hand
+            // outside the head/shoulder silhouette. Do not fold it back with
+            // the elbow or hand-switch candidates (which read as head-touch).
+            float wristStroke = wavePhase > 0f && wavePhase < 1f ? Mathf.Sin(wavePhase * Mathf.PI * 4f) : 0f;
+            _testWaveCandidateArm = 54f * pose + 2.5f * wristStroke * pose;
+            _testWaveCandidateElbow = 0f;
+            _testWaveCandidateHandMode = 0f;
+            // Keep the coupled wrist channel deliberately smaller than the
+            // primary pose so the hand, rather than the whole arm, reads as waving.
+            _testWaveCandidateWrist = 8f * wristStroke * pose;
+            _testWaveCandidateEyeSmile = 0.70f * pose;
+            _testWaveCandidateMouthForm = 0.50f * pose;
+            _embodiedPoseState.RecordWrite("Param94", _testWaveCandidateArm, 0f);
+            _embodiedPoseState.RecordWrite("Param97", _testWaveCandidateElbow, 0f);
+            _embodiedPoseState.RecordWrite("Param99", _testWaveCandidateWrist, 0f);
+            _embodiedPoseState.RecordWrite("Param93", _testWaveCandidateHandMode, 0f);
+            _embodiedPoseState.RecordWrite("ParamEyeLSmile", _testWaveCandidateEyeSmile, 0f);
+            _embodiedPoseState.RecordWrite("ParamEyeRSmile", _testWaveCandidateEyeSmile, 0f);
+            _embodiedPoseState.RecordWrite("ParamMouthForm", _testWaveCandidateMouthForm, 0f);
+            yield return null;
+        }
+        FinishTestWaveCandidate("wave-candidate-completed", false);
+    }
+
+    public bool CancelTestWaveCandidate(string reason = "wave-candidate-cancelled")
+    {
+        if (!_testWaveCandidateActive && !_candidateTestInputLease.IsValid) return false;
+        FinishTestWaveCandidate(reason, true);
+        return true;
+    }
+
+    private void FinishTestWaveCandidate(string reason, bool stopCoroutine)
+    {
+        if (stopCoroutine && _testWaveCandidateCoroutine != null) StopCoroutine(_testWaveCandidateCoroutine);
+        _testWaveCandidateCoroutine = null;
+        _testWaveCandidateActive = false;
+        _testWaveCandidateArm = _testWaveCandidateElbow = _testWaveCandidateWrist = _testWaveCandidateHandMode = 0f;
+        _testWaveCandidateEyeSmile = _testWaveCandidateMouthForm = 0f;
+        _actionLocked = false;
+        var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+        if (restored.Count > 0) Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
+        _inputCoordinator.Release(_candidateTestInputLease, reason);
+        _candidateTestInputLease = default;
+        if (_pet != null) _pet.SetActionMovementLock(false);
+        Debug.Log("[WaveCandidateTest] cleanup: " + reason);
+    }
+
     /// <summary>仅供隔离验收的保守躯干侧倾，不是认证技能或 AI 参数入口。</summary>
     public bool StartTestTorsoZGesture()
     {
@@ -3076,6 +3191,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
 
         CancelTestParam94Gesture("candidate-test-before-test-exit");
+        CancelTestWaveCandidate("wave-candidate-before-test-exit");
         CancelTestTorsoZGesture("torso-z-candidate-before-test-exit");
         CancelCertifiedMotion("certified-motion-before-test-exit");
         StopExpressionForInputTransition();
@@ -3108,6 +3224,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private void OnDisable()
     {
         CancelTestParam94Gesture("candidate-test-renderer-disabled");
+        CancelTestWaveCandidate("wave-candidate-renderer-disabled");
         CancelTestTorsoZGesture("torso-z-candidate-renderer-disabled");
         CancelCertifiedMotion("certified-motion-renderer-disabled");
     }
@@ -3115,6 +3232,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private void OnApplicationQuit()
     {
         CancelTestParam94Gesture("candidate-test-application-quitting");
+        CancelTestWaveCandidate("wave-candidate-application-quitting");
         CancelTestTorsoZGesture("torso-z-candidate-application-quitting");
         CancelCertifiedMotion("certified-motion-application-quitting");
     }
@@ -3137,6 +3255,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         string dataPath = System.IO.Path.Combine(DataPathConfig.DataRoot, "certified_motions", skillId + ".json");
         if (!System.IO.File.Exists(dataPath)) return $"❌ 动作数据未安装：{skillId}";
+        if (!CertifiedMotionLibrary.TryVerifyCurveFile(entry, dataPath, out var integrityReason))
+            return $"❌ 动作数据完整性校验失败：{integrityReason}";
         EmbodiedMotionCandidate def = JsonUtility.FromJson<EmbodiedMotionCandidate>(System.IO.File.ReadAllText(dataPath));
         if (def == null || !def.IsValid || def.candidateId != skillId) return $"❌ 动作数据无效：{skillId}";
 
@@ -3155,7 +3275,10 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
                 System.Array.ConvertAll(curveEntry.segments, v => (double)v), def.durationSeconds);
         }
 
-        if (!_inputCoordinator.TryBegin(Live2DInputKind.GeneratedMotion, "certified-motion:" + skillId, out _certifiedMotionLease))
+        // 已迁移的空闲路径必须先经自己的恢复点释放租约；其他来源仍由
+        // 同一输入协调器拒绝，认证技能不会静默抢占。
+        if (_currentIdleAction != 0) ResetIdleAction(true);
+        if (!_inputCoordinator.TryBegin(Live2DInputKind.GeneratedMotion, "certified-motion", "certified-motion:" + skillId, out _certifiedMotionLease))
             return "❌ 动作通道被占用";
         if (!EmbodiedRuntimeAdmission.TryBeginSkill(skillId, out _certifiedMotionRequest, out var admissionReason))
         {
@@ -3171,7 +3294,6 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _certifiedMotionDuration = def.durationSeconds;
         _certifiedMotionElapsed = 0f;
         _certifiedMotionActive = true;
-        ResetIdleAction(true);
         _actionLocked = true;
         if (_pet != null) _pet.SetActionMovementLock(true);
         _certifiedMotionCoroutine = StartCoroutine(PlayCertifiedMotionRoutine());
@@ -3209,7 +3331,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         var terminalStatus = _certifiedMotionRequest != null && _certifiedMotionRequest.Status == EmbodiedActionStatus.TimedOut
             ? EmbodiedActionStatus.TimedOut
             : reason == "certified-motion-completed" ? EmbodiedActionStatus.Completed : EmbodiedActionStatus.Cancelled;
-        _embodiedPoseState.FinishAction(terminalStatus);
+        _embodiedPoseState.FinishAction(terminalStatus, reason);
         if (terminalStatus == EmbodiedActionStatus.Cancelled)
             EmbodiedRuntimeAdmission.CancelSkill(_certifiedMotionRequest, reason);
         else
@@ -3622,6 +3744,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             Debug.Log($"[Live2DRenderer] 忽略表情 {name}：当前动作正在独占参数写入");
             return;
         }
+        if (_currentIdleAction != 0) ResetIdleAction(true);
         StopExpressionForInputTransition();
         if (!_inputCoordinator.TryBegin(Live2DInputKind.Expression, name, out _expressionInputLease))
             return;
@@ -3733,8 +3856,6 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             return;
         }
 
-        // ★ 清空闲动作残留状态，防止旧式 idle 在新动作结束后继续播放已过时的动作
-        ResetIdleAction();
         // 表情也在 LateUpdate 写入面部参数。复合动作取得控制权时立即停掉，避免
         // 0.2 秒淡出仍与动作关键帧竞争同一参数。
         ActionController.StopExpression(0f);

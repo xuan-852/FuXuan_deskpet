@@ -1,4 +1,4 @@
-# 太卜司·符玄 — 桌面灵伴 Desktop Pet
+# Live2D 桌宠运行时平台 — FuXuan Desktop Pet
 
 <div align="center">
 
@@ -11,9 +11,9 @@
 ![本地LLM](https://img.shields.io/badge/本地LLM-Ollama%20Qwen3-blue)
 ![工具](https://img.shields.io/badge/工具-65%20个%20%7C%20危险审批-orange)
 
-**「穷观妙算，天机尽显。」** — 仙舟「罗浮」太卜司之首，符玄大人驾临您的桌面。
+**「穷观妙算，天机尽显。」** — 以符玄为本地私有运行时适配案例的桌面 AI 伴侣平台。
 
-一个基于 **Unity + Live2D + Ollama** 的 Windows 桌面 AI 伴侣：能对话、能感知、能执行、能记忆。
+一个基于 **Unity + Live2D + Ollama** 的 Windows 桌宠运行时平台：能对话、能感知、能执行、能记忆，并通过适配器契约消费用户自备的合法 Live2D 运行时资源。
 默认优先使用本地模型，云端 DeepSeek 作为可选的高质量对话与工具调用通道；
 系统围绕 **感知 → 决策 → 执行 → 验证 → 记忆** 构建，并尽量避免不必要的云端消耗。
 本地模式支持安全地搜索文件、打开常用目录和应用：优先使用 Everything 全盘索引，未安装时会明确降级到安全目录搜索；危险操作仍需要用户确认。
@@ -49,7 +49,7 @@
 | 📋 **办公文档生成** | 一句话生成 PPT / Word / Excel（python-pptx / python-docx / openpyxl） |
 | 📜 **LaTeX 编译** | 长文档分块生成（AgentWrite 式），实测 31 页 PDF 一次成功 |
 | 🛡️ **安全第一** | 危险工具审批弹窗、exec 敏感命令审批、测试模式隔离、密钥不入库 |
-| ⚙️ **模型可切换** | 设置页可选择 qwen3:8b、qwen2.5:3b、qwen2.5:1.5b、qwen2.5:0.5b，并查看当前模型的真实生成示例 |
+| ⚙️ **本地 LLM 可切换** | 设置页可选择已安装的 Ollama model tag（qwen3:8b、qwen2.5:3b、qwen2.5:1.5b、qwen2.5:0.5b），并查看当前模型的真实生成示例 |
 | 🗃️ **忆境可管理** | 设置页可浏览核心事实与长期记忆，可清理过期记忆或二次确认清空忆境 |
 | 🧩 **像素表情包** | 17×24 像素小符玄，9 种表情帧 + 符号徽章 |
 | 🎉 **像素节日适配** | 已实现新春、元宵、端午、七夕、中秋 5 个中国传统节日主题，覆盖像素符玄配饰、聊天窗口/气泡和独立动态背景；支持在聊天框使用 `/tell theme <主题ID>` 本地切换，设置页提供用法说明；动态时钟与透明窗口主动重绘已修复并完成复测；已完成自动验证与视觉预审，最终真实 GUI 双击/拖拽签字仍待完成；Live2D 保持不变 |
@@ -62,8 +62,8 @@
 |---------|---------|
 | ![像素符玄](code/desktop_unity/Assets/Resources/PixelFuXuan_48px.png) | ![像素网格](code/desktop_unity/Assets/Resources/PixelFuXuan_17x24_preview.png) |
 
-> 💡 Live2D 模型贴图位于 `code/desktop_unity/Assets/Live2D/Models/Fuxuan/`；
-> 运行截图见 `code/desktop_unity/screenshots/`（本地未入库，GitHub 访客请自行构建体验）。
+> **模型资源边界**：仓库不把第三方 Live2D 角色模型、纹理、动作、专属参数配置、Cubism 工程或角色素材作为平台发布物承诺。现有符玄资源仅是本地私有 fixture/适配案例；使用者必须自行提供拥有合法使用权的模型资源，并按平台适配契约接入。当前实现固定加载符玄案例，不提供任意 `.model3.json` 资源导入、通用 provider 注册或运行时热插拔换模。
+> 运行截图见 `code/desktop_unity/screenshots/`（本地未入库，GitHub 访客请自行构建体验）。详见 [`Live2D 平台与模型适配指南`](docs/guides/approved/live2d-runtime-platform-and-model-adapter.md) 与 [`模型与第三方许可边界`](docs/third-party-and-model-licensing.md)。
 
 ---
 
@@ -454,7 +454,7 @@ Desktop_per_pro/
 
 ## ⚖️ 许可证 & 致谢
 
-**许可证：** 本项目为个人学习与娱乐用途，角色「符玄」版权属于 miHoYo / HoYoverse。代码部分参考 Apache License 2.0 精神开源。
+**许可证：** 平台代码与文档按各自文件中的许可/声明发布；代码许可不扩展到角色 IP、第三方 Live2D 模型、纹理、动作、Cubism 工程或其他受限资产。角色「符玄」及相关角色权利属于其权利人。本仓库不承诺公开、商业化、再分发或随安装包交付现有第三方模型资源；使用者需自行完成来源与许可复核。
 
 **致谢：** [Live2D Cubism](https://www.live2d.com/) · [DeepSeek](https://platform.deepseek.com/) · [智谱 GLM](https://open.bigmodel.cn/) · [Ollama](https://ollama.com/) · [和风天气](https://www.qweather.com/) · [wttr.in](https://wttr.in/) · [Server酱³](https://sc3.ft07.com/) · [Everything](https://www.voidtools.com/) · [OpenClaw](https://github.com/open-claw/open-claw) · 符玄 Live2D 模型（by 琉璃奈希）
 

@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using NUnit.Framework;
 
 public class CertifiedMotionLibraryTests
@@ -13,7 +14,41 @@ public class CertifiedMotionLibraryTests
             Assert.Greater(motion.DurationSeconds, 0f, motion.SkillId);
             Assert.AreNotEqual(EmbodiedResource.None, motion.Resources, motion.SkillId);
             Assert.AreEqual(64, motion.PacketSha256.Length, motion.SkillId);
+            Assert.AreEqual(64, motion.CurveSha256.Length, "missing curve hash: " + motion.SkillId);
             Assert.GreaterOrEqual(motion.NaturalnessScore, NaturalnessGate.MinimumScore, motion.SkillId);
+        }
+    }
+
+    [Test]
+    public void 被篡改的认证曲线必须被完整性校验拒绝()
+    {
+        Assert.IsTrue(CertifiedMotionLibrary.TryGet("external_Hiyori_Hiyori_m05", out var motion));
+        string path = System.IO.Path.GetTempFileName();
+        try
+        {
+            System.IO.File.WriteAllText(path, "tampered-curve");
+            Assert.IsFalse(CertifiedMotionLibrary.TryVerifyCurveFile(motion, path, out var reason));
+            Assert.AreEqual("curve-hash-mismatch", reason);
+        }
+        finally
+        {
+            System.IO.File.Delete(path);
+        }
+    }
+
+    [Test]
+    public void 自制单臂抬起评审曲线必须与登记哈希一致()
+    {
+        Assert.IsTrue(CertifiedMotionLibrary.TryGet("screen_side_arm_raise", out var motion));
+        string path = System.IO.Path.GetTempFileName();
+        try
+        {
+            System.IO.File.WriteAllText(path, "{\n  \"candidateId\": \"screen_side_arm_raise\",\n  \"durationSeconds\": 2.4,\n  \"curves\": [\n    {\n      \"parameterId\": \"Param94\",\n      \"segments\": [\n        0,\n        0,\n        1,\n        0.24,\n        0,\n        0.64,\n        15,\n        0.97,\n        15,\n        2,\n        1.2,\n        15,\n        1,\n        1.52,\n        15,\n        2.16,\n        0,\n        2.4,\n        0\n      ]\n    }\n  ]\n}\n", new UTF8Encoding(false));
+            Assert.IsTrue(CertifiedMotionLibrary.TryVerifyCurveFile(motion, path, out var reason), reason);
+        }
+        finally
+        {
+            System.IO.File.Delete(path);
         }
     }
 
@@ -47,11 +82,19 @@ public class CertifiedMotionLibraryTests
     {
         string prompt = ChatManager.BuildCertifiedBodySkillBoundary();
         StringAssert.Contains("request_body_skill", prompt);
-        StringAssert.Contains("screen_side_arm_raise", prompt);
         StringAssert.Contains("原始参数", prompt);
         StringAssert.DoesNotContain("当前没有可调用", prompt);
+        StringAssert.DoesNotContain("screen_side_arm_raise", prompt);
         foreach (var motion in CertifiedMotionLibrary.LlmExposedEntries)
             StringAssert.Contains(motion.SkillId, prompt);
+    }
+
+    [Test] public void 无生产曲线执行器的候选不得暴露给AI()
+    {
+        Assert.IsTrue(EmbodiedRuntimeAdmission.IsSkillAdmissible("screen_side_arm_raise"));
+        Assert.IsFalse(CertifiedMotionLibrary.IsLlmExposed("screen_side_arm_raise"));
+        var tool = new RequestBodySkillTool();
+        StringAssert.DoesNotContain("screen_side_arm_raise", tool.ToolDescription);
     }
 
     [Test]
@@ -62,8 +105,16 @@ public class CertifiedMotionLibraryTests
         Assert.IsFalse(CertifiedMotionLibrary.IsLlmExposed("not_registered"));
         foreach (var motion in CertifiedMotionLibrary.Entries)
         {
-            Assert.IsTrue(motion.LlmExposed, "existing behavior must remain explicit: " + motion.SkillId);
-            Assert.IsTrue(CertifiedMotionLibrary.IsLlmExposed(motion.SkillId));
+            if (motion.SkillId == "screen_side_arm_raise")
+            {
+                Assert.IsFalse(motion.LlmExposed, "human-review candidate must remain hidden");
+                Assert.IsFalse(CertifiedMotionLibrary.IsLlmExposed(motion.SkillId));
+            }
+            else
+            {
+                Assert.IsTrue(motion.LlmExposed, "existing behavior must remain explicit: " + motion.SkillId);
+                Assert.IsTrue(CertifiedMotionLibrary.IsLlmExposed(motion.SkillId));
+            }
         }
     }
 }

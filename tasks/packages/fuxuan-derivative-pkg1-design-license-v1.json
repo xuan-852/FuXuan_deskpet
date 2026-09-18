@@ -1,0 +1,47 @@
+{
+  "packageId": "fuxuan-derivative-pkg1-fixture-evidence-v1",
+  "primaryGuide": "docs/guides/approved/live2d-runtime-platform-and-model-adapter.md",
+  "scope": "fixture-only",
+  "publish": false,
+  "redistribute": false,
+  "commercial": false,
+  "mapWriteAllowed": false,
+  "llmExposureAllowed": false,
+  "productionAssetWriteAllowed": false,
+  "requirementIds": ["FR-ADAPTER-01", "AC-FIXTURE-01"],
+  "acceptanceObjective": "Preserve a private fixture case study with source, license, scope and hash records. Evidence must be reproducible and must not claim a production-ready or certified model.",
+  "allowedPaths": [
+    "model-workspaces/fuxuan-derivative-v1/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Live2D/Models/Fuxuan/",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/",
+    "code/desktop_unity/Assets/Scripts/",
+    "installer/",
+    "Build/",
+    "docs/guides/approved/",
+    "docs/generated/",
+    "docs/truth/"
+  ],
+  "verificationCommands": [
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": [
+    "docs/decisions/2026-09-18-live2d-platform-and-fuxuan-fixture-scope.md",
+    "docs/third-party-and-model-licensing.md"
+  ],
+  "evidenceOutputs": [
+    "model-workspaces/fuxuan-derivative-v1/sources/license-register.md",
+    "model-workspaces/fuxuan-derivative-v1/sources/source-register.md",
+    "model-workspaces/fuxuan-derivative-v1/design/model-spec.yaml",
+    "model-workspaces/fuxuan-derivative-v1/design/layout-freeze.md",
+    "model-workspaces/fuxuan-derivative-v1/acceptance/model-acceptance-report.md",
+    "model-workspaces/fuxuan-derivative-v1/CHANGELOG.md"
+  ],
+  "riskLevel": "low",
+  "externalEvidence": true,
+  "notes": "Frozen private fixture/case study only. Preserve existing source and license records, ReviewFailed/BlockedByEvidence conclusions and hashes. Do not create Cubism or Unity production assets, modify production mappings, register actions, expose skills to LLM, build an installer, or use this package to restart production. A future restart requires a new decision, approved guide, task package, rights review, human acceptance and rollback plan."
+}

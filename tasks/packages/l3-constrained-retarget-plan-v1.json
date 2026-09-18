@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-constrained-retarget-plan-v1",
+  "primaryGuide": "docs/guides/approved/external-motion-reference-retargeting.md",
+  "requirementIds": ["FR-RETARGET-02", "FR-RETARGET-03", "C-RETARGET-03", "AC-RETARGET-03"],
+  "acceptanceObjective": "Produce an offline, source-hashed retarget plan for one local official arm-motion reference, bound only to an already certified abstract capability and never to raw Live2D parameters.",
+  "allowedPaths": ["scripts/live2d-probe/", "docs/truth/", "docs/modules/action-agent.md"],
+  "forbiddenPaths": ["assets/external_motions/", "code/desktop_unity/Assets/Scripts/", "code/desktop_unity/Assets/StreamingAssets/", "docs/guides/approved/"],
+  "verificationCommands": ["node --check scripts/live2d-probe/build_constrained_retarget_plan.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-constrained-retarget-plan-pilot.md"],
+  "evidenceOutputs": ["isolated reference-manifest.json", "isolated motion-feature-packet.json", "isolated constrained-retarget-plan.json"],
+  "riskLevel": "low",
+  "externalEvidence": false,
+  "notes": "The plan may retain normalized timing landmarks only. It must declare all semantic, side, target mapping, and certification gaps; no curve, runtime asset, or LLM exposure may be generated."
+}

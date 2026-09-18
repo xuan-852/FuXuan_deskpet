@@ -1,0 +1,83 @@
+# 符玄二创模型规格 v0.1.0-stage0
+# Stage 0 冻结项：首版目标、画布、姿态、服饰清单、基础动态、参数设计原则。
+# 视觉细节（脸型/发型/配色等识别点）在 Stage 2 原创绘稿交付后由用户人工复核。
+# 当前绘稿仅限项目所有者批准的私有研发原创重绘；不构成官方授权。
+# 任何冻结项变更必须记入 ../CHANGELOG.md 并更新 specVersion。
+
+specVersion: 0.1.0-stage0
+frozenAt: 2026-09-18
+upstreamGuide: docs/archive/fuxuan-private-fixture-case-study.md
+sourceRegister: ../sources/source-register.md
+licenseRegister: ../sources/license-register.md
+
+purpose:
+  milestone: 私有研发可运行
+  publish: false
+  redistribute: false
+  commercial: false
+
+canvas:
+  size: 4096x4096          # 冻结值；与参考布局同数量级（参考模型贴图为 4096 系列 8 张）
+  colorMode: RGBA
+  pose: 正面站姿（中性）
+  modelHeightRatio: 0.85   # 预留发饰/裙摆运动余量；Stage 1 线框复核后如需调整须记 CHANGELOG
+
+recognitionPoints:
+  # Stage 1 门槛：缩略图与灰度轮廓仍可识别为符玄（AC-MODEL-01，用户人工复核）
+  requiredCategories: [脸型, 发型与配色, 发饰, 眉眼, 服装主色与层次, 袖口, 裙摆, 鞋, 关键挂饰]
+  reviewMethod: 用户人工复核
+  detailFreeze: Stage 2（依赖原创分层绘稿与用户人工复核；REF-03 仅作人工视觉参考）
+
+costume:
+  completenessRule: 不以裸立绘或临时占位服装作为首版交付
+  layerPlan:               # Stage 2 建议分层；左右侧/前后/遮罩命名在 Stage 2 细化
+    - 头部（脸、眼白/瞳孔、眉毛、嘴、脸部阴影）
+    - 前发/中发/后发/发饰/挂件
+    - 颈部/肩部/上衣/领口/袖子/手臂/手
+    - 腰部/裙摆前后层/腿部/鞋/下摆装饰
+    - 阴影/高光/独立特效/非语义装饰
+
+baseDynamics:              # Stage 4 验收清单（冻结，AC-MODEL-03）
+  - breath                 # 呼吸：胸腹或整体低幅周期变化
+  - blink                  # 眨眼：左右眼独立闭合且稳定复位
+  - gaze_follow            # 注视：眼球轻跟随，带限幅与回中
+  - head_micro_motion      # 头部 X/Y/Z 低幅非机械周期变化
+  - body_micro_motion      # 轻微重心/姿态变化，不抢占高优先级动作
+  - return_to_center       # 停止/取消/异常后逐步回到安全姿态
+
+costumePhysicsPriority:    # Stage 4 优先项（冻结，AC-MODEL-04）；保守幅度、阻尼、速度
+  - bangs_and_hair_ends    # 刘海/发尾
+  - hair_ornament          # 发饰
+  - sleeve_cuffs           # 袖口
+  - skirt_hem              # 裙摆
+  - pendant                # 挂件
+
+parameterDesign:           # Stage 3 原则（冻结）
+  idScheme: 新模型专属参数 ID 与 native min/default/max；不沿用旧模型 ParamXX 命名为事实
+  semanticSeparation: 参数事实与语义名分开保存；语义映射仅由 Probe 证据生成候选，不自动写正式映射
+  reservedChannels: [肩臂, 手, 复杂表情, 特效]   # 预留通道不宣称可用（计划 Stage 3 第 3 条）
+  singleWriter: 每个可见参数在每帧阶段只允许一个动作来源
+  exportTargets: [.moc3, .model3.json, .physics3.json, .cdi3.json, 纹理, 可编辑源工程]
+
+futureExtensions:          # Stage 9 逐项认证，不得随首版批量认证
+  - 手势
+  - 上半身动作
+  - 走路
+  - 复杂特效
+  - 自主行为
+
+nonGoals: [战斗动作, 复杂手势, 完整走路, 自主行为, 公开发布, 商业使用, 再分发, 复刻旧模型参数/曲线/物理]
+
+evidenceBinding:
+  hashAlgorithm: sha256
+  changelog: ../CHANGELOG.md
+  acceptanceReport: ../acceptance/model-acceptance-report.md
+
+openItems:                 # 关闭条件见对应门槛
+  - id: OI-01
+    item: 公开发布、商业化或分发前取得可复核的 REF-03 二创/改作规则或权利人许可
+    status: BlockedByEvidence
+    blocks: public_release_and_distribution
+  - id: OI-02
+    item: 安装 Cubism Editor 并登记版本号与条款快照（LR-05；2026-09-18 用户决策 PRO 试用起步，授权层级已定）
+    blocks: Stage 3

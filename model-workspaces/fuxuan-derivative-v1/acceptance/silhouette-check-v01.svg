@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 4096 4096">
+  <title>Fu Xuan derivative v01 grayscale silhouette check</title>
+  <desc>Original Stage 1 silhouette check. It is not final artwork or proof of character fidelity.</desc>
+  <rect width="4096" height="4096" fill="#ffffff"/>
+  <g fill="#222222">
+    <path d="M1210 820 Q1450 390 2048 360 Q2646 390 2886 820 L3190 2310 Q3300 2800 3010 3420 L2630 3730 L1466 3730 L1086 3420 Q796 2800 906 2310 Z"/>
+    <path d="M1900 450 L2048 155 L2196 450 L2048 730 Z"/>
+    <circle cx="1390" cy="820" r="130"/>
+    <circle cx="2706" cy="820" r="130"/>
+    <path d="M1070 1910 L1450 1840 L1590 2870 L1130 3140 L760 2830 Z"/>
+    <path d="M3026 1910 L2646 1840 L2506 2870 L2966 3140 L3336 2830 Z"/>
+    <path d="M1180 2750 Q2048 2440 2916 2750 L3050 3470 Q2048 3800 1046 3470 Z"/>
+    <path d="M1450 3420 L1820 3420 L1790 3800 L1410 3800 Z"/>
+    <path d="M2276 3420 L2646 3420 L2686 3800 L2306 3800 Z"/>
+  </g>
+  <g fill="#4d4d4d" font-family="Arial, sans-serif" font-size="130">
+    <text x="130" y="200">GRAYSCALE SILHOUETTE / DESIGN ONLY</text>
+    <text x="130" y="3980">Assess mass, head ornament, sleeves, skirt, and lower-body separation.</text>
+  </g>
+</svg>

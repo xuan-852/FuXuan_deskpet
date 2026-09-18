@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="4096" height="4096" viewBox="0 0 4096 4096">
+  <title>Fu Xuan derivative v01 neutral layout wireframe</title>
+  <desc>Original proportion and layer layout wireframe. Not source artwork and not a character render.</desc>
+  <rect width="4096" height="4096" fill="#ffffff"/>
+  <rect x="120" y="120" width="3856" height="3856" fill="none" stroke="#b8b8b8" stroke-width="8" stroke-dasharray="28 24"/>
+  <line x1="2048" y1="120" x2="2048" y2="3976" stroke="#cc4444" stroke-width="8" stroke-dasharray="36 24"/>
+  <line x1="760" y1="2048" x2="3336" y2="2048" stroke="#5b7db1" stroke-width="5" stroke-dasharray="24 20"/>
+  <g fill="none" stroke="#3b536d" stroke-width="14">
+    <rect x="1350" y="250" width="1400" height="700" rx="180"/>
+    <path d="M760 900 Q920 620 1300 580 M3336 900 Q3176 620 2796 580"/>
+    <rect x="760" y="580" width="2580" height="2140" rx="480"/>
+    <ellipse cx="2045" cy="1360" rx="785" ry="665"/>
+    <path d="M1190 1730 Q2048 1570 2906 1730 L2780 2660 Q2048 2820 1316 2660 Z"/>
+    <path d="M620 1850 Q900 1730 1280 1980 L1430 2920 Q1040 3160 680 3040 Z"/>
+    <path d="M3476 1850 Q3196 1730 2816 1980 L2666 2920 Q3056 3160 3416 3040 Z"/>
+    <path d="M930 2510 Q2048 2310 3166 2510 L3090 3540 Q2048 3840 1006 3540 Z"/>
+    <path d="M1430 3380 Q2048 3500 2666 3380 L2630 3850 Q2048 3950 1466 3850 Z"/>
+    <path d="M1600 3660 L1870 3660 L1840 3880 L1550 3880 Z M2226 3660 L2496 3660 L2546 3880 L2256 3880 Z"/>
+  </g>
+  <g fill="#3b536d" font-family="Arial, sans-serif" font-size="72">
+    <text x="170" y="250">4096 x 4096 / ORIGINAL LAYOUT WIREFRAME</text>
+    <text x="170" y="350">not artwork / not a runtime asset / Stage 1 design only</text>
+    <text x="2100" y="180">centerline x=2048</text>
+    <text x="1380" y="235">crown ornament safe box</text>
+    <text x="820" y="920">rear hair</text>
+    <text x="1300" y="1320">face + front hair</text>
+    <text x="1370" y="2050">torso / collar / waist</text>
+    <text x="690" y="1830">sleeve L</text>
+    <text x="2780" y="1830">sleeve R</text>
+    <text x="1450" y="2800">front + rear skirt zones</text>
+    <text x="1500" y="3780">legs / shoes</text>
+    <text x="160" y="3890">gray background is diagram-only; export source must remain transparent</text>
+  </g>
+  <g fill="#cc4444" font-family="Arial, sans-serif" font-size="56">
+    <text x="2160" y="700">motion clearance</text>
+    <text x="2160" y="760">and anchor axis</text>
+  </g>
+</svg>

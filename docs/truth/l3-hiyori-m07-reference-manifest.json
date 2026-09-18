@@ -1,0 +1,17 @@
+{
+  "schema": "l3-reference-manifest/v1",
+  "referenceId": "official-cubism-web-samples-hiyori-m07-20260918",
+  "sourceRepository": "https://github.com/Live2D/CubismWebSamples",
+  "localReferencePath": "assets/external_motions/_src/CubismWebSamples-develop/Samples/Resources/Hiyori/motions/Hiyori_m07.motion3.json",
+  "sourceSha256": "3f06cb70f5654eed3389978885e4dff151b6cf9e8d59248680addcd267ff793a",
+  "licenseEvidence": {
+    "localLicensePath": "assets/external_motions/_src/CubismWebSamples-develop/LICENSE.md",
+    "licenseFileSha256": "787a7d1454240865420b96ea9a20ab5e1a5ec3c1abced2e308288c2de8aac991",
+    "terms": "Live2D Free Material License plus the applicable Hiyori model terms",
+    "reviewScope": "local offline reference only; no source asset, derived curve, or model redistribution"
+  },
+  "accessedOn": "2026-09-18",
+  "intendedUse": "Extract timing and abstract arm-motion evidence for a non-runtime constrained retarget plan.",
+  "licenseStatus": "reviewed-local-reference-only",
+  "productionOrRedistributionApproved": false
+}

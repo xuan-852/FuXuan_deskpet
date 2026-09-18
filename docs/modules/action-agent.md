@@ -43,6 +43,22 @@
 
 2026-09-18 认证技能接入行为层：空闲槽位（原 `PickNextIdleAction` 触发点）优先从 `LlmExposedEntries` 随机挑选认证技能，经 `PlayCertifiedMotion` 生产执行器播放；成功冷却 90 秒、失败 30 秒、启动延迟 45 秒，冷却期与失败回退旧空闲调度。行为层不调 LLM、不写原始参数、只复用已认证且已暴露的技能。对话触发的确定性身体意图路由见 [L4 身体意图确定性路由](../truth/l4-body-intent-deterministic-routing.md)。详见 [L3 认证技能行为层接入](../truth/l3-certified-skill-behavior-layer.md)。
 
+2026-09-18 认证曲线完整性绑定：六项外部认证技能的评审包指纹与运行时曲线 SHA-256 分离登记；`PlayCertifiedMotion` 在反序列化前校验曲线，缺失、读取失败或哈希不匹配均拒绝执行。篡改夹具 EditMode 与六项隔离真机复验通过，详见 [L3 认证曲线完整性绑定](../truth/l3-certified-curve-integrity.md)。
+
+2026-09-18 不可执行候选暴露修正：`screen_side_arm_raise` 虽保留认证记录和仅测试的 Param94 执行器，但没有生产曲线部署，故不再列入 `request_body_skill` 的提示或可接收白名单。LLM 现在只看见具有生产曲线执行器的 `CertifiedMotionLibrary.LlmExposedEntries`；专项 EditMode 断言与全量回归均通过。详见 [L3 不可执行候选的 AI 暴露修正](../truth/l3-nonexecutable-skill-exposure-correction.md)。
+
+2026-09-18 统一控制闭环 Phase A：认证执行器的只读姿态快照补齐请求 ID、来源、关联 ID 和终态原因；`BodyWriterInventory` 显式区分认证协调、仅输入租约和待迁移旧写入路径。该清册只建立迁移边界，尚不表示表情、空闲、步行、物理、视线或拖拽已通过协调器。Quick 和 EditMode（232 total、231 passed、failed=0、1 ignored）通过。详见 [统一生命控制闭环 Phase A](../truth/unified-life-control-loop-phase-a.md)。
+
+2026-09-18 统一控制闭环 Phase B-1：`Live2DInputCoordinator` 的单租约现绑定注册写入者、资源和控制等级；认证动作显式以 `certified-motion` 取得租约，未知写入者被拒绝。原单租约互斥不变，表情/旧动作/生成动作仍是 `InputLeaseOnly`，其余身体路径仍待迁移。Quick 和 EditMode（234 total、233 passed、failed=0、1 ignored）通过。详见 [Phase B-1 输入写入者所有权](../truth/unified-life-control-loop-phase-b-input-ownership.md)。
+
+2026-09-18 统一控制闭环 Phase B-2：`idle-action` 接入注册输入租约；`ForceIdleAction` 在启动前收束旧空闲/表情，`ResetIdleAction` 释放租约，认证和旧预设动作在接管前也会收束当前空闲动作。Quick、EditMode（234 total、233 passed、failed=0、1 ignored）与隔离 Player 驱动均通过。步行、物理、视线和拖拽仍待迁移。详见 [Phase B-2 空闲动作租约](../truth/unified-life-control-loop-phase-b-idle-action-lease.md)。
+
+2026-09-18 统一控制闭环 Phase B-3：鼠标注视作为低优先级 Face 叠加层，任何活动表情/动作/认证输入租约均会抑制其 LateUpdate 覆盖；租约释放后才恢复平滑注视。未引入资源级并行。Quick 和 EditMode（235 total、234 passed、failed=0、1 ignored）通过。详见 [Phase B-3 鼠标注视优先级门控](../truth/unified-life-control-loop-phase-b-mouse-gaze-priority.md)。
+
+2026-09-18 统一控制闭环 Phase B-4：`DesktopBodyState` 将桌面 PhysicsRoot 的坐标、速度、落地、暂停、拖拽、动作移动锁与地面任务发布为只读快照，并在每次普通/拖拽渲染通知前更新。它不保存 Live2D 参数、不改变现有物理或渲染接口；步行、物理和拖拽写入路径仍为 `LegacyUnmanaged`。EditMode（235 total、234 passed、failed=0、1 ignored）通过。详见 [Phase B-4 桌面身体状态边界](../truth/unified-life-control-loop-phase-b-desktop-state.md)。
+
+2026-09-18 轻回应式抬手隔离审核：自制单通道曲线以 SHA-256 绑定到 `screen_side_arm_raise`，在临时 Player 和 `.test_mode` 数据根完成准入、播放、姿势还原与资源释放。人工实时观看的结论为“正常的轻度抬手”，但幅度不足以称为招手；该条目继续 `LlmExposed=false`，未写入生产数据根。详见 [L3 轻回应式抬手隔离人工审核包](../truth/l3-screen-side-arm-raise-isolated-human-review.md)。
+
 ### 2.1 ActionAgent 文件清单（15 个 .cs）
 
 | 文件 | 职责 |
@@ -176,3 +192,16 @@ generate_motion → 播放动作 → 截图 (20/40/60/80%)
 - `Live2DRenderer.Update/LateUpdate` 在 AI 控制锁期间不再补写走路淡出帧，避免动作第一帧被走路姿态覆盖，减少身体与后发丝的卡顿。
 - 释放 AI 锁后保留既有走路淡入机制，让物理系统从稳定中性姿态恢复到走路姿态，而不是在同一帧叠加两套参数。
 - 验证：`build.ps1 -Quick` 和隔离运行冒烟测试通过；动作视觉连续性仍需用户在真实 Live2D 窗口中复核。
+
+### 外部动作参考边界（2026-09-18）
+
+- 外部 `.motion3.json` 不可直接移植为符玄动作：官方样例离线审计中，78 个动作没有一个实现参数完全覆盖，且有 2,376 条未匹配曲线与 720 个范围钳制采样点。
+- 可用 `scripts/live2d-probe/extract_motion_features.cjs` 将本地外部动作提取为只读 `l3-motion-feature-packet/v1`，仅供节奏、相位和高层运动方向参考；它不生成候选曲线、不建立符玄参数映射。
+- 从特征参考到候选动作仍必须遵循已批准的 `guides/approved/external-motion-reference-retargeting.md`，经能力约束、认证完整性和人工验收后才可进入运行时。
+- 首个受约束重定向计划以官方 Hiyori `m07` 建立了“单臂抬起—短暂停顿—回落”的归一化时间参考，但保持 `NeedsEvidence` 与 `targetParameterMapping=unassigned`；它不等同于招手或新增认证动作。
+
+### 招手组合能力普查（2026-09-18）
+
+- 隔离 Live2DProbe 已确认：抬臂 `Param94`、腕部候选 `Param99` 与手型候选 `Param92` 可以同帧组合、三轮后稳定复位；这只证明制作候选的底层通道，不是“招手”认证。
+- 普通手指 `Param102`、手指旋转 `Param110` 及单眼/口型候选的单参数正面变化较弱，不能在未经组合与人工观看的情况下赋予友好招手语义。静态映射中的范围还与运行时范围存在不一致，后续必须采用运行时范围。
+- 后续顺序固定为：离线候选（准备→抬臂→定向手型→至少两次小幅腕部往返→表情→回落）→ 隔离真机完整人工观看 → 再决定是否认证；候选始终不向 LLM 暴露。详见 [L3 招手组合能力普查](../truth/l3-wave-composite-capability-census.md)。

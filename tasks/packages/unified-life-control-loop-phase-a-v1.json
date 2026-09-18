@@ -1,0 +1,32 @@
+{
+  "packageId": "unified-life-control-loop-phase-a-v1",
+  "primaryGuide": "docs/guides/approved/unified-life-control-loop.md",
+  "requirementIds": ["FR-ULC-01", "FR-ULC-02", "C-ULC-01", "C-ULC-02", "AC-ULC-A"],
+  "acceptanceObjective": "Introduce an observable, versioned control-plane snapshot and a complete production body-writer inventory without changing visual behavior; the first certified path must expose owner, resources, terminal outcome and recovery state through deterministic isolated tests.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/",
+    "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "docs/truth/",
+    "docs/modules/",
+    "docs/generated/",
+    "tasks/packages/",
+    "scripts/test/"
+  ],
+  "forbiddenPaths": [
+    "docs/decisions/",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/openclaw_bridge.js",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": ["docs/truth/unified-life-control-loop-phase-a.md"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Phase A mirrors and inventories existing writers only. It must not claim old paths are migrated, alter model mappings, enable new skills, or change production visual behavior."
+}

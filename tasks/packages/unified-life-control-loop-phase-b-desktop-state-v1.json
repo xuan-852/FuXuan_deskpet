@@ -1,0 +1,13 @@
+{
+  "packageId": "unified-life-control-loop-phase-b-desktop-state-v1",
+  "primaryGuide": "docs/guides/approved/unified-life-control-loop.md",
+  "requirementIds": ["FR-ULC-02", "C-ULC-01", "AC-ULC-B"],
+  "acceptanceObjective": "Establish a tested, read-only desktop PhysicsRoot snapshot that separates desktop coordinates and motion from Live2D BodyRoot parameters, and publish it before renderer updates without altering existing physics behaviour.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Embodied/", "code/desktop_unity/Assets/Scripts/DesktopPet.cs", "code/desktop_unity/Assets/Editor/Tests/", "docs/truth/", "docs/modules/", "docs/generated/", "tasks/packages/"],
+  "forbiddenPaths": ["docs/decisions/", "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json", "code/desktop_unity/Assets/Resources/Live2D/", "code/desktop_unity/openclaw_bridge.js"],
+  "verificationCommands": [".\\build.ps1 -Quick", ".\\build.ps1 -RunTests", "node scripts/docs/generate_document_map.cjs"],
+  "expectedTruthDocuments": ["docs/truth/unified-life-control-loop-phase-b-desktop-state.md"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "This task intentionally creates observation and state separation only. It does not claim that walking, desktop physics, or drag response already use the certified input coordinator."
+}

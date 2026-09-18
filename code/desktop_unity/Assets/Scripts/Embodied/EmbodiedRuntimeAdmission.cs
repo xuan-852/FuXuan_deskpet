@@ -72,6 +72,8 @@ public static class EmbodiedRuntimeAdmission
         if (!TryGetSkillPlan(skillId, out var semanticTarget, out var duration)) { reason = "skill-not-certified"; return false; }
         var begun = new EmbodiedActionRequest
         {
+            Source = "certified-runtime",
+            CorrelationId = "embodied-" + skillId + "-" + DateTime.UtcNow.Ticks,
             SkillId = skillId,
             SemanticTarget = semanticTarget,
             Priority = 0,

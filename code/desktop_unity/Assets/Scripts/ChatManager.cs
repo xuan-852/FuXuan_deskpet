@@ -107,7 +107,6 @@ public partial class ChatManager : MonoBehaviour
         var builder = new StringBuilder("\n【身体动作边界】仅当用户明确要求桌宠本人做出动作时，才可通过 request_body_skill 请求已认证的语义技能。不得请求或输出 Live2D 原始参数、关键帧或参数映射。可用技能：");
         foreach (var skill in CertifiedMotionLibrary.LlmExposedEntries)
             builder.Append("\n- ").Append(skill.SkillId).Append("：").Append(skill.SemanticBoundary);
-        builder.Append("\n- screen_side_arm_raise：画面侧单臂上抬后回落。\n");
         return builder.ToString();
     }
 

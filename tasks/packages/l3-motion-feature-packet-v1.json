@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-motion-feature-packet-v1",
+  "primaryGuide": "docs/guides/approved/external-motion-reference-retargeting.md",
+  "requirementIds": ["FR-RETARGET-01", "FR-RETARGET-02", "AC-RETARGET-02"],
+  "acceptanceObjective": "Extract a source-hashed, model-neutral feature packet from one local official motion without generating Fuxuan parameter curves.",
+  "allowedPaths": ["scripts/live2d-probe/", "docs/truth/"],
+  "forbiddenPaths": ["assets/external_motions/", "code/desktop_unity/Assets/Scripts/", "code/desktop_unity/Assets/StreamingAssets/", "docs/guides/approved/"],
+  "verificationCommands": ["node --check scripts/live2d-probe/extract_motion_features.cjs"],
+  "expectedTruthDocuments": ["docs/truth/l3-motion-feature-packet-pilot.md"],
+  "evidenceOutputs": ["isolated motion-feature-packet.json"],
+  "riskLevel": "low",
+  "externalEvidence": false,
+  "notes": "Input is an already-audited local official sample. Output is evidence only, not a candidate curve or runtime asset."
+}

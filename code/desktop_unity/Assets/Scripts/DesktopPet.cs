@@ -123,6 +123,7 @@ public class DesktopPet : MonoBehaviour
     // 强制动作的物理移动锁。它独立于 isPaused，防止其他模块调用 Resume()
     // 后绕过 Live2DRenderer 的动作锁，重新启动地面行走任务。
     private bool _actionMovementLocked = false;
+    private readonly DesktopBodyState _desktopBodyState = new DesktopBodyState();
 
     // 屏幕尺寸（动态获取，不缓存）
     private int _screenWidth => Screen.width;
@@ -904,6 +905,7 @@ public class DesktopPet : MonoBehaviour
         if (isDragging)
         {
             // ★ 拖拽时仍要通知渲染器切换挣扎动画（物理不更新）
+            PublishDesktopBodyState();
             if (_renderer != null)
                 _renderer.OnPetUpdate(petX, petY, petWidth, petHeight,
                     petVx, petVy, onGround, isDragging, isPaused);
@@ -911,6 +913,7 @@ public class DesktopPet : MonoBehaviour
         }
 
         // 通知渲染器更新状态
+        PublishDesktopBodyState();
         if (_renderer != null)
         {
             _renderer.OnPetUpdate(petX, petY, petWidth, petHeight,
@@ -1441,6 +1444,13 @@ public class DesktopPet : MonoBehaviour
     }
 
     public bool IsActionMovementLocked => _actionMovementLocked;
+    public DesktopBodySnapshot DesktopBodySnapshot => _desktopBodyState.CaptureSnapshot();
+
+    private void PublishDesktopBodyState()
+    {
+        _desktopBodyState.Update(petX, petY, petVx, petVy, onGround, isDragging,
+            isPaused, _actionMovementLocked, currentTask.ToString());
+    }
 
     /// <summary>
     /// 重置宠物位置

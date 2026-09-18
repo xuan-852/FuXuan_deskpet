@@ -1,0 +1,31 @@
+{
+  "packageId": "unified-life-control-loop-phase-b-input-ownership-v1",
+  "primaryGuide": "docs/guides/approved/unified-life-control-loop.md",
+  "requirementIds": ["FR-ULC-02", "C-ULC-01", "C-ULC-02", "AC-ULC-B"],
+  "acceptanceObjective": "Bind existing Live2D input leases to an explicit registered writer, declared resource set and control level; certified motion must use the certified writer identity, while unknown writers are rejected without changing the existing single-lease visual behavior.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/",
+    "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "docs/truth/",
+    "docs/modules/",
+    "docs/generated/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "docs/decisions/",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/openclaw_bridge.js",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": ["docs/truth/unified-life-control-loop-phase-b-input-ownership.md"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "This is a compatibility migration. The one-active-lease rule remains in force; resource-level parallelism and preemption are explicitly out of scope until separately verified."
+}

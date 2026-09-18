@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="4096" height="4096" viewBox="0 0 4096 4096">
+  <title>Fu Xuan derivative v01 original layered neutral design</title>
+  <desc>Original private-R&amp;D derivative character design, drawn from scratch for editable layer planning. No imported image, texture, mesh, or rendered model data.</desc>
+  <defs>
+    <linearGradient id="gHair" x1="0" y1="0" x2="0.8" y2="1"><stop stop-color="#f9b9dc"/><stop offset="0.55" stop-color="#e781bd"/><stop offset="1" stop-color="#bb5fa5"/></linearGradient>
+    <linearGradient id="gHairDark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d979b8"/><stop offset="1" stop-color="#8d4c91"/></linearGradient>
+    <linearGradient id="gCoat" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f9eaf5"/><stop offset="1" stop-color="#d8b7db"/></linearGradient>
+    <linearGradient id="gViolet" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#79518e"/><stop offset="1" stop-color="#3e2d5f"/></linearGradient>
+    <linearGradient id="gSkirt" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#6b4680"/><stop offset="1" stop-color="#30264f"/></linearGradient>
+    <linearGradient id="gGold" x1="0" y1="0" x2="0.8" y2="1"><stop stop-color="#fff0a8"/><stop offset="0.45" stop-color="#e7b85b"/><stop offset="1" stop-color="#9b5a3d"/></linearGradient>
+    <linearGradient id="gSkin" x1="0" y1="0" x2="0.7" y2="1"><stop stop-color="#fff4f6"/><stop offset="1" stop-color="#f0c8d7"/></linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="18"/></filter>
+  </defs>
+
+  <!-- canvas_C_00_support: transparent by design; no background rectangle -->
+  <g id="hair_back_L_10_base" inkscape:label="hair_back_L_10_base">
+    <path d="M1510 780 C1170 980 980 1450 1030 2050 C1045 2450 830 2870 690 3180 C1030 3070 1290 2860 1450 2580 C1550 2390 1620 2060 1650 1600 Z" fill="url(#gHairDark)" stroke="#502c69" stroke-width="32"/>
+    <path d="M1535 1000 C1290 1390 1260 1830 1300 2250 C1270 2540 1130 2760 940 2940 C1260 2820 1460 2550 1540 2190 Z" fill="#c96cae" opacity=".55"/>
+    <path d="M1270 1250 C1150 1700 1190 2110 1030 2500" fill="none" stroke="#f7b4d5" stroke-width="34" opacity=".6"/>
+  </g>
+  <g id="hair_back_R_10_base" inkscape:label="hair_back_R_10_base">
+    <path d="M2586 780 C2926 980 3116 1450 3066 2050 C3051 2450 3266 2870 3406 3180 C3066 3070 2806 2860 2646 2580 C2546 2390 2476 2060 2446 1600 Z" fill="url(#gHairDark)" stroke="#502c69" stroke-width="32"/>
+    <path d="M2561 1000 C2806 1390 2836 1830 2796 2250 C2826 2540 2966 2760 3156 2940 C2836 2820 2636 2550 2556 2190 Z" fill="#c96cae" opacity=".55"/>
+    <path d="M2826 1250 C2946 1700 2906 2110 3066 2500" fill="none" stroke="#f7b4d5" stroke-width="34" opacity=".6"/>
+  </g>
+
+  <g id="ornament_back_C_11_base" inkscape:label="ornament_back_C_11_base">
+    <path d="M2048 270 L2155 455 L2048 620 L1941 455 Z" fill="url(#gGold)" stroke="#73445a" stroke-width="28"/>
+    <path d="M1870 530 Q2048 395 2226 530 L2162 760 Q2048 700 1934 760 Z" fill="#f9e9f2" stroke="#8c557b" stroke-width="28"/>
+    <path d="M1480 720 Q1320 640 1190 770 L1290 900 Q1430 820 1580 875 Z" fill="url(#gGold)" stroke="#7b4a67" stroke-width="26"/>
+    <path d="M2616 720 Q2776 640 2906 770 L2806 900 Q2666 820 2516 875 Z" fill="url(#gGold)" stroke="#7b4a67" stroke-width="26"/>
+    <circle cx="1215" cy="785" r="42" fill="#fff3ba"/><circle cx="2881" cy="785" r="42" fill="#fff3ba"/>
+  </g>
+
+  <g id="body_C_30_base" inkscape:label="body_C_30_base">
+    <path d="M1570 1790 Q2048 1660 2526 1790 L2700 2570 Q2480 2760 2048 2790 Q1616 2760 1396 2570 Z" fill="url(#gSkin)" stroke="#7e506f" stroke-width="28"/>
+    <path d="M1640 1850 Q2048 1750 2456 1850 L2400 2350 Q2048 2470 1696 2350 Z" fill="#f8dce7" opacity=".8"/>
+  </g>
+  <g id="neck_C_31_base" inkscape:label="neck_C_31_base"><path d="M1875 1590 L2221 1590 L2265 1870 Q2048 1970 1831 1870 Z" fill="url(#gSkin)" stroke="#7e506f" stroke-width="26"/></g>
+  <g id="shoulder_C_32_base" inkscape:label="shoulder_C_32_base"><path d="M1470 1840 Q2048 1700 2626 1840 L2700 2100 Q2048 2250 1396 2100 Z" fill="url(#gCoat)" stroke="#6a476e" stroke-width="30"/></g>
+
+  <g id="top_C_40_base" inkscape:label="top_C_40_base">
+    <path d="M1630 1830 L2048 1940 L2466 1830 L2600 2280 L2350 2460 L2048 2320 L1746 2460 L1496 2280 Z" fill="url(#gViolet)" stroke="#34234f" stroke-width="34"/>
+    <path d="M1760 1815 L2048 1910 L2336 1815 L2260 2050 L2048 2140 L1836 2050 Z" fill="#f7dce9" stroke="#85527e" stroke-width="24"/>
+    <path d="M1810 2110 Q2048 2220 2286 2110 L2240 2330 Q2048 2420 1856 2330 Z" fill="#3a2958"/>
+  </g>
+  <g id="collar_C_41_base" inkscape:label="collar_C_41_base">
+    <path d="M1735 1750 L2048 1890 L2361 1750 L2310 1920 L2048 2030 L1786 1920 Z" fill="#fff2f3" stroke="#70466e" stroke-width="26"/>
+    <path d="M1900 1870 L2048 1960 L2196 1870 L2155 2030 L2048 2100 L1941 2030 Z" fill="#e8b4d6" stroke="#68446d" stroke-width="20"/>
+  </g>
+  <g id="ornament_front_C_90_base" inkscape:label="ornament_front_C_90_base">
+    <circle cx="2048" cy="2050" r="130" fill="#553a77" stroke="#f2c96b" stroke-width="30"/>
+    <circle cx="2048" cy="2050" r="67" fill="#f8dc82" stroke="#9a5b56" stroke-width="16"/>
+    <path d="M2048 1995 L2084 2045 L2048 2110 L2012 2045 Z" fill="#fff7bd"/>
+  </g>
+
+  <g id="waist_C_42_base" inkscape:label="waist_C_42_base"><path d="M1450 2320 Q2048 2460 2646 2320 L2600 2470 Q2048 2610 1496 2470 Z" fill="url(#gGold)" stroke="#704467" stroke-width="26"/><path d="M1540 2380 Q2048 2490 2556 2380" fill="none" stroke="#fff0a8" stroke-width="18" opacity=".75"/></g>
+  <g id="skirt_back_C_20_base" inkscape:label="skirt_back_C_20_base">
+    <path d="M1390 2400 Q2048 2570 2706 2400 L3070 3420 Q2048 3830 1026 3420 Z" fill="url(#gSkirt)" stroke="#2e2349" stroke-width="40"/>
+    <path d="M1160 3070 Q2048 3420 2936 3070 L3000 3340 Q2048 3740 1096 3340 Z" fill="#9c6cad" opacity=".5"/>
+    <path d="M1240 3210 Q2048 3490 2856 3210" fill="none" stroke="#f5b7d6" stroke-width="26" opacity=".8"/>
+  </g>
+  <g id="skirt_front_C_50_base" inkscape:label="skirt_front_C_50_base">
+    <path d="M1510 2380 Q2048 2530 2586 2380 L2760 3270 Q2048 3530 1336 3270 Z" fill="#624176" stroke="#34244e" stroke-width="36"/>
+    <path d="M1540 2480 Q2048 2610 2556 2480" fill="none" stroke="#e7b1d2" stroke-width="24"/>
+    <path d="M1770 2520 L2048 2600 L2326 2520 L2260 3340 L2048 3400 L1836 3340 Z" fill="#47335f" opacity=".9"/>
+  </g>
+  <g id="hem_L_51_physics" inkscape:label="hem_L_51_physics"><path d="M1340 3140 Q1600 3240 1840 3310 L1780 3500 Q1500 3440 1280 3330 Z" fill="#bc79ae" stroke="#67406d" stroke-width="24"/></g>
+  <g id="hem_R_51_physics" inkscape:label="hem_R_51_physics"><path d="M2756 3140 Q2496 3240 2256 3310 L2316 3500 Q2596 3440 2816 3330 Z" fill="#bc79ae" stroke="#67406d" stroke-width="24"/></g>
+
+  <g id="leg_L_21_base" inkscape:label="leg_L_21_base"><path d="M1610 3290 L1940 3300 L1890 3780 L1580 3780 Z" fill="url(#gSkin)" stroke="#79506e" stroke-width="26"/><path d="M1630 3490 L1900 3490" stroke="#d697bd" stroke-width="20"/></g>
+  <g id="leg_R_21_base" inkscape:label="leg_R_21_base"><path d="M2156 3300 L2486 3290 L2516 3780 L2206 3780 Z" fill="url(#gSkin)" stroke="#79506e" stroke-width="26"/><path d="M2196 3490 L2466 3490" stroke="#d697bd" stroke-width="20"/></g>
+  <g id="shoe_L_22_base" inkscape:label="shoe_L_22_base"><path d="M1540 3740 L1900 3740 L1980 3880 Q1730 3950 1420 3880 Z" fill="#4a315c" stroke="#2c213f" stroke-width="30"/><path d="M1510 3800 L1900 3800" stroke="#f0c56e" stroke-width="22"/></g>
+  <g id="shoe_R_22_base" inkscape:label="shoe_R_22_base"><path d="M2196 3740 L2556 3740 L2676 3880 Q2366 3950 2116 3880 Z" fill="#4a315c" stroke="#2c213f" stroke-width="30"/><path d="M2196 3800 L2586 3800" stroke="#f0c56e" stroke-width="22"/></g>
+
+  <g id="sleeve_L_60_base" inkscape:label="sleeve_L_60_base">
+    <path d="M1450 1900 Q1190 1900 1030 2150 L730 2780 Q980 2980 1260 2910 L1590 2260 Z" fill="url(#gCoat)" stroke="#66436e" stroke-width="38"/>
+    <path d="M930 2650 Q1080 2760 1280 2770 L1190 2990 Q930 3000 760 2840 Z" fill="#f3d8ec" stroke="#795077" stroke-width="28"/>
+    <path d="M1010 2220 L1290 2380" stroke="#fff7fb" stroke-width="26" opacity=".8"/>
+  </g>
+  <g id="sleeve_R_60_base" inkscape:label="sleeve_R_60_base">
+    <path d="M2646 1900 Q2906 1900 3066 2150 L3366 2780 Q3116 2980 2836 2910 L2506 2260 Z" fill="url(#gCoat)" stroke="#66436e" stroke-width="38"/>
+    <path d="M3166 2650 Q3016 2760 2816 2770 L2906 2990 Q3166 3000 3336 2840 Z" fill="#f3d8ec" stroke="#795077" stroke-width="28"/>
+    <path d="M3086 2220 L2806 2380" stroke="#fff7fb" stroke-width="26" opacity=".8"/>
+  </g>
+  <g id="arm_L_61_base" inkscape:label="arm_L_61_base"><path d="M1090 2730 Q1010 2960 1090 3190 L1240 3200 L1320 2840 Z" fill="url(#gSkin)" stroke="#77506f" stroke-width="24"/></g>
+  <g id="arm_R_61_base" inkscape:label="arm_R_61_base"><path d="M3006 2730 Q3086 2960 3006 3190 L2856 3200 L2776 2840 Z" fill="url(#gSkin)" stroke="#77506f" stroke-width="24"/></g>
+  <g id="hand_L_62_base" inkscape:label="hand_L_62_base"><path d="M1085 3120 q-95 90 5 180 q110 65 190-55 l-40-120 z" fill="url(#gSkin)" stroke="#77506f" stroke-width="22"/></g>
+  <g id="hand_R_62_base" inkscape:label="hand_R_62_base"><path d="M3011 3120 q95 90-5 180 q-110 65-190-55 l40-120 z" fill="url(#gSkin)" stroke="#77506f" stroke-width="22"/></g>
+
+  <g id="face_C_70_base" inkscape:label="face_C_70_base">
+    <path d="M1510 900 Q2048 560 2586 900 L2500 1510 Q2390 1760 2048 1840 Q1706 1760 1596 1510 Z" fill="url(#gSkin)" stroke="#764969" stroke-width="30"/>
+    <path d="M1600 1450 Q1700 1680 2048 1760 Q2396 1680 2496 1450 Q2410 1770 2048 1840 Q1690 1770 1600 1450" fill="#d99ab7" opacity=".45"/>
+  </g>
+  <g id="hair_front_L_71_motion" inkscape:label="hair_front_L_71_motion">
+    <path d="M1600 850 Q1370 1030 1450 1430 L1550 1690 L1740 1440 L1810 1110 L1940 900 Z" fill="url(#gHair)" stroke="#6c3b71" stroke-width="30"/>
+    <path d="M1640 900 Q1530 1190 1600 1450" fill="none" stroke="#ffd0e2" stroke-width="28" opacity=".8"/>
+  </g>
+  <g id="hair_front_R_71_motion" inkscape:label="hair_front_R_71_motion">
+    <path d="M2496 850 Q2726 1030 2646 1430 L2546 1690 L2356 1440 L2286 1110 L2156 900 Z" fill="url(#gHair)" stroke="#6c3b71" stroke-width="30"/>
+    <path d="M2456 900 Q2566 1190 2496 1450" fill="none" stroke="#ffd0e2" stroke-width="28" opacity=".8"/>
+  </g>
+  <g id="eye_white_L_80_base" inkscape:label="eye_white_L_80_base"><path d="M1660 1280 Q1780 1180 1900 1280 Q1780 1400 1660 1280 Z" fill="#fff9fb" stroke="#6a3b68" stroke-width="24"/></g>
+  <g id="eye_white_R_80_base" inkscape:label="eye_white_R_80_base"><path d="M2196 1280 Q2316 1180 2436 1280 Q2316 1400 2196 1280 Z" fill="#fff9fb" stroke="#6a3b68" stroke-width="24"/></g>
+  <g id="iris_L_81_motion" inkscape:label="iris_L_81_motion"><ellipse cx="1790" cy="1285" rx="65" ry="90" fill="#5d3c79"/><ellipse cx="1790" cy="1285" rx="25" ry="50" fill="#1d193b"/><circle cx="1812" cy="1250" r="18" fill="#fff3fa"/></g>
+  <g id="iris_R_81_motion" inkscape:label="iris_R_81_motion"><ellipse cx="2306" cy="1285" rx="65" ry="90" fill="#5d3c79"/><ellipse cx="2306" cy="1285" rx="25" ry="50" fill="#1d193b"/><circle cx="2328" cy="1250" r="18" fill="#fff3fa"/></g>
+  <g id="lid_L_82_expression" inkscape:label="lid_L_82_expression"><path d="M1650 1270 Q1780 1135 1910 1270" fill="none" stroke="#65355f" stroke-width="34" stroke-linecap="round"/><path d="M1670 1350 Q1780 1420 1890 1350" fill="none" stroke="#b96798" stroke-width="18"/></g>
+  <g id="lid_R_82_expression" inkscape:label="lid_R_82_expression"><path d="M2186 1270 Q2316 1135 2446 1270" fill="none" stroke="#65355f" stroke-width="34" stroke-linecap="round"/><path d="M2206 1350 Q2316 1420 2426 1350" fill="none" stroke="#b96798" stroke-width="18"/></g>
+  <g id="brow_L_83_expression" inkscape:label="brow_L_83_expression"><path d="M1660 1130 Q1780 1060 1890 1120" fill="none" stroke="#8a4772" stroke-width="30" stroke-linecap="round"/></g>
+  <g id="brow_R_83_expression" inkscape:label="brow_R_83_expression"><path d="M2206 1120 Q2316 1060 2436 1130" fill="none" stroke="#8a4772" stroke-width="30" stroke-linecap="round"/></g>
+  <g id="mouth_C_84_expression" inkscape:label="mouth_C_84_expression"><path d="M1960 1530 Q2048 1585 2136 1530 Q2048 1660 1960 1530 Z" fill="#9b4c72" stroke="#6d375e" stroke-width="18"/><path d="M1995 1550 Q2048 1570 2101 1550" stroke="#fff2f5" stroke-width="12"/></g>
+
+  <g id="pendant_C_91_physics" inkscape:label="pendant_C_91_physics"><path d="M2048 2160 L2048 2500" stroke="#eac16a" stroke-width="24"/><path d="M2048 2470 L2140 2580 L2048 2710 L1956 2580 Z" fill="url(#gGold)" stroke="#75465e" stroke-width="24"/><circle cx="2048" cy="2575" r="26" fill="#fff2a6"/></g>
+  <g id="ribbon_L_92_physics" inkscape:label="ribbon_L_92_physics"><path d="M1670 2200 Q1430 2490 1510 2900 Q1600 2670 1790 2460 Z" fill="#e9a8cf" stroke="#71436c" stroke-width="22"/><path d="M1530 2860 L1460 3050 L1600 2960" fill="#c875ae"/></g>
+  <g id="ribbon_R_92_physics" inkscape:label="ribbon_R_92_physics"><path d="M2426 2200 Q2666 2490 2586 2900 Q2496 2670 2306 2460 Z" fill="#e9a8cf" stroke="#71436c" stroke-width="22"/><path d="M2566 2860 L2636 3050 L2496 2960" fill="#c875ae"/></g>
+
+  <g id="face_C_95_shadow" inkscape:label="face_C_95_shadow"><path d="M1620 1500 Q2048 1750 2476 1500 Q2380 1730 2048 1800 Q1716 1730 1620 1500" fill="#bd6d9c" opacity=".18"/></g>
+  <g id="top_C_96_highlight" inkscape:label="top_C_96_highlight"><path d="M1600 1950 Q2048 2070 2496 1950" fill="none" stroke="#fff2fb" stroke-width="24" opacity=".75"/><path d="M1510 2600 Q2048 2750 2586 2600" fill="none" stroke="#b993c5" stroke-width="22" opacity=".65"/></g>
+  <g id="effect_C_97_support" inkscape:label="effect_C_97_support"><circle cx="1160" cy="1840" r="22" fill="#f7d47c"/><circle cx="2936" cy="1840" r="22" fill="#f7d47c"/><path d="M1160 1840 l-80 -90 M2936 1840 l80 -90" stroke="#f7d47c" stroke-width="14"/></g>
+</svg>

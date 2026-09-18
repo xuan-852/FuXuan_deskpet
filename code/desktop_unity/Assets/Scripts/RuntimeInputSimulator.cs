@@ -101,6 +101,24 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.StartsWith("idle-action:", StringComparison.OrdinalIgnoreCase))
+        {
+            string rawId = body.Substring("idle-action:".Length).Trim();
+            if (!int.TryParse(rawId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int actionId) || actionId < 1 || actionId > 9)
+            {
+                Debug.LogWarning("[TestInbox] idle-action failed: id must be 1..9");
+                return true;
+            }
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer == null) Debug.LogWarning("[TestInbox] idle-action failed: 未找到 Live2DRenderer");
+            else
+            {
+                renderer.ForceIdleAction(actionId);
+                Debug.Log("[TestInbox] idle-action requested: " + actionId);
+            }
+            return true;
+        }
+
         if (body.Equals("gesture:param94:cancel", StringComparison.OrdinalIgnoreCase))
         {
             Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
@@ -116,6 +134,22 @@ public static class RuntimeInputSimulator
             Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
             if (renderer != null && renderer.StartTestParam94Gesture()) Debug.Log("[TestInbox] Param94 候选手势已开始");
             else Debug.LogWarning("[TestInbox] Param94 候选手势无法启动：渲染器缺失或已有动作占用");
+            return true;
+        }
+
+        if (body.Equals("gesture:wave-candidate:cancel", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && renderer.CancelTestWaveCandidate()) Debug.Log("[WaveCandidateTest] cancel-command-accepted");
+            else Debug.LogWarning("[WaveCandidateTest] cancel-command-ignored");
+            return true;
+        }
+
+        if (body.Equals("gesture:wave-candidate", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && renderer.StartTestWaveCandidate()) Debug.Log("[WaveCandidateTest] started");
+            else Debug.LogWarning("[WaveCandidateTest] start-rejected");
             return true;
         }
 

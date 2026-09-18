@@ -74,6 +74,12 @@ docs/generated/        自动生成索引，禁止手工编辑
 | [`decisions/documentation-governance.md`](decisions/documentation-governance.md) | **文档治理与任务分发规范**（目录即状态、任务包边界、冲突阻断与生成索引） | 新建/迁移文档、下发任务包或验收前 |
 | [`generated/document-map.md`](generated/document-map.md) | **自动文档与任务索引**（由脚本生成，禁止手工编辑） | 快速查看当前决策、指导文档、代码真相与任务包 |
 | [`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) | **冻结的旧路线图**（v0.3，2026-08-29） | 只查历史背景；新方向以决策/指导文档为准 |
+| [`decisions/2026-09-18-live2d-platform-and-fuxuan-fixture-scope.md`](decisions/2026-09-18-live2d-platform-and-fuxuan-fixture-scope.md) | **Live2D 平台与符玄私有 Fixture 范围决策** | 处理模型生产、适配、发布或方向冲突前 |
+| [`guides/approved/live2d-runtime-platform-and-model-adapter.md`](guides/approved/live2d-runtime-platform-and-model-adapter.md) | **Live2D 运行时平台与模型适配指南** | 设计模型适配器、Probe、认证与降级前 |
+| [`guides/approved/generic-live2d-capability-probe.md`](guides/approved/generic-live2d-capability-probe.md) | **通用 Live2D 能力探测规范** | 对合法模型做隔离参数与视觉证据采集前 |
+| [`third-party-and-model-licensing.md`](third-party-and-model-licensing.md) | **第三方与模型许可边界** | 导入、打包、公开或分发模型与外部素材前 |
+| [`archive/fuxuan-private-fixture-case-study.md`](archive/fuxuan-private-fixture-case-study.md) | **旧符玄模型生产计划的归档案例** | 只查失败过程；不作为活跃模型生产入口 |
+| [`archive/workspace-change-audit-2026-09-18.md`](archive/workspace-change-audit-2026-09-18.md) | **工作区变更审计与留档分层** | 查看 2026-09-18 大规模变更的分类、保留边界和验证阻断 |
 | [`installer-plan.md`](installer-plan.md) | 安装包与分发方案（Inno Setup、组件安装、移植障碍清单） | 打包/分发/换机部署前 |
 | [`data-directory-cleanup-manifest-2026-08-21.md`](data-directory-cleanup-manifest-2026-08-21.md) | 数据分类、整理映射与安装/卸载生命周期约定（默认根目录由 `DataPathConfig` 决定） | 整理用户数据或修改安装器前 |
 | [`task-inventory.md`](task-inventory.md) | **冻结的旧任务清单**（N40+，65 工具） | 只查历史；新任务只能使用 `tasks/packages/` |

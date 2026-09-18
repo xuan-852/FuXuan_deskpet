@@ -1,0 +1,31 @@
+{
+  "packageId": "l3-wave-composite-capability-census-v1",
+  "primaryGuide": "docs/guides/approved/generic-live2d-capability-probe.md",
+  "requirementIds": ["FR-PROBE-01", "FR-PROBE-03", "FR-PROBE-04"],
+  "acceptanceObjective": "Collect isolated, repeatable evidence of the model's wrist, hand-mode, finger, and face channels required to decide whether a composite greeting wave is technically feasible. This package does not create or expose any gesture.",
+  "allowedPaths": [
+    "scripts/test/",
+    "scripts/live2d-probe/",
+    "docs/truth/",
+    "docs/modules/action-agent.md"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/",
+    "code/desktop_unity/Assets/Scripts/ChatManager.cs",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/Assets/StreamingAssets/",
+    "docs/decisions/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -ProbeWindow -OutputDir <isolated-output>",
+    "node scripts/test/run_probe_sweep.cjs <probe-player> <parameter-id> <native-min>,<native-max> <steps> <target>",
+    "node scripts/test/run_probe_combination_sweep.cjs <probe-player> <parameter-ids> <range-scale> <steps> frozen",
+    "node scripts/live2d-probe/summarize_local.cjs <isolated-data-root>"
+  ],
+  "expectedTruthDocuments": ["docs/truth/l3-wave-composite-capability-census.md"],
+  "evidenceOutputs": ["isolated parameter sweep reports", "isolated PNG frame sets", "local pixel-difference summaries"],
+  "riskLevel": "low",
+  "externalEvidence": false,
+  "notes": "Parameter labels are hypotheses only. No mapping write-back, gesture curve, production-data write, cloud vision, or LLM exposure is authorized. A wave requires explicit later human review."
+}

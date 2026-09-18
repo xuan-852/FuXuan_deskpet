@@ -24,7 +24,10 @@ try{await wait('[DesktopPet] 落地');await send('@@sim:idle-actions:off');await
 await send('@@sim:status');await wait('velocity=(0,0)');await sleep(500);
 await send('@@sim:certified-motion:'+skillId);
 for(let i=0;i<6;i++){await send('@@sim:model-measurement-snapshot',450);await count(i+1)}
-await sleep(2500);await send('@@sim:model-measurement-snapshot');await count(7);
+// 曲线时长由认证技能决定，不能以固定等待时间提前退出；否则长动作会被
+// @@test:quit 取消，造成“已验证完成”的假阳性。以运行时正常释放作为终态。
+await wait('[EmbodiedRuntimeAdmission] released: certified-motion-completed');
+await send('@@sim:model-measurement-snapshot');await count(7);
 await send('@@test:quit',1200);
 const l=log();
 for(const mark of [`[CertifiedMotion] started: ${skillId}`,'[EmbodiedRuntimeAdmission] admitted: '+skillId,'[EmbodiedSafeRecovery] pose-restored','[EmbodiedRuntimeAdmission] released: certified-motion-completed','[CertifiedMotion] cleanup: certified-motion-completed'])

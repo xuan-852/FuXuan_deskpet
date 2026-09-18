@@ -1,6 +1,4 @@
-# ================
-# Unity 项目
-# ================
+# Unity generated files
 code/desktop_unity/[Ll]ibrary/
 [Ll]ibrary/
 code/desktop_unity/[Tt]emp/
@@ -8,21 +6,30 @@ code/desktop_unity/[Oo]bj/
 code/desktop_unity/[Bb]uild/
 [Bb]uild/
 code/desktop_unity/[Bb]uilds/
+code/desktop_unity/[Ll]ogs/
+code/desktop_unity/[Uu]ser[Ss]ettings/
+code/desktop_unity/Library_stale_*/
 
-# ================
-# 运行日志 / 崩溃日志 / 测试日志
-# ================
+# Logs and transient test output
+/logs/
+/code/desktop_unity/screenshots/
 crash_log*.txt
 run_log*.txt
 editor_test*.txt
+*.log
+build_log*.txt
+build_*.txt
+build_stderr.txt
+build_stdout.txt
+build_verify.txt
+scripts/**/*_out.txt
+scripts/**/*_out.json
+scripts/**/*_out.log
 
-# ================
-# 密钥文件（仅追踪 .example 模板）
-# ================
+# Secrets and local IDE files
 code/desktop_unity/Assets/Scripts/ChatConfig.cs
 code/desktop_unity/Assets/Scripts/ChatConfig.cs.meta
-"code/desktop unity/Assets/Scripts/ChatConfig.cs"
-"code/desktop unity/Assets/Scripts/ChatConfig.cs.meta"
+!code/desktop_unity/Assets/Scripts/ChatConfig.cs.example
 code/desktop_unity/.codely-cli/
 code/desktop_unity/.codely/
 code/desktop_unity/.codelyignore
@@ -30,35 +37,36 @@ code/desktop_unity/.com-unity-codely.json
 code/desktop_unity/.sln
 code/desktop_unity/*.csproj
 code/desktop_unity/*.sln
-code/desktop_unity/screenshots/
-code/desktop_unity/desktop_pet_magic_circle_params_v2.txt
-code/desktop_unity/.codely-cli.bak/
+code/desktop_unity/*.user
+code/desktop_unity/*.userprefs
+code/desktop_unity/*.unityproj
+code/desktop_unity/*.pidb
+code/desktop_unity/*.booproj
 code/desktop_unity/.vscode/
+code/desktop_unity/.vs/
+code/desktop_unity/.idea/
+code/desktop_unity/*.suo
+code/desktop_unity/*.sdf
+code/desktop_unity/*.opensdf
+code/desktop_unity/*.VC.db
+code/desktop_unity/*.VC.opendb
 
-# ================
-# 构建辅助
-# ================
-build_temp.cmd
-build_now.cmd
-build_log*.old
-build_stderr.txt
-build_stdout.txt
-build_verify.txt
-
-# ================
-# Cubism SDK 解压缓存
-# ================
+# SDK extraction and local tooling
 cubism_extracted/
+.venv/
+.venv-1/
+.venv-2/
+__pycache__/
+*.dll.locked
+node_modules/
+/.zcode/
+/.vscode/
+/package.json
+/package-lock.json
+/record/**/*.toc
+.dsh-plugin-research/
 
-# ================
-# VS Code 配置
-# ================
-.vscode/
-.instructions.md
-
-# ================
-# LaTeX 构建产物
-# ================
+# Documentation/build intermediates
 docs/*.aux
 docs/*.out
 docs/*.toc
@@ -67,106 +75,42 @@ docs/*.synctex.gz
 docs/*.fls
 docs/*.fdb_latexmk
 
-# ================
-# Unity 构建日志
-# ================
-code/desktop_unity/build_log.txt
-build_log*.txt
-build_*.txt
-logs/
-
-# ================
-# 素材安装包（大文件不上传）
-# ★ 必须锚定根目录（/assets/）！未锚定的 assets/ 在 Windows 大小写不敏感下
-#   会误匹配 code/desktop_unity/Assets/，静默吞掉 Unity 新文件（2026-08-14 事故）
-# ================
-/assets/
-
-# ================
-# 工具脚本输出（_out.txt 等中间产物）
-# ================
-scripts/**/*_out.txt
-scripts/**/*_out.json
-scripts/**/*_out.log
-
-# ================
-# 编译锁文件 / 虚拟环境
-# ================
-*.dll.locked
-.venv/
-.venv-1/
-.venv-2/
-__pycache__/
-[Bb]uild/
-code/desktop_unity/[Ll]ogs/
-code/desktop_unity/[Uu]ser[Ss]ettings/
-code/desktop_unity/*.csproj
-code/desktop_unity/*.sln
-code/desktop_unity/*.user
-code/desktop_unity/*.userprefs
-code/desktop_unity/*.unityproj
-code/desktop_unity/*.pidb
-code/desktop_unity/*.booproj
-code/desktop unity/*.svd
-
-# ================
-# 安装包便携目录产物（阶段1，不入库；打包脚本 installer\build-portable.ps1 入库）
-# ================
+# Build and installer outputs
+build_temp.cmd
+build_now.cmd
 installer/portable/
 installer/downloads/
 installer/innosetup/
 installer/dist/
 
-# ================
-# 原始模型文件（超大，不上传）
-# ================
-file/
+# Local files and large source packages
+/file/
+/assets/CubismSdkForUnity-*.unitypackage
+/assets/*_preview.png
 
-# ================
-# Live2D 模型（不放在 StreamingAssets 下）
-# ================
-code/desktop unity/Assets/StreamingAssets/Live2D/
+# External/reference motion source packages and generated candidate corpora.
+# Keep curated audit summaries under docs/truth; raw and generated corpora stay local.
+/assets/external_motions/
 
-# ================
-# API 密钥配置（含真实 Key 的文件不提交）
-# ================
-code/desktop unity/Assets/Scripts/ChatConfig.cs
-!code/desktop unity/Assets/Scripts/ChatConfig.cs.example
+# Local or third-party Live2D model resources. These rules do not remove
+# resources already tracked in Git; cleanup requires a separate decision.
+/code/desktop_unity/Assets/Live2D/Models/
+/code/desktop_unity/Assets/StreamingAssets/Live2D/
+/code/desktop_unity/Assets/Resources/Live2D/
+/code/desktop_unity/Assets/Models/FuXuan.fbx
 
-# ================
-# macOS
-# ================
+# Raw model sources and generated Cubism exports in local workspaces.
+/model-workspaces/**/third-party/
+/model-workspaces/**/external/
+/model-workspaces/**/reference/
+/model-workspaces/**/exports/
+/model-workspaces/**/cubism-source/
+/model-workspaces/**/*.moc3
+/model-workspaces/**/*.model3.json
+/model-workspaces/**/*.physics3.json
+/model-workspaces/**/*.cdi3.json
+/model-workspaces/**/*.cmo3
+/model-workspaces/**/*.psd
+
+# OS metadata
 .DS_Store
-
-# ================
-# Visual Studio / Rider / IDE
-# ================
-code/desktop unity/.vs/
-code/desktop unity/.idea/
-code/desktop unity/*.suo
-code/desktop unity/*.sdf
-code/desktop unity/*.opensdf
-code/desktop unity/*.VC.db
-code/desktop unity/*.VC.opendb
-
-# ================
-# 日志
-# ================
-*.log
-
-# ================
-# LaTeX 构建产物
-# ================
-*.aux
-*.out
-*.toc
-
-# DSH harness �о�Ŀ¼������⣩
-.dsh-plugin-research/
-
-
-# Tuanjie 构建备份的旧 Library（codex build.ps1 增强产生）
-code/desktop_unity/Library_stale_*/
-
-# Live2D 官方示例动作素材（Free Material License 禁止再分发，仅本地使用）
-assets/external_motions/

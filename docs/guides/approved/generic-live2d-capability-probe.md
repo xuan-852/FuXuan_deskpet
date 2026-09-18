@@ -2,7 +2,9 @@
 
 > **状态**：已批准。
 >
-> **上位决策**：[L3 技能认证](l3-embodied-skill-certification.md)、[首版默认阈值](../../decisions/default-operational-thresholds.md)。
+> **上位决策**：[Live2D 平台与符玄私有 Fixture 范围决策](../../decisions/2026-09-18-live2d-platform-and-fuxuan-fixture-scope.md)、[L3 技能认证](l3-embodied-skill-certification.md)、[首版默认阈值](../../decisions/default-operational-thresholds.md)。
+>
+> **关联边界**：[运行时平台与模型适配器](live2d-runtime-platform-and-model-adapter.md)、[第三方与模型许可边界](../../third-party-and-model-licensing.md)、[符玄私有 fixture 归档案例](../../archive/fuxuan-private-fixture-case-study.md)。
 
 ## 目标与非目标
 
@@ -18,6 +20,8 @@
 `IModelProbeAdapter` 必须提供模型/资源哈希、参数发现与范围、写入/读回/复位、干扰冻结、统一帧采集和能力声明。核心输出 `capability-report.json`，每项包含机械、视觉、时序、关系、语义候选、分类和证据哈希。
 
 ### Unity Cubism 首版已实现入口
+
+以下 `FU_XUAN_*` 环境变量、固定 Fuxuan Prefab 和骨架候选是当前 legacy/fixture adapter 的实现事实，不是通用接口命名承诺：
 
 - 构建：`build.ps1 -ProbeWindow -OutputDir <隔离输出目录>`；输出 `Live2DProbe.exe`，仅包含 `ProbeWindowController` 和待测 Prefab，不复用桌宠场景、移动、掉落或 UI。
 - 运行前置：必须设定独立 `FU_XUAN_DATA` 并在其中创建 `.test_mode`；可选 `FU_XUAN_PROBE_PARAMETER=<Cubism 参数 ID>` 缩小为单参数复核。

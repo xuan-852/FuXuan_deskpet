@@ -13,7 +13,7 @@
 
 ## 二、基本架构
 
-`RuntimeReadinessService` reports local Ollama, bridge, and cloud configuration state. Cloud readiness is configuration-only; it never makes a paid probe. Local readiness is true only when Ollama responds and the configured model is present in `/api/tags`. In a standalone player, `LocalLLMClient` can start the standard Ollama application/CLI when the first local health check finds the API offline, then performs one delayed retry.
+`RuntimeReadinessService` reports local Ollama, bridge, and cloud configuration state. Cloud readiness is configuration-only; it never makes a paid probe. Local readiness is true only when Ollama responds and the configured model tag is present in `/api/tags`; this is an LLM service check, not a check for Live2D model resources. In a standalone player, `LocalLLMClient` can start the standard Ollama application/CLI when the first local health check finds the API offline, then performs one delayed retry. The readiness layer does not import arbitrary local weight files and does not register a general LLM provider.
 
 `ChatManager` exposes a request lifecycle through `RequestStage`, `RequestStatusText`, and `OnRequestStatusChanged`. The stages cover thinking, local generation, cloud connection, streaming, tool execution, retry, error, and cancellation.
 

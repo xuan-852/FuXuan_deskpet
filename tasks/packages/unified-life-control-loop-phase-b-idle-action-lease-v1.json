@@ -1,0 +1,35 @@
+{
+  "packageId": "unified-life-control-loop-phase-b-idle-action-lease-v1",
+  "primaryGuide": "docs/guides/approved/unified-life-control-loop.md",
+  "requirementIds": ["FR-ULC-02", "C-ULC-01", "C-ULC-02", "AC-ULC-B"],
+  "acceptanceObjective": "Migrate the legacy idle-action entry to a registered input lease, release it through ResetIdleAction, and require certified/legacy actions to settle a currently active idle action before acquiring their own lease.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/",
+    "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs",
+    "code/desktop_unity/Assets/Scripts/RuntimeInputSimulator.cs",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "scripts/test/",
+    "docs/truth/",
+    "docs/modules/",
+    "docs/generated/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "docs/decisions/",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/openclaw_bridge.js",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    ".\\build.ps1 -OutputDir <temporary-output>",
+    "node scripts/test/idle_action_lease_runtime_drive.cjs <temporary-output>/DesktopPet.exe",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": ["docs/truth/unified-life-control-loop-phase-b-idle-action-lease.md"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Only the idle-action entry is migrated. It remains InputLeaseOnly; no claim of resource-level composition, preemption or full Coordinator ownership is authorized."
+}

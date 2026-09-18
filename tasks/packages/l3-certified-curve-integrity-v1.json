@@ -1,0 +1,31 @@
+{
+  "packageId": "l3-certified-curve-integrity-v1",
+  "primaryGuide": "docs/guides/approved/external-motion-reference-retargeting.md",
+  "requirementIds": ["C-RETARGET-07", "AC-RETARGET-06"],
+  "acceptanceObjective": "Reject a missing, altered, or unbound certified-motion curve before it can enter the runtime executor, while preserving valid isolated execution.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/CertifiedMotionLibrary.cs",
+    "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs",
+    "code/desktop_unity/Assets/Editor/Tests/CertifiedMotionLibraryTests.cs",
+    "scripts/test/certified_motion_runtime_drive.cjs",
+    "docs/truth/",
+    "docs/modules/action-agent.md"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/",
+    "code/desktop_unity/Assets/StreamingAssets/",
+    "assets/external_motions/",
+    "docs/decisions/",
+    "docs/guides/approved/"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    "node --check scripts/test/certified_motion_runtime_drive.cjs"
+  ],
+  "expectedTruthDocuments": ["docs/truth/l3-certified-curve-integrity.md"],
+  "evidenceOutputs": ["hash-mismatch rejection test", "valid isolated curve acceptance test"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Do not deploy or redistribute curve data; existing local candidate files are only used by isolated tests."
+}

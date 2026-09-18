@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine.TestTools;
 
 public class Live2DInputCoordinatorTests
 {
@@ -48,5 +49,42 @@ public class Live2DInputCoordinatorTests
         coordinator.ReleaseAll("renderer-destroyed");
 
         Assert.That(coordinator.HasActiveLease, Is.False);
+    }
+
+    [Test]
+    public void CertifiedWriter_ExposesDeclaredResourcesAndControlLevel()
+    {
+        var coordinator = new Live2DInputCoordinator();
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.GeneratedMotion, "certified-motion", "m06", out var lease), Is.True);
+
+        Assert.That(lease.WriterId, Is.EqualTo("certified-motion"));
+        Assert.That(lease.Resources & EmbodiedResource.Body, Is.Not.EqualTo(EmbodiedResource.None));
+        Assert.That(lease.ControlLevel, Is.EqualTo(BodyWriterControlLevel.CertifiedCoordinator));
+    }
+
+    [Test]
+    public void UnknownWriter_IsRejectedWithoutAcquiringLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        LogAssert.Expect(UnityEngine.LogType.Warning,
+            "[Live2DInputCoordinator] Rejected GeneratedMotion/test: unknown-writer=unregistered-writer");
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.GeneratedMotion, "unregistered-writer", "test", out var lease), Is.False);
+        Assert.That(lease.IsValid, Is.False);
+        Assert.That(coordinator.HasActiveLease, Is.False);
+    }
+
+    [Test]
+    public void LowPriorityOverlay_IsSuppressedWhileAnyRegisteredWriterOwnsInput()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.True);
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Expression, "happy", out var expression), Is.True);
+        Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.False);
+
+        Assert.That(coordinator.Release(expression, "expression-stopped"), Is.True);
+        Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.True);
     }
 }

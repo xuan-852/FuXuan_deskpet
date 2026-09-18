@@ -1,0 +1,14 @@
+{
+  "packageId": "l3-wave-candidate-isolated-human-review-v1",
+  "primaryGuide": "docs/guides/approved/l3-wave-candidate-isolated-human-review.md",
+  "requirementIds": ["FR-WAVE-01", "FR-WAVE-02", "FR-WAVE-03"],
+  "acceptanceObjective": "Play one test-only composite wave candidate in an isolated visible desktop-pet window and collect explicit human review without any certification or LLM exposure.",
+  "allowedPaths": ["code/desktop_unity/Assets/Scripts/Live2DRenderer.cs", "code/desktop_unity/Assets/Scripts/RuntimeInputSimulator.cs", "code/desktop_unity/Assets/Editor/Tests/", "scripts/test/", "docs/truth/", "docs/modules/action-agent.md"],
+  "forbiddenPaths": ["code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/", "code/desktop_unity/Assets/Scripts/ToolEngine/", "code/desktop_unity/Assets/Scripts/ChatManager.cs", "code/desktop_unity/Assets/Scripts/Embodied/CertifiedMotionLibrary.cs", "code/desktop_unity/Assets/Resources/Live2D/", "docs/decisions/"],
+  "verificationCommands": [".\\build.ps1 -Quick", ".\\build.ps1 -RunTests", ".\\build.ps1 -OutputDir <isolated-player>", "node scripts/test/wave_candidate_isolated_drive.cjs <isolated-player>"],
+  "expectedTruthDocuments": ["docs/truth/l3-wave-candidate-isolated-human-review.md"],
+  "evidenceOutputs": ["isolated runtime screenshots", "admission/restoration/release logs", "human review conclusion"],
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Candidate is test-only and must never be certified or LLM-exposed by this task."
+}

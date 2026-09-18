@@ -4,6 +4,25 @@ using NUnit.Framework;
 
 public class EmbodiedRecoveryTests
 {
+    [Test] public void 桌面身体快照与Live2D参数状态分离且模式可复核()
+    {
+        var state = new DesktopBodyState();
+        state.Update(120, 240, 3, 0, true, false, false, false, "MoveRightTime");
+        var walking = state.CaptureSnapshot();
+        Assert.AreEqual(120, walking.X);
+        Assert.AreEqual(3, walking.VelocityX);
+        Assert.AreEqual("MoveRightTime", walking.GroundTask);
+        Assert.AreEqual(DesktopBodyMode.Walking, walking.Mode);
+
+        state.Update(120, 240, 3, 0, true, true, false, false, "MoveRightTime");
+        var dragging = state.CaptureSnapshot();
+        Assert.Greater(dragging.Version, walking.Version);
+        Assert.AreEqual(DesktopBodyMode.Dragging, dragging.Mode);
+
+        state.Update(120, 240, 0, 0, true, false, false, true, "StopTime");
+        Assert.AreEqual(DesktopBodyMode.ActionMovementLocked, state.CaptureSnapshot().Mode);
+    }
+
     [Test] public void 记录写入后可恢复到基线且幂等()
     {
         var state = new EmbodiedPoseState();
@@ -56,5 +75,52 @@ public class EmbodiedRecoveryTests
         state.RestoreAll((id, value) => { }); state.FinishAction(EmbodiedActionStatus.Completed);
         var final = state.CaptureSnapshot();
         Assert.Greater(final.Version, snapshot.Version); Assert.IsNull(final.ActiveSkillId); Assert.IsEmpty(final.PendingParameterIds); Assert.AreEqual(EmbodiedActionStatus.Completed, final.ActionStatus);
+    }
+
+    [Test] public void 快照记录控制面所有者关联标识与终态原因()
+    {
+        var state = new EmbodiedPoseState();
+        state.BeginAction(new EmbodiedActionRequest
+        {
+            RequestId = 42,
+            Source = "certified-runtime",
+            CorrelationId = "request-42",
+            SkillId = "certified",
+            Resources = EmbodiedResource.LeftArm
+        });
+
+        var active = state.CaptureSnapshot();
+        Assert.AreEqual(42, active.ActiveRequestId);
+        Assert.AreEqual("certified-runtime", active.ActiveSource);
+        Assert.AreEqual("request-42", active.CorrelationId);
+        Assert.IsNull(active.TerminalReason);
+
+        state.FinishAction(EmbodiedActionStatus.Cancelled, "user-stop");
+        var terminal = state.CaptureSnapshot();
+        Assert.AreEqual(0, terminal.ActiveRequestId);
+        Assert.IsNull(terminal.ActiveSource);
+        Assert.IsNull(terminal.CorrelationId);
+        Assert.AreEqual("user-stop", terminal.TerminalReason);
+        Assert.AreEqual(EmbodiedActionStatus.Cancelled, terminal.ActionStatus);
+    }
+
+    [Test] public void 写入者清册明确区分认证受控与待迁移路径()
+    {
+        var writers = BodyWriterInventory.Snapshot();
+        Assert.GreaterOrEqual(writers.Length, 9);
+        var certified = Array.Find(writers, item => item.WriterId == "certified-motion");
+        Assert.NotNull(certified);
+        Assert.AreEqual(BodyWriterControlLevel.CertifiedCoordinator, certified.ControlLevel);
+        Assert.AreEqual("EmbodiedSafeRecovery", certified.RecoveryOwner);
+
+        var idle = Array.Find(writers, item => item.WriterId == "idle-action");
+        Assert.NotNull(idle);
+        Assert.AreEqual(BodyWriterControlLevel.InputLeaseOnly, idle.ControlLevel);
+        Assert.That(idle.Resources & EmbodiedResource.LeftArm, Is.Not.EqualTo(EmbodiedResource.None));
+
+        var drag = Array.Find(writers, item => item.WriterId == "drag-response");
+        Assert.NotNull(drag);
+        Assert.AreEqual(BodyWriterControlLevel.LegacyUnmanaged, drag.ControlLevel);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(drag.RecoveryOwner));
     }
 }

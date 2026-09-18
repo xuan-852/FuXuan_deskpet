@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 4096 4096">
+  <title>Fu Xuan derivative v01 thumbnail composition check</title>
+  <desc>Original Stage 1 thumbnail composition check. It is not final artwork.</desc>
+  <rect width="4096" height="4096" fill="#f4f4f4"/>
+  <g fill="#34283f" stroke="#17121c" stroke-width="24">
+    <path d="M1230 880 Q1500 480 2048 460 Q2596 480 2866 880 L3210 2450 Q3260 2910 2990 3430 L2570 3710 L1526 3710 L1106 3430 Q836 2910 886 2450 Z"/>
+    <ellipse cx="2048" cy="1320" rx="675" ry="620" fill="#d5c7d8"/>
+    <path d="M1270 850 Q2048 300 2826 850 L2620 1220 Q2048 980 1476 1220 Z" fill="#5b3d71"/>
+    <path d="M1210 1820 L2886 1820 L3000 2700 L2700 2920 L2048 2850 L1396 2920 L1096 2700 Z" fill="#65517f"/>
+    <path d="M1070 1920 L1390 1870 L1530 2900 L1120 3090 L820 2840 Z M3026 1920 L2706 1870 L2566 2900 L2976 3090 L3276 2840 Z" fill="#83709a"/>
+    <path d="M1200 2760 Q2048 2470 2896 2760 L3040 3460 Q2048 3750 1056 3460 Z" fill="#4d365f"/>
+    <path d="M1500 3440 L1840 3440 L1800 3740 L1450 3740 Z M2256 3440 L2596 3440 L2646 3740 L2296 3740 Z" fill="#292331"/>
+  </g>
+  <g fill="#d9b66d">
+    <path d="M1880 430 L2048 210 L2216 430 L2048 650 Z"/>
+    <circle cx="1430" cy="850" r="95"/>
+    <circle cx="2666" cy="850" r="95"/>
+  </g>
+  <g fill="#4f3b67">
+    <ellipse cx="1770" cy="1330" rx="150" ry="105"/>
+    <ellipse cx="2326" cy="1330" rx="150" ry="105"/>
+  </g>
+  <g fill="#34283f" font-family="Arial, sans-serif" font-size="130">
+    <text x="130" y="200">THUMBNAIL CHECK / DESIGN ONLY</text>
+    <text x="130" y="3980">Silhouette + component balance only. Not validated character fidelity.</text>
+  </g>
+</svg>

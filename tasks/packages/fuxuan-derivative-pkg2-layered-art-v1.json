@@ -1,0 +1,57 @@
+{
+  "packageId": "fuxuan-derivative-pkg2-fixture-evidence-v1",
+  "primaryGuide": "docs/guides/approved/live2d-runtime-platform-and-model-adapter.md",
+  "scope": "fixture-only",
+  "publish": false,
+  "redistribute": false,
+  "commercial": false,
+  "mapWriteAllowed": false,
+  "llmExposureAllowed": false,
+  "productionAssetWriteAllowed": false,
+  "requirementIds": ["FR-ADAPTER-01", "AC-FIXTURE-02"],
+  "acceptanceObjective": "Preserve and audit the existing private artwork fixture, including its source, hash, structure and ReviewFailed conclusion. Do not claim a production-ready, certified or distributable model.",
+  "allowedPaths": [
+    "model-workspaces/fuxuan-derivative-v1/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "code/desktop_unity/Assets/Live2D/Models/Fuxuan/",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/",
+    "code/desktop_unity/Assets/Scripts/",
+    "installer/",
+    "Build/",
+    "docs/guides/approved/",
+    "docs/generated/",
+    "docs/truth/"
+  ],
+  "sourceRequirements": [
+    "4096x4096 RGBA transparent canvas",
+    "Unflattened editable-equivalent vector source",
+    "Separate base, line, shadow and highlight groups",
+    "Independent face, eyes, hair, ornaments, sleeves, skirt, shoes and pendant layers",
+    "Paint-over behind every moving or occluding boundary",
+    "No source pixels, textures, meshes, curves, physics, actions or exports from existing models",
+    "No external image, texture, brush or font without provenance and usage record"
+  ],
+  "evidenceOutputs": [
+    "model-workspaces/fuxuan-derivative-v1/artwork-source/fuxuan_derivative_v01_neutral.svg",
+    "model-workspaces/fuxuan-derivative-v1/artwork-source/fuxuan_derivative_v01_neutral.png",
+    "model-workspaces/fuxuan-derivative-v1/artwork-source/layer-manifest-v01.md",
+    "model-workspaces/fuxuan-derivative-v1/acceptance/stage2-artwork-acceptance-report.md",
+    "model-workspaces/fuxuan-derivative-v1/artwork-source/SHA256SUMS"
+  ],
+  "gates": [
+    "Existing fixture source, hash and structure remain reproducible",
+    "ReviewFailed and BlockedByEvidence states remain explicit",
+    "No public release, commercial use, redistribution, installer delivery or production asset write",
+    "No Cubism, Unity, mapping or LLM work until a new decision and guide are approved"
+  ],
+  "verificationCommands": [
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "riskLevel": "medium",
+  "externalEvidence": true,
+  "notes": "Frozen private fixture/case study only. The current artwork report is ReviewFailed despite automatic structural checks; preserve that conclusion. Do not create .cmo3, Cubism exports, Unity candidates, production mappings, actions, LLM skills, installer assets or public media. A future restart requires a new decision, approved guide, task package, rights review, human visual acceptance and rollback plan."
+}
