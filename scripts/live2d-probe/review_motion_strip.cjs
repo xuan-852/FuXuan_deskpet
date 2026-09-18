@@ -11,9 +11,10 @@ const strip = process.argv[2];
 if (!strip || !fs.existsSync(strip)) throw Error('missing strip png');
 const boundary = (process.argv[3] || '').trim();
 
-const model = process.env.FU_XUAN_GLM_MODEL || 'glm-4.6v';
-const key = process.env.GLM_API_KEY;
-if (!key) throw Error('GLM_API_KEY 未设置');
+const model = process.env.REVIEW_MODEL || process.env.FU_XUAN_GLM_MODEL || 'glm-4.6v';
+const endpoint = process.env.REVIEW_ENDPOINT || 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+const key = process.env.REVIEW_API_KEY || process.env.GLM_API_KEY;
+if (!key) throw Error('未设置 REVIEW_API_KEY/GLM_API_KEY');
 
 const dataUrl = `data:image/png;base64,${fs.readFileSync(strip).toString('base64')}`;
 
@@ -32,7 +33,7 @@ const prompt = `你是严谨的视频帧序列分析员。这张图包含 f01..f
 {"motion_detected": true/false, "trajectory": "rise-fall|monotonic|erratic|none", "region": "<变化部位>", "semantic_guesses": ["<候选1>", "<候选2>"], "smoothness": "smooth|jittery|none", "confidence": "high|medium|low", "gradings": {"d01": 0, "d02": 0, "d03": 0, "d04": 0, "d05": 0, "d06": 0, "d07": 0, "d08": 0}}`;
 
 (async () => {
-  const res = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify({
@@ -49,7 +50,9 @@ const prompt = `你是严谨的视频帧序列分析员。这张图包含 f01..f
   });
   const body = await res.json();
   if (!res.ok) throw Error(`HTTP ${res.status}: ${JSON.stringify(body).slice(0, 400)}`);
-  const content = body.choices?.[0]?.message?.content || '';
+  const message = body.choices?.[0]?.message || {};
+  const content = message.content || message.reasoning_content || '';
+  if (!content) console.error('警告: 空响应, message keys=', Object.keys(message).join(','), 'finish=', body.choices?.[0]?.finish_reason);
   const jsonStart = content.indexOf('{');
   const jsonEnd = content.lastIndexOf('}');
   let verdict = null;
@@ -66,8 +69,10 @@ const prompt = `你是严谨的视频帧序列分析员。这张图包含 f01..f
 
 动作语义边界（该动作声称应该是什么）：${boundary}
 
-请判断观察记录与语义边界是否一致（方向、部位、平滑度均需吻合；轻微幅度差异不算不一致）。输出 JSON：{"supported": true/false, "reason": "<一句话理由>"}`;
-    const res2 = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+注意：角色身体主干的倾斜/转动，其可见后果往往主要表现在衣物、裙摆和饰物上；若观察到的变化部位、轨迹形状与边界动作的物理后果一致且平滑连贯，应视为吻合。方向混乱、忽大忽小的轨迹即使发生在衣物上也不吻合。
+
+请判断观察记录与语义边界是否一致。输出 JSON：{"supported": true/false, "reason": "<一句话理由>"}`;
+    const res2 = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify({
@@ -94,7 +99,7 @@ const prompt = `你是严谨的视频帧序列分析员。这张图包含 f01..f
     rawContent: content,
     usage: body.usage || null
   };
-  const outPath = strip.replace(/\.png$/i, '') + '.review.json';
+  const outPath = strip.replace(/\.png$/i, '') + '.' + model.replace(/[^a-z0-9.-]/gi, '_') + '.review.json';
   fs.writeFileSync(outPath, JSON.stringify(out, null, 2), 'utf8');
   console.log(`reviewed: ${strip} -> ${outPath}`);
   console.log(`trajectory=${verdict?.trajectory} region=${verdict?.region || '?'} guesses=${(verdict?.semantic_guesses || []).join('/')} match=${match ? (match.supported ? 'supported' : 'unsupported') : 'n/a'} usage=${JSON.stringify(body.usage?.total_tokens || 0)}tok`);
