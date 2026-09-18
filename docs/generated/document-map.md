@@ -38,6 +38,7 @@
 - [L3 Hiyori m06 候选认证](../../docs/truth/l3-hiyori-m06-certification.md) — `docs/truth/l3-hiyori-m06-certification.md`
 - [L3 Live2D 输入边界审计](../../docs/truth/l3-live2d-input-boundary-audit.md) — `docs/truth/l3-live2d-input-boundary-audit.md`
 - [L3 LLM 接入具身控制（架构试验）](../../docs/truth/l3-llm-embodied-integration.md) — `docs/truth/l3-llm-embodied-integration.md`
+- [L3 动作评审条带试点：GLM-4.6V 判别力实测](../../docs/truth/l3-motion-review-strip-pilot.md) — `docs/truth/l3-motion-review-strip-pilot.md`
 - [L3 姿势状态快照运行时接线](../../docs/truth/l3-pose-state-runtime-wiring.md) — `docs/truth/l3-pose-state-runtime-wiring.md`
 - [L3 姿势状态快照基础](../../docs/truth/l3-pose-state-snapshot.md) — `docs/truth/l3-pose-state-snapshot.md`
 - [L3 运行时认证准入缺口审计](../../docs/truth/l3-runtime-admission-gap-audit.md) — `docs/truth/l3-runtime-admission-gap-audit.md`
