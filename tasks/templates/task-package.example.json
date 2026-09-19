@@ -9,6 +9,18 @@
   "verificationCommands": [".\\build.ps1 -Quick"],
   "expectedTruthDocuments": ["docs/truth/example.md"],
   "evidenceOutputs": ["logs/build/test_results.xml"],
+  "contextManifest": {
+    "requiredDocs": ["docs/decisions/documentation-governance.md"],
+    "conditionalDocs": [
+      {"when": "changedPaths:code/desktop_unity/", "docs": ["docs/build-workflow.md"]}
+    ]
+  },
+  "changeScope": {
+    "expectedComponents": ["Example subsystem"],
+    "outOfScope": ["Resource-level parallel execution"],
+    "maxFiles": 8,
+    "maxChangedLines": 500
+  },
   "riskLevel": "low",
   "externalEvidence": false,
   "notes": "This is a template and must not be dispatched."

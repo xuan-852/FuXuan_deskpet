@@ -4,7 +4,7 @@
 > 详细规范见 [`docs/development-standards.md`](docs/development-standards.md)（两者冲突时以详细版为准）。
 > 📚 **文档总索引**：[`docs/README.md`](docs/README.md)——顶层权威文档表 + 10 个模块文档（`docs/modules/`）。
 >
-> **AI 读文档优先级**：`AGENTS.md` → `docs/README.md` → `docs/decisions/2026-09-15-product-direction-baseline.md`（**编写指导文档、下发任务或处理方向冲突前先读**）→ `docs/decisions/documentation-governance.md`（**新建/迁移文档、下发任务包或验收前先读**）→ `development-standards.md` → `holiday-skin-development-guide.md`（**改节日皮肤前先读**）→ `holiday-skin-review-standard.md`（**节日皮肤验收前先读**）→ `build-workflow.md`（**改 C# 后构建 / 构建卡死时先读**）→ `code-truth-architecture.md` → `docs/embodied-intelligence-guidance.md`（**设计、实现或验收具身智能前先读**）→ `docs/embodied-ai-optimization-architecture.md`（**规划或修改具身动作架构前先读**）→ `docs/token-cost-testing.md`（涉及云端调用/测试/排查烧钱时**必须先读**）→ `docs/token-saving-architecture.md`（设计/修改成本控制时**必须先读**）→ `docs/quality-measurement-test-guide.md`（编译后测量本地质量时**必须先读**）→ `docs/quality-comparison-test-guide.md`（本地/云端配对对照时**必须先读**）→ `docs/project-bugs-and-acceptance.md`（改外置窗口/渲染/退出/测试代码前先读）→ 对应 `docs/modules/<模块>.md`
+> **AI 文档加载规则**：本文件是唯一的 AI 入口。默认只读当前任务包（若有）、其 `primaryGuide`、直接链接的决策/真相文档、目标文件及直接依赖；通过 [`docs/generated/document-map.md`](docs/generated/document-map.md) 发现文档，不把 `docs/README.md` 当作每次任务的全文必读材料。专项文档按触发条件懒加载，具体规则见下方“AI 上下文边界”。
 
 ## 项目是什么
 
@@ -69,6 +69,17 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 8. **编码遵循 `.editorconfig`**：`.cs`/`.ps1`/`.cmd` 带 BOM，其余 UTF-8 无 BOM，`*.cmd` 用 CRLF
 9. **安装器依赖安全**：外部安装器执行前必须验证 Authenticode；Bridge/Gateway 令牌不得复用；安装包服务固定使用随包 Node，不得回退到机器 PATH 中的 Node。
 
+## AI 上下文边界（每次任务必须遵守）
+
+1. **默认最小集**：先读本文件、任务包（若存在）、批准指导文档、目标文件和直接依赖；无任务包的小改动只读目标模块文档与对应验证规范。
+2. **任务包优先**：任务包的 `contextManifest.requiredDocs` 是有序最小必读清单，`conditionalDocs` 只在其触发条件满足时加载；不得用旧的串行阅读顺序替代任务包边界。
+3. **上下文预算**：默认上限为“一个任务包 + 一个批准指导 + 最多两个直接关联的决策/真相文档 + 目标代码/测试”。超过上限必须在任务记录或最终报告中写明触发原因。
+4. **专项按需加载**：仅在命中条件时加载构建、节日皮肤、云端成本、质量测量、外置窗口、具身架构等专项文档；例如改 C# 才读构建规范，改桥接/工具才读通信规范，改具身动作才读具身指导。
+5. **默认排除**：冻结路线图、旧任务清单、归档、历史报告和无关模块文档默认不读；只有任务明确涉及历史兼容、迁移或冲突核查时才读取。
+6. **停止加载**：目标、约束、允许路径、接口依赖、验证证据和非目标明确后停止继续加载文档。
+7. **阻断而非扩散**：必要文档缺失或互相矛盾时记录 `BlockedByDecision` 或 `BlockedByEvidence`，不得通过加载整棵文档树规避阻断。
+8. **脏工作区基线**：开始任务时记录已有 `git diff --name-only`；范围检查只针对本次新增差异，不把用户已有改动当作越界。
+
 ## Git 提交
 
 Conventional Commits：`<type>(<scope>): <中文描述>`。类型：feat/fix/docs/refactor/perf/test/build/chore。scope：bridge/tool/office/doc/build/test/chat/live2d/memory。一个提交一件事；破坏性变更加 `!`。
@@ -77,6 +88,6 @@ Conventional Commits：`<type>(<scope>): <中文描述>`。类型：feat/fix/doc
 
 Python 脚本 → 桥接端点（curl 验证）→ OpenClawBridge.cs 方法 → ToolEngine 工具类 → `build.ps1 -Quick` → 测试 → **测试通过后**更新 `docs/modules/` 对应模块文档 → 提交。
 
-> AI 铁则：写完代码必须更新对应 md 文档，且**必须等测试通过后再写**（文档只记录已验证的代码真相）。交付前必须执行文档同步门禁：按 `git diff --name-only` 识别受影响模块，检查模块文档、`docs/README.md`、根 `README.md`、roadmap/task 清单，并在最终回复列出同步结果；测试/构建被阻断时只能标记“未验证”。
+> AI 铁则：写完代码必须更新直接受影响的 md 文档，且**必须等测试通过后再写**（文档只记录已验证的代码真相）。交付前按本次新增 `git diff --name-only` 识别受影响模块；只同步直接受影响且已验证的 truth/module 文档。`docs/README.md` 仅在路径、角色或导航变化时同步；根 README、冻结路线图和旧任务清单不再默认同步。测试/构建被阻断时只能标记“未验证”。
 
 > 新增模块时：在 `docs/modules/` 建文档（套用四要素模板，见 `docs/README.md` 第二节）→ 更新 `docs/README.md` 1.2 表 → 更新本文件模块表。

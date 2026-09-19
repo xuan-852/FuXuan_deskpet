@@ -55,7 +55,7 @@
 
 2026-09-18 统一控制闭环 Phase B-3：鼠标注视作为低优先级 Face 叠加层，任何活动表情/动作/认证输入租约均会抑制其 LateUpdate 覆盖；租约释放后才恢复平滑注视。未引入资源级并行。Quick 和 EditMode（235 total、234 passed、failed=0、1 ignored）通过。详见 [Phase B-3 鼠标注视优先级门控](../truth/unified-life-control-loop-phase-b-mouse-gaze-priority.md)。
 
-2026-09-19 统一控制闭环 Phase B 观测基础与表情入口收束：新增进程内有界 `EmbodiedEventStore`、只读组合 `BodyStateSnapshot/BodyStateStore` 和只读 `ExecutionMonitor`，事件限制为无敏感短标识/摘要哈希；表情播放改为成功可判定的 `TryPlayExpression`，未知表情不会遗留输入租约，Renderer 禁用/退出共用外部输入清理。Quick 与 EditMode（242 total、241 passed、failed=0、1 ignored）通过。完整事件持久化、执行器自动纠偏、资源级并行和其余 LegacyUnmanaged 写入路径仍未完成。
+2026-09-19 表情生命周期入口收束与冲突验收：`Live2DRenderer.StopAllActionsAndExpressions` 成为 Renderer 层的停止网关，工具、生成动作前置和自检路径不再直接绕过 Renderer 清理表情租约；`TryPlayExpression` 的未知表情回滚、停止后复用、生成动作/旧动作双向冲突和 test-exit 清理均在隔离 Player `AC-EXPRESSION-LIFECYCLE` / `AC-INPUT-04` 驱动中通过。旧动作停止仍由 Renderer 维护 owner lease，单全局租约语义保持不变。Quick、EditMode（249 total、248 passed、failed=0、1 ignored）和新鲜 Player 均通过。步行、物理、拖拽、Renderer 重建、资源级并行和执行器自动纠偏仍未完成。
 
 2026-09-18 轻回应式抬手隔离审核：自制单通道曲线以 SHA-256 绑定到 `screen_side_arm_raise`，在临时 Player 和 `.test_mode` 数据根完成准入、播放、姿势还原与资源释放。人工实时观看的结论为“正常的轻度抬手”，但幅度不足以称为招手；该条目继续 `LlmExposed=false`，未写入生产数据根。详见 [L3 轻回应式抬手隔离人工审核包](../truth/l3-screen-side-arm-raise-isolated-human-review.md)。
 

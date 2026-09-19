@@ -8,6 +8,7 @@
 > **开发历史迭代**: 2026-08-12 由「平铺 14 份文档」重构为「索引 + 模块化」结构，全部模块文档统一四要素模板；当前 `modules/` 共 10 份模块文档。
 > **编写注意事项**: 新增模块文档必须套用下方模板；修改架构/规范类文档需同步更新本索引与 `AGENTS.md`；`report.*` 是 LaTeX 构建产物，改动源文件 `report.tex` 而非 `report.md`。
 > **AI 调试入口**: 测试模式下通过数据根目录的 `inbox.txt` 写入 `@@sim:*`/`@@input:*` 可模拟桌宠点击、拖动、读取运行时状态并由 Unity 保存截图；命令协议与安全边界见 `development-standards.md` §6.6。
+> **AI 加载入口**: 每次任务先读根目录 [`AGENTS.md`](../AGENTS.md)，再按任务包的 `primaryGuide`、`contextManifest` 和直接依赖按需加载；本索引用于目录导航，不要求每次全文读取。
 
 ## 当前项目文档基线（2026-09-04）
 
@@ -149,7 +150,7 @@ docs/generated/        自动生成索引，禁止手工编辑
 1. **新增模块**：在 `modules/` 新建文档 → 套用四要素模板 → 在 1.2 节加一行 → 更新 `AGENTS.md` 技术栈表
 2. **修改模块文档**：功能级改动**测试通过后**再更新对应 `modules/` 文档（先代码后文档），并核对 1.2 节索引表
 3. **修改顶层文档**：确认是否影响索引（标题/路径/作用变化时同步更新）
-4. **文档优先级**（AI 读取顺序）：`AGENTS.md` → `docs/README.md` → `development-standards.md` → `build-workflow.md` → `code-truth-architecture.md` → `token-cost-testing.md` → `token-saving-architecture.md` → 质量测试指南 → `project-bugs-and-acceptance.md` → 对应模块文档
+4. **文档优先级（AI）**：以根目录 `AGENTS.md` 的分层按需加载规则为准；本索引和 `generated/document-map.md` 用于导航，不再规定每次任务的串行全文阅读。
 5. **数据真实性**：模块文档中的组件名/工具数/行号必须以代码为准（参考 `code-truth-architecture.md` 的审计方法），禁止沿用过时描述
 ## 2026-08-30 文档同步
 

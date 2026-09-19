@@ -97,7 +97,7 @@ public class GenerateMotionTool : IPetTool
 
         // 表情也会在 LateUpdate 写入面部参数；生成动作开始前立即停止它，避免
         // 淡出阶段仍与 MotionGenerator 的关键帧交叠。
-        renderer.ActionController?.StopAll();
+        renderer.StopAllActionsAndExpressions(0f);
 
         // 生成器可能跨多帧、取消或异常退出；所有外部控制权都必须在同一收束块释放。
         bool aiLockHeld = false;
@@ -537,7 +537,7 @@ public class SelfReviewTool : IPetTool
         var model = renderer.CubismModel;
 
         // 停止当前动作，等待一帧
-        renderer.ActionController?.StopAllWithFade();
+        renderer.StopAllActionsAndExpressions();
         yield return null;
 
         // 播放目标动作

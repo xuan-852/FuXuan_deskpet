@@ -178,6 +178,25 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.StartsWith("expression:", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            string expression = body.Substring("expression:".Length).Trim();
+            if (renderer == null)
+                Debug.LogWarning("[TestInbox] expression failed: Live2DRenderer unavailable");
+            else if (expression.Equals("stop", StringComparison.OrdinalIgnoreCase))
+            {
+                renderer.StopAllActionsAndExpressions(0f);
+                Debug.Log("[TestInbox] expression stop requested");
+            }
+            else
+            {
+                bool accepted = renderer.TryPlayExpression(expression, 0f);
+                Debug.Log("[TestInbox] expression " + (accepted ? "accepted: " : "rejected: ") + expression);
+            }
+            return true;
+        }
+
         if (body.Equals("lease:generated:begin", StringComparison.OrdinalIgnoreCase))
         {
             Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();

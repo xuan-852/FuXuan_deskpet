@@ -3,7 +3,7 @@
 > **版本**: v1.0 (2026-08-12)
 > **定位**: 本仓库**唯一权威开发规范**。所有组件通信、目录组织、测试、日志、Git 提交均以此为准。
 > **读者**: 人类开发者 + AI 编码代理（GitHub Copilot / Claude Code 等）
-> **配套**: 本文件为详细版；根目录 `AGENTS.md` 为 AI 快速入口（摘要+指针），两者内容保持一致，冲突时以本文件为准。
+> **配套**: 本文件提供详细开发规则；根目录 `AGENTS.md` 是 AI 文档加载的唯一入口。涉及加载顺序、上下文预算或文档同步范围时以 `AGENTS.md` 和 `docs/decisions/documentation-governance.md` 为准；其他开发规范冲突时以本文件为准。
 > **参照**: [Conventional Commits 1.0](https://www.conventionalcommits.org)、[Google Engineering Practices](https://google.github.io/eng-practices/)、[.NET Coding Conventions](https://learn.microsoft.com/dotnet/csharp/fundamentals/coding-style/coding-conventions)、[12-Factor 日志](https://12factor.net/zh_cn/logs)
 
 ---
@@ -443,12 +443,14 @@ Assets/
 
 ## 八、AI 协作规范
 
-### 8.1 AI 读取文档优先级
+### 8.1 AI 文档加载与上下文边界
 
-1. `AGENTS.md`（根目录，GitHub Copilot / Claude Code 自动加载，最近路径优先）
-2. `docs/development-standards.md`（本规范，详细版）
-3. `docs/code-truth-architecture.md`（权威架构，数字以代码为准）
-4. `README.md`（项目概览）
+- `AGENTS.md` 是唯一的 AI 文档加载入口；本节只补充详细开发规则和专项触发条件，不维护第二套完整阅读顺序；
+- 默认读取当前任务包（若有）、其 `primaryGuide`、任务包直接链接的决策/真相文档、目标文件和直接依赖；通过 `docs/generated/document-map.md` 发现文档；
+- `docs/README.md` 只说明目录、角色和人工导航，不是每次任务的全文必读材料；冻结路线图、旧任务清单、归档和历史报告默认不读；
+- 构建、节日皮肤、云端成本、质量测量、外置窗口和具身架构等专项文档仅在任务路径、风险、验收命令或需求 ID命中时加载；
+- 当目标、约束、允许路径、接口依赖、验证证据和非目标明确后停止继续加载；必要信息缺失或冲突时按 `BlockedByDecision` 或 `BlockedByEvidence` 阻断，不扩大为无关文档扫描；
+- 默认上下文上限、任务包 `contextManifest` 和 dirty worktree 基线规则见 [`documentation-governance.md`](decisions/documentation-governance.md) DG-23 至 DG-26。
 
 ### 8.2 AI 修改代码的规则
 
@@ -456,8 +458,8 @@ Assets/
 - **保持惯例**：新代码复制已有文件的风格（命名、注释、错误返回、换行）；
 - **小步验证**：C# 改完跑 `build.ps1 -Quick`；JS 改完 `node --check`；Python 改完跑对应生成器；
 - **不破坏契约**：改端点 schema / 工具参数时，必须同步更新调用方（C# ↔ JS ↔ Python 三层）；
-- **测试通过后更新文档**：功能级改动**必须先通过测试**（`build.ps1 -Quick` + `-RunTests` / 端到端 curl），再更新对应模块文档（`docs/modules/*.md`）→ README / roadmap / 本规范，标注版本与日期；**禁止在测试通过前凭预期写文档**——文档只记录已验证的代码真相；
-- **文档同步是交付门禁**：任务结束前必须用 `git diff --name-only` 检查本次改动涉及的模块，并逐项确认对应 `docs/modules/<模块>.md`、`docs/README.md`、根目录 `README.md`、roadmap/task 清单是否需要同步；需要更新的文档必须和代码改动放在同一任务交付中，不能以“之后再补”作为默认状态。
+- **测试通过后更新文档**：功能级改动**必须先通过测试**（`build.ps1 -Quick` + `-RunTests` / 端到端 curl），再更新任务包声明且直接受影响的代码真相或模块文档；**禁止在测试通过前凭预期写文档**——文档只记录已验证的代码真相；
+- **文档同步是交付门禁**：任务结束前以开始时记录的 dirty worktree 基线为准，用 `git diff --name-only` 检查本次改动涉及的模块。只检查直接受影响的 `docs/truth/`、`docs/modules/` 和任务包引用；`docs/README.md` 仅在路径、角色或导航变化时检查，根 README、冻结 roadmap 与旧任务清单不再默认同步。需要更新的文档必须和代码改动放在同一任务交付中，不能以“之后再补”作为默认状态。
 - **不提交密钥**：新增配置文件用 `.example` 模板，真实文件进 `.gitignore`；
 - **环境感知**：PM2 管理进程勿手动 kill/start；改桥接后 `pm2 restart openclaw-bridge --update-env`。
 
@@ -476,13 +478,13 @@ Assets/
 
 AI 代理在提交或交付前必须完成以下检查：
 
-1. 列出本次修改的代码、脚本、配置和测试文件，并确定受影响模块；
-2. 检查对应模块文档的“基本架构 / 开发历史迭代 / 编写注意事项”是否仍准确；
-3. 检查顶层文档中的版本号、日期、数量、完成状态、路径和已知问题，修正受影响内容；
+1. 列出本次新增修改的代码、脚本、配置和测试文件，并确定受影响模块；开始任务前已有的 dirty worktree 文件只作为基线，不纳入本次范围结论；
+2. 检查任务包声明且直接受影响的代码真相/模块文档是否仍准确；
+3. 仅当路径、角色、导航或用户可见项目概览发生变化时，检查 `docs/README.md` 或根 README；冻结路线图和旧任务清单默认不更新；
 4. 测试未通过、构建被权限/环境阻断或证据不足时，只能记录为“未验证/阻断”，不得写成“已完成”；
 5. 在最终回复中列出已同步的文档；若确认无需更新，必须明确说明判断依据。
 
-这项门禁适用于代码、桥接端点、工具、安装器、渲染、测试和配置变更；纯文档任务也必须检查 `docs/README.md` 与 `AGENTS.md` 的索引/规则是否需要联动。
+这项门禁适用于代码、桥接端点、工具、安装器、渲染、测试和配置变更；纯文档任务也必须检查 `AGENTS.md`、文档治理规范和 `docs/README.md` 的入口/导航是否需要联动。
 
 ---
 

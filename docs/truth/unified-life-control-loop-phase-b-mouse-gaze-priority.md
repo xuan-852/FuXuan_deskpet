@@ -14,7 +14,7 @@
 ## 验证证据
 
 - `build.ps1 -Quick`：2026-09-19 通过。
-- `build.ps1 -RunTests`：本轮新生成结果为 `total=238`、`passed=237`、`failed=0`、`ignored=1`；其中包含低优先级覆盖层门控测试。
+- `build.ps1 -RunTests`：本轮新生成结果为 `total=249`、`passed=248`、`failed=0`、`ignored=1`；其中包含低优先级覆盖层门控与表情/输入租约生命周期回归测试。
 - 本轮未重新执行 Player 人工注视过渡审核；该测试验证仲裁条件，不替代用户可见注视过渡审核。
 
 ## 明确未完成

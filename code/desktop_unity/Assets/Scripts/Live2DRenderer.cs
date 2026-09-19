@@ -3914,6 +3914,25 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         AppendEmbodiedEvent("expression", "Stopping", "expression-stop-requested", _expressionInputLease);
     }
 
+    /// <summary>
+    /// Stops renderer-owned action and expression output through the lifecycle
+    /// boundary. The generated-motion lease is intentionally left to its owner.
+    /// </summary>
+    public void StopAllActionsAndExpressions(float fadeTime = 0.2f)
+    {
+        StopExpression(fadeTime);
+        ActionController?.Actions?.Stop();
+        ActionController?.StopLegacyAction();
+
+        CancelInvoke(nameof(ReleaseActionLock));
+        if (_actionLocked)
+            ReleaseActionLock("renderer-stop-all");
+        else if (_currentIdleAction != 0)
+            ResetIdleAction(true);
+
+        ForceUpdateModelNow();
+    }
+
     private void ReleaseExpressionInputLease()
     {
         ReleaseExpressionInputLease(_expressionReleaseGeneration, "expression-completed");
@@ -4002,12 +4021,13 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             return;
         }
 
-        StopExpressionForInputTransition();
         if (!_inputCoordinator.TryBegin(Live2DInputKind.LegacyAction, name, out _actionInputLease))
         {
             Debug.Log($"[Live2DRenderer] 忽略动作 {name}：已有统一 Live2D 输入租约");
             return;
         }
+
+        StopExpressionForInputTransition();
 
         // 表情也在 LateUpdate 写入面部参数。复合动作取得控制权时立即停掉，避免
         // 0.2 秒淡出仍与动作关键帧竞争同一参数。

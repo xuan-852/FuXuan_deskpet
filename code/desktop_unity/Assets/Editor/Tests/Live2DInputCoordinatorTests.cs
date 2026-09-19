@@ -76,6 +76,43 @@ public class Live2DInputCoordinatorTests
     }
 
     [Test]
+    public void ReleaseAll_IsIdempotentAndAllowsNextExpressionLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Expression, "expression", "happy", out var first), Is.True);
+
+        coordinator.ReleaseAll("renderer-disabled");
+        coordinator.ReleaseAll("renderer-destroyed");
+
+        Assert.That(coordinator.HasActiveLease, Is.False);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Expression, "expression", "sad", out var second), Is.True);
+        Assert.That(second.RequestId, Is.GreaterThan(first.RequestId));
+    }
+
+    [Test]
+    public void ExpressionLease_ExposesFaceInputMetadata()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Expression, "expression", "happy", out var lease), Is.True);
+
+        Assert.That(lease.WriterId, Is.EqualTo("expression"));
+        Assert.That(lease.Resources, Is.EqualTo(EmbodiedResource.Face));
+        Assert.That(lease.ControlLevel, Is.EqualTo(BodyWriterControlLevel.InputLeaseOnly));
+    }
+
+    [Test]
+    public void StaleExpressionRelease_CannotReleaseNewLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Expression, "expression", "happy", out var oldLease), Is.True);
+        Assert.That(coordinator.Release(oldLease, "transition"), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Expression, "expression", "sad", out var currentLease), Is.True);
+
+        Assert.That(coordinator.Release(oldLease, "stale-delayed-callback"), Is.False);
+        Assert.That(coordinator.ActiveLease.RequestId, Is.EqualTo(currentLease.RequestId));
+    }
+
+    [Test]
     public void LowPriorityOverlay_IsSuppressedWhileAnyRegisteredWriterOwnsInput()
     {
         var coordinator = new Live2DInputCoordinator();

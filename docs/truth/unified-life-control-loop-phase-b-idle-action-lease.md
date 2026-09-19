@@ -14,7 +14,7 @@
 ## 验证证据
 
 - `build.ps1 -Quick`：2026-09-19 通过，`[OK] Build succeeded!`。
-- `build.ps1 -RunTests`：本轮新生成结果为 `total=238`、`passed=237`、`failed=0`、`ignored=1`。
+- `build.ps1 -RunTests`：本轮新生成结果为 `total=249`、`passed=248`、`failed=0`、`ignored=1`；包含输入协调、表情生命周期和低优先级覆盖层门控回归。
 - 本轮未重新执行隔离 Player 驱动；此前的 idle lease 驱动证据仍以 2026-09-18 记录为准。
 
 ## 明确未完成

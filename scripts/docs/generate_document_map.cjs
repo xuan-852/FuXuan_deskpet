@@ -48,6 +48,72 @@ function packageFiles() {
     .sort();
 }
 
+function normalizedRelativePath(value) {
+  return typeof value === 'string' ? value.replaceAll('\\', '/') : '';
+}
+
+function validateDocReference(packageRel, value, label) {
+  const doc = normalizedRelativePath(value);
+  if (!doc || !doc.endsWith('.md')) {
+    issues.push(`${packageRel}: ${label} 必须是 Markdown 路径`);
+    return;
+  }
+  const absolute = path.resolve(root, doc);
+  if (!absolute.startsWith(root + path.sep) || !fs.existsSync(absolute)) {
+    issues.push(`${packageRel}: ${label} 指向不存在的文档 ${doc}`);
+  }
+}
+
+function validateTaskMetadata(packageRel, pkg) {
+  if (pkg.contextManifest !== undefined) {
+    const manifest = pkg.contextManifest;
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+      issues.push(`${packageRel}: contextManifest 必须是对象`);
+    } else {
+      if (manifest.requiredDocs !== undefined) {
+        if (!Array.isArray(manifest.requiredDocs)) {
+          issues.push(`${packageRel}: contextManifest.requiredDocs 必须是数组`);
+        } else {
+          manifest.requiredDocs.forEach((doc, index) =>
+            validateDocReference(packageRel, doc, `contextManifest.requiredDocs[${index}]`));
+        }
+      }
+      if (manifest.conditionalDocs !== undefined) {
+        if (!Array.isArray(manifest.conditionalDocs)) {
+          issues.push(`${packageRel}: contextManifest.conditionalDocs 必须是数组`);
+        } else {
+          manifest.conditionalDocs.forEach((entry, index) => {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry) || typeof entry.when !== 'string' || !Array.isArray(entry.docs)) {
+              issues.push(`${packageRel}: contextManifest.conditionalDocs[${index}] 必须包含 when 和 docs[]`);
+              return;
+            }
+            entry.docs.forEach((doc, docIndex) =>
+              validateDocReference(packageRel, doc, `contextManifest.conditionalDocs[${index}].docs[${docIndex}]`));
+          });
+        }
+      }
+    }
+  }
+
+  if (pkg.changeScope !== undefined) {
+    const scope = pkg.changeScope;
+    if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
+      issues.push(`${packageRel}: changeScope 必须是对象`);
+    } else {
+      for (const field of ['expectedComponents', 'outOfScope']) {
+        if (scope[field] !== undefined && (!Array.isArray(scope[field]) || scope[field].some(item => typeof item !== 'string'))) {
+          issues.push(`${packageRel}: changeScope.${field} 必须是字符串数组`);
+        }
+      }
+      for (const field of ['maxFiles', 'maxChangedLines']) {
+        if (scope[field] !== undefined && (!Number.isInteger(scope[field]) || scope[field] <= 0)) {
+          issues.push(`${packageRel}: changeScope.${field} 必须是正整数`);
+        }
+      }
+    }
+  }
+}
+
 const issues = [];
 const lines = [
   '# 文档与任务索引（自动生成）',
@@ -95,7 +161,17 @@ if (packages.length === 0) {
     if (!guide.startsWith('docs/guides/approved/') || !guideAbsolute.startsWith(approvedRoot) || !fs.existsSync(guideAbsolute)) {
       issues.push(`${rel}: primaryGuide 必须指向存在的 docs/guides/approved/ 文档`);
     }
-    lines.push(`- \`${pkg.packageId || rel}\` → \`${guide || '缺少 primaryGuide'}\`（${rel}）`);
+    validateTaskMetadata(rel, pkg);
+    const requiredDocs = pkg.contextManifest && Array.isArray(pkg.contextManifest.requiredDocs)
+      ? pkg.contextManifest.requiredDocs.map(normalizedRelativePath)
+      : [];
+    const scopeLabel = pkg.changeScope && Array.isArray(pkg.changeScope.expectedComponents)
+      ? `；范围：${pkg.changeScope.expectedComponents.join('、')}`
+      : '';
+    const contextLabel = requiredDocs.length > 0
+      ? `；最小上下文：${requiredDocs.join('、')}`
+      : '';
+    lines.push(`- \`${pkg.packageId || rel}\` → \`${guide || '缺少 primaryGuide'}\`（${rel}${scopeLabel}${contextLabel}）`);
   }
   lines.push('');
 }

@@ -67,6 +67,7 @@
 | AC-INPUT-02：错误租约释放 | 隔离 EditMode `Live2DInputCoordinatorTests` 覆盖错误 `requestId` 不影响当前租约 | 已验证 |
 | AC-INPUT-03：完成、超时/销毁收束 | 正常旧动作完成记录 `action-completed`；测试退出期间活动旧动作记录 `action-test-exit` 并在退出前完成收束日志 | 部分验证：测试退出已验证；真实 Windows 关机/注销仍未验证 |
 | AC-INPUT-04：旧动作与生成动作冲突 | 隔离运行时双向复核：生成动作占用时旧动作被拒绝；旧动作占用时生成动作被拒绝，并正常完成释放 | 已验证 |
+| AC-EXPRESSION-LIFECYCLE：表情播放、拒绝、停止、复用与冲突 | 隔离 Player 驱动验证未知表情回滚、停止后再次播放、生成动作/旧动作冲突、旧动作收束和 test-exit 清理 | 已验证 |
 | AC-INPUT-05：静态入口审计 | 运行时渲染写入桥接与已知表情/旧动作/生成动作路径已审计；`control_body` 已删除并由禁用拒绝保护，公开 `SetParameterValue` 已移除 | 已验证（仍不代表 L3 全部完成） |
 
 该表不是 L3 全部完成声明。未认证技能仍不得开放给 LLM 或自主行为；真实 Windows 关机/注销的生命周期证据也仍待单列验收。

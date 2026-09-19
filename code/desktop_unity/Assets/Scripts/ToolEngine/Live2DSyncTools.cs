@@ -69,7 +69,7 @@ public class StopActionTool : IPetTool
     {
         var renderer = GameObject.FindObjectOfType<Live2DRenderer>();
         if (renderer == null) return "❌ 本座法身未现";
-        renderer.ActionController?.StopAllWithFade();
+        renderer.StopAllActionsAndExpressions();
         return "✅ 已归元，恢复常态";
     }
 
