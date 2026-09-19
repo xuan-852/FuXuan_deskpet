@@ -987,7 +987,25 @@ public partial class RightPanel : MonoBehaviour
 
         // ★ AI 调试运行时输入：@@sim / @@input 只在 .test_mode 下模拟桌宠内部输入，
         //    不移动开发者真实鼠标；必须在普通聊天和 UI 命令前消费。
-        if (RuntimeInputSimulator.TryHandle(content)) return;
+        // 收件箱允许测试脚本一次写入多条命令；按行消费，避免后一条命令
+        // 粘到前一条参数后导致严格匹配（例如 idle-actions:off）失效。
+        string[] inboxLines = content.Split(new[] { "\r\n", "\n", "\r" },
+            StringSplitOptions.RemoveEmptyEntries);
+        if (inboxLines.Length > 1)
+        {
+            bool handledSimulation = false;
+            foreach (string line in inboxLines)
+            {
+                string trimmedLine = line.Trim();
+                if (RuntimeInputSimulator.TryHandle(trimmedLine))
+                    handledSimulation = true;
+            }
+            if (handledSimulation) return;
+        }
+        else if (RuntimeInputSimulator.TryHandle(content))
+        {
+            return;
+        }
 
         // ★ 配对质量测试：@@case:chat_001 设置后续遥测的案例编号；@@case: 清除。
         if (content.StartsWith("@@case:"))

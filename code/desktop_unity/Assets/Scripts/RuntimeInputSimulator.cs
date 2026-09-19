@@ -137,6 +137,37 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.Equals("gesture:wave-matrix:cancel", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && renderer.CancelTestWaveMatrix())
+                Debug.Log("[WaveMatrixTest] cancel-command-accepted");
+            else
+                Debug.LogWarning("[WaveMatrixTest] cancel-command-ignored");
+            return true;
+        }
+
+        if (body.Equals("gesture:wave-matrix:cycle", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && renderer.StartTestWaveMatrixCycle())
+                Debug.Log("[WaveMatrixTest] cycle-command-accepted");
+            else
+                Debug.LogWarning("[WaveMatrixTest] cycle-start-rejected");
+            return true;
+        }
+
+        if (body.StartsWith("gesture:wave-matrix:", StringComparison.OrdinalIgnoreCase))
+        {
+            string preset = body.Substring("gesture:wave-matrix:".Length).Trim();
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && renderer.StartTestWaveMatrix(preset))
+                Debug.Log("[WaveMatrixTest] started: " + preset);
+            else
+                Debug.LogWarning("[WaveMatrixTest] start-rejected: " + preset);
+            return true;
+        }
+
         if (body.Equals("gesture:wave-candidate:cancel", StringComparison.OrdinalIgnoreCase))
         {
             Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();

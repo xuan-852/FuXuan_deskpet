@@ -314,10 +314,18 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private float _testWaveCandidateHandMode;
     private float _testWaveCandidateEyeSmile;
     private float _testWaveCandidateMouthForm;
+    private float _testWaveCandidateTorsoLean;
+    private float _testWaveCandidateHeadTilt;
     private Coroutine _testWaveCandidateCoroutine;
     private bool _testTorsoZGestureActive;
     private float _testTorsoZGestureValue;
     private Coroutine _testTorsoZGestureCoroutine;
+    private bool _testWaveMatrixActive;
+    private bool _testWaveMatrixCycleActive;
+    private string _testWaveMatrixPreset;
+    private float _testWaveMatrixAmount;
+    private Coroutine _testWaveMatrixCoroutine;
+    private readonly HashSet<string> _testWaveMatrixCapturedParameters = new HashSet<string>();
     // 复合动作相位（用于特殊硬编码动作，如法阵/星辉）
     private float _complexActionPhase = 0f;
     // 向后兼容：当前动作 ID（兼作"是否有动作"标志）
@@ -1006,7 +1014,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         // 身体/呼吸/左臂的物理输入，避免 LateUpdate 的 Perlin 与动作参数
         // 被下一帧物理当成新的外部驱动，反复激发衣服后摆弹簧。
         // LateUpdate 仍可更新最终渲染姿态，但不再改变本帧物理输入的基准。
-        if (!isWalking && !_aiControlLocked && _wallHitTime <= 0f)
+        if (!isWalking && !_aiControlLocked && _wallHitTime <= 0f
+            && !_testWaveCandidateActive && !_testTorsoZGestureActive)
         {
             SetParameter("ParamBodyAngleX", 0f);
             SetParameter("ParamBodyAngleY", 0f);
@@ -1178,9 +1187,13 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             SetParameter("ParamEyeLSmile", _testWaveCandidateEyeSmile);
             SetParameter("ParamEyeRSmile", _testWaveCandidateEyeSmile);
             SetParameter("ParamMouthForm", _testWaveCandidateMouthForm);
+            SetParameter("ParamBodyAngleZ", _testWaveCandidateTorsoLean);
+            SetParameter("ParamAngleZ", _testWaveCandidateHeadTilt);
         }
         if (_testTorsoZGestureActive)
             SetParameter("ParamBodyAngleZ", _testTorsoZGestureValue);
+        if (_testWaveMatrixActive)
+            ApplyWaveMatrixPose(_testWaveMatrixAmount);
 
         // ★ 屏幕边缘碰撞反弹动画：覆盖在现有参数之上
         if (_wallHitTime > 0f)
@@ -1829,7 +1842,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         // parameters, producing a visible blended pose.
         bool locomotionSettling = _walkBlendRemaining > 0f || _wasWalkingLastFrame;
         if (_currentIdleAction == 0 && !isWalking && !locomotionSettling
-            && !isPaused && !_actionLocked && !_aiControlLocked)
+            && !isPaused && !_actionLocked && !_aiControlLocked
+            && _idleActionSchedulingEnabled)
         {
             // 行为层（C-L3-01/FR-L3-02）：空闲时机优先经生产执行器播放已认证且
             // 已向 AI 暴露的技能；冷却未到、准入拒绝或数据缺失时回退旧空闲调度。
@@ -3042,6 +3056,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (!enabled)
         {
             ResetIdleAction(true);
+            if (_certifiedMotionActive || _certifiedMotionCoroutine != null)
+                CancelCertifiedMotion("idle-scheduling-disabled");
             Debug.Log("[Live2DRenderer] 测试隔离：已暂停空闲动作调度");
         }
     }
@@ -3054,7 +3070,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         bool locomotionActive = gatePet != null && (movementTaskActive || gatePet.petVx != 0
             || _walkBlendRemaining > 0f || _walkFadeInRemaining > 0f);
         Debug.Log($"[Live2DRenderer] Param94 gate: pet={gatePet != null}, intent={movementTaskActive}, velocity={(gatePet != null ? gatePet.petVx : 0)}, task={(gatePet != null ? gatePet.currentTask.ToString() : "none")}, walking={locomotionActive}");
-        if (_testParam94GestureActive || _actionLocked || _aiControlLocked || locomotionActive)
+        if (_testParam94GestureActive || _testWaveMatrixActive || _testWaveCandidateActive
+            || _actionLocked || _aiControlLocked || locomotionActive)
         {
             Debug.Log("[Live2DRenderer] Param94 候选测试已拒绝：动作只允许在稳定静止状态启动");
             Debug.Log("[CandidateTest] rejected-static-gate");
@@ -3073,14 +3090,218 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         return true;
     }
 
+    /// <summary>隔离人工验收用的挥手分组矩阵，不是认证技能或 AI 参数入口。</summary>
+    public bool StartTestWaveMatrix(string preset)
+    {
+        if (string.Equals(preset, "cycle", StringComparison.OrdinalIgnoreCase))
+            return StartTestWaveMatrixCycle();
+
+        if (!CanStartTestWaveMatrix())
+        {
+            Debug.Log("[WaveMatrixTest] rejected-static-gate");
+            return false;
+        }
+
+        string normalized = preset == null ? string.Empty : preset.Trim().ToLowerInvariant();
+        if (!IsWaveMatrixPreset(normalized))
+        {
+            Debug.LogWarning("[WaveMatrixTest] unknown-preset: " + preset);
+            return false;
+        }
+
+        StopExpressionForInputTransition();
+        if (!_inputCoordinator.TryBegin(Live2DInputKind.CandidateTest, "wave-matrix-" + normalized, out _candidateTestInputLease))
+            return false;
+
+        _testWaveMatrixCapturedParameters.Clear();
+        _testWaveMatrixPreset = normalized;
+        _testWaveMatrixActive = true;
+        _testWaveMatrixCycleActive = false;
+        _testWaveMatrixCoroutine = StartCoroutine(PlayTestWaveMatrix());
+        return true;
+    }
+
+    /// <summary>仅测试模式循环播放六组矩阵预设，不是产品动作入口。</summary>
+    public bool StartTestWaveMatrixCycle()
+    {
+        if (!CanStartTestWaveMatrix())
+        {
+            Debug.Log("[WaveMatrixTest] cycle-rejected-static-gate");
+            return false;
+        }
+
+        StopExpressionForInputTransition();
+        if (!_inputCoordinator.TryBegin(Live2DInputKind.CandidateTest, "wave-matrix-cycle", out _candidateTestInputLease))
+            return false;
+
+        _testWaveMatrixActive = true;
+        _testWaveMatrixCycleActive = true;
+        _testWaveMatrixCapturedParameters.Clear();
+        _testWaveMatrixPreset = null;
+        _testWaveMatrixCoroutine = StartCoroutine(PlayTestWaveMatrixCycle());
+        Debug.Log("[WaveMatrixTest] cycle-started");
+        return true;
+    }
+
+    private bool CanStartTestWaveMatrix()
+    {
+        return ChatManager.IsTestMode && !_testWaveMatrixActive && !_testWaveCandidateActive
+            && !_testTorsoZGestureActive && !_testParam94GestureActive && !_certifiedMotionActive
+            && !_actionLocked && !_aiControlLocked && _pet != null
+            && !_pet.IsMovementTaskPendingOrActive && _pet.petVx == 0 && _pet.petVy == 0
+            && _walkBlendRemaining <= 0f && _walkFadeInRemaining <= 0f;
+    }
+
+    private static bool IsWaveMatrixPreset(string preset)
+    {
+        return preset == "normal" || preset == "sword" || preset == "arm94"
+            || preset == "arm97" || preset == "arm118" || preset == "body-head";
+    }
+
+    private System.Collections.IEnumerator PlayTestWaveMatrix()
+    {
+        ResetIdleAction(true);
+        _actionLocked = true;
+        _pet.SetActionMovementLock(true);
+        yield return PlayWaveMatrixPreset("wave-matrix");
+        FinishTestWaveMatrix("wave-matrix-completed", false);
+    }
+
+    private System.Collections.IEnumerator PlayTestWaveMatrixCycle()
+    {
+        ResetIdleAction(true);
+        _actionLocked = true;
+        _pet.SetActionMovementLock(true);
+        string[] presets = { "arm94", "arm97", "arm118", "body-head" };
+        while (_testWaveMatrixCycleActive)
+        {
+            foreach (string preset in presets)
+            {
+                if (!_testWaveMatrixCycleActive) yield break;
+                _testWaveMatrixPreset = preset;
+                Debug.Log("[WaveMatrixTest] cycle-preset: " + preset);
+                yield return PlayWaveMatrixPreset("cycle-" + preset);
+                RestoreWaveMatrixBaseline();
+                _testWaveMatrixCapturedParameters.Clear();
+                yield return new WaitForSeconds(0.2f);
+            }
+            Debug.Log("[WaveMatrixTest] cycle-completed");
+        }
+    }
+
+    private System.Collections.IEnumerator PlayWaveMatrixPreset(string reason)
+    {
+        const float hold = 2.5f;
+        for (float elapsed = 0f; elapsed < hold; elapsed += Time.deltaTime)
+        {
+            _testWaveMatrixAmount = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / 0.35f));
+            ApplyWaveMatrixPose(_testWaveMatrixAmount);
+            yield return null;
+        }
+        _testWaveMatrixAmount = 1f;
+        ApplyWaveMatrixPose(1f);
+        yield return new WaitForSeconds(1.0f);
+        Debug.Log("[WaveMatrixTest] preset-completed: " + reason);
+    }
+
+    private void ApplyWaveMatrixPose(float amount)
+    {
+        bool normal = _testWaveMatrixPreset == "normal";
+        bool sword = _testWaveMatrixPreset == "sword";
+        float arm = _testWaveMatrixPreset == "arm94" ? 14f * amount : 0f;
+        float elbow = _testWaveMatrixPreset == "arm97" ? -9f * amount : 0f;
+        float reach = _testWaveMatrixPreset == "arm118" ? 0.18f * amount : 0f;
+        float lean = _testWaveMatrixPreset == "body-head" ? -0.5f * amount : 0f;
+        float head = _testWaveMatrixPreset == "body-head" ? -5f * amount : 0f;
+        bool armPose = _testWaveMatrixPreset == "arm94"
+            || _testWaveMatrixPreset == "arm97"
+            || _testWaveMatrixPreset == "arm118";
+
+        if (normal || sword)
+        {
+            WriteWaveMatrixParameter("Param92", sword ? amount : 0f);
+            WriteWaveMatrixParameter("Param93", sword ? amount : 0f);
+        }
+        if (armPose)
+        {
+            // The arm pose alone can leave the palm behind the sleeve. Keep the
+            // hand-layer companion parameters in the same isolated test lease.
+            WriteWaveMatrixParameter("Param95", amount);
+            WriteWaveMatrixParameter("Param117", 0.8f * amount);
+            WriteWaveMatrixParameter("Param98", 0.8f * amount);
+            WriteWaveMatrixParameter("Param100", 0.8f * amount);
+            WriteWaveMatrixParameter("Param116", 0.6f * amount);
+            WriteWaveMatrixParameter("Param120", amount);
+            WriteWaveMatrixParameter("Param108", amount);
+            WriteWaveMatrixParameter("Param119", amount);
+            WriteWaveMatrixParameter("Param92", 0f);
+            WriteWaveMatrixParameter("Param93", 0f);
+        }
+        if (_testWaveMatrixPreset == "arm94")
+            WriteWaveMatrixParameter("Param94", arm);
+        if (_testWaveMatrixPreset == "arm97")
+            WriteWaveMatrixParameter("Param97", elbow);
+        if (_testWaveMatrixPreset == "arm118")
+            WriteWaveMatrixParameter("Param118", reach);
+        if (_testWaveMatrixPreset == "body-head")
+        {
+            WriteWaveMatrixParameter("ParamBodyAngleZ", lean);
+            WriteWaveMatrixParameter("ParamAngleZ", head);
+        }
+    }
+
+    private void WriteWaveMatrixParameter(string id, float value)
+    {
+        if (_testWaveMatrixCapturedParameters.Add(id))
+        {
+            CubismParameter parameter = FindCachedParameter(id);
+            if (parameter != null)
+                _embodiedPoseState.RecordWrite(id, value, parameter.Value);
+        }
+        SetParameter(id, value);
+    }
+
+    private void RestoreWaveMatrixBaseline()
+    {
+        if (_testWaveMatrixCapturedParameters.Count == 0)
+            return;
+        _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+    }
+
+    public bool CancelTestWaveMatrix(string reason = "wave-matrix-cancelled")
+    {
+        if (!_testWaveMatrixActive && _testWaveMatrixCoroutine == null) return false;
+        _testWaveMatrixCycleActive = false;
+        FinishTestWaveMatrix(reason, true);
+        return true;
+    }
+
+    private void FinishTestWaveMatrix(string reason, bool stopCoroutine)
+    {
+        if (stopCoroutine && _testWaveMatrixCoroutine != null) StopCoroutine(_testWaveMatrixCoroutine);
+        _testWaveMatrixCoroutine = null;
+        _testWaveMatrixActive = false;
+        _testWaveMatrixCycleActive = false;
+        _testWaveMatrixPreset = null;
+        _testWaveMatrixAmount = 0f;
+        _actionLocked = false;
+        RestoreWaveMatrixBaseline();
+        _testWaveMatrixCapturedParameters.Clear();
+        _inputCoordinator.Release(_candidateTestInputLease, reason);
+        _candidateTestInputLease = default;
+        if (_pet != null) _pet.SetActionMovementLock(false);
+        Debug.Log("[WaveMatrixTest] cleanup: " + reason);
+    }
+
     /// <summary>仅供隔离人工验收的组合招手候选；不是认证技能、产品动作或 AI 参数入口。</summary>
     public bool StartTestWaveCandidate()
     {
         DesktopPet gatePet = _pet != null ? _pet : FindObjectOfType<DesktopPet>();
         bool moving = gatePet == null || gatePet.IsMovementTaskPendingOrActive || gatePet.petVx != 0 || gatePet.petVy != 0
             || _walkBlendRemaining > 0f || _walkFadeInRemaining > 0f;
-        if (!ChatManager.IsTestMode || _testWaveCandidateActive || _testParam94GestureActive || _testTorsoZGestureActive
-            || _certifiedMotionActive || _actionLocked || _aiControlLocked || moving)
+        if (!ChatManager.IsTestMode || _testWaveCandidateActive || _testWaveMatrixActive
+            || _testParam94GestureActive || _testTorsoZGestureActive || _certifiedMotionActive
+            || _actionLocked || _aiControlLocked || moving)
         {
             Debug.Log("[WaveCandidateTest] rejected-static-gate");
             return false;
@@ -3103,35 +3324,59 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _actionLocked = true;
         _testWaveCandidateActive = true;
         if (_pet != null) _pet.SetActionMovementLock(true);
-        for (float elapsed = 0f; elapsed < duration; elapsed += Time.deltaTime)
+        while (_testWaveCandidateActive)
         {
-            float t = Mathf.Clamp01(elapsed / duration);
+            for (float elapsed = 0f; elapsed < duration && _testWaveCandidateActive; elapsed += Time.deltaTime)
+            {
+                float t = Mathf.Clamp01(elapsed / duration);
             float raise = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / 0.28f));
             float lower = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.76f) / 0.24f));
             float pose = Mathf.Min(raise, lower);
-            float wavePhase = Mathf.Clamp01((t - 0.30f) / 0.42f);
-            // The isolated pose sweep proves Param94 alone places an open hand
-            // outside the head/shoulder silhouette. Do not fold it back with
-            // the elbow or hand-switch candidates (which read as head-touch).
-            float wristStroke = wavePhase > 0f && wavePhase < 1f ? Mathf.Sin(wavePhase * Mathf.PI * 4f) : 0f;
-            _testWaveCandidateArm = 54f * pose + 2.5f * wristStroke * pose;
-            _testWaveCandidateElbow = 0f;
+            // Hold the raised-arm base pose first, then give the elbow a readable
+            // vertical greeting stroke. The wider middle window keeps the motion
+            // visible instead of letting the lift phase hide the wave.
+            float wavePhase = Mathf.Clamp01((t - 0.24f) / 0.56f);
+            float elbowStroke = wavePhase > 0f && wavePhase < 1f
+                ? Mathf.Sin(wavePhase * Mathf.PI * 5f)
+                : 0f;
+            // Let the supporting body language follow the raised arm instead of
+            // snapping on with it; begin slightly later and settle slightly sooner.
+            float supportRise = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.08f) / 0.28f));
+            float supportFall = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.68f) / 0.20f));
+            float supportPose = Mathf.Min(supportRise, supportFall);
+            float faceRise = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.16f) / 0.26f));
+            float faceFall = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.78f) / 0.18f));
+            float facePose = Mathf.Min(faceRise, faceFall);
+            // Keep the upper arm raised while the elbow drives the greeting.
+            // The wrist remains a small follow-through, never the wave source.
+            _testWaveCandidateArm = 22f * pose;
+            // Keep the current leftward reach, but compress the opposite stroke
+            // so the downward forearm path does not overshoot the greeting arc.
+            float elbowStrokeAmplitude = elbowStroke < 0f ? 5f : 12f;
+            _testWaveCandidateElbow = 8f * pose + elbowStrokeAmplitude * elbowStroke * pose;
+            _testWaveCandidateWrist = 0.5f * elbowStroke * pose;
             _testWaveCandidateHandMode = 0f;
-            // Keep the coupled wrist channel deliberately smaller than the
-            // primary pose so the hand, rather than the whole arm, reads as waving.
-            _testWaveCandidateWrist = 8f * wristStroke * pose;
-            _testWaveCandidateEyeSmile = 0.70f * pose;
-            _testWaveCandidateMouthForm = 0.50f * pose;
+            // Add the small torso/head accompaniment needed for a readable,
+            // friendly greeting without turning this into a certified curve.
+            // Make the supporting body language readable without competing with the arm:
+            // the waist gets a modest same-side lean, while the head and smile remain softer.
+            _testWaveCandidateTorsoLean = 2.8f * supportPose;
+            _testWaveCandidateHeadTilt = -9f * supportPose;
+            _testWaveCandidateEyeSmile = 0.72f * facePose;
+            _testWaveCandidateMouthForm = 0.48f * facePose;
             _embodiedPoseState.RecordWrite("Param94", _testWaveCandidateArm, 0f);
             _embodiedPoseState.RecordWrite("Param97", _testWaveCandidateElbow, 0f);
             _embodiedPoseState.RecordWrite("Param99", _testWaveCandidateWrist, 0f);
             _embodiedPoseState.RecordWrite("Param93", _testWaveCandidateHandMode, 0f);
+            _embodiedPoseState.RecordWrite("ParamBodyAngleZ", _testWaveCandidateTorsoLean, 0f);
+            _embodiedPoseState.RecordWrite("ParamAngleZ", _testWaveCandidateHeadTilt, 0f);
             _embodiedPoseState.RecordWrite("ParamEyeLSmile", _testWaveCandidateEyeSmile, 0f);
             _embodiedPoseState.RecordWrite("ParamEyeRSmile", _testWaveCandidateEyeSmile, 0f);
             _embodiedPoseState.RecordWrite("ParamMouthForm", _testWaveCandidateMouthForm, 0f);
             yield return null;
+            }
         }
-        FinishTestWaveCandidate("wave-candidate-completed", false);
+        FinishTestWaveCandidate("wave-candidate-stopped", false);
     }
 
     public bool CancelTestWaveCandidate(string reason = "wave-candidate-cancelled")
@@ -3148,6 +3393,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _testWaveCandidateActive = false;
         _testWaveCandidateArm = _testWaveCandidateElbow = _testWaveCandidateWrist = _testWaveCandidateHandMode = 0f;
         _testWaveCandidateEyeSmile = _testWaveCandidateMouthForm = 0f;
+        _testWaveCandidateTorsoLean = _testWaveCandidateHeadTilt = 0f;
         _actionLocked = false;
         var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
         if (restored.Count > 0) Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
@@ -3160,7 +3406,10 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// <summary>仅供隔离验收的保守躯干侧倾，不是认证技能或 AI 参数入口。</summary>
     public bool StartTestTorsoZGesture()
     {
-        if (!ChatManager.IsTestMode || _testTorsoZGestureActive || _testParam94GestureActive || _actionLocked || _aiControlLocked || _pet == null || _pet.IsMovementTaskPendingOrActive || _pet.petVx != 0 || _pet.petVy != 0 || _walkBlendRemaining > 0f || _walkFadeInRemaining > 0f)
+        if (!ChatManager.IsTestMode || _testTorsoZGestureActive || _testWaveMatrixActive
+            || _testWaveCandidateActive || _testParam94GestureActive || _actionLocked
+            || _aiControlLocked || _pet == null || _pet.IsMovementTaskPendingOrActive
+            || _pet.petVx != 0 || _pet.petVy != 0 || _walkBlendRemaining > 0f || _walkFadeInRemaining > 0f)
         {
             Debug.Log("[TorsoCandidateTest] rejected-static-gate");
             return false;
@@ -3284,6 +3533,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] Param94 cleanup failed: " + error.Message); }
         try { CancelTestWaveCandidate("wave-candidate-" + reason); }
         catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] wave cleanup failed: " + error.Message); }
+        try { CancelTestWaveMatrix("wave-matrix-" + reason); }
+        catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] wave matrix cleanup failed: " + error.Message); }
         try { CancelTestTorsoZGesture("torso-z-" + reason); }
         catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] torso cleanup failed: " + error.Message); }
         try { CancelCertifiedMotion("certified-motion-" + reason); }
@@ -3305,6 +3556,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
             StopTeardownCoroutine(_testParam94GestureCoroutine);
             StopTeardownCoroutine(_testWaveCandidateCoroutine);
+            StopTeardownCoroutine(_testWaveMatrixCoroutine);
             StopTeardownCoroutine(_testTorsoZGestureCoroutine);
             StopTeardownCoroutine(_certifiedMotionCoroutine);
             _testParam94GestureCoroutine = null;
@@ -3318,6 +3570,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _testParam94GestureValue = 0f;
             _testWaveCandidateArm = _testWaveCandidateElbow = _testWaveCandidateWrist = _testWaveCandidateHandMode = 0f;
             _testWaveCandidateEyeSmile = _testWaveCandidateMouthForm = 0f;
+            _testWaveCandidateTorsoLean = _testWaveCandidateHeadTilt = 0f;
             _testTorsoZGestureValue = 0f;
             try
             {
@@ -3343,6 +3596,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _certifiedMotionRequest = null;
             _certifiedMotionLease = default;
             _candidateTestInputLease = default;
+            _testWaveMatrixCapturedParameters.Clear();
             _actionLocked = false;
             if (_pet != null) _pet.SetActionMovementLock(false);
         }
