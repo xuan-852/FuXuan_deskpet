@@ -55,7 +55,7 @@
 
 2026-09-18 统一控制闭环 Phase B-3：鼠标注视作为低优先级 Face 叠加层，任何活动表情/动作/认证输入租约均会抑制其 LateUpdate 覆盖；租约释放后才恢复平滑注视。未引入资源级并行。Quick 和 EditMode（235 total、234 passed、failed=0、1 ignored）通过。详见 [Phase B-3 鼠标注视优先级门控](../truth/unified-life-control-loop-phase-b-mouse-gaze-priority.md)。
 
-2026-09-18 统一控制闭环 Phase B-4：`DesktopBodyState` 将桌面 PhysicsRoot 的坐标、速度、落地、暂停、拖拽、动作移动锁与地面任务发布为只读快照，并在每次普通/拖拽渲染通知前更新。它不保存 Live2D 参数、不改变现有物理或渲染接口；步行、物理和拖拽写入路径仍为 `LegacyUnmanaged`。EditMode（235 total、234 passed、failed=0、1 ignored）通过。详见 [Phase B-4 桌面身体状态边界](../truth/unified-life-control-loop-phase-b-desktop-state.md)。
+2026-09-19 统一控制闭环 Phase B 观测基础与表情入口收束：新增进程内有界 `EmbodiedEventStore`、只读组合 `BodyStateSnapshot/BodyStateStore` 和只读 `ExecutionMonitor`，事件限制为无敏感短标识/摘要哈希；表情播放改为成功可判定的 `TryPlayExpression`，未知表情不会遗留输入租约，Renderer 禁用/退出共用外部输入清理。Quick 与 EditMode（242 total、241 passed、failed=0、1 ignored）通过。完整事件持久化、执行器自动纠偏、资源级并行和其余 LegacyUnmanaged 写入路径仍未完成。
 
 2026-09-18 轻回应式抬手隔离审核：自制单通道曲线以 SHA-256 绑定到 `screen_side_arm_raise`，在临时 Player 和 `.test_mode` 数据根完成准入、播放、姿势还原与资源释放。人工实时观看的结论为“正常的轻度抬手”，但幅度不足以称为招手；该条目继续 `LlmExposed=false`，未写入生产数据根。详见 [L3 轻回应式抬手隔离人工审核包](../truth/l3-screen-side-arm-raise-isolated-human-review.md)。
 

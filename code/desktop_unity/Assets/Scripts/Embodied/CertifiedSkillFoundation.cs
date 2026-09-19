@@ -59,13 +59,23 @@ public sealed class EmbodiedCoordinator
     public EmbodiedActionStatus TryBegin(EmbodiedActionRequest request, out string reason) => TryBegin(request, DateTime.UtcNow, out reason);
     public EmbodiedActionStatus TryBegin(EmbodiedActionRequest request, DateTime nowUtc, out string reason)
     {
-        if (request == null || string.IsNullOrWhiteSpace(request.SkillId) || string.IsNullOrWhiteSpace(request.SemanticTarget)) { reason = "semantic-request-required"; return EmbodiedActionStatus.Rejected; }
-        if (!_registry.TryGet(request.SkillId, out var skill)) { reason = "skill-not-certified"; return EmbodiedActionStatus.Rejected; }
-        if (request.Resources != skill.Resources || request.Resources == EmbodiedResource.None) { reason = "resource-declaration-mismatch"; return EmbodiedActionStatus.Rejected; }
-        if (request.Timeout <= TimeSpan.Zero) { reason = "positive-timeout-required"; return EmbodiedActionStatus.Rejected; }
+        if (request == null)
+        {
+            reason = "semantic-request-required";
+            return EmbodiedActionStatus.Rejected;
+        }
+        if (string.IsNullOrWhiteSpace(request.SkillId) || string.IsNullOrWhiteSpace(request.SemanticTarget))
+            return Reject(request, "semantic-request-required", out reason);
+        if (!_registry.TryGet(request.SkillId, out var skill))
+            return Reject(request, "skill-not-certified", out reason);
+        if (request.Resources != skill.Resources || request.Resources == EmbodiedResource.None)
+            return Reject(request, "resource-declaration-mismatch", out reason);
+        if (request.Timeout <= TimeSpan.Zero)
+            return Reject(request, "positive-timeout-required", out reason);
         if ((_occupied & request.Resources) != 0)
         {
-            if (!TryPreemptConflicts(request)) { reason = "resource-busy"; return EmbodiedActionStatus.Rejected; }
+            if (!TryPreemptConflicts(request))
+                return Reject(request, "resource-busy", out reason);
         }
         request.RequestId = ++_nextRequestId;
         request.Status = EmbodiedActionStatus.Executing;
@@ -75,6 +85,14 @@ public sealed class EmbodiedCoordinator
         _active[request] = request.Resources;
         reason = "accepted";
         return EmbodiedActionStatus.Executing;
+    }
+
+    private static EmbodiedActionStatus Reject(EmbodiedActionRequest request, string rejectionReason, out string reason)
+    {
+        request.Status = EmbodiedActionStatus.Rejected;
+        request.TerminalReason = rejectionReason;
+        reason = rejectionReason;
+        return EmbodiedActionStatus.Rejected;
     }
     public bool Complete(EmbodiedActionRequest request) => Finish(request, EmbodiedActionStatus.Completed, "completed");
     public bool Cancel(EmbodiedActionRequest request, string reason) => Finish(request, EmbodiedActionStatus.Cancelled, string.IsNullOrWhiteSpace(reason) ? "cancelled" : reason);

@@ -25,7 +25,9 @@ public class Live2DActionController
     // ================================================================
 
     /// <summary>当前是否在播放任何动作（表情或复合动作）</summary>
-    public bool IsAnythingPlaying => Expressions != null && Expressions.IsTransitioning;
+    public bool IsAnythingPlaying => (Expressions != null && Expressions.IsPlaying)
+        || (Actions != null && Actions.IsPlaying)
+        || IsLegacyActionPlaying;
 
     /// <summary>当前复合动作名</summary>
     public string CurrentActionName => Actions?.CurrentAction;
@@ -70,11 +72,18 @@ public class Live2DActionController
     // ================================================================
 
     /// <summary>播放表情（淡入当前，淡出旧表情）</summary>
+    public bool TryPlayExpression(string name, float fadeTime = -1f)
+    {
+        if (Expressions == null) return false;
+        bool accepted = Expressions.TryPlay(name, fadeTime);
+        if (accepted) OnExpressionChanged?.Invoke();
+        return accepted;
+    }
+
+    /// <summary>兼容旧调用方的表情播放入口</summary>
     public void PlayExpression(string name, float fadeTime = -1f)
     {
-        if (Expressions == null) return;
-        Expressions.Play(name, fadeTime);
-        OnExpressionChanged?.Invoke();
+        TryPlayExpression(name, fadeTime);
     }
 
     /// <summary>停止表情（淡出）</summary>

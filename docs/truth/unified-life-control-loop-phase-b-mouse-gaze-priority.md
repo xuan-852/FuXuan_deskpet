@@ -1,6 +1,6 @@
 # 统一生命控制闭环 Phase B-3：鼠标注视优先级门控
 
-> **证据日期**：2026-09-18  
+> **证据日期**：2026-09-19
 > **任务包**：`unified-life-control-loop-phase-b-mouse-gaze-priority-v1`  
 > **状态**：鼠标注视已成为受控低优先级叠加层；未引入资源级并行。
 
@@ -13,9 +13,9 @@
 
 ## 验证证据
 
-- `build.ps1 -Quick`：通过。
-- `build.ps1 -RunTests`：新生成的 EditMode 结果为 `total=235`、`passed=234`、`failed=0`、`ignored=1`。
-- `Live2DInputCoordinatorTests.LowPriorityOverlay_IsSuppressedWhileAnyRegisteredWriterOwnsInput` 覆盖无租约可写、表情租约抑制、释放后恢复三种状态。
+- `build.ps1 -Quick`：2026-09-19 通过。
+- `build.ps1 -RunTests`：本轮新生成结果为 `total=238`、`passed=237`、`failed=0`、`ignored=1`；其中包含低优先级覆盖层门控测试。
+- 本轮未重新执行 Player 人工注视过渡审核；该测试验证仲裁条件，不替代用户可见注视过渡审核。
 
 ## 明确未完成
 

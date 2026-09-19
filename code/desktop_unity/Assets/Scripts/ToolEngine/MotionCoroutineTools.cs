@@ -99,41 +99,43 @@ public class GenerateMotionTool : IPetTool
         // 淡出阶段仍与 MotionGenerator 的关键帧交叠。
         renderer.ActionController?.StopAll();
 
-        // 设置 AI 控制锁
-        renderer.SetAiControlLock(plan.TotalDuration + 1f);
-
-        // 多帧截图（20%/40%/60%/80% 进度）
-        var framePngs = new List<byte[]>();
-        var capturePoints = new float[] { 0.20f, 0.40f, 0.60f, 0.80f };
-        var generator = new MotionGenerator(mapper, model);
-        yield return generator.PlayAsync(plan, progress =>
+        // 生成器可能跨多帧、取消或异常退出；所有外部控制权都必须在同一收束块释放。
+        bool aiLockHeld = false;
+        try
         {
-            for (int i = 0; i < capturePoints.Length; i++)
+            renderer.SetAiControlLock(plan.TotalDuration + 1f);
+            aiLockHeld = true;
+
+            // 多帧截图（20%/40%/60%/80% 进度）
+            var framePngs = new List<byte[]>();
+            var capturePoints = new float[] { 0.20f, 0.40f, 0.60f, 0.80f };
+            var generator = new MotionGenerator(mapper, model);
+            yield return generator.PlayAsync(plan, progress =>
             {
-                if (i >= framePngs.Count && progress >= capturePoints[i])
+                for (int i = 0; i < capturePoints.Length; i++)
                 {
-                    if (progress >= 0.60f) model.ForceUpdateNow();
-                    framePngs.Add(renderer.CaptureModelSnapshot());
+                    if (i >= framePngs.Count && progress >= capturePoints[i])
+                    {
+                        if (progress >= 0.60f) model.ForceUpdateNow();
+                        framePngs.Add(renderer.CaptureModelSnapshot());
+                    }
                 }
-            }
-        });
-        renderer.ReleaseAiControlLock();
-        renderer.EndGeneratedMotion(inputLease, "generated-motion-completed");
+            });
 
-        string baseResult = $"✅ 演武完成：「{plan.Description}」，持续 {plan.TotalDuration:F1} 秒，共 {plan.KeyFrames.Count} 个关键帧";
+            string baseResult = $"✅ 演武完成：「{plan.Description}」，持续 {plan.TotalDuration:F1} 秒，共 {plan.KeyFrames.Count} 个关键帧";
 
-        // GLM 闭环自评
-        var validator = GameObject.FindObjectOfType<DualModelValidator>();
-        string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
-        if (collageDataUrl != null && validator != null)
-        {
-            bool consensus = false;
-            int avgScore = 0, sGlm = 0;
-            string rGlm = "";
-            yield return validator.ValidateAsync(description, collageDataUrl, plan,
-                (c, avg, g, rg) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; });
+            // GLM 闭环自评
+            var validator = GameObject.FindObjectOfType<DualModelValidator>();
+            string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
+            if (collageDataUrl != null && validator != null)
+            {
+                bool consensus = false;
+                int avgScore = 0, sGlm = 0;
+                string rGlm = "";
+                yield return validator.ValidateAsync(description, collageDataUrl, plan,
+                    (c, avg, g, rg) => { consensus = c; avgScore = avg; sGlm = g; rGlm = rg; });
 
-            string result = baseResult + $"\n\n👁️ 自评反馈：{rGlm}";
+                string result = baseResult + $"\n\n👁️ 自评反馈：{rGlm}";
 
             // 闭环学习
             var mm = MotionMemoryManager.Instance;
@@ -146,9 +148,16 @@ public class GenerateMotionTool : IPetTool
 
             onResult?.Invoke(result);
         }
-        else
+            else
+            {
+                onResult?.Invoke(baseResult + "\n\nℹ️ 自评暂不可用，下次演武时自动重试。");
+            }
+        }
+        finally
         {
-            onResult?.Invoke(baseResult + "\n\nℹ️ 自评暂不可用，下次演武时自动重试。");
+            if (aiLockHeld)
+                renderer.ReleaseAiControlLock();
+            renderer.EndGeneratedMotion(inputLease, "generated-motion-finally");
         }
     }
 

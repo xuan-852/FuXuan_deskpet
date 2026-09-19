@@ -3,8 +3,45 @@ using NUnit.Framework;
 
 public class CertifiedSkillFoundationTests
 {
-    [Test] public void 未经四层认证不得注册()
-    { var r = new CertifiedSkillRegistry(); Assert.IsFalse(r.TryRegister(new SkillCertificationRecord { SkillId="candidate", ModelVersion="m", MappingVersion="p", MechanicalPassed=true }, out var why)); Assert.AreEqual("four-layer-certification-required", why); Assert.AreEqual(0, r.Count); }
+    [Test] public void 拒绝请求记录Rejected终态和原因()
+    {
+        var coordinator = new EmbodiedCoordinator(注册("arm", EmbodiedResource.RightArm));
+        var request = new EmbodiedActionRequest { SkillId = "unknown", SemanticTarget = "raise", Resources = EmbodiedResource.RightArm, Timeout = TimeSpan.FromSeconds(1) };
+        Assert.AreEqual(EmbodiedActionStatus.Rejected, coordinator.TryBegin(request, out var reason));
+        Assert.AreEqual("skill-not-certified", reason);
+        Assert.AreEqual(EmbodiedActionStatus.Rejected, request.Status);
+        Assert.AreEqual("skill-not-certified", request.TerminalReason);
+    }
+
+    [Test] public void 重复终态操作保持幂等()
+    {
+        var coordinator = new EmbodiedCoordinator(注册("arm", EmbodiedResource.RightArm));
+        var request = new EmbodiedActionRequest { SkillId = "arm", SemanticTarget = "raise", Resources = EmbodiedResource.RightArm, Timeout = TimeSpan.FromSeconds(1) };
+        Assert.AreEqual(EmbodiedActionStatus.Executing, coordinator.TryBegin(request, out _));
+        Assert.IsTrue(coordinator.Complete(request));
+        Assert.IsFalse(coordinator.Cancel(request, "late-cancel"));
+        Assert.AreEqual(EmbodiedActionStatus.Completed, request.Status);
+        Assert.AreEqual("completed", request.TerminalReason);
+        Assert.AreEqual(0, coordinator.ActiveCount);
+    }
+
+    [Test] public void 恢复回调异常保留失败参数并继续恢复其他参数()
+    {
+        var state = new EmbodiedPoseState();
+        state.RecordWrite("ParamA", 1f, 0f);
+        state.RecordWrite("ParamB", 2f, 0f);
+        var calls = 0;
+        Assert.Throws<InvalidOperationException>(() => state.RestoreAll((id, value) =>
+        {
+            calls++;
+            if (id == "ParamA") throw new InvalidOperationException("restore-failure");
+        }));
+        Assert.AreEqual(2, calls);
+        Assert.IsTrue(state.HasPendingRestore);
+        var restored = state.RestoreAll((id, value) => { });
+        Assert.AreEqual(1, restored.Count);
+        Assert.AreEqual(0, state.PendingCount);
+    }
     [Test] public void 认证技能只能以语义请求占用声明资源()
     { var r=new CertifiedSkillRegistry(); Assert.IsTrue(r.TryRegister(new SkillCertificationRecord { SkillId="test.skill", ModelVersion="m", MappingVersion="p", MechanicalPassed=true, VisualPassed=true, SemanticPassed=true, NaturalnessPassed=true, NaturalnessScore=75, Resources=EmbodiedResource.RightArm }, out _)); var c=new EmbodiedCoordinator(r); var q=new EmbodiedActionRequest { SkillId="test.skill", SemanticTarget="test semantic", Resources=EmbodiedResource.RightArm, Timeout=TimeSpan.FromSeconds(1) }; Assert.AreEqual(EmbodiedActionStatus.Executing,c.TryBegin(q,out _)); Assert.AreEqual(EmbodiedActionStatus.Rejected,c.TryBegin(q,out var why)); Assert.AreEqual("resource-busy",why); c.Complete(q); }
     [Test] public void 超时和取消只释放所属请求并记录终态()

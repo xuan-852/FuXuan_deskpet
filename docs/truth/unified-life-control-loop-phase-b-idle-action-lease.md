@@ -1,6 +1,6 @@
 # 统一生命控制闭环 Phase B-2：空闲动作租约迁移
 
-> **证据日期**：2026-09-18  
+> **证据日期**：2026-09-19
 > **任务包**：`unified-life-control-loop-phase-b-idle-action-lease-v1`  
 > **状态**：空闲动作已接入注册输入租约并完成隔离 Player 验证；仍不是认证技能或资源级并行控制。
 
@@ -13,10 +13,9 @@
 
 ## 验证证据
 
-- `build.ps1 -Quick`：通过，`[OK] Build succeeded!`。
-- `build.ps1 -RunTests`：新生成的 EditMode 结果为 `total=234`、`passed=233`、`failed=0`、`ignored=1`。
-- 临时 Player 构建：`C:\Users\25295\AppData\Local\Temp\fuxuan_unified_control_idle_20260918\DesktopPet.exe` 成功生成。
-- 隔离驱动 `idle_action_lease_runtime_drive.cjs` 通过。日志依次证明 `Accepted LegacyAction/idle-action/idle:1`、`[TestInbox] idle-action requested: 1`、`Released LegacyAction/idle-action/idle:1`，且数据根为独立 `.test_mode` 临时目录。
+- `build.ps1 -Quick`：2026-09-19 通过，`[OK] Build succeeded!`。
+- `build.ps1 -RunTests`：本轮新生成结果为 `total=238`、`passed=237`、`failed=0`、`ignored=1`。
+- 本轮未重新执行隔离 Player 驱动；此前的 idle lease 驱动证据仍以 2026-09-18 记录为准。
 
 ## 明确未完成
 

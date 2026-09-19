@@ -909,11 +909,9 @@ public class MotionAgent : MonoBehaviour
 
     private IEnumerator ExecuteExpression(string target, float intensity, float duration)
     {
-        // 1) 尝试使用 ExpressionManager（需构造实例 + 每帧驱动）
-        if (_mapper != null && _mapper.IsLoaded)
+        // Renderer 是表情唯一生产入口；它负责租约、插值更新和收束。
+        if (_renderer != null && _mapper != null && _mapper.IsLoaded)
         {
-            var expressionManager = new ExpressionManager(_mapper);
-            expressionManager.LoadPresets();
             string exprName = target switch
             {
                 "happy_smile" => "happy",
@@ -927,29 +925,11 @@ public class MotionAgent : MonoBehaviour
                 _ => "happy",
             };
 
-            expressionManager.Play(exprName, 0.3f);
+            if (!_renderer.TryPlayExpression(exprName, 0.3f))
+                yield break;
 
-            // 每帧驱动 Update 实现淡入 → 保持 → 淡出
-            float elapsed = 0f;
-            float fadeOutStart = duration - 0.3f;
-            bool hasTriggeredStop = false;
-
-            while (elapsed < duration)
-            {
-                expressionManager.Update(Time.deltaTime);
-                elapsed += Time.deltaTime;
-
-                // 在结束前 0.3s 触发淡出
-                if (!hasTriggeredStop && elapsed >= fadeOutStart)
-                {
-                    expressionManager.Stop(0.3f);
-                    hasTriggeredStop = true;
-                }
-
-                yield return null;
-            }
-
-            expressionManager.Update(0f); // final flush
+            yield return new WaitForSeconds(Mathf.Max(0f, duration));
+            _renderer.StopExpression(0.3f);
         }
         // 2) 回退: 本地表情模板优先（零 API），未命中才走 MotionTranslator
         else if (_mapper != null && _model != null)
@@ -1011,9 +991,15 @@ public class MotionAgent : MonoBehaviour
                     Debug.Log("[MotionAgent] 跳过表情动作：统一 Live2D 输入租约不可用");
                     yield break;
                 }
-                var generator = new MotionGenerator(_mapper, _model);
-                yield return generator.PlayAsync(plan);
-                _renderer.EndGeneratedMotion(inputLease, "autonomous-expression-completed");
+                try
+                {
+                    var generator = new MotionGenerator(_mapper, _model);
+                    yield return generator.PlayAsync(plan);
+                }
+                finally
+                {
+                    _renderer.EndGeneratedMotion(inputLease, "autonomous-expression-finally");
+                }
             }
         }
     }
@@ -1122,38 +1108,41 @@ public class MotionAgent : MonoBehaviour
                 // ── 锁定 AI 控制权，防止空闲动画/走路系统争抢参数 ──
                 BeginAiMotionHandoff(duration + 0.5f);
 
-                // ── 多帧截图（20%/40%/60%/80% 进度）──
-                var framePngs = new List<byte[]>();
-                var capturePoints = new float[] { 0.20f, 0.40f, 0.60f, 0.80f };
-                var generator = new MotionGenerator(_mapper, _model);
-                yield return generator.PlayAsync(plan, progress =>
+                try
                 {
-                    for (int i = 0; i < capturePoints.Length; i++)
+                    // ── 多帧截图（20%/40%/60%/80% 进度）──
+                    var framePngs = new List<byte[]>();
+                    var capturePoints = new float[] { 0.20f, 0.40f, 0.60f, 0.80f };
+                    var generator = new MotionGenerator(_mapper, _model);
+                    yield return generator.PlayAsync(plan, progress =>
                     {
-                        if (i >= framePngs.Count && progress >= capturePoints[i] && _renderer != null)
+                        for (int i = 0; i < capturePoints.Length; i++)
                         {
-                            framePngs.Add(_renderer.CaptureModelSnapshot());
+                            if (i >= framePngs.Count && progress >= capturePoints[i] && _renderer != null)
+                            {
+                                framePngs.Add(_renderer.CaptureModelSnapshot());
+                            }
                         }
+                    });
+
+                    // ★ 闭环学习-写入演武心经
+                    string snapshot = BuildParamSnapshot(plan);
+                    var mm = MotionMemoryManager.Instance;
+                    if (mm != null)
+                        mm.RecordMotion(cnDescription, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
+
+                    string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
+                    if (!string.IsNullOrEmpty(collageDataUrl) && _dualValidator != null)
+                    {
+                        string caseId = QualityTelemetry.CurrentCaseId;
+                        StartCoroutine(RunGlmValidationAsync(
+                            fullDesc, collageDataUrl, cnDescription, snapshot, plan, caseId));
                     }
-                });
-
-                // ★ 播放完毕 → 立即释放 AI 控制锁（让空闲动画恢复）
-                EndAiMotionHandoff();
-                _renderer.EndGeneratedMotion(inputLease, "autonomous-motion-completed");
-
-                // ★ 闭环学习-写入演武心经
-                string snapshot = BuildParamSnapshot(plan);
-                var mm = MotionMemoryManager.Instance;
-                if (mm != null)
-                    mm.RecordMotion(cnDescription, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
-
-                // ★ GLM 验证移入后台协程，不阻塞决策循环
-                string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
-                if (!string.IsNullOrEmpty(collageDataUrl) && _dualValidator != null)
+                }
+                finally
                 {
-                    string caseId = QualityTelemetry.CurrentCaseId;
-                    StartCoroutine(RunGlmValidationAsync(
-                        fullDesc, collageDataUrl, cnDescription, snapshot, plan, caseId));
+                    EndAiMotionHandoff();
+                    _renderer.EndGeneratedMotion(inputLease, "autonomous-motion-finally");
                 }
             }
             else
@@ -1207,38 +1196,38 @@ public class MotionAgent : MonoBehaviour
                 // ── 锁定 AI 控制权（与 ExecuteMotion 一致：播放前加锁，防止空闲动画争抢参数）──
                 BeginAiMotionHandoff(duration + 0.5f);
 
-                // ── 多帧截图（20%/40%/60%/80% 进度）──
-                var framePngs = new List<byte[]>();
-                var capturePoints = new float[] { 0.20f, 0.40f, 0.60f, 0.80f };
-                var generator = new MotionGenerator(_mapper, _model);
-                yield return generator.PlayAsync(plan, progress =>
+                try
                 {
-                    for (int i = 0; i < capturePoints.Length; i++)
+                    // ── 多帧截图（20%/40%/60%/80% 进度）──
+                    var framePngs = new List<byte[]>();
+                    var capturePoints = new float[] { 0.20f, 0.40f, 0.60f, 0.80f };
+                    var generator = new MotionGenerator(_mapper, _model);
+                    yield return generator.PlayAsync(plan, progress =>
                     {
-                        if (i >= framePngs.Count && progress >= capturePoints[i] && _renderer != null)
+                        for (int i = 0; i < capturePoints.Length; i++)
                         {
-                            framePngs.Add(_renderer.CaptureModelSnapshot());
+                            if (i >= framePngs.Count && progress >= capturePoints[i] && _renderer != null)
+                                framePngs.Add(_renderer.CaptureModelSnapshot());
                         }
+                    });
+
+                    string snapshot = BuildParamSnapshot(plan);
+                    var mm = MotionMemoryManager.Instance;
+                    if (mm != null)
+                        mm.RecordMotion(description, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
+
+                    string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
+                    if (!string.IsNullOrEmpty(collageDataUrl) && _dualValidator != null)
+                    {
+                        string caseId = QualityTelemetry.CurrentCaseId;
+                        StartCoroutine(RunGlmValidationAsync(
+                            description, collageDataUrl, description, snapshot, plan, caseId));
                     }
-                });
-
-                // ★ 闭环学习-写入演武心经：记录复合动作参数快照
-                string snapshot = BuildParamSnapshot(plan);
-                var mm = MotionMemoryManager.Instance;
-                if (mm != null)
-                    mm.RecordMotion(description, snapshot, plan.KeyFrames.Count, plan.TotalDuration);
-
-                // 播放完毕 → 立即释放 AI 控制锁
-                EndAiMotionHandoff();
-                _renderer.EndGeneratedMotion(inputLease, "autonomous-combo-completed");
-
-                // ★ GLM 验证移入后台（同 ExecuteMotion）
-                string collageDataUrl = DualModelValidator.ComposeCollage(framePngs);
-                if (!string.IsNullOrEmpty(collageDataUrl) && _dualValidator != null)
+                }
+                finally
                 {
-                    string caseId = QualityTelemetry.CurrentCaseId;
-                    StartCoroutine(RunGlmValidationAsync(
-                        description, collageDataUrl, description, snapshot, plan, caseId));
+                    EndAiMotionHandoff();
+                    _renderer.EndGeneratedMotion(inputLease, "autonomous-combo-finally");
                 }
             }
             else

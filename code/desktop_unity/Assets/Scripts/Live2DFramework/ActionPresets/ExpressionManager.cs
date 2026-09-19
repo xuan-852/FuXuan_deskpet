@@ -105,16 +105,16 @@ public class ExpressionManager
     /// <summary>
     /// 播放指定表情。如果已有表情，先淡出当前再淡入新表情。
     /// </summary>
-    public void Play(string name, float fadeTime = -1f)
+    public bool TryPlay(string name, float fadeTime = -1f)
     {
         if (!_presets.TryGetValue(name, out var data))
         {
             Debug.LogWarning($"[ExpressionManager] 未找到表情: {name}");
-            return;
+            return false;
         }
 
         // 相同表情不重复切换
-        if (_isPlaying && _currentName == name && !_isFading) return;
+        if (_isPlaying && _currentName == name && !_isFading) return true;
 
         float fade = fadeTime >= 0f ? fadeTime : data.fadeIn;
 
@@ -137,6 +137,13 @@ public class ExpressionManager
         _fadeFromWeight = 0f;
         _isPlaying = true;
         _isFading = true;
+        return true;
+    }
+
+    /// <summary>兼容旧调用方的表情播放入口</summary>
+    public void Play(string name, float fadeTime = -1f)
+    {
+        TryPlay(name, fadeTime);
     }
 
     /// <summary>停止当前表情（淡出）</summary>
@@ -214,6 +221,9 @@ public class ExpressionManager
             ApplyPreset(_current, _fadeFromWeight);
         }
     }
+
+    /// <summary>是否存在当前表情或淡出中的旧表情</summary>
+    public bool IsPlaying => _isPlaying || _oldPreset != null;
 
     /// <summary>是否有表情正在淡入/淡出</summary>
     public bool IsTransitioning => _isFading || _oldPreset != null;

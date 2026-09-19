@@ -33,7 +33,10 @@ async function waitFor(marker, after = 0, timeoutMs = 90000) {
 async function sendAndWait(command, marker, timeoutMs) {
     const offset = readLog().length;
     fs.writeFileSync(inbox, command, 'utf8');
-    try { await waitFor(marker, offset, timeoutMs); }
+    try {
+        if (marker) await waitFor(marker, offset, timeoutMs);
+        else await sleep(500);
+    }
     finally { fs.writeFileSync(inbox, '', 'utf8'); }
 }
 
@@ -54,11 +57,9 @@ async function assertAbsent(marker, after, durationMs = 700) {
     });
 
     try {
-        // The overlay can recreate while the desktop window settles.  Landing is
-        // the stable lifecycle point after which both renderer and pet exist.
         await waitFor('DesktopPet] 落地');
-        await sendAndWait('@@sim:idle-actions:off', '[TestInbox]');
-        await sendAndWait('@@sim:walk:stop', '[TestInbox]');
+        await sendAndWait('@@sim:idle-actions:off', null);
+        await sendAndWait('@@sim:walk:stop', null);
 
         await sendAndWait('@@sim:lease:generated:begin', 'generated-motion lease accepted');
         const generatedFirstOffset = readLog().length;

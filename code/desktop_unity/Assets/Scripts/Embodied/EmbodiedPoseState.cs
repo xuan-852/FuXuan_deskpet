@@ -90,13 +90,24 @@ public sealed class EmbodiedPoseState
     {
         var restored = new List<string>();
         if (apply == null) throw new ArgumentNullException(nameof(apply));
-        foreach (var pair in _lastWritten)
+        var pending = new List<string>(_lastWritten.Keys);
+        Exception firstFailure = null;
+        foreach (var parameterId in pending)
         {
-            apply(pair.Key, _baselines[pair.Key]);
-            restored.Add(pair.Key);
+            try
+            {
+                apply(parameterId, _baselines[parameterId]);
+                _lastWritten.Remove(parameterId);
+                restored.Add(parameterId);
+            }
+            catch (Exception error)
+            {
+                // Keep failed entries pending so a later recovery pass can retry them.
+                firstFailure = firstFailure ?? error;
+            }
         }
-        _lastWritten.Clear();
         if (restored.Count > 0) _version++;
+        if (firstFailure != null) throw firstFailure;
         return restored;
     }
 }
