@@ -219,7 +219,8 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 - 已新增 `Live2DInputCoordinatorTests` 覆盖互斥、错误释放、防重用与 `ReleaseAll`；2026-09-16 隔离 `build.ps1 -RunTests` 通过（failed=0）。实施边界与后续桥接要求见 `docs/guides/approved/live2d-input-coordination.md`。
 
 - 为 `AC-INPUT-04` 增加了只在 `.test_mode` 下可用的语义测试命令：`@@sim:lease:generated:begin|release` 只取得/释放 `GeneratedMotion` 租约，`@@sim:legacy:stretch` 只请求既有 `PlayAction("stretch")`；它们不接受参数 ID 或数值。2026-09-19 新鲜隔离 Player 同时验证：生成动作租约活动时表情和旧动作均被拒绝；表情活动时旧动作被拒绝且不会停止表情；停止表情后旧动作可取得租约；旧动作活动时生成动作被拒绝并在完成后释放。该证据只验证全局单租约互斥与收束，不认证任何动作语义或自然度。
-- `@@test:quit` 在测试模式下会先调用 `Live2DRenderer.PrepareForTestExit()`：它收束测试候选、表情和旧动作，再以 `ReleaseAll("test-exit-fallback")` 处理未知活动租约，最后才走既有托盘退出回调；非测试模式调用会被拒绝。2026-09-19 隔离复核中，表情与旧动作的活动租约均在退出前收束，随后记录 `test-exit input cleanup completed`，临时进程正常退出。此项只提供测试退出的确定性收束证据，不替代 Windows 关机/注销等真实系统生命周期验收。
+- `@@test:quit` 在测试模式下会先调用 `Live2DRenderer.PrepareForTestExit()`：它通过 `SafeRecoverExternalActions("before-test-exit")` 收束 Param94、Wave、Torso 候选、认证动作及旧动作状态，再停止表情并以 `ReleaseAll("test-exit-fallback")` 处理未知活动租约，最后才走既有托盘退出回调；非测试模式调用会被拒绝。2026-09-19 隔离复核已分别验证 Param94、Wave、Torso 候选和完整性校验通过的 `external_Hiyori_Hiyori_m06` 认证动作在活动期间退出：认证路径同时记录姿态恢复、运行时准入取消、认证清理和 `recovered: test-exit`。此项只提供测试退出的确定性收束证据；`OnDisable`、`OnApplicationQuit`、`OnDestroy` 已在代码中复用同一网关，但其 Unity 回调顺序、Windows 关机/注销和 Renderer 重建仍未独立运行时验收。
+- SafeRecovery 的最终清理还会取消旧动作超时 `Invoke`，释放残留旧动作租约，停止/清空候选与认证协程句柄，解除 `DesktopPet` 动作移动锁，并重试登记的 Live2D 参数基线；恢复回调失败时成功项清除、失败项保留重试。该边界不扩展到步行、桌面物理、拖拽、视线等未迁移写入者，也不代表资源级并行控制。
 
 ### 2.21 参数提交桥接（2026-09-16）
 

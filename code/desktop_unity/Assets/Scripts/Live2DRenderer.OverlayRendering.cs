@@ -302,8 +302,7 @@ public partial class Live2DRenderer
 
     private void OnDestroy()
     {
-        CancelTestParam94Gesture("candidate-test-renderer-destroyed");
-        CleanupExternalInputState("renderer-destroyed");
+        SafeRecoverExternalActions("renderer-destroyed");
         if (_nativeOverlay != null)
         {
             _nativeOverlay.DisposeOverlay();

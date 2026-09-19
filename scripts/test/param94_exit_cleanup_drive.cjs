@@ -53,12 +53,13 @@ async function sendForOnePoll(command) {
         await sendForOnePoll('@@sim:idle-actions:off');
         await sendAndWait('@@sim:walk:stop', '[TestInbox]');
         await sendAndWait('@@sim:status', 'velocity=(0,0)');
-        await sendAndWait('@@sim:gesture:param94', 'Accepted CandidateTest/param94-gesture');
+        await sendAndWait('@@sim:gesture:param94', 'Accepted CandidateTest/generated-motion/param94-gesture');
         console.log('candidate-accepted');
         await sleep(500); // exit during the active 2.4 s candidate sequence
         const offset = logText().length;
         fs.writeFileSync(inbox, '@@test:quit', 'utf8');
-        await waitFor('Released CandidateTest/param94-gesture#1: candidate-test-before-test-exit', offset, 10000);
+        await waitFor('Released CandidateTest/generated-motion/param94-gesture', offset, 10000);
+        await waitFor('candidate-test-before-test-exit', offset, 10000);
         await waitFor('[CandidateTest] cleanup: candidate-test-before-test-exit', offset, 10000);
         console.log('exit-cleanup-released');
         await Promise.race([once(processHandle, 'exit'), sleep(8000)]);

@@ -57,7 +57,7 @@
 
 2026-09-19 表情生命周期入口收束与冲突验收：`Live2DRenderer.StopAllActionsAndExpressions` 成为 Renderer 层的停止网关，工具、生成动作前置和自检路径不再直接绕过 Renderer 清理表情租约；`TryPlayExpression` 的未知表情回滚、停止后复用、生成动作/旧动作双向冲突和 test-exit 清理均在隔离 Player `AC-EXPRESSION-LIFECYCLE` / `AC-INPUT-04` 驱动中通过。旧动作停止仍由 Renderer 维护 owner lease，单全局租约语义保持不变。Quick、EditMode（249 total、248 passed、failed=0、1 ignored）和新鲜 Player 均通过。步行、物理、拖拽、Renderer 重建、资源级并行和执行器自动纠偏仍未完成。
 
-2026-09-18 轻回应式抬手隔离审核：自制单通道曲线以 SHA-256 绑定到 `screen_side_arm_raise`，在临时 Player 和 `.test_mode` 数据根完成准入、播放、姿势还原与资源释放。人工实时观看的结论为“正常的轻度抬手”，但幅度不足以称为招手；该条目继续 `LlmExposed=false`，未写入生产数据根。详见 [L3 轻回应式抬手隔离人工审核包](../truth/l3-screen-side-arm-raise-isolated-human-review.md)。
+2026-09-19 SafeRecovery 生命周期补证：`Live2DRenderer` 的 `OnDisable`、`OnApplicationQuit`、`OnDestroy` 与测试专用 `PrepareForTestExit` 统一调用同一尽力收束网关。隔离 Player 已在活动期间对 Param94、Wave、Torso 候选和完整性校验通过的 `external_Hiyori_Hiyori_m06` 认证动作执行 `@@test:quit`；认证路径记录姿态恢复、输入租约释放、运行时准入取消、认证清理和 `recovered: test-exit`。这只证明测试退出入口的跨层收束，不证明 Windows 关机/注销、Renderer 重建或 Unity 回调精确顺序；步行、物理、拖拽、视线等写入者仍待迁移，资源级并行与完整虚拟骨架也未完成。详见 [L3 动作生命周期与安全收束](../truth/l3-action-lifecycle-recovery.md)。
 
 ### 2.1 ActionAgent 文件清单（15 个 .cs）
 

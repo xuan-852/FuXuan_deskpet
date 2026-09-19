@@ -3136,7 +3136,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     public bool CancelTestWaveCandidate(string reason = "wave-candidate-cancelled")
     {
-        if (!_testWaveCandidateActive && !_candidateTestInputLease.IsValid) return false;
+        if (!_testWaveCandidateActive && _testWaveCandidateCoroutine == null) return false;
         FinishTestWaveCandidate(reason, true);
         return true;
     }
@@ -3185,7 +3185,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     public bool CancelTestTorsoZGesture(string reason = "torso-z-candidate-cancelled")
     {
-        if (!_testTorsoZGestureActive && !_candidateTestInputLease.IsValid) return false;
+        if (!_testTorsoZGestureActive && _testTorsoZGestureCoroutine == null) return false;
         FinishTestTorsoZGesture(reason, true); return true;
     }
 
@@ -3220,7 +3220,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// </summary>
     public bool CancelTestParam94Gesture(string reason = "candidate-test-cancelled")
     {
-        if (!_testParam94GestureActive && !_candidateTestInputLease.IsValid)
+        if (!_testParam94GestureActive && _testParam94GestureCoroutine == null)
             return false;
 
         FinishTestParam94Gesture(reason, stopCoroutine: true);
@@ -3240,13 +3240,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             return;
         }
 
-        CancelTestParam94Gesture("candidate-test-before-test-exit");
-        CancelTestWaveCandidate("wave-candidate-before-test-exit");
-        CancelTestTorsoZGesture("torso-z-candidate-before-test-exit");
-        CancelCertifiedMotion("certified-motion-before-test-exit");
+        SafeRecoverExternalActions("before-test-exit");
         StopExpressionForInputTransition();
-        CancelInvoke(nameof(ReleaseActionLock));
-        if (_actionLocked) ReleaseActionLock("action-test-exit");
         _inputCoordinator.ReleaseAll("test-exit-fallback");
         Debug.Log("[EmbodiedSafeRecovery] recovered: test-exit");
         Debug.Log("[Live2DRenderer] test-exit input cleanup completed");
@@ -3273,20 +3268,91 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     private void OnDisable()
     {
-        CancelTestParam94Gesture("candidate-test-renderer-disabled");
-        CancelTestWaveCandidate("wave-candidate-renderer-disabled");
-        CancelTestTorsoZGesture("torso-z-candidate-renderer-disabled");
-        CancelCertifiedMotion("certified-motion-renderer-disabled");
-        CleanupExternalInputState("renderer-disabled");
+        SafeRecoverExternalActions("renderer-disabled");
     }
 
     private void OnApplicationQuit()
     {
-        CancelTestParam94Gesture("candidate-test-application-quitting");
-        CancelTestWaveCandidate("wave-candidate-application-quitting");
-        CancelTestTorsoZGesture("torso-z-candidate-application-quitting");
-        CancelCertifiedMotion("certified-motion-application-quitting");
-        CleanupExternalInputState("application-quitting");
+        SafeRecoverExternalActions("application-quitting");
+    }
+
+    // All renderer teardown paths must attempt every owner independently. A pose
+    // restore failure cannot prevent lease, admission, or movement-lock cleanup.
+    private void SafeRecoverExternalActions(string reason)
+    {
+        try { CancelTestParam94Gesture("candidate-test-" + reason); }
+        catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] Param94 cleanup failed: " + error.Message); }
+        try { CancelTestWaveCandidate("wave-candidate-" + reason); }
+        catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] wave cleanup failed: " + error.Message); }
+        try { CancelTestTorsoZGesture("torso-z-" + reason); }
+        catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] torso cleanup failed: " + error.Message); }
+        try { CancelCertifiedMotion("certified-motion-" + reason); }
+        catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] certified cleanup failed: " + error.Message); }
+        try { CleanupExternalInputState(reason); }
+        catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] external input cleanup failed: " + error.Message); }
+        finally
+        {
+            CancelInvoke(nameof(ReleaseActionLock));
+            if (_actionLocked)
+                ReleaseActionLock("safe-recovery-" + reason);
+            else if (_actionInputLease.IsValid)
+            {
+                _inputCoordinator.Release(_actionInputLease, "safe-recovery-" + reason);
+                _actionInputLease = default;
+            }
+            if (_pet != null && _pet.isPaused)
+                _pet.Resume();
+
+            StopTeardownCoroutine(_testParam94GestureCoroutine);
+            StopTeardownCoroutine(_testWaveCandidateCoroutine);
+            StopTeardownCoroutine(_testTorsoZGestureCoroutine);
+            StopTeardownCoroutine(_certifiedMotionCoroutine);
+            _testParam94GestureCoroutine = null;
+            _testWaveCandidateCoroutine = null;
+            _testTorsoZGestureCoroutine = null;
+            _certifiedMotionCoroutine = null;
+            _testParam94GestureActive = false;
+            _testWaveCandidateActive = false;
+            _testTorsoZGestureActive = false;
+            _certifiedMotionActive = false;
+            _testParam94GestureValue = 0f;
+            _testWaveCandidateArm = _testWaveCandidateElbow = _testWaveCandidateWrist = _testWaveCandidateHandMode = 0f;
+            _testWaveCandidateEyeSmile = _testWaveCandidateMouthForm = 0f;
+            _testTorsoZGestureValue = 0f;
+            try
+            {
+                var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+                if (restored.Count > 0)
+                    Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
+            }
+            catch (System.Exception error)
+            {
+                Debug.LogError("[EmbodiedSafeRecovery] final pose restore failed: " + error.Message);
+            }
+            if (_candidateActionRequest != null)
+            {
+                _embodiedPoseState.FinishAction(EmbodiedActionStatus.Cancelled, "safe-recovery-" + reason);
+                EmbodiedRuntimeAdmission.CancelSkill(_candidateActionRequest, "safe-recovery-" + reason);
+            }
+            _candidateActionRequest = null;
+            if (_certifiedMotionRequest != null)
+            {
+                _embodiedPoseState.FinishAction(EmbodiedActionStatus.Cancelled, "safe-recovery-" + reason);
+                EmbodiedRuntimeAdmission.CancelSkill(_certifiedMotionRequest, "safe-recovery-" + reason);
+            }
+            _certifiedMotionRequest = null;
+            _certifiedMotionLease = default;
+            _candidateTestInputLease = default;
+            _actionLocked = false;
+            if (_pet != null) _pet.SetActionMovementLock(false);
+        }
+    }
+
+    private void StopTeardownCoroutine(Coroutine routine)
+    {
+        if (routine == null) return;
+        try { StopCoroutine(routine); }
+        catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] coroutine stop failed: " + error.Message); }
     }
 
     private void CleanupExternalInputState(string reason)

@@ -1,5 +1,10 @@
 'use strict';
 
+/*
+ * Isolated runtime driver for cancellation of an active certified motion during
+ * the existing test-exit flow. The supplied curve must match a registered hash.
+ * Usage: node scripts/test/certified_motion_exit_cleanup_drive.cjs <DesktopPet.exe> <skill-id> <curve.json>
+ */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -7,7 +12,9 @@ const { once } = require('events');
 const { spawn } = require('child_process');
 
 const exe = process.argv[2];
-const root = path.join(os.tmpdir(), 'fuxuan_param94_cancel_recovery_20260916');
+const skillId = process.argv[3];
+const curveFile = process.argv[4];
+const root = path.join(os.tmpdir(), `fuxuan_certified_exit_${String(skillId || '').replace(/[^a-z0-9]/gi, '_')}`);
 const inbox = path.join(root, 'inbox.txt');
 const logPath = path.join(root, 'logs', 'player_log.txt');
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -41,34 +48,41 @@ async function sendForOnePoll(command) {
 
 (async () => {
     if (!exe || !fs.existsSync(exe)) throw new Error('missing DesktopPet.exe path');
+    if (!skillId || !/^[a-z0-9_-]+$/i.test(skillId)) throw new Error('invalid skill id');
+    if (!curveFile || !fs.existsSync(curveFile)) throw new Error('missing registered curve json');
+
     fs.rmSync(root, { recursive: true, force: true });
-    fs.mkdirSync(root, { recursive: true });
+    fs.mkdirSync(path.join(root, 'certified_motions'), { recursive: true });
     fs.writeFileSync(path.join(root, '.test_mode'), '');
+    fs.copyFileSync(curveFile, path.join(root, 'certified_motions', `${skillId}.json`));
     fs.writeFileSync(inbox, '');
     const processHandle = spawn(exe, [], { env: { ...process.env, FU_XUAN_DATA: root }, stdio: 'ignore' });
 
     try {
-        await waitFor('NativeLive2DOverlay] sync visible');
-        await sleep(3000);
+        await waitFor('[DesktopPet] 落地');
         await sendForOnePoll('@@sim:idle-actions:off');
         await sendAndWait('@@sim:walk:stop', '[TestInbox]');
         await sendAndWait('@@sim:status', 'velocity=(0,0)');
-        await sendAndWait('@@sim:gesture:param94', 'Accepted CandidateTest/generated-motion/param94-gesture');
-        console.log('candidate-accepted');
-        await sleep(500); // interrupt while the 2.4 s sequence is still active
-        await sendAndWait('@@sim:gesture:param94:cancel', 'Released CandidateTest/generated-motion/param94-gesture');
-        await waitFor('candidate-test-cancelled');
-        await waitFor('[CandidateTest] cleanup: candidate-test-cancelled');
-        console.log('candidate-cancelled-and-released');
-        await sendAndWait('@@sim:walk:right', '[TestInbox]');
-        await sendAndWait('@@sim:status', 'velocity=(1,');
-        console.log('post-cancel-walking-confirmed');
+        await sendAndWait(`@@sim:certified-motion:${skillId}`, `[CertifiedMotion] started: ${skillId}`);
+        console.log('certified-motion-accepted');
+
+        const offset = logText().length;
+        fs.writeFileSync(inbox, '@@test:quit', 'utf8');
+        await waitFor('[EmbodiedSafeRecovery] pose-restored:', offset, 10000);
+        await waitFor('Released GeneratedMotion/certified-motion', offset, 10000);
+        await waitFor('[EmbodiedRuntimeAdmission] cancelled: certified-motion-before-test-exit', offset, 10000);
+        await waitFor('[CertifiedMotion] cleanup: certified-motion-before-test-exit', offset, 10000);
+        await waitFor('[EmbodiedSafeRecovery] recovered: test-exit', offset, 10000);
+        console.log('certified-motion-exit-cleanup-released');
+        await Promise.race([once(processHandle, 'exit'), sleep(8000)]);
     }
     finally {
-        fs.writeFileSync(inbox, '@@test:quit', 'utf8');
-        await sleep(900);
-        fs.writeFileSync(inbox, '', 'utf8');
-        await Promise.race([once(processHandle, 'exit'), sleep(8000)]);
+        if (!logText().includes('开始退出清理')) {
+            fs.writeFileSync(inbox, '@@test:quit', 'utf8');
+            await sleep(900);
+            fs.writeFileSync(inbox, '', 'utf8');
+            await Promise.race([once(processHandle, 'exit'), sleep(8000)]);
+        }
     }
 
     console.log(root);

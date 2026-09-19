@@ -7,7 +7,23 @@ const { once } = require('events');
 const { spawn } = require('child_process');
 
 const exe = process.argv[2];
-const root = path.join(os.tmpdir(), 'fuxuan_param94_cancel_recovery_20260916');
+const candidateName = process.argv[3];
+const candidates = {
+    wave: {
+        command: '@@sim:gesture:wave-candidate',
+        started: '[WaveCandidateTest] started',
+        cleanup: '[WaveCandidateTest] cleanup: wave-candidate-before-test-exit',
+        released: 'Released CandidateTest/generated-motion/wave-candidate',
+    },
+    torso: {
+        command: '@@sim:gesture:torso-z',
+        started: '[TorsoCandidateTest] started',
+        cleanup: '[TorsoCandidateTest] cleanup: torso-z-before-test-exit',
+        released: 'Released CandidateTest/generated-motion/torso-z-gesture',
+    },
+};
+const candidate = candidates[candidateName];
+const root = path.join(os.tmpdir(), `fuxuan_${candidateName}_exit_cleanup_20260919`);
 const inbox = path.join(root, 'inbox.txt');
 const logPath = path.join(root, 'logs', 'player_log.txt');
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -41,6 +57,8 @@ async function sendForOnePoll(command) {
 
 (async () => {
     if (!exe || !fs.existsSync(exe)) throw new Error('missing DesktopPet.exe path');
+    if (!candidate) throw new Error('candidate must be wave or torso');
+
     fs.rmSync(root, { recursive: true, force: true });
     fs.mkdirSync(root, { recursive: true });
     fs.writeFileSync(path.join(root, '.test_mode'), '');
@@ -53,22 +71,24 @@ async function sendForOnePoll(command) {
         await sendForOnePoll('@@sim:idle-actions:off');
         await sendAndWait('@@sim:walk:stop', '[TestInbox]');
         await sendAndWait('@@sim:status', 'velocity=(0,0)');
-        await sendAndWait('@@sim:gesture:param94', 'Accepted CandidateTest/generated-motion/param94-gesture');
-        console.log('candidate-accepted');
-        await sleep(500); // interrupt while the 2.4 s sequence is still active
-        await sendAndWait('@@sim:gesture:param94:cancel', 'Released CandidateTest/generated-motion/param94-gesture');
-        await waitFor('candidate-test-cancelled');
-        await waitFor('[CandidateTest] cleanup: candidate-test-cancelled');
-        console.log('candidate-cancelled-and-released');
-        await sendAndWait('@@sim:walk:right', '[TestInbox]');
-        await sendAndWait('@@sim:status', 'velocity=(1,');
-        console.log('post-cancel-walking-confirmed');
+        await sendAndWait(candidate.command, candidate.started);
+        console.log(`${candidateName}-accepted`);
+        await sleep(500);
+        const offset = logText().length;
+        fs.writeFileSync(inbox, '@@test:quit', 'utf8');
+        await waitFor(candidate.released, offset, 10000);
+        await waitFor(candidate.cleanup, offset, 10000);
+        await waitFor('[EmbodiedSafeRecovery] recovered: test-exit', offset, 10000);
+        console.log(`${candidateName}-exit-cleanup-released`);
+        await Promise.race([once(processHandle, 'exit'), sleep(8000)]);
     }
     finally {
-        fs.writeFileSync(inbox, '@@test:quit', 'utf8');
-        await sleep(900);
-        fs.writeFileSync(inbox, '', 'utf8');
-        await Promise.race([once(processHandle, 'exit'), sleep(8000)]);
+        if (!logText().includes('开始退出清理')) {
+            fs.writeFileSync(inbox, '@@test:quit', 'utf8');
+            await sleep(900);
+            fs.writeFileSync(inbox, '', 'utf8');
+            await Promise.race([once(processHandle, 'exit'), sleep(8000)]);
+        }
     }
 
     console.log(root);

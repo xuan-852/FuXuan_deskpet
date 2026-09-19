@@ -65,6 +65,28 @@ public class EmbodiedRecoveryTests
         var state = new EmbodiedPoseState();
         Assert.Throws<ArgumentException>(() => state.RecordWrite("", 1f, 0f));
     }
+    [Test] public void 恢复回调失败时已成功参数清除且失败参数可重试()
+    {
+        var state = new EmbodiedPoseState();
+        state.RecordWrite("ParamA", 3f, 1f);
+        state.RecordWrite("ParamB", -2f, 0f);
+        var applied = new List<string>();
+
+        Assert.Throws<InvalidOperationException>(() => state.RestoreAll((id, value) =>
+        {
+            if (id == "ParamA") throw new InvalidOperationException("restore failed");
+            applied.Add(id);
+        }));
+
+        CollectionAssert.AreEqual(new[] { "ParamB" }, applied);
+        Assert.AreEqual(1, state.PendingCount);
+        CollectionAssert.AreEqual(new[] { "ParamA" }, state.CaptureSnapshot().PendingParameterIds);
+
+        state.RestoreAll((id, value) => applied.Add(id));
+        CollectionAssert.AreEqual(new[] { "ParamB", "ParamA" }, applied);
+        Assert.IsFalse(state.HasPendingRestore);
+    }
+
     [Test] public void 快照记录动作资源与待还原参数()
     {
         var state = new EmbodiedPoseState();
