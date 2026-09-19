@@ -214,7 +214,7 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 
 - `Assets/Scripts/Embodied/Live2DInputCoordinator.cs` 为表情、旧预设动作与 AI 生成动作分配递增的 `Live2DInputLease`；当前采用安全优先的全局单租约，活动租约未释放时第二个外部输入必定拒绝。
 - `Live2DRenderer.StopAllActionsAndExpressions()` 是 Renderer 层的统一停止网关：停止表情时同步处理 expression lease、generation、延迟释放与模型刷新；停止旧动作时同步处理 action lease、移动锁和恢复。`StopActionTool`、生成动作前置收束、自检路径和测试命令经由该网关；生成动作租约仍由其调用方拥有和释放。`PlayAction()` 先申请旧动作租约，申请失败不会停止当前表情。
-- `Live2DRenderer.PlayExpression()`、`PlayAction()`、`GenerateMotionTool`、`MotionAgent` 的自主/组合/表情动作以及 `VisionMotionVerifier` 已接入该协调器。动作或生成动作开始前以零淡出收束表情；动作正常完成、超时以及 Renderer 销毁会释放租约。非当前 `requestId` 不能释放活动租约。
+- `Live2DRenderer.PlayExpression()`、`PlayAction()`、`GenerateMotionTool`、`MotionAgent` 的自主/组合/表情动作以及 `VisionMotionVerifier` 已接入该协调器。`GenerateMotionTool` 先申请 `GeneratedMotion` 租约，再通过 Renderer 网关以零淡出收束表情；申请被拒绝时保留当前表情及其租约。成功取得生成动作租约后的 Renderer 交接、AI 锁和多帧播放均位于同一 `try/finally` 释放边界；动作正常完成、超时以及 Renderer 销毁会释放租约。非当前 `requestId` 不能释放活动租约。该次隔离 Player 证据覆盖语义接管与恢复顺序，不等同于生成动作语义或自然度认证。
 - 本轮没有迁移 `Live2DRenderer` 自身的行走、掉落、拖拽、物理与空闲逐帧基线写入；它们仍是未经外部租约仲裁的内部基线。其最终参数提交现已经 `ParameterCommitBridge`，但这不等同于全模型已经完成动作资源级仲裁或唯一语义动作所有者。
 - 已新增 `Live2DInputCoordinatorTests` 覆盖互斥、错误释放、防重用与 `ReleaseAll`；2026-09-16 隔离 `build.ps1 -RunTests` 通过（failed=0）。实施边界与后续桥接要求见 `docs/guides/approved/live2d-input-coordination.md`。
 

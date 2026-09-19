@@ -15,6 +15,7 @@
 |---|---|---|
 | 渲染器参数提交 | `Live2DRenderer.SetParameter` 经 `ParameterCommitBridge` 提交 | 符合「桥接为 Cubism 运行时写入汇点」的当前实现 |
 | 表情、旧动作、生成动作 | 由 `Live2DInputCoordinator` 分别取得 `Expression`、`LegacyAction`、`GeneratedMotion` 租约 | 已有单一租约入口 |
+| 生成动作接管 | `GenerateMotionTool` 先取得 `GeneratedMotion` 租约，再经 Renderer 网关收束表情、旧动作与空闲输出；从成功取得租约起的后续交接均由同一 `finally` 释放 | 租约被拒绝不会停止既有表情；交接异常不会遗留该租约 |
 | 生成动作结束 | `MotionCoroutineTools`、`MotionAgent`、`VisionMotionVerifier` 在已取得生成动作租约的路径中结束租约 | 具备可复核的正常结束路径 |
 
 ## BlockedByDecision：BBD-INPUT-01

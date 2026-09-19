@@ -86,23 +86,22 @@ public class GenerateMotionTool : IPetTool
             yield break;
         }
 
-        // An expression owns the same global input lease. Stop it through the
-        // renderer gateway before the generated motion asks for exclusivity.
-        renderer.StopExpression(0f);
+        // Do not disturb the current expression until the generated motion owns
+        // the global lease. A rejected request must leave its current owner intact.
         if (!renderer.TryBeginGeneratedMotion(description, out Live2DInputLease inputLease))
         {
             onResult?.Invoke("⏳ 当前已有 Live2D 输入正在收束，请等待完成后再开始演武");
             yield break;
         }
 
-        // 表情也会在 LateUpdate 写入面部参数；生成动作开始前立即停止它，避免
-        // 淡出阶段仍与 MotionGenerator 的关键帧交叠。
-        renderer.StopAllActionsAndExpressions(0f);
-
-        // 生成器可能跨多帧、取消或异常退出；所有外部控制权都必须在同一收束块释放。
+        // Every path after acquiring the lease, including renderer handoff failures,
+        // must converge on the same release boundary.
         bool aiLockHeld = false;
         try
         {
+            // 表情也会在 LateUpdate 写入面部参数；生成动作取得控制权后立即停止它，避免
+            // 淡出阶段仍与 MotionGenerator 的关键帧交叠。
+            renderer.StopAllActionsAndExpressions(0f);
             renderer.SetAiControlLock(plan.TotalDuration + 1f);
             aiLockHeld = true;
 

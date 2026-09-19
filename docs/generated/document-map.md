@@ -118,6 +118,7 @@
 - `l3-wave-candidate-isolated-human-review-v1` → `docs/guides/approved/l3-wave-candidate-isolated-human-review.md`（tasks/packages/l3-wave-candidate-isolated-human-review-v1.json）
 - `l3-wave-composite-capability-census-v1` → `docs/guides/approved/generic-live2d-capability-probe.md`（tasks/packages/l3-wave-composite-capability-census-v1.json）
 - `l4-body-intent-certified-skill-routing-v1` → `docs/guides/approved/l4-intent-tools-and-bridge.md`（tasks/packages/l4-body-intent-certified-skill-routing.json）
+- `live2d-generated-motion-lease-handoff-v1` → `docs/guides/approved/live2d-input-coordination.md`（tasks/packages/live2d-generated-motion-lease-handoff-v1.json；范围：GenerateMotionTool lease handoff、Live2D input-conflict regression coverage；最小上下文：docs/guides/approved/live2d-input-coordination.md、docs/truth/l3-live2d-input-boundary-audit.md、docs/modules/action-agent.md、docs/modules/live2d-rendering.md）
 - `probe-core-and-unity-adapter-v1` → `docs/guides/approved/generic-live2d-capability-probe.md`（tasks/packages/probe-core-and-unity-adapter.json）
 - `probe-skeleton-mechanical-batch-v1` → `docs/guides/approved/probe-evaluation-accuracy.md`（tasks/packages/probe-skeleton-mechanical-batch.json）
 - `unified-life-control-loop-phase-a-v1` → `docs/guides/approved/unified-life-control-loop.md`（tasks/packages/unified-life-control-loop-phase-a-v1.json）

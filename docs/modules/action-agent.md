@@ -66,7 +66,7 @@
 | `MotionAgent.cs` | 自主动作决策引擎（tick 驱动） |
 | `MotionPlanner.cs` | 10 模板 + 6 曲线 + 3 阶段 |
 | `MotionTranslator.cs` | LLM 自然语言→关键帧（10 规则 + 10 特殊模式） |
-| `MotionGenerator.cs` | 协程插值播放；所有当前调用者（`GenerateMotionTool`、`MotionAgent`、`VisionMotionVerifier`）均须先取得 `Live2DRenderer` 的统一输入租约 |
+| `MotionGenerator.cs` | 协程插值播放；`GenerateMotionTool` 先取得 `Live2DRenderer` 的 `GeneratedMotion` 统一输入租约，再执行 Renderer 交接；租约拒绝不会停止当前表情，成功取得租约后的交接与播放由同一 `finally` 释放。`MotionAgent`、`VisionMotionVerifier` 等其他调用者也必须遵守统一输入租约边界；本次证据只覆盖隔离测试下的接管顺序与释放，不扩展生产语义技能认证 |
 | `MotionMemoryManager.cs` | 闭环学习核心 |
 | `DualModelValidator.cs` | GLM-4V 拼图评分（**单模型**，Qwen-VL 已删） |
 | `VisionMotionVerifier.cs` | GLM-4V 视觉验证（10 测试序列） |

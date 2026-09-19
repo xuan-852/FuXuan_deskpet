@@ -197,6 +197,28 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.Equals("generated:handoff", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer != null && renderer.TryBeginGeneratedMotion("runtime-generated-handoff-test", out Live2DInputLease lease))
+            {
+                try
+                {
+                    renderer.StopAllActionsAndExpressions(0f);
+                    Debug.Log("[TestInbox] generated-motion handoff accepted");
+                }
+                finally
+                {
+                    renderer.EndGeneratedMotion(lease, "runtime-generated-handoff-test-release");
+                }
+            }
+            else
+            {
+                Debug.Log("[TestInbox] generated-motion handoff rejected");
+            }
+            return true;
+        }
+
         if (body.Equals("lease:generated:begin", StringComparison.OrdinalIgnoreCase))
         {
             Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();

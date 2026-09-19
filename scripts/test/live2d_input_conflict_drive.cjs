@@ -62,9 +62,16 @@ async function assertAbsent(marker, after, durationMs = 700) {
         await sendAndWait('@@sim:walk:stop', null);
 
         await sendAndWait('@@sim:expression:happy', '[TestInbox] expression accepted: happy');
-        await sendAndWait('@@sim:expression:missing', '[TestInbox] expression rejected: missing');
+        await sendAndWait('@@sim:generated:handoff', '[TestInbox] generated-motion handoff rejected');
+        const expressionHandoffRejectOffset = readLog().length;
+        await sendAndWait('@@sim:legacy:stretch', 'legacy action requested: stretch');
+        await assertAbsent('Accepted LegacyAction/legacy-action/stretch', expressionHandoffRejectOffset);
         await sendAndWait('@@sim:expression:stop', '[TestInbox] expression stop requested');
+
         await sendAndWait('@@sim:expression:sad', '[TestInbox] expression accepted: sad');
+        await sendAndWait('@@sim:expression:stop', '[TestInbox] expression stop requested');
+        await sendAndWait('@@sim:generated:handoff', '[TestInbox] generated-motion handoff accepted');
+        await sendAndWait('@@sim:expression:happy', '[TestInbox] expression accepted: happy');
         await sendAndWait('@@sim:expression:stop', '[TestInbox] expression stop requested');
 
         await sendAndWait('@@sim:lease:generated:begin', 'generated-motion lease accepted');
@@ -105,6 +112,8 @@ async function assertAbsent(marker, after, durationMs = 700) {
             acceptanceId: 'AC-EXPRESSION-LIFECYCLE',
             status: 'passed',
             unknownExpressionRejected: true,
+            generatedHandoffRejectedWithoutStoppingExpression: true,
+            generatedHandoffSettlesExpressionAfterLease: true,
             stopThenReuse: true,
             generatedConflictRejected: true,
             legacyConflictRecovered: true,

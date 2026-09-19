@@ -1,0 +1,73 @@
+{
+  "packageId": "live2d-generated-motion-lease-handoff-v1",
+  "primaryGuide": "docs/guides/approved/live2d-input-coordination.md",
+  "requirementIds": ["FR-INPUT-01", "FR-INPUT-03", "C-INPUT-03", "C-INPUT-04", "AC-INPUT-01", "AC-INPUT-03", "AC-INPUT-04"],
+  "acceptanceObjective": "Ensure the legacy offline generated-motion entry acquires its generated-motion lease before stopping an existing expression, and ensure every successful acquisition reaches one finally-based release path when renderer handoff or motion setup fails.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/",
+    "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs",
+    "code/desktop_unity/Assets/Scripts/RuntimeInputSimulator.cs",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/MotionCoroutineTools.cs",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "scripts/test/",
+    "docs/truth/",
+    "docs/modules/",
+    "docs/generated/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "docs/decisions/",
+    "docs/guides/approved/",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/openclaw_bridge.js",
+    "code/desktop_unity/Assets/Scripts/DesktopPet.cs"
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    ".\\build.ps1 -OutputDir <temporary-output>",
+    "node scripts/test/live2d_input_conflict_drive.cjs <temporary-output>/DesktopPet.exe",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": [
+    "docs/truth/l3-live2d-input-boundary-audit.md"
+  ],
+  "evidenceOutputs": [
+    "logs/build/test_results.xml",
+    "<isolated-data-root>/logs/player_log.txt"
+  ],
+  "contextManifest": {
+    "requiredDocs": [
+      "docs/guides/approved/live2d-input-coordination.md",
+      "docs/truth/l3-live2d-input-boundary-audit.md",
+      "docs/modules/action-agent.md",
+      "docs/modules/live2d-rendering.md"
+    ],
+    "conditionalDocs": [
+      {
+        "when": "changedPaths:code/desktop_unity/",
+        "docs": ["docs/build-workflow.md"]
+      }
+    ]
+  },
+  "changeScope": {
+    "expectedComponents": [
+      "GenerateMotionTool lease handoff",
+      "Live2D input-conflict regression coverage"
+    ],
+    "outOfScope": [
+      "Runtime LLM body-skill exposure",
+      "Raw parameter access",
+      "Cloud visual validation behavior",
+      "Resource-level parallelism or preemption",
+      "Walking, desktop physics, and drag migration",
+      "VisionMotionVerifier recovery refactor"
+    ],
+    "maxFiles": 10,
+    "maxChangedLines": 350
+  },
+  "riskLevel": "medium",
+  "externalEvidence": false,
+  "notes": "Generated motion remains LegacyGeneratedMotionPolicy-gated to isolated offline testing. This package only fixes lease acquisition, handoff, and release ordering."
+}
