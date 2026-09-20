@@ -11,7 +11,7 @@ const inbox = path.join(root, 'inbox.txt');
 const logPath = () => path.join(root, 'logs', 'player_log.txt');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const readLog = () => { try { return fs.readFileSync(logPath(), 'utf8'); } catch (_) { return ''; } };
-async function send(command, wait = 350) {
+async function send(command, wait = 1200) {
   fs.writeFileSync(inbox, command);
   await sleep(wait);
   fs.writeFileSync(inbox, '');
@@ -24,6 +24,16 @@ async function waitFor(marker, timeout = 90000) {
     await sleep(200);
   }
   throw new Error('timeout: ' + marker);
+}
+function waitForExit(child, timeout = 10000) {
+  if (child.exitCode !== null) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('player did not exit after @@test:quit')), timeout);
+    child.once('exit', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
 }
 function snapshot() {
   const matches = [...readLog().matchAll(/\[LifeState\] snapshot version=(\d+).*?events=(\d+).*?bodyVersion=(\d+).*?health=([^ ]+).*?observations=(\d+).*?faults=(\d+).*?ready=(True|False).*?progressing=(True|False)/g)];
@@ -40,8 +50,10 @@ function snapshot() {
     before[name] = fs.existsSync(file) ? fs.readFileSync(file).toString('base64') : null;
   }
   const child = spawn(exe, [], { env: { ...process.env, FU_XUAN_DATA: root }, stdio: 'ignore' });
+  let passed = false;
   try {
     await waitFor('[DesktopPet] 落地');
+    await sleep(2000);
     await send('@@sim:life-state');
     const first = snapshot();
     await send('@@sim:idle-actions:off');
@@ -51,6 +63,7 @@ function snapshot() {
     const second = snapshot();
     if (second.version < first.version || second.events < first.events || second.bodyVersion < first.bodyVersion) throw new Error('snapshot counters regressed');
     await send('@@test:quit', 1200);
+    await waitForExit(child);
     const log = readLog();
     for (const bad of ['[LifeState] event rejected', 'NullReferenceException', 'AssertionException']) if (log.includes(bad)) throw new Error('unexpected log: ' + bad);
     for (const name of Object.keys(before)) {
@@ -59,8 +72,14 @@ function snapshot() {
       if (after !== before[name]) throw new Error('production data changed: ' + name);
     }
     console.log(JSON.stringify({ root, first, second }));
+    passed = true;
   } finally {
     if (!child.killed) child.kill();
-    fs.rmSync(root, { recursive: true, force: true });
+    if (!passed) {
+      try { console.error(readLog().slice(-12000)); } catch (_) { /* preserve original failure */ }
+      console.error('preserved test root: ' + root);
+    } else {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   }
 })().catch(error => { console.error(error.message); process.exitCode = 1; });
