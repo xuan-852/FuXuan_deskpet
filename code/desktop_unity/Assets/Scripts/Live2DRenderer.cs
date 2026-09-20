@@ -412,6 +412,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private ChatManager _lifeChatManager;
     private string _lastLifeActivityCategory;
     private float _lastLifeActivityEventTime = -1f;
+    private float _lastLifeEmotionObservationTime = -1f;
     public BodyStateSnapshot BodyStateSnapshot => _bodyStateStore.CaptureSnapshot();
     public ExecutionMonitorSnapshot ExecutionMonitorSnapshot => _executionMonitor.Snapshot;
     public EmbodiedEvent[] EmbodiedEvents => _embodiedEventStore.Snapshot();
@@ -1521,6 +1522,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _pet != null ? _pet.DesktopBodySnapshot : null, ready, now);
         _executionMonitor.Observe(now, ready, held, progressing, reason);
         ObserveLifeActivity(now);
+        ObserveLifeEmotion(now);
         if (_lastLifeBodyObservationTime < 0f || Time.time - _lastLifeBodyObservationTime >= 0.25f)
         {
             _lastLifeBodyObservationTime = Time.time;
@@ -1543,6 +1545,19 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private void OnLifeChatRequestStarted()
     {
         AppendLifeEvent(LifeEventType.UserSpoke, "chat", "request-started", 75, 120, null);
+    }
+
+    private void ObserveLifeEmotion(DateTime now)
+    {
+        if (_lastLifeEmotionObservationTime >= 0f && Time.time - _lastLifeEmotionObservationTime < 1f) return;
+        MotionAgent agent = MotionAgent.Instance;
+        if (agent == null || agent.emotion == null) return;
+        _lastLifeEmotionObservationTime = Time.time;
+        EmotionState emotion = agent.emotion;
+        string summary = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+            "{0:0.###},{1:0.###},{2:0.###},{3:0.###}", emotion.valence, emotion.arousal,
+            emotion.energy, emotion.warmth);
+        AppendLifeEvent(LifeEventType.EmotionObserved, "motion-agent", summary, 55, 5, null);
     }
 
     private void OnLifeChatReply(string reply)
@@ -3618,7 +3633,16 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     private void OnDisable()
     {
+        UnsubscribeLifeChat();
         SafeRecoverExternalActions("renderer-disabled");
+    }
+
+    private void UnsubscribeLifeChat()
+    {
+        if (_lifeChatManager == null) return;
+        _lifeChatManager.OnRequestStarted -= OnLifeChatRequestStarted;
+        _lifeChatManager.OnNewReply -= OnLifeChatReply;
+        _lifeChatManager = null;
     }
 
     private void OnApplicationQuit()
@@ -3773,6 +3797,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             return $"❌ 动作准入被拒绝：{admissionReason}";
         }
         _embodiedPoseState.BeginAction(_certifiedMotionRequest);
+        AppendLifeEvent(LifeEventType.ActionStarted, "certified-motion", skillId,
+            80, 30, "certified-motion:" + _certifiedMotionRequest.RequestId.ToString());
 
         _certifiedMotionCurves = curves;
         _certifiedMotionParameters = parameters;
@@ -3883,7 +3909,20 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
 
         if (cleanupErrors.Count > 0)
+        {
+            AppendLifeEvent(LifeEventType.ActionRecoveryFailed, "certified-motion",
+                skillId + ":cleanup-failed:" + string.Join(",", cleanupErrors), 95, 30,
+                request == null ? null : "certified-motion:" + request.RequestId.ToString());
             Debug.LogError($"[EmbodiedSafeRecovery] cleanup-failed: skill={skillId}, request={(request == null ? 0 : request.RequestId)}, reason={reason}, errors={string.Join(" | ", cleanupErrors)}");
+        }
+        else
+        {
+            LifeEventType observedType = terminalStatus == EmbodiedActionStatus.Completed
+                ? LifeEventType.ActionCompleted : LifeEventType.ActionInterrupted;
+            AppendLifeEvent(observedType, "certified-motion",
+                skillId + ":" + reason, 75, 30,
+                request == null ? null : "certified-motion:" + request.RequestId.ToString());
+        }
         Debug.Log("[CertifiedMotion] cleanup: " + reason);
     }
 

@@ -123,6 +123,7 @@ public sealed class LifeStateSnapshot
     public float Arousal { get; internal set; }
     public float Valence { get; internal set; }
     public float Energy { get; internal set; }
+    public float Warmth { get; internal set; }
     public LifeActionStatus ActionStatus { get; internal set; }
     public string CurrentAction { get; internal set; }
     public string LastInterruption { get; internal set; }
@@ -138,7 +139,7 @@ public sealed class LifeStateSnapshot
     {
         return new LifeStateSnapshot { Version = Version, UtcTimestamp = UtcTimestamp,
             Presence = Presence, Activity = Activity, AttentionTarget = AttentionTarget,
-            Arousal = Arousal, Valence = Valence, Energy = Energy,
+            Arousal = Arousal, Valence = Valence, Energy = Energy, Warmth = Warmth,
             ActionStatus = ActionStatus, CurrentAction = CurrentAction,
             LastInterruption = LastInterruption, LastActionResult = LastActionResult,
             RecentEventCount = RecentEventCount,
@@ -175,17 +176,19 @@ public sealed class LifeStateStore
         if (nowUtc.Kind != DateTimeKind.Utc) throw new ArgumentException("UTC timestamp required", nameof(nowUtc));
         Expire(nowUtc);
         if (lifeEvent.IsExpired(nowUtc) || _eventIds.Contains(lifeEvent.EventId)) return false;
-        if (!string.IsNullOrEmpty(lifeEvent.CorrelationId) && _correlationIds.Contains(lifeEvent.CorrelationId)) return false;
+        string phaseKey = CorrelationPhaseKey(lifeEvent);
+        if (phaseKey != null && _correlationIds.Contains(phaseKey)) return false;
 
         _eventIds.Add(lifeEvent.EventId);
-        if (!string.IsNullOrEmpty(lifeEvent.CorrelationId)) _correlationIds.Add(lifeEvent.CorrelationId);
+        if (phaseKey != null) _correlationIds.Add(phaseKey);
         _events.Add(lifeEvent);
         if (_events.Count > _capacity)
         {
             var removed = _events[0];
             _events.RemoveAt(0);
             _eventIds.Remove(removed.EventId);
-            if (!string.IsNullOrEmpty(removed.CorrelationId)) _correlationIds.Remove(removed.CorrelationId);
+            string removedPhaseKey = CorrelationPhaseKey(removed);
+            if (removedPhaseKey != null) _correlationIds.Remove(removedPhaseKey);
         }
         Reduce(lifeEvent, nowUtc);
         return true;
@@ -202,7 +205,7 @@ public sealed class LifeStateStore
         if (_state.AttentionMetadata != null && nowUtc > _state.AttentionMetadata.ExpiresAtUtc)
         { _state.AttentionTarget = null; _state.AttentionMetadata = null; changed = true; }
         if (_state.EmotionMetadata != null && nowUtc > _state.EmotionMetadata.ExpiresAtUtc)
-        { _state.Arousal = 0f; _state.Valence = 0f; _state.Energy = 0.5f; _state.EmotionMetadata = null; changed = true; }
+        { _state.Arousal = 0f; _state.Valence = 0f; _state.Warmth = 0f; _state.Energy = 0.5f; _state.EmotionMetadata = null; changed = true; }
         if (_state.ActionMetadata != null && nowUtc > _state.ActionMetadata.ExpiresAtUtc)
         { _state.ActionStatus = LifeActionStatus.None; _state.CurrentAction = null; _state.ActionMetadata = null; changed = true; }
         if (changed) Touch(nowUtc);
@@ -276,6 +279,13 @@ public sealed class LifeStateStore
         if (parts.Length > 0 && float.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out parsed)) _state.Valence = Clamp(parsed, -1f, 1f);
         if (parts.Length > 1 && float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out parsed)) _state.Arousal = Clamp(parsed, 0f, 1f);
         if (parts.Length > 2 && float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out parsed)) _state.Energy = Clamp(parsed, 0f, 1f);
+        if (parts.Length > 3 && float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out parsed)) _state.Warmth = Clamp(parsed, -1f, 1f);
+    }
+
+    private static string CorrelationPhaseKey(LifeEvent value)
+    {
+        if (string.IsNullOrEmpty(value.CorrelationId)) return null;
+        return value.CorrelationId + "|" + value.Type.ToString();
     }
 
     private static float Clamp(float value, float min, float max) { return value < min ? min : value > max ? max : value; }
@@ -291,6 +301,6 @@ public sealed class LifeStateStore
     private static LifeStateSnapshot NewInitial(DateTime nowUtc)
     {
         return new LifeStateSnapshot { Version = 0, UtcTimestamp = nowUtc, Presence = LifePresence.Unknown,
-            Activity = LifeActivity.Unknown, ActionStatus = LifeActionStatus.None, Energy = 0.5f };
+            Activity = LifeActivity.Unknown, ActionStatus = LifeActionStatus.None, Energy = 0.5f, Warmth = 0f };
     }
 }

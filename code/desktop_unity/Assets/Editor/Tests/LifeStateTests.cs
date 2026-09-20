@@ -60,6 +60,31 @@ public class LifeStateTests
     }
 
     [Test]
+    public void 同一动作关联键允许不同阶段但拒绝重复阶段()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        Assert.IsTrue(store.Append(Event("start", LifeEventType.ActionStarted, now, "wave", "action-1"), now));
+        Assert.IsTrue(store.Append(Event("done", LifeEventType.ActionCompleted, now.AddSeconds(1), "completed", "action-1"), now.AddSeconds(1)));
+        Assert.IsFalse(store.Append(Event("done-2", LifeEventType.ActionCompleted, now.AddSeconds(2), "completed-again", "action-1"), now.AddSeconds(2)));
+        Assert.AreEqual(LifeActionStatus.Completed, store.Snapshot.ActionStatus);
+    }
+
+    [Test]
+    public void 四维情绪摘要会夹紧并在过期后回落()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        store.Append(Event("emotion", LifeEventType.EmotionObserved, now, "2,-1,3,-2", null, 90, 1), now);
+        Assert.AreEqual(1f, store.Snapshot.Valence);
+        Assert.AreEqual(0f, store.Snapshot.Arousal);
+        Assert.AreEqual(1f, store.Snapshot.Energy);
+        Assert.AreEqual(-1f, store.Snapshot.Warmth);
+        store.Expire(now.AddSeconds(2));
+        Assert.AreEqual(0f, store.Snapshot.Warmth);
+    }
+
+    [Test]
     public void 信号过期后回落到未知或中性()
     {
         DateTime now = DateTime.UtcNow;
