@@ -40,6 +40,16 @@ public class EmbodiedRecoveryTests
         Assert.AreEqual(1, applied.Count);
     }
 
+    [Test] public void 重复写入保留首次真实基线()
+    {
+        var state = new EmbodiedPoseState();
+        state.RecordWrite("Param94", 12.5f, 4.25f);
+        state.RecordWrite("Param94", 15f, 0f);
+        var applied = new Dictionary<string, float>();
+        state.RestoreAll((id, value) => applied[id] = value);
+        Assert.AreEqual(4.25f, applied["Param94"]);
+    }
+
     [Test] public void 多参数分别还原到各自基线()
     {
         var state = new EmbodiedPoseState();

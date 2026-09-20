@@ -33,7 +33,10 @@ public sealed class EmbodiedPoseState
     public void RecordWrite(string parameterId, float value, float restoreValue)
     {
         if (string.IsNullOrWhiteSpace(parameterId)) throw new ArgumentException("parameter id required", nameof(parameterId));
-        _baselines[parameterId] = restoreValue;
+        // The first write owns the entry baseline. Later frames must not replace
+        // it with a transient value or a caller's placeholder restore value.
+        if (!_baselines.ContainsKey(parameterId))
+            _baselines[parameterId] = restoreValue;
         _lastWritten[parameterId] = value;
         _version++;
     }

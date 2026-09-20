@@ -57,6 +57,22 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.Equals("life-state", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer == null)
+            {
+                Debug.LogWarning("[LifeState] snapshot unavailable: Live2DRenderer missing");
+                return true;
+            }
+            LifeStateSnapshot snapshot = renderer.LifeStateSnapshot;
+            Debug.Log(string.Format(CultureInfo.InvariantCulture,
+                "[LifeState] snapshot version={0} presence={1} activity={2} action={3} current={4} events={5}",
+                snapshot.Version, snapshot.Presence, snapshot.Activity, snapshot.ActionStatus,
+                snapshot.CurrentAction ?? "none", snapshot.RecentEventCount));
+            return true;
+        }
+
         if (body.Equals("model-snapshot", StringComparison.OrdinalIgnoreCase))
         {
             Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();

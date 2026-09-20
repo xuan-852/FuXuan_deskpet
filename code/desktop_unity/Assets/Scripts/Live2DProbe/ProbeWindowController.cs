@@ -3,6 +3,7 @@ using System.Collections;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
 using Live2D.Cubism.Core;
 using Live2D.Cubism.Framework.Physics;
 using UnityEngine;
@@ -114,7 +115,61 @@ public sealed class ProbeWindowController : MonoBehaviour
         public string[] frames;
     }
 
+    [Serializable]
+    private sealed class WaveSequenceFrame
+    {
+        public int repeat;
+        public int frameIndex;
+        public string stage;
+        public string image;
+        public float relativeToBaseline;
+        public float adjacentDifference;
+        public string[] parameterIds;
+        public float[] parameterValues;
+    }
+
+    [Serializable]
+    private sealed class WaveSequenceRepeat
+    {
+        public int repeat;
+        public float peakMeanDifference;
+        public float maxAdjacentMeanDifference;
+        public float resetMeanDifference;
+        public bool resetStable;
+        public WaveSequenceFrame[] frames;
+    }
+
+    [Serializable]
+    private sealed class WaveSequenceResult
+    {
+        public string schema;
+        public string candidateId;
+        public string writerMode;
+        public string[] parameterIds;
+        public float[] baselines;
+        public float[] minimums;
+        public float[] maximums;
+        public int repeats;
+        public int framesPerRepeat;
+        public bool resetStable;
+        public float maxResetMeanDifference;
+        public float peakMeanDifference;
+        public WaveSequenceRepeat[] repeatsData;
+        public bool mapWriteAllowed;
+    }
+
     private sealed class CapturedFrame { public byte[] png; public Color32[] pixels; }
+
+    private sealed class WaveCaptureState
+    {
+        public CapturedFrame baseline;
+        public CapturedFrame previous;
+        public int frameIndex;
+        public float peak;
+        public float adjacent;
+        public readonly List<WaveSequenceFrame> frames = new List<WaveSequenceFrame>();
+    }
+
 
     private void Start()
     {
@@ -183,6 +238,17 @@ public sealed class ProbeWindowController : MonoBehaviour
                 combinationRangeScale, value => captured = value);
             File.WriteAllText(Path.Combine(root, "custom-combination-sweep-report.json"), JsonUtility.ToJson(captured, true));
             Debug.Log("[Live2DProbe] custom combination sweep completed: " + string.Join(",", combinationIds));
+            Application.Quit(0);
+            yield break;
+        }
+        string waveSequence = Environment.GetEnvironmentVariable("FU_XUAN_PROBE_WAVE_SEQUENCE_IDS");
+        if (!string.IsNullOrWhiteSpace(waveSequence))
+        {
+            string[] sequenceIds = ParseDistinctParameterIds(waveSequence, "FU_XUAN_PROBE_WAVE_SEQUENCE_IDS");
+            WaveSequenceResult sequence = null;
+            yield return CaptureWaveSequence(model, camera, sequenceIds, dir, preservePhysics, value => sequence = value);
+            File.WriteAllText(Path.Combine(root, "wave-sequence-report.json"), JsonUtility.ToJson(sequence, true));
+            Debug.Log("[Live2DProbe] wave sequence completed: " + string.Join(",", sequenceIds));
             Application.Quit(0);
             yield break;
         }
@@ -636,6 +702,113 @@ public sealed class ProbeWindowController : MonoBehaviour
         result.peakMeanDifference = peak;
         result.maxAdjacentMeanDifference = maxAdjacent;
         done(result);
+    }
+
+    private IEnumerator CaptureWaveSequence(CubismModel model, Camera camera, string[] ids, string dir,
+        bool preservePhysics, Action<WaveSequenceResult> done)
+    {
+        CubismParameter[] parameters = ids.Select(id => FindParameter(model, id)).ToArray();
+        if (parameters.Any(item => item == null)) throw new InvalidOperationException("Wave sequence has a missing parameter.");
+        int armIndex = Array.IndexOf(ids, "Param94"), wristIndex = Array.IndexOf(ids, "Param99"), handIndex = Array.IndexOf(ids, "Param92");
+        int auxiliaryIndex = Array.IndexOf(ids, "Param102");
+        if (auxiliaryIndex < 0) auxiliaryIndex = Array.IndexOf(ids, "Param110");
+        if (armIndex < 0 || wristIndex < 0 || handIndex < 0) throw new InvalidOperationException("Wave sequence requires Param94, Param99 and Param92.");
+        int repeats = ReadWaveSequenceRepeats(), steps = ReadWaveSequenceSteps();
+        float[] baselines = parameters.Select(item => item.Value).ToArray();
+        float[] minimums = parameters.Select(item => item.MinimumValue).ToArray();
+        float[] maximums = parameters.Select(item => item.MaximumValue).ToArray();
+        float wristCenter = baselines[wristIndex];
+        float wristAmplitude = Mathf.Min(maximums[wristIndex] - wristCenter, wristCenter - minimums[wristIndex]) * ReadWaveSequenceScale();
+        if (wristAmplitude <= 0f) throw new InvalidOperationException("Param99 has no usable native range around baseline.");
+        var result = new WaveSequenceResult { schema = "live2d-wave-sequence/v1", candidateId = "wave-candidate",
+            writerMode = preservePhysics ? "physics" : "frozen", parameterIds = ids, baselines = baselines,
+            minimums = minimums, maximums = maximums, repeats = repeats, framesPerRepeat = 2 + steps * 8,
+            repeatsData = new WaveSequenceRepeat[repeats], mapWriteAllowed = false };
+        float globalPeak = 0f, globalReset = 0f;
+        for (int repeat = 0; repeat < repeats; repeat++)
+        {
+            SetValues(parameters, baselines);
+            var state = new WaveCaptureState();
+            yield return CaptureWaveFrame(model, camera, dir, repeat, "baseline", parameters, preservePhysics, state);
+            yield return CaptureWaveRamp(model, camera, dir, repeat, steps, "raise_arm", parameters, armIndex,
+                Mathf.Lerp(baselines[armIndex], maximums[armIndex], 0.75f), preservePhysics, state);
+            yield return CaptureWaveRamp(model, camera, dir, repeat, steps, "set_hand", parameters, handIndex,
+                Mathf.Lerp(baselines[handIndex], maximums[handIndex], 0.75f), preservePhysics, state);
+            if (auxiliaryIndex >= 0)
+                yield return CaptureWaveRamp(model, camera, dir, repeat, steps, "set_auxiliary", parameters, auxiliaryIndex,
+                    Mathf.Lerp(baselines[auxiliaryIndex], maximums[auxiliaryIndex], 0.5f), preservePhysics, state);
+            foreach (float target in new[] { wristCenter + wristAmplitude, wristCenter - wristAmplitude, wristCenter + wristAmplitude, wristCenter - wristAmplitude })
+                yield return CaptureWaveRamp(model, camera, dir, repeat, steps, "wrist_swing", parameters, wristIndex, target, preservePhysics, state);
+            yield return CaptureWaveRamp(model, camera, dir, repeat, steps, "return_arm", parameters, armIndex, baselines[armIndex], preservePhysics, state);
+            yield return CaptureWaveRamp(model, camera, dir, repeat, steps, "reset_hand", parameters, handIndex, baselines[handIndex], preservePhysics, state);
+            if (auxiliaryIndex >= 0)
+                yield return CaptureWaveRamp(model, camera, dir, repeat, steps, "reset_auxiliary", parameters, auxiliaryIndex, baselines[auxiliaryIndex], preservePhysics, state);
+            SetValues(parameters, baselines);
+            yield return CaptureWaveFrame(model, camera, dir, repeat, "reset", parameters, preservePhysics, state);
+            float resetDifference = MeanPixelDifference(state.baseline.pixels, state.previous.pixels);
+            globalPeak = Mathf.Max(globalPeak, state.peak); globalReset = Mathf.Max(globalReset, resetDifference);
+            result.repeatsData[repeat] = new WaveSequenceRepeat { repeat = repeat + 1, peakMeanDifference = state.peak,
+                maxAdjacentMeanDifference = state.adjacent, resetMeanDifference = resetDifference,
+                resetStable = resetDifference <= 0.1f, frames = state.frames.ToArray() };
+        }
+        SetValues(parameters, baselines); result.peakMeanDifference = globalPeak; result.maxResetMeanDifference = globalReset;
+        result.resetStable = globalReset <= 0.1f; done(result);
+    }
+
+    private IEnumerator CaptureWaveRamp(CubismModel model, Camera camera, string dir, int repeat, int steps, string stage,
+        CubismParameter[] parameters, int parameterIndex, float target, bool preservePhysics, WaveCaptureState state)
+    {
+        float start = parameters[parameterIndex].Value;
+        for (int step = 1; step <= steps; step++)
+        {
+            parameters[parameterIndex].Value = Mathf.Lerp(start, target, step / (float)steps);
+            yield return CaptureWaveFrame(model, camera, dir, repeat, stage, parameters, preservePhysics, state);
+        }
+    }
+
+    private IEnumerator CaptureWaveFrame(CubismModel model, Camera camera, string dir, int repeat, string stage,
+        CubismParameter[] parameters, bool preservePhysics, WaveCaptureState state)
+    {
+        model.ForceUpdateNow();
+        int settleFrames = preservePhysics ? 8 : 1;
+        for (int settle = 0; settle < settleFrames; settle++) yield return null;
+        if (preservePhysics) StabilizePhysics(model.gameObject);
+        model.ForceUpdateNow();
+        CapturedFrame frame = Capture(camera);
+        string path = Path.Combine(dir, "wave_sequence_r" + (repeat + 1).ToString("D2") + "_" + state.frameIndex.ToString("D3") + "_" + stage + ".png");
+        File.WriteAllBytes(path, frame.png);
+        if (state.baseline == null) state.baseline = frame;
+        float relative = MeanPixelDifference(state.baseline.pixels, frame.pixels);
+        float adjacent = state.previous == null ? 0f : MeanPixelDifference(state.previous.pixels, frame.pixels);
+        state.peak = Mathf.Max(state.peak, relative); state.adjacent = Mathf.Max(state.adjacent, adjacent);
+        state.frames.Add(new WaveSequenceFrame { repeat = repeat + 1, frameIndex = state.frameIndex++, stage = stage, image = path,
+            relativeToBaseline = relative, adjacentDifference = adjacent, parameterIds = parameters.Select(item => item.Id).ToArray(),
+            parameterValues = parameters.Select(item => item.Value).ToArray() });
+        state.previous = frame;
+    }
+
+    private static int ReadWaveSequenceRepeats()
+    {
+        string raw = Environment.GetEnvironmentVariable("FU_XUAN_PROBE_WAVE_REPEATS");
+        if (string.IsNullOrWhiteSpace(raw)) return 3;
+        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) || value < 1 || value > 10) throw new InvalidOperationException("FU_XUAN_PROBE_WAVE_REPEATS must be in [1, 10].");
+        return value;
+    }
+
+    private static int ReadWaveSequenceSteps()
+    {
+        string raw = Environment.GetEnvironmentVariable("FU_XUAN_PROBE_WAVE_STEPS");
+        if (string.IsNullOrWhiteSpace(raw)) return 4;
+        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) || value < 2 || value > 20) throw new InvalidOperationException("FU_XUAN_PROBE_WAVE_STEPS must be in [2, 20].");
+        return value;
+    }
+
+    private static float ReadWaveSequenceScale()
+    {
+        string raw = Environment.GetEnvironmentVariable("FU_XUAN_PROBE_WAVE_WRIST_SCALE");
+        if (string.IsNullOrWhiteSpace(raw)) return 0.25f;
+        if (!float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out float value) || value <= 0f || value > 1f) throw new InvalidOperationException("FU_XUAN_PROBE_WAVE_WRIST_SCALE must be in (0, 1].");
+        return value;
     }
 
     private static int ReadMotionPlaybackSteps()

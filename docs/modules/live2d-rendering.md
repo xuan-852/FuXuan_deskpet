@@ -297,7 +297,13 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 6. **测试模式**：涉及表情/动作的自动化测试须开 `.test_mode`，且 `set_expression`/`play_action` 属 operation 意图白名单
 7. **参数语义映射**：新参数先查 `Live2DParameterMapper` 与 `KnownParameterPatterns.cs`（KNOW_PATTERNS 单源），勿重复硬编码参数 ID
 8. **单写入者铁则**：每个可见参数在一个帧阶段只能有一个动作来源。新预设/协程必须先终止旧协程；AI 关键帧、旧式动作和表情要受同一控制锁约束；网格强制更新应在该帧全部参数写完后最多提交一次。
-## 2026-09-13 Windows 桌面逐像素透明层
+### 2.21 隔离招手候选生命周期（2026-09-20）
+
+- 当前招手仍属于 `.test_mode` 候选，不进入认证技能、正式映射或 LLM 工具面；本轮不再调整已人工认可的视觉参数。
+- 启动前捕获手臂、肘部、手腕、手型、头腰、表情和手部可见性伴随参数的真实值；后续每帧写入不会覆盖首次恢复基线。
+- `scripts/test/wave_candidate_lifecycle_drive.cjs` 是隔离 Player 回归入口，覆盖跨周期循环、取消、再次启动和 `@@test:quit` 收束。它使用唯一临时 `FU_XUAN_DATA` 与 `.test_mode`，不触碰生产数据。
+- `visibility_pass` 或 PNG/自动分析只能说明主体未明显消失，不代表手部语义、招手自然度或认证通过；人工语义批准和正式曲线证据仍是独立门槛。
+
 
 Windows D3D11 Player 的 Unity 主窗口不再承担 Live2D 像素合成：DWM 玻璃层仅保留
 透明输入与窗口生命周期，`NativeLive2DOverlay` 将局部 `ModelOverlayRT` 以

@@ -67,6 +67,7 @@
 - [L3 虚拟骨架候选账本](../../docs/truth/l3-virtual-skeleton-candidate-ledger.md) — `docs/truth/l3-virtual-skeleton-candidate-ledger.md`
 - [L3 步行与认证动作边界：运行时验证](../../docs/truth/l3-walk-action-boundary-runtime-verification.md) — `docs/truth/l3-walk-action-boundary-runtime-verification.md`
 - [L3 招手组合能力普查（2026-09-18）](../../docs/truth/l3-wave-composite-capability-census.md) — `docs/truth/l3-wave-composite-capability-census.md`
+- [L3 手部可见性边界底座（2026-09-19）](../../docs/truth/l3-wave-visibility-boundary.md) — `docs/truth/l3-wave-visibility-boundary.md`
 - [L4 身体意图确定性路由（本地链路可达认证技能）](../../docs/truth/l4-body-intent-deterministic-routing.md) — `docs/truth/l4-body-intent-deterministic-routing.md`
 - [统一生命控制闭环 Phase A：控制面基线](../../docs/truth/unified-life-control-loop-phase-a.md) — `docs/truth/unified-life-control-loop-phase-a.md`
 - [统一生命控制闭环 Phase B-4：桌面身体状态边界](../../docs/truth/unified-life-control-loop-phase-b-desktop-state.md) — `docs/truth/unified-life-control-loop-phase-b-desktop-state.md`

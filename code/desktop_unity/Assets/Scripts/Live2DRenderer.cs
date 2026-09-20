@@ -316,6 +316,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private float _testWaveCandidateMouthForm;
     private float _testWaveCandidateTorsoLean;
     private float _testWaveCandidateHeadTilt;
+    private readonly HashSet<string> _testWaveCandidateCapturedParameters = new HashSet<string>();
+    private WaveCandidateLifecycle _testWaveCandidateLifecycle;
     private Coroutine _testWaveCandidateCoroutine;
     private bool _testTorsoZGestureActive;
     private float _testTorsoZGestureValue;
@@ -339,6 +341,15 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     // Track whether a forced idle action paused the pet so completion can
     // restore only the state changed by that action.
     private bool _idleActionPausedPet = false;
+
+    private enum WaveCandidateLifecycle
+    {
+        None,
+        Admitted,
+        Active,
+        Cancelled,
+        Recovered
+    }
 
     // 法阵斜飞物理飘动 — Spring-Damper 状态
     private float _magicFloatPhase = 0f;       // Perlin 噪声相位
@@ -395,9 +406,13 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private readonly BodyStateStore _bodyStateStore = new BodyStateStore();
     private readonly ExecutionMonitor _executionMonitor = new ExecutionMonitor();
     private readonly EmbodiedEventStore _embodiedEventStore = new EmbodiedEventStore(128);
+    private readonly LifeStateStore _lifeStateStore = new LifeStateStore(128);
+    private long _lifeEventSequence;
+    private float _lastLifeBodyObservationTime = -1f;
     public BodyStateSnapshot BodyStateSnapshot => _bodyStateStore.CaptureSnapshot();
     public ExecutionMonitorSnapshot ExecutionMonitorSnapshot => _executionMonitor.Snapshot;
     public EmbodiedEvent[] EmbodiedEvents => _embodiedEventStore.Snapshot();
+    public LifeStateSnapshot LifeStateSnapshot => _lifeStateStore.Snapshot;
     private Live2DInputLease _idleInputLease;
     private Live2DInputLease _candidateTestInputLease;
     private EmbodiedActionRequest _candidateActionRequest;
@@ -1496,6 +1511,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _bodyStateStore.Publish(_embodiedPoseState.CaptureSnapshot(),
             _pet != null ? _pet.DesktopBodySnapshot : null, ready, now);
         _executionMonitor.Observe(now, ready, held, progressing, reason);
+        if (_lastLifeBodyObservationTime < 0f || Time.time - _lastLifeBodyObservationTime >= 0.25f)
+        {
+            _lastLifeBodyObservationTime = Time.time;
+            AppendLifeEvent(LifeEventType.BodyObserved, "body", reason, 20, 2, null);
+        }
+        _lifeStateStore.Expire(now);
     }
 
     private void AppendEmbodiedEvent(string kind, string state, string reason, Live2DInputLease lease = default)
@@ -1506,6 +1527,28 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             lease.IsValid ? lease.Owner : "renderer", state, reason, 0,
             lease.IsValid ? lease.Resources : EmbodiedResource.None,
             pose != null ? pose.Version : 0, null));
+        LifeEventType lifeType = state == "Completed" ? LifeEventType.ActionCompleted
+            : state == "Cancelled" || state == "Interrupted" ? LifeEventType.ActionInterrupted
+            : state == "Accepted" ? LifeEventType.ActionStarted : LifeEventType.BodyObserved;
+        AppendLifeEvent(lifeType, kind, reason, state == "Rejected" ? 20 : 60, 30,
+            lease.IsValid ? lease.RequestId.ToString() : null);
+    }
+
+    private void AppendLifeEvent(LifeEventType type, string source, string summary,
+        int importance, int ttlSeconds, string correlationId)
+    {
+        DateTime now = DateTime.UtcNow;
+        string eventId = "life-" + (++_lifeEventSequence).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string safeSummary = string.IsNullOrEmpty(summary) ? type.ToString() : summary;
+        try
+        {
+            _lifeStateStore.Append(new LifeEvent(eventId, type, now, now.AddSeconds(ttlSeconds),
+                source, correlationId, importance, safeSummary), now);
+        }
+        catch (ArgumentException error)
+        {
+            Debug.LogWarning("[LifeState] event rejected: " + error.Message);
+        }
     }
 
     /// <summary>
@@ -3312,18 +3355,40 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         StopExpressionForInputTransition();
         if (!_inputCoordinator.TryBegin(Live2DInputKind.CandidateTest, "wave-candidate", out _candidateTestInputLease))
             return false;
+        ResetIdleAction(true);
+        CaptureWaveCandidateBaseline();
+        _actionLocked = true;
+        _testWaveCandidateActive = true;
+        _testWaveCandidateLifecycle = WaveCandidateLifecycle.Admitted;
+        if (_pet != null) _pet.SetActionMovementLock(true);
         _testWaveCandidateCoroutine = StartCoroutine(PlayTestWaveCandidate());
         Debug.Log("[WaveCandidateTest] admitted");
         return true;
     }
 
+    private void CaptureWaveCandidateBaseline()
+    {
+        _testWaveCandidateCapturedParameters.Clear();
+        string[] parameterIds =
+        {
+            "Param94", "Param97", "Param99", "Param93", "ParamBodyAngleZ",
+            "ParamAngleZ", "ParamEyeLSmile", "ParamEyeRSmile", "ParamMouthForm",
+            "Param95", "Param117", "Param98", "Param100", "Param116", "Param120",
+            "Param108", "Param119"
+        };
+        foreach (string parameterId in parameterIds)
+        {
+            CubismParameter parameter = FindCachedParameter(parameterId);
+            if (parameter == null) continue;
+            _testWaveCandidateCapturedParameters.Add(parameterId);
+            _embodiedPoseState.RecordWrite(parameterId, parameter.Value, parameter.Value);
+        }
+    }
+
     private System.Collections.IEnumerator PlayTestWaveCandidate()
     {
         const float duration = 5.0f;
-        ResetIdleAction(true);
-        _actionLocked = true;
-        _testWaveCandidateActive = true;
-        if (_pet != null) _pet.SetActionMovementLock(true);
+        _testWaveCandidateLifecycle = WaveCandidateLifecycle.Active;
         while (_testWaveCandidateActive)
         {
             for (float elapsed = 0f; elapsed < duration && _testWaveCandidateActive; elapsed += Time.deltaTime)
@@ -3391,11 +3456,15 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (stopCoroutine && _testWaveCandidateCoroutine != null) StopCoroutine(_testWaveCandidateCoroutine);
         _testWaveCandidateCoroutine = null;
         _testWaveCandidateActive = false;
+        _testWaveCandidateLifecycle = reason.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0
+            ? WaveCandidateLifecycle.Recovered
+            : WaveCandidateLifecycle.Cancelled;
         _testWaveCandidateArm = _testWaveCandidateElbow = _testWaveCandidateWrist = _testWaveCandidateHandMode = 0f;
         _testWaveCandidateEyeSmile = _testWaveCandidateMouthForm = 0f;
         _testWaveCandidateTorsoLean = _testWaveCandidateHeadTilt = 0f;
         _actionLocked = false;
         var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+        _testWaveCandidateCapturedParameters.Clear();
         if (restored.Count > 0) Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
         _inputCoordinator.Release(_candidateTestInputLease, reason);
         _candidateTestInputLease = default;

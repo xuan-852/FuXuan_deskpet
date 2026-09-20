@@ -46,7 +46,13 @@
 - 隔离 Player 的 `test-exit` 证据已覆盖四条执行路径：Param94 候选、Wave 候选、Torso 候选和完整性校验通过的 `external_Hiyori_Hiyori_m06` 认证动作。四者均在活动期间收到 `@@test:quit` 后记录租约释放；认证动作另外记录姿态恢复、`EmbodiedRuntimeAdmission` 取消、`[CertifiedMotion] cleanup` 和 `[EmbodiedSafeRecovery] recovered: test-exit`。候选路径分别通过 `scripts/test/param94_exit_cleanup_drive.cjs` 与 `scripts/test/candidate_exit_cleanup_drive.cjs`，认证路径通过 `scripts/test/certified_motion_exit_cleanup_drive.cjs`。
 - 这证明的是测试退出入口的跨层收束顺序，不证明 Windows 关机/注销、精确的 Unity 禁用与销毁回调顺序、Renderer 重建或生产退出时序。步行、桌面物理、拖拽、视线及其他未迁移写入者仍不属于统一认证协调范围；也不证明资源级并行执行或完整虚拟骨架 `PoseState`。
 
-## 未完成项
+## 本轮候选招手生命周期补充（2026-09-20）
+
+- `WaveCandidate` 仍是测试模式专用候选，不是认证技能或 LLM 动作；本轮只收敛其生命周期和恢复基线，没有修改招手幅度、正式参数映射、生产曲线或技能白名单。
+- 候选启动时先捕获 `Param94`、`Param97`、`Param99`、`Param93`、头/腰、双眼微笑、嘴型及手部可见性伴随参数的当前模型值。`EmbodiedPoseState.RecordWrite` 只接受每个参数的首次基线，后续帧不会以 `0f` 覆盖真实进入姿态。
+- 候选清理现在清空基线清册并统一释放输入租约、动作锁和桌面移动锁；取消、禁用、退出路径保持幂等。新增生命周期驱动 `scripts/test/wave_candidate_lifecycle_drive.cjs` 覆盖跨周期循环、取消后再次启动和 test-exit 收束。
+- 本轮 `build.ps1 -Quick`、脚本语法检查和 `git diff --check` 已通过。真实 Player 生命周期驱动尚未在本轮重新执行，因此不把它写成已通过的运行时证据；Windows 关机/注销、Renderer 重建、精确 Unity 回调顺序仍未验证。
+
 
 - 完整虚拟骨架 `PoseState`（全部骨架节点、表情、附属模块、资源占用镜像）；
 - 协调器独立超时计时器（当前由执行器生命周期兜底）；
