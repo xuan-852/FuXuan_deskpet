@@ -15,6 +15,7 @@ const log=()=>{try{return fs.readFileSync(path.join(root,'logs','player_log.txt'
 async function send(x,ms=350){fs.writeFileSync(inbox,x);await sleep(ms);fs.writeFileSync(inbox,'');await sleep(60)}
 async function wait(mark){for(let end=Date.now()+90000;Date.now()<end;await sleep(200))if(log().includes(mark))return;throw Error('timeout '+mark)}
 async function count(n){let d=path.join(root,'test_screenshots');for(let end=Date.now()+4000;Date.now()<end;await sleep(80))if(fs.existsSync(d)&&fs.readdirSync(d).filter(x=>x.endsWith('.png')).length>=n)return;throw Error('missing frame '+n)}
+function lifeState(){const matches=[...log().matchAll(/\[LifeState\] snapshot version=(\d+).*?action=([^ ]+).*?events=(\d+)/g)];if(!matches.length)throw Error('life-state snapshot missing');const m=matches[matches.length-1];return{version:+m[1],action:m[2],events:+m[3]}}
 (async()=>{fs.rmSync(root,{recursive:true,force:true});fs.mkdirSync(path.join(root,'certified_motions'),{recursive:true});
 fs.writeFileSync(path.join(root,'.test_mode'),'');
 fs.copyFileSync(candidateFile,path.join(root,'certified_motions',skillId+'.json'));
@@ -23,13 +24,20 @@ let p=spawn(exe,[],{env:{...process.env,FU_XUAN_DATA:root},stdio:'ignore'});
 try{await wait('[DesktopPet] 落地');await send('@@sim:idle-actions:off');await send('@@sim:walk:stop');await sleep(1600);
 await send('@@sim:status');await wait('velocity=(0,0)');await sleep(500);
 await send('@@sim:certified-motion:'+skillId);
+await wait(`[CertifiedMotion] started: ${skillId}`);
+await send('@@sim:life-state');
+const active=lifeState();
+if(active.action!=='Active')throw Error('life-state action not Active: '+active.action);
 for(let i=0;i<6;i++){await send('@@sim:model-measurement-snapshot',450);await count(i+1)}
 // 曲线时长由认证技能决定，不能以固定等待时间提前退出；否则长动作会被
 // @@test:quit 取消，造成“已验证完成”的假阳性。以运行时正常释放作为终态。
 await wait('[EmbodiedRuntimeAdmission] released: certified-motion-completed');
 await send('@@sim:model-measurement-snapshot');await count(7);
+await send('@@sim:life-state');
+const completed=lifeState();
+if(completed.action!=='Completed')throw Error('life-state action not Completed: '+completed.action);
 await send('@@test:quit',1200);
 const l=log();
 for(const mark of [`[CertifiedMotion] started: ${skillId}`,'[EmbodiedRuntimeAdmission] admitted: '+skillId,'[EmbodiedSafeRecovery] pose-restored','[EmbodiedRuntimeAdmission] released: certified-motion-completed','[CertifiedMotion] cleanup: certified-motion-completed'])
   if(!l.includes(mark))throw Error('log missing: '+mark);
-console.log(root)}finally{if(!p.killed)p.kill()}})().catch(e=>{console.error(e.message);process.exitCode=1});
+console.log(JSON.stringify({root,active,completed}))}finally{if(!p.killed)p.kill()}})().catch(e=>{console.error(e.message);process.exitCode=1});
