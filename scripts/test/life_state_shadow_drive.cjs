@@ -36,10 +36,10 @@ function waitForExit(child, timeout = 10000) {
   });
 }
 function snapshot() {
-  const matches = [...readLog().matchAll(/\[LifeState\] snapshot version=(\d+).*?events=(\d+).*?bodyVersion=(\d+).*?health=([^ ]+).*?observations=(\d+).*?faults=(\d+).*?ready=(True|False).*?progressing=(True|False)/g)];
+  const matches = [...readLog().matchAll(/\[LifeState\] snapshot version=(\d+).*?presence=([^ ]+).*?activity=([^ ]+).*?attentionTarget=([^ ]+).*?attentionSource=([^ ]+).*?attentionConfidence=([^ ]+).*?attentionReason=([^ ]+).*?action=([^ ]+).*?events=(\d+).*?bodyVersion=(\d+).*?health=([^ ]+).*?observations=(\d+).*?faults=(\d+).*?ready=(True|False).*?progressing=(True|False)/g)];
   if (!matches.length) throw new Error('life-state snapshot missing');
   const m = matches[matches.length - 1];
-  return { version: +m[1], events: +m[2], bodyVersion: +m[3], health: m[4], observations: +m[5], faults: +m[6], ready: m[7], progressing: m[8] };
+  return { version: +m[1], presence: m[2], activity: m[3], attentionTarget: m[4], attentionSource: m[5], attentionConfidence: m[6], attentionReason: m[7], action: m[8], events: +m[9], bodyVersion: +m[10], health: m[11], observations: +m[12], faults: +m[13], ready: m[14], progressing: m[15] };
 }
 (async () => {
   fs.writeFileSync(path.join(root, '.test_mode'), '');
@@ -56,12 +56,14 @@ function snapshot() {
     await sleep(2000);
     await send('@@sim:life-state');
     const first = snapshot();
+    if (!['pet', 'none'].includes(first.attentionTarget) || !['test', 'none'].includes(first.attentionSource) || !['pet-click', 'none'].includes(first.attentionReason)) throw new Error('invalid attention summary');
     await send('@@sim:idle-actions:off');
     await send('@@sim:walk:stop');
     await sleep(1200);
     await send('@@sim:life-state');
     const second = snapshot();
     if (second.version < first.version || second.events < first.events || second.bodyVersion < first.bodyVersion) throw new Error('snapshot counters regressed');
+    if (!['pet', 'none'].includes(second.attentionTarget) || !['test', 'none'].includes(second.attentionSource) || !['pet-click', 'none'].includes(second.attentionReason)) throw new Error('invalid attention summary after query');
     await send('@@test:quit', 1200);
     await waitForExit(child);
     const log = readLog();

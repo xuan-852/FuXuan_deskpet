@@ -59,6 +59,8 @@
 
 2026-09-19 SafeRecovery 生命周期补证：`Live2DRenderer` 的 `OnDisable`、`OnApplicationQuit`、`OnDestroy` 与测试专用 `PrepareForTestExit` 统一调用同一尽力收束网关。隔离 Player 已在活动期间对 Param94、Wave、Torso 候选和完整性校验通过的 `external_Hiyori_Hiyori_m06` 认证动作执行 `@@test:quit`；认证路径记录姿态恢复、输入租约释放、运行时准入取消、认证清理和 `recovered: test-exit`。这只证明测试退出入口的跨层收束，不证明 Windows 关机/注销、Renderer 重建或 Unity 回调精确顺序；步行、物理、拖拽、视线等写入者仍待迁移，资源级并行与完整虚拟骨架也未完成。详见 [L3 动作生命周期与安全收束](../truth/l3-action-lifecycle-recovery.md)。
 
+- 2026-09-20 生命状态 Attention 只读摘要：`@@sim:life-state` 仅输出 `AttentionTarget` 与其来源/置信度/原因的脱敏字段；Attention 仍只是 LifeState 的字符串目标和 metadata，不包含坐标、强度或主动策略，也不获得 Live2D 写入权。EditMode TTL 边界与当前源码隔离 Player 查询均通过。详见 [统一生命控制闭环 Phase A](../truth/unified-life-control-loop-phase-a.md)。
+
 ### 2.1 ActionAgent 文件清单（15 个 .cs）
 
 | 文件 | 职责 |

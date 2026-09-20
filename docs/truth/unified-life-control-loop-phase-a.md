@@ -12,7 +12,7 @@
 - `BodyWriterInventory` 明确登记九类生产写入路径及其当前控制等级：`certified-motion` 是 `CertifiedCoordinator`；表达、旧动作、生成动作、空闲和鼠标视线是 `InputLeaseOnly`；步行、桌面物理和拖拽响应仍是 `LegacyUnmanaged`。该清册是迁移与审计依据，**不是**参数白名单、能力注册表或“已经统一控制”的声明。
 - `EmbodiedRecoveryTests` 覆盖认证快照的所有者/关联 ID/终态原因，以及清册中“认证受控”和“待迁移”路径的区分。
 - `PhaseBObservation.cs` 新增进程内有界 `EmbodiedEventStore`、只读组合 `BodyStateSnapshot/BodyStateStore` 和只读 `ExecutionMonitor`；事件字段只允许短单行标识与摘要哈希，不写磁盘、不联网、不保存截图、原文或窗口信息。姿态层与桌面 PhysicsRoot 状态仍保持分层。
-- `LifeState.cs` 新增 LifeState v1 影子 reducer：以有界 `LifeEvent` 汇总用户在场/活动、动作生命周期、身体观测和最小情绪摘要，生成带版本、TTL、来源、置信度和原因的只读快照；事件仅进程内保存，不获得 Live2D 写入权。认证动作阶段使用关联键与阶段类型组合去重，允许合法生命周期链并拒绝重复终态；`@@sim:life-state` 输出 LifeState、BodyState 和 ExecutionMonitor 的脱敏健康摘要，不触发动作。
+- `LifeState.cs` 新增 LifeState v1 影子 reducer：以有界 `LifeEvent` 汇总用户在场/活动、动作生命周期、身体观测和最小情绪摘要，生成带版本、TTL、来源、置信度和原因的只读快照；事件仅进程内保存，不获得 Live2D 写入权。认证动作阶段使用关联键与阶段类型组合去重，允许合法生命周期链并拒绝重复终态；`@@sim:life-state` 输出 LifeState、BodyState 和 ExecutionMonitor 的脱敏健康摘要，不触发动作。Attention 当前仅复用快照中的字符串目标与 `LifeSignalMetadata`，不构成完整 `AttentionState`，不包含坐标、强度或主动策略。
 - 活动分类已按生命语义映射：`idle` 进入 `UserInactive`/`Idle`，coding、studying、browsing、gaming、entertainment 和 other 进入 `UserWorking`/`Working`，communication 进入 `UserInteracting`/`Interacting`；原始窗口标题和敏感内容不进入 LifeState。
 - 动作终态已收敛：`Completed` 不再被迟到的普通 `Interrupted` 覆盖，`RecoveryFailed` 优先于迟到的普通中断；相同阶段仍由关联键去重，认证动作继续使用稳定 correlation。
 - 表情入口增加 `TryPlayExpression` 成功语义：未知表情不会在验证失败后遗留输入租约；Renderer 禁用和应用退出共用幂等外部输入清理，表情租约与延迟回调会被收束。`StopAllActionsAndExpressions` 作为 Renderer 层停止网关，工具、生成动作前置和测试命令通过该入口停止 Renderer 所有者持有的表情/旧动作状态；生成动作租约仍由生成动作调用方持有和释放。
@@ -24,6 +24,7 @@
 - `node --check scripts/test/life_state_shadow_drive.cjs`：通过；使用当前源码隔离 Player `.artifacts/player-current/DesktopPet.exe` 驱动通过。两次 `@@sim:life-state` 快照的 `version/events/bodyVersion` 分别为 `20/20/224`、`47/47/539`，均单调增长；健康状态从启动期 `Degraded` 收敛为 `Healthy`，无 `[LifeState] event rejected`、`NullReferenceException` 或 `AssertionException`。验证使用临时 `FU_XUAN_DATA` 与 `.test_mode`，退出后临时目录清理，生产记忆文件未变化。
 - `node --check scripts/test/certified_motion_runtime_drive.cjs`：通过；使用隔离 `screen_side_arm_raise` 曲线验证认证动作生命周期，LifeState 快照从 `action=Active`（`version/events=31/31`）到 `action=Completed`（`version/events=52/52`），并观察到 admission、pose restore、release 与 cleanup 日志；退出后 Player 清理完成。
 - `node scripts/docs/generate_document_map.cjs`：本次文档更新后执行。
+- 本轮 Attention 摘要复验：`@@sim:life-state` 追加 `attentionTarget`、`attentionSource`、`attentionConfidence` 和 `attentionReason` 四个脱敏字段；当前源码隔离 Player `.artifacts/player-attention/DesktopPet.exe` 两次查询均输出允许值（`none`），`version/events/bodyVersion` 从 `22/22/236` 单调到 `47/47/537`，启动期 `Degraded` 收敛为 `Healthy`，无未预期异常且生产数据未变化。EditMode 新增并通过 Attention 的 `now == expiry` 有效、下一 tick 清空目标与 metadata 回归。
 - 第三阶段隔离 Player：使用当前源码构建的 `.artifacts/player-timeline/DesktopPet.exe`，在临时 `FU_XUAN_DATA` 与 `.test_mode` 下执行 `@@sim:life-state`、`@@sim:life-timeline` 和自然退出；时间线快照为 4 条有序记录，摘要哈希均为 64 位小写十六进制，查询后版本/事件/身体观测/执行观测计数均单调增长，无 `NullReferenceException` 或 `AssertionException`，生产记忆文件未变化。
 
 ## 明确未完成

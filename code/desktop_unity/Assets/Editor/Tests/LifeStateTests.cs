@@ -215,6 +215,28 @@ public class LifeStateTests
     }
 
     [Test]
+    public void 注意力在到期时仍有效并在下一tick回落()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        Assert.IsTrue(store.Append(Event("attention", LifeEventType.DirectInteraction,
+            now, "pet-click", null, 80, 1), now));
+
+        var atExpiry = store.Snapshot;
+        store.Expire(now.AddSeconds(1));
+        Assert.AreEqual("pet", atExpiry.AttentionTarget);
+        Assert.IsNotNull(atExpiry.AttentionMetadata);
+        Assert.AreEqual("pet-click", atExpiry.AttentionMetadata.Reason);
+        Assert.AreEqual("pet", store.Snapshot.AttentionTarget);
+        Assert.IsNotNull(store.Snapshot.AttentionMetadata);
+
+        store.Expire(now.AddSeconds(1).AddTicks(1));
+        var expired = store.Snapshot;
+        Assert.IsNull(expired.AttentionTarget);
+        Assert.IsNull(expired.AttentionMetadata);
+    }
+
+    [Test]
     public void 不同动作关联源的迟到终态不能覆盖当前动作()
     {
         DateTime now = DateTime.UtcNow;

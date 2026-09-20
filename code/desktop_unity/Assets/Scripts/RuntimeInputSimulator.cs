@@ -86,9 +86,15 @@ public static class RuntimeInputSimulator
             LifeStateSnapshot snapshot = renderer.LifeStateSnapshot;
             BodyStateSnapshot bodySnapshot = renderer.BodyStateSnapshot;
             ExecutionMonitorSnapshot execution = renderer.ExecutionMonitorSnapshot;
+            LifeSignalMetadata attention = snapshot.AttentionMetadata;
             Debug.Log(string.Format(CultureInfo.InvariantCulture,
-                "[LifeState] snapshot version={0} presence={1} activity={2} action={3} current={4} events={5} bodyVersion={6} health={7} observations={8} faults={9} ready={10} progressing={11}",
-                snapshot.Version, snapshot.Presence, snapshot.Activity, snapshot.ActionStatus,
+                "[LifeState] snapshot version={0} presence={1} activity={2} attentionTarget={3} attentionSource={4} attentionConfidence={5:0.###} attentionReason={6} action={7} current={8} events={9} bodyVersion={10} health={11} observations={12} faults={13} ready={14} progressing={15}",
+                snapshot.Version, snapshot.Presence, snapshot.Activity,
+                snapshot.AttentionTarget ?? "none",
+                attention == null ? "none" : attention.Source,
+                attention == null ? 0f : attention.Confidence,
+                attention == null ? "none" : attention.Reason,
+                snapshot.ActionStatus,
                 snapshot.CurrentAction ?? "none", snapshot.RecentEventCount,
                 bodySnapshot == null ? 0 : bodySnapshot.Version, execution.Health,
                 execution.ObservationCount, execution.FaultCount, execution.RendererReady,
