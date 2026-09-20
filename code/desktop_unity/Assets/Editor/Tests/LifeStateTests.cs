@@ -108,6 +108,8 @@ public class LifeStateTests
         Assert.AreEqual("restore-failed", recoveryFailed.Snapshot.LastInterruption);
     }
 
+    [Test]
+    public void 四维情绪摘要会夹紧并在过期后回落()
     {
         DateTime now = DateTime.UtcNow;
         var store = new LifeStateStore();
