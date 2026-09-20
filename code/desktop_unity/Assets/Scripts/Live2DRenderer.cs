@@ -409,6 +409,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private readonly LifeStateStore _lifeStateStore = new LifeStateStore(128);
     private long _lifeEventSequence;
     private float _lastLifeBodyObservationTime = -1f;
+    private ChatManager _lifeChatManager;
+    private string _lastLifeActivityCategory;
+    private float _lastLifeActivityEventTime = -1f;
     public BodyStateSnapshot BodyStateSnapshot => _bodyStateStore.CaptureSnapshot();
     public ExecutionMonitorSnapshot ExecutionMonitorSnapshot => _executionMonitor.Snapshot;
     public EmbodiedEvent[] EmbodiedEvents => _embodiedEventStore.Snapshot();
@@ -651,6 +654,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _dragHandler = GetComponent<DragHandler>();
         _chatBubble = GetComponent<ChatBubble>();
         if (_chatBubble == null) _chatBubble = FindObjectOfType<ChatBubble>();
+        _lifeChatManager = FindObjectOfType<ChatManager>();
+        if (_lifeChatManager != null)
+        {
+            _lifeChatManager.OnRequestStarted += OnLifeChatRequestStarted;
+            _lifeChatManager.OnNewReply += OnLifeChatReply;
+        }
         _timeController = GetComponent<TimeWeatherController>();
         if (_timeController == null) _timeController = FindObjectOfType<TimeWeatherController>();
         Debug.Log($"[Live2DRenderer] DesktopPet={(_pet != null)}, DragHandler={(_dragHandler != null)}, ChatBubble={(_chatBubble != null)}, TimeWeatherController={(_timeController != null)}");
@@ -1511,12 +1520,34 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _bodyStateStore.Publish(_embodiedPoseState.CaptureSnapshot(),
             _pet != null ? _pet.DesktopBodySnapshot : null, ready, now);
         _executionMonitor.Observe(now, ready, held, progressing, reason);
+        ObserveLifeActivity(now);
         if (_lastLifeBodyObservationTime < 0f || Time.time - _lastLifeBodyObservationTime >= 0.25f)
         {
             _lastLifeBodyObservationTime = Time.time;
             AppendLifeEvent(LifeEventType.BodyObserved, "body", reason, 20, 2, null);
         }
         _lifeStateStore.Expire(now);
+    }
+
+    private void ObserveLifeActivity(DateTime now)
+    {
+        ActivityTracker tracker = ActivityTracker.Instance;
+        if (tracker == null) return;
+        string category = tracker.CurrentCategory;
+        if (string.IsNullOrEmpty(category) || category == _lastLifeActivityCategory) return;
+        _lastLifeActivityCategory = category;
+        LifeEventType type = category == "idle" ? LifeEventType.UserInactive : LifeEventType.UserReturned;
+        AppendLifeEvent(type, "activity", category, 35, 45, null);
+    }
+
+    private void OnLifeChatRequestStarted()
+    {
+        AppendLifeEvent(LifeEventType.UserSpoke, "chat", "request-started", 75, 120, null);
+    }
+
+    private void OnLifeChatReply(string reply)
+    {
+        AppendLifeEvent(LifeEventType.ConversationCompleted, "chat", "reply-published", 60, 120, null);
     }
 
     private void AppendEmbodiedEvent(string kind, string state, string reason, Live2DInputLease lease = default)
@@ -1533,6 +1564,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         AppendLifeEvent(lifeType, kind, reason, state == "Rejected" ? 20 : 60, 30,
             lease.IsValid ? lease.RequestId.ToString() : null);
     }
+
 
     private void AppendLifeEvent(LifeEventType type, string source, string summary,
         int importance, int ttlSeconds, string correlationId)
