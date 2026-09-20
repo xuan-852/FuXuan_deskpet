@@ -20,8 +20,9 @@
 ## 验证证据
 
 - `build.ps1 -Quick`：2026-09-20 通过；LifeStateTests 当前 7 项全部通过。完整结果为 `total=258`、`passed=254`、`failed=3`、`ignored=1`；3 个既有 `ToolEngineTests` 因本机缺少 `es.exe` 失败，非本次 LifeState 改动回归。
-- `node --check scripts/test/life_state_shadow_drive.cjs`：通过。真实 Player 隔离驱动尚未执行：当前已有一个非本轮创建的 DesktopPet 进程（PID 39088），按约束未启动第二个实例；`Build/DesktopPet.exe` 也未被证明是本轮源码生成的产物。
-- `node scripts/docs/generate_document_map.cjs`：待本轮文档写入后重新执行。
+- `node --check scripts/test/life_state_shadow_drive.cjs`：通过；使用当前源码隔离 Player `.artifacts/player-current/DesktopPet.exe` 驱动通过。两次 `@@sim:life-state` 快照的 `version/events/bodyVersion` 分别为 `20/20/224`、`47/47/539`，均单调增长；健康状态从启动期 `Degraded` 收敛为 `Healthy`，无 `[LifeState] event rejected`、`NullReferenceException` 或 `AssertionException`。验证使用临时 `FU_XUAN_DATA` 与 `.test_mode`，退出后临时目录清理，生产记忆文件未变化。
+- `node --check scripts/test/certified_motion_runtime_drive.cjs`：通过；使用隔离 `screen_side_arm_raise` 曲线验证认证动作生命周期，LifeState 快照从 `action=Active`（`version/events=31/31`）到 `action=Completed`（`version/events=52/52`），并观察到 admission、pose restore、release 与 cleanup 日志；退出后 Player 清理完成。
+- `node scripts/docs/generate_document_map.cjs`：本次文档更新后执行。
 
 ## 明确未完成
 
