@@ -254,12 +254,15 @@ public sealed class LifeStateStore
                 _state.ActionMetadata = metadata;
                 break;
             case LifeEventType.ActionCompleted:
+                if (_state.ActionStatus == LifeActionStatus.RecoveryFailed) break;
                 _state.ActionStatus = LifeActionStatus.Completed;
                 _state.CurrentAction = null;
                 _state.LastActionResult = value.Summary;
                 _state.ActionMetadata = metadata;
                 break;
             case LifeEventType.ActionInterrupted:
+                if (_state.ActionStatus == LifeActionStatus.Completed
+                    || _state.ActionStatus == LifeActionStatus.RecoveryFailed) break;
                 _state.ActionStatus = LifeActionStatus.Interrupted;
                 _state.CurrentAction = null;
                 _state.LastInterruption = value.Summary;

@@ -85,7 +85,29 @@ public class LifeStateTests
     }
 
     [Test]
-    public void 四维情绪摘要会夹紧并在过期后回落()
+    public void 已完成动作不会被普通中断覆盖且恢复失败优先()
+    {
+        DateTime now = DateTime.UtcNow;
+        var completed = new LifeStateStore();
+        Assert.IsTrue(completed.Append(Event("start", LifeEventType.ActionStarted, now, "wave", "completed-1"), now));
+        Assert.IsTrue(completed.Append(Event("done", LifeEventType.ActionCompleted,
+            now.AddSeconds(1), "completed", "completed-1"), now.AddSeconds(1)));
+        Assert.IsTrue(completed.Append(Event("interrupt", LifeEventType.ActionInterrupted,
+            now.AddSeconds(2), "late-interrupt", "completed-1"), now.AddSeconds(2)));
+        Assert.AreEqual(LifeActionStatus.Completed, completed.Snapshot.ActionStatus);
+        Assert.AreEqual("completed", completed.Snapshot.LastActionResult);
+
+        var recoveryFailed = new LifeStateStore();
+        Assert.IsTrue(recoveryFailed.Append(Event("start", LifeEventType.ActionStarted,
+            now, "wave", "recovery-1"), now));
+        Assert.IsTrue(recoveryFailed.Append(Event("failed", LifeEventType.ActionRecoveryFailed,
+            now.AddSeconds(1), "restore-failed", "recovery-1"), now.AddSeconds(1)));
+        Assert.IsTrue(recoveryFailed.Append(Event("interrupt", LifeEventType.ActionInterrupted,
+            now.AddSeconds(2), "late-interrupt", "recovery-1"), now.AddSeconds(2)));
+        Assert.AreEqual(LifeActionStatus.RecoveryFailed, recoveryFailed.Snapshot.ActionStatus);
+        Assert.AreEqual("restore-failed", recoveryFailed.Snapshot.LastInterruption);
+    }
+
     {
         DateTime now = DateTime.UtcNow;
         var store = new LifeStateStore();
