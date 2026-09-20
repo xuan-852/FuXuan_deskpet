@@ -159,6 +159,12 @@ public sealed class LifeStateStore
     private readonly List<LifeEvent> _events = new List<LifeEvent>();
     private readonly HashSet<string> _eventIds = new HashSet<string>();
     private readonly HashSet<string> _correlationIds = new HashSet<string>();
+    private readonly HashSet<string> _expiredActionCorrelations = new HashSet<string>();
+    private DateTime _presenceUpdatedAtUtc = DateTime.MinValue;
+    private DateTime _activityUpdatedAtUtc = DateTime.MinValue;
+    private DateTime _attentionUpdatedAtUtc = DateTime.MinValue;
+    private DateTime _emotionUpdatedAtUtc = DateTime.MinValue;
+    private string _activeActionCorrelation;
     private LifeStateSnapshot _state;
 
     public LifeStateStore(int capacity = 64)
@@ -180,6 +186,8 @@ public sealed class LifeStateStore
         if (lifeEvent.IsExpired(nowUtc) || _eventIds.Contains(lifeEvent.EventId)) return false;
         string phaseKey = CorrelationPhaseKey(lifeEvent);
         if (phaseKey != null && _correlationIds.Contains(phaseKey)) return false;
+        if (IsExpiredActionPhase(lifeEvent)) return false;
+        if (IsOlderSignal(lifeEvent)) return false;
 
         _eventIds.Add(lifeEvent.EventId);
         if (phaseKey != null) _correlationIds.Add(phaseKey);
@@ -209,7 +217,19 @@ public sealed class LifeStateStore
         if (_state.EmotionMetadata != null && nowUtc > _state.EmotionMetadata.ExpiresAtUtc)
         { _state.Arousal = 0f; _state.Valence = 0f; _state.Warmth = 0f; _state.Energy = 0.5f; _state.EmotionMetadata = null; changed = true; }
         if (_state.ActionMetadata != null && nowUtc > _state.ActionMetadata.ExpiresAtUtc)
-        { _state.ActionStatus = LifeActionStatus.None; _state.CurrentAction = null; _state.ActionMetadata = null; changed = true; }
+        {
+            if (_state.ActionStatus == LifeActionStatus.Active)
+            {
+                _state.ActionStatus = LifeActionStatus.Interrupted;
+                _state.CurrentAction = null;
+                _state.LastInterruption = "timeout";
+                if (!string.IsNullOrEmpty(_activeActionCorrelation))
+                    _expiredActionCorrelations.Add(_activeActionCorrelation);
+            }
+            _state.ActionMetadata = null;
+            _activeActionCorrelation = null;
+            changed = true;
+        }
         if (changed) Touch(nowUtc);
     }
 
@@ -247,18 +267,22 @@ public sealed class LifeStateStore
                 SetActivity(LifeActivity.Interacting, metadata);
                 _state.AttentionTarget = "pet";
                 _state.AttentionMetadata = metadata.Copy();
+                _attentionUpdatedAtUtc = value.UtcTimestamp;
                 break;
             case LifeEventType.ActionStarted:
                 _state.ActionStatus = LifeActionStatus.Active;
                 _state.CurrentAction = value.Summary;
                 _state.ActionMetadata = metadata;
+                _activeActionCorrelation = value.CorrelationId;
                 break;
             case LifeEventType.ActionCompleted:
-                if (_state.ActionStatus == LifeActionStatus.RecoveryFailed) break;
+                if (_state.ActionStatus == LifeActionStatus.RecoveryFailed
+                    || (value.CorrelationId != null && _expiredActionCorrelations.Contains(value.CorrelationId))) break;
                 _state.ActionStatus = LifeActionStatus.Completed;
                 _state.CurrentAction = null;
                 _state.LastActionResult = value.Summary;
                 _state.ActionMetadata = metadata;
+                _activeActionCorrelation = null;
                 break;
             case LifeEventType.ActionInterrupted:
                 if (_state.ActionStatus == LifeActionStatus.Completed
@@ -267,16 +291,19 @@ public sealed class LifeStateStore
                 _state.CurrentAction = null;
                 _state.LastInterruption = value.Summary;
                 _state.ActionMetadata = metadata;
+                _activeActionCorrelation = null;
                 break;
             case LifeEventType.ActionRecoveryFailed:
                 _state.ActionStatus = LifeActionStatus.RecoveryFailed;
                 _state.CurrentAction = null;
                 _state.LastInterruption = value.Summary;
                 _state.ActionMetadata = metadata;
+                _activeActionCorrelation = null;
                 break;
             case LifeEventType.EmotionObserved:
                 ParseEmotion(value.Summary);
                 _state.EmotionMetadata = metadata;
+                _emotionUpdatedAtUtc = value.UtcTimestamp;
                 break;
             case LifeEventType.BodyObserved:
                 break;
@@ -301,6 +328,35 @@ public sealed class LifeStateStore
         return value.CorrelationId + "|" + value.Type.ToString();
     }
 
+    private bool IsExpiredActionPhase(LifeEvent value)
+    {
+        return (value.Type == LifeEventType.ActionCompleted
+                || value.Type == LifeEventType.ActionInterrupted
+                || value.Type == LifeEventType.ActionRecoveryFailed)
+            && value.CorrelationId != null
+            && _expiredActionCorrelations.Contains(value.CorrelationId);
+    }
+
+    private bool IsOlderSignal(LifeEvent value)
+    {
+        switch (value.Type)
+        {
+            case LifeEventType.UserSpoke:
+            case LifeEventType.ConversationCompleted:
+            case LifeEventType.UserReturned:
+            case LifeEventType.UserInactive:
+            case LifeEventType.UserWorking:
+            case LifeEventType.UserInteracting:
+                return value.UtcTimestamp < _presenceUpdatedAtUtc || value.UtcTimestamp < _activityUpdatedAtUtc;
+            case LifeEventType.DirectInteraction:
+                return value.UtcTimestamp < _attentionUpdatedAtUtc;
+            case LifeEventType.EmotionObserved:
+                return value.UtcTimestamp < _emotionUpdatedAtUtc;
+            default:
+                return false;
+        }
+    }
+
     private static float Clamp(float value, float min, float max) { return value < min ? min : value > max ? max : value; }
     private static LifeSignalMetadata Metadata(LifeEvent value)
     {
@@ -308,8 +364,8 @@ public sealed class LifeStateStore
             ExpiresAtUtc = value.ExpiresAtUtc, Confidence = value.Importance / 100f,
             Reason = value.Summary ?? value.Type.ToString() };
     }
-    private void SetPresence(LifePresence value, LifeSignalMetadata metadata) { _state.Presence = value; _state.PresenceMetadata = metadata; }
-    private void SetActivity(LifeActivity value, LifeSignalMetadata metadata) { _state.Activity = value; _state.ActivityMetadata = metadata; }
+    private void SetPresence(LifePresence value, LifeSignalMetadata metadata) { _state.Presence = value; _state.PresenceMetadata = metadata; _presenceUpdatedAtUtc = metadata.UpdatedAtUtc; }
+    private void SetActivity(LifeActivity value, LifeSignalMetadata metadata) { _state.Activity = value; _state.ActivityMetadata = metadata; _activityUpdatedAtUtc = metadata.UpdatedAtUtc; }
     private void Touch(DateTime nowUtc) { _state.Version++; _state.UtcTimestamp = nowUtc; _state.RecentEventCount = _events.Count; }
     private static LifeStateSnapshot NewInitial(DateTime nowUtc)
     {

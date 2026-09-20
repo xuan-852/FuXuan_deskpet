@@ -134,4 +134,71 @@ public class LifeStateTests
         Assert.AreEqual(0f, store.Snapshot.Valence);
         Assert.AreEqual(0.5f, store.Snapshot.Energy);
     }
+
+    [Test]
+    public void TTL在到期时仍有效并在下一tick回落()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        store.Append(Event("return", LifeEventType.UserReturned, now, null, null, 80, 1), now);
+        long versionAtExpiry = store.Snapshot.Version;
+        store.Expire(now.AddSeconds(1));
+        Assert.AreEqual(LifePresence.Present, store.Snapshot.Presence);
+        Assert.AreEqual(versionAtExpiry, store.Snapshot.Version);
+        store.Expire(now.AddSeconds(1).AddTicks(1));
+        Assert.AreEqual(LifePresence.Unknown, store.Snapshot.Presence);
+        Assert.Greater(store.Snapshot.Version, versionAtExpiry);
+    }
+
+    [Test]
+    public void 零TTL事件在同一时刻有效并随后过期()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        store.Append(Event("zero", LifeEventType.UserReturned, now, null, null, 80, 0), now);
+        Assert.AreEqual(LifePresence.Present, store.Snapshot.Presence);
+        store.Expire(now.AddTicks(1));
+        Assert.AreEqual(LifePresence.Unknown, store.Snapshot.Presence);
+    }
+
+    [Test]
+    public void 旧的同类信号不能覆盖较新的状态()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        Assert.IsTrue(store.Append(Event("new", LifeEventType.UserWorking, now.AddSeconds(2), "new", null, 80, 30), now.AddSeconds(2)));
+        long version = store.Snapshot.Version;
+        Assert.IsFalse(store.Append(Event("old", LifeEventType.UserInactive, now, "old", null, 80, 30), now.AddSeconds(2)));
+        Assert.AreEqual(LifePresence.Present, store.Snapshot.Presence);
+        Assert.AreEqual(LifeActivity.Working, store.Snapshot.Activity);
+        Assert.AreEqual(version, store.Snapshot.Version);
+    }
+
+    [Test]
+    public void 拒绝重复事件不会改变版本状态或事件计数()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        Assert.IsTrue(store.Append(Event("same", LifeEventType.UserReturned, now), now));
+        var before = store.Snapshot;
+        int count = store.EventCount;
+        Assert.IsFalse(store.Append(Event("same", LifeEventType.UserReturned, now.AddSeconds(1)), now.AddSeconds(1)));
+        var after = store.Snapshot;
+        Assert.AreEqual(before.Version, after.Version);
+        Assert.AreEqual(before.Presence, after.Presence);
+        Assert.AreEqual(count, store.EventCount);
+    }
+
+    [Test]
+    public void 活跃动作到期后中断并保留超时原因且迟到完成无效()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        Assert.IsTrue(store.Append(Event("start", LifeEventType.ActionStarted, now, "wave", "timeout-1", 80, 1), now));
+        store.Expire(now.AddSeconds(1).AddTicks(1));
+        Assert.AreEqual(LifeActionStatus.Interrupted, store.Snapshot.ActionStatus);
+        Assert.AreEqual("timeout", store.Snapshot.LastInterruption);
+        Assert.IsFalse(store.Append(Event("done", LifeEventType.ActionCompleted, now.AddSeconds(2), "completed", "timeout-1"), now.AddSeconds(2)));
+        Assert.AreEqual(LifeActionStatus.Interrupted, store.Snapshot.ActionStatus);
+    }
 }
