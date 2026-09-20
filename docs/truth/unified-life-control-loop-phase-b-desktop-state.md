@@ -16,6 +16,7 @@
 - `build.ps1 -Quick`：测试执行至结果保存，日志中无 C# 编译错误。
 - `build.ps1 -RunTests`：最新 EditMode 结果为 `total=235`、`passed=234`、`failed=0`、`ignored=1`。
 - `EmbodiedRecoveryTests.桌面身体快照与Live2D参数状态分离且模式可复核` 覆盖位置/速度/任务快照、拖拽优先级和动作移动锁优先级。
+- 第三阶段隔离 Player 使用当前源码构建的 `.artifacts/player-timeline/DesktopPet.exe` 验证了 `@@sim:life-timeline` 查询边界：时间线快照为 4 条有序记录，查询后各观测计数未回退，临时数据根目录退出后清理，生产记忆文件未变化。
 
 ## 明确未完成
 
