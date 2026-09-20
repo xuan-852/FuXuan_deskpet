@@ -9,6 +9,31 @@ public class PhaseBObservationTests
             "short-reason", 12, EmbodiedResource.Face, 3, "hash");
     }
 
+    [Test] public void 生命时间线有界去重并输出摘要哈希()
+    {
+        var store = new LifeTimelineStore(2);
+        var now = DateTime.UtcNow;
+        Assert.IsTrue(store.Append(now, "source", "event", "a", "Active", "ok", "summary", 1));
+        Assert.IsFalse(store.Append(now, "source", "event", "a", "Active", "ok", "summary", 1));
+        Assert.IsTrue(store.Append(now.AddSeconds(1), "source", "event", "b", "Completed", "done", "other", 2));
+        Assert.IsTrue(store.Append(now.AddSeconds(2), "source", "event", "c", "Completed", "done", "third", 3));
+        Assert.AreEqual(2, store.Count);
+        Assert.AreEqual("b", store.Snapshot()[0].CorrelationId);
+        Assert.AreEqual(64, store.Snapshot()[0].SummaryHash.Length);
+    }
+
+    [Test] public void 生命时间线查询返回有序副本且无副作用()
+    {
+        var store = new LifeTimelineStore(4);
+        var now = DateTime.UtcNow;
+        store.Append(now, "source", "event", null, "Idle", null, "summary", 4);
+        var first = store.Snapshot();
+        var second = store.Snapshot();
+        Assert.AreNotSame(first, second);
+        Assert.AreEqual(first[0].Sequence, second[0].Sequence);
+        Assert.AreEqual(1, store.Count);
+    }
+
     [Test] public void 事件存储有界且按时间顺序保留最新事件()
     {
         var store = new EmbodiedEventStore(2);
