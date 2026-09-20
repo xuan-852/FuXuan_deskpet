@@ -1542,11 +1542,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         var body = _bodyStateStore.CaptureSnapshot();
         _lifeTimelineStore.Append(now, "body", "observation", null,
             body == null ? "Unavailable" : body.Desktop == null ? "Observed" : body.Desktop.Mode.ToString(),
-            reason, body == null ? "none" : body.Version.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            reason, body == null ? "none" : body.RendererReady ? "ready" : "unavailable",
             snapshot.Version);
         var execution = _executionMonitor.Snapshot;
         _lifeTimelineStore.Append(now, "execution", "health", null,
-            execution.Health.ToString(), execution.LastReason, execution.ObservationCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            execution.Health.ToString(), execution.LastReason,
+            execution.Progressing ? "progressing" : "stalled",
             snapshot.Version);
     }
 
