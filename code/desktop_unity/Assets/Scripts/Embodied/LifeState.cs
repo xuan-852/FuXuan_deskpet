@@ -187,6 +187,7 @@ public sealed class LifeStateStore
         string phaseKey = CorrelationPhaseKey(lifeEvent);
         if (phaseKey != null && _correlationIds.Contains(phaseKey)) return false;
         if (IsExpiredActionPhase(lifeEvent)) return false;
+        if (IsStaleActionTerminal(lifeEvent)) return false;
         if (IsOlderSignal(lifeEvent)) return false;
 
         _eventIds.Add(lifeEvent.EventId);
@@ -335,6 +336,12 @@ public sealed class LifeStateStore
                 || value.Type == LifeEventType.ActionRecoveryFailed)
             && value.CorrelationId != null
             && _expiredActionCorrelations.Contains(value.CorrelationId);
+    }
+
+    private bool IsStaleActionTerminal(LifeEvent value)
+    {
+        return (value.Type == LifeEventType.ActionInterrupted || value.Type == LifeEventType.ActionRecoveryFailed)
+            && _state.ActionStatus == LifeActionStatus.Completed;
     }
 
     private bool IsOlderSignal(LifeEvent value)

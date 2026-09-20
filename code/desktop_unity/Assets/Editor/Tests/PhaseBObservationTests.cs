@@ -59,4 +59,27 @@ public class PhaseBObservationTests
         Assert.AreEqual(ExecutionHealth.Unhealthy, monitor.Snapshot.Health);
         Assert.AreEqual(3, monitor.Snapshot.ObservationCount);
     }
+
+    [Test] public void 桌面状态组合优先级为拖拽高于锁定暂停和移动()
+    {
+        var state = new DesktopBodyState();
+        state.Update(0, 0, 1, 0, true, false, true, true, "walk");
+        Assert.AreEqual(DesktopBodyMode.ActionMovementLocked, state.CaptureSnapshot().Mode);
+        state.Update(0, 0, 1, 0, true, true, true, true, "drag");
+        Assert.AreEqual(DesktopBodyMode.Dragging, state.CaptureSnapshot().Mode);
+    }
+
+    [Test] public void 执行监测恢复后故障不再增加且查询不改变状态()
+    {
+        var monitor = new ExecutionMonitor();
+        var now = DateTime.UtcNow;
+        monitor.Observe(now, true, true, false, "stalled");
+        Assert.AreEqual(1, monitor.Snapshot.FaultCount);
+        monitor.Observe(now.AddSeconds(-1), true, false, true, "recovered");
+        var snapshot = monitor.Snapshot;
+        Assert.AreEqual(ExecutionHealth.Healthy, snapshot.Health);
+        Assert.AreEqual(1, snapshot.FaultCount);
+        Assert.AreEqual(2, snapshot.ObservationCount);
+        Assert.AreSame(snapshot, monitor.Snapshot);
+    }
 }

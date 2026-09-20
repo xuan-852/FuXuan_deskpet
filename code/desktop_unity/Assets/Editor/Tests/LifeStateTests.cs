@@ -201,4 +201,31 @@ public class LifeStateTests
         Assert.IsFalse(store.Append(Event("done", LifeEventType.ActionCompleted, now.AddSeconds(2), "completed", "timeout-1"), now.AddSeconds(2)));
         Assert.AreEqual(LifeActionStatus.Interrupted, store.Snapshot.ActionStatus);
     }
+
+    [Test]
+    public void 过期注意力事件不能覆盖较新的目标()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        Assert.IsTrue(store.Append(Event("new", LifeEventType.DirectInteraction, now.AddSeconds(2), "new-target"), now.AddSeconds(2)));
+        long version = store.Snapshot.Version;
+        Assert.IsFalse(store.Append(Event("old", LifeEventType.DirectInteraction, now, "old-target"), now.AddSeconds(2)));
+        Assert.AreEqual("pet", store.Snapshot.AttentionTarget);
+        Assert.AreEqual(version, store.Snapshot.Version);
+    }
+
+    [Test]
+    public void 不同动作关联源的迟到终态不能覆盖当前动作()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        Assert.IsTrue(store.Append(Event("a-start", LifeEventType.ActionStarted, now, "a", "action-a"), now));
+        Assert.IsTrue(store.Append(Event("a-done", LifeEventType.ActionCompleted, now.AddSeconds(1), "a-ok", "action-a"), now.AddSeconds(1)));
+        long version = store.Snapshot.Version;
+        Assert.IsFalse(store.Append(Event("b-interrupt", LifeEventType.ActionInterrupted, now.AddSeconds(2), "b-late", "action-b"), now.AddSeconds(2)));
+        Assert.AreEqual(LifeActionStatus.Completed, store.Snapshot.ActionStatus);
+        Assert.AreEqual("a-ok", store.Snapshot.LastActionResult);
+        Assert.AreEqual(version, store.Snapshot.Version);
+    }
 }
+
