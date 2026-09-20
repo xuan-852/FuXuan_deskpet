@@ -12,6 +12,7 @@ if(!candidateFile||!fs.existsSync(candidateFile))throw Error('missing candidate 
 const root=path.join(os.tmpdir(),'fuxuan_certified_motion_'+skillId.toLowerCase().replace(/[^a-z0-9]/g,'_'));
 const inbox=path.join(root,'inbox.txt'), sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const log=()=>{try{return fs.readFileSync(path.join(root,'logs','player_log.txt'),'utf8')}catch{return ''}};
+const logTail=()=>log().split(/\r?\n/).slice(-80).join('\n');
 async function send(x,ms=350){fs.writeFileSync(inbox,x);await sleep(ms);fs.writeFileSync(inbox,'');await sleep(60)}
 async function wait(mark){for(let end=Date.now()+90000;Date.now()<end;await sleep(200))if(log().includes(mark))return;throw Error('timeout '+mark)}
 async function count(n){let d=path.join(root,'test_screenshots');for(let end=Date.now()+4000;Date.now()<end;await sleep(80))if(fs.existsSync(d)&&fs.readdirSync(d).filter(x=>x.endsWith('.png')).length>=n)return;throw Error('missing frame '+n)}
@@ -40,4 +41,13 @@ await send('@@test:quit',1200);
 const l=log();
 for(const mark of [`[CertifiedMotion] started: ${skillId}`,'[EmbodiedRuntimeAdmission] admitted: '+skillId,'[EmbodiedSafeRecovery] pose-restored','[EmbodiedRuntimeAdmission] released: certified-motion-completed','[CertifiedMotion] cleanup: certified-motion-completed'])
   if(!l.includes(mark))throw Error('log missing: '+mark);
-console.log(JSON.stringify({root,active,completed}))}finally{if(!p.killed)p.kill()}})().catch(e=>{console.error(e.message);process.exitCode=1});
+console.log(JSON.stringify({root,active,completed}));
+}finally{
+  if(!p.killed)p.kill();
+}
+})().then(()=>{fs.rmSync(root,{recursive:true,force:true})}).catch(e=>{
+  console.error(e.message);
+  console.error('preserved test root: '+root);
+  console.error('player log tail:\n'+logTail());
+  process.exitCode=1;
+});

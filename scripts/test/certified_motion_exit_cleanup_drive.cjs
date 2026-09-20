@@ -86,7 +86,11 @@ async function sendForOnePoll(command) {
     }
 
     console.log(root);
-})().catch(error => {
+})().then(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+}).catch(error => {
     console.error(error.message);
+    console.error('preserved test root: ' + root);
+    console.error('player log tail:\n' + logText().split(/\r?\n/).slice(-80).join('\n'));
     process.exitCode = 1;
 });
