@@ -71,6 +71,20 @@ public class LifeStateTests
     }
 
     [Test]
+    public void 工作和交互活动会映射到对应生命语义()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        Assert.IsTrue(store.Append(Event("working", LifeEventType.UserWorking, now, "coding"), now));
+        Assert.AreEqual(LifePresence.Present, store.Snapshot.Presence);
+        Assert.AreEqual(LifeActivity.Working, store.Snapshot.Activity);
+        Assert.IsTrue(store.Append(Event("interacting", LifeEventType.UserInteracting,
+            now.AddSeconds(1), "communication"), now.AddSeconds(1)));
+        Assert.AreEqual(LifePresence.Present, store.Snapshot.Presence);
+        Assert.AreEqual(LifeActivity.Interacting, store.Snapshot.Activity);
+    }
+
+    [Test]
     public void 四维情绪摘要会夹紧并在过期后回落()
     {
         DateTime now = DateTime.UtcNow;

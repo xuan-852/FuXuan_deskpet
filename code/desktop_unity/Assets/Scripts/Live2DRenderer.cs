@@ -1538,7 +1538,27 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         string category = tracker.CurrentCategory;
         if (string.IsNullOrEmpty(category) || category == _lastLifeActivityCategory) return;
         _lastLifeActivityCategory = category;
-        LifeEventType type = category == "idle" ? LifeEventType.UserInactive : LifeEventType.UserReturned;
+        LifeEventType type;
+        switch (category)
+        {
+            case "idle":
+                type = LifeEventType.UserInactive;
+                break;
+            case "coding":
+            case "studying":
+            case "browsing":
+            case "entertainment":
+            case "gaming":
+            case "other":
+                type = LifeEventType.UserWorking;
+                break;
+            case "communication":
+                type = LifeEventType.UserInteracting;
+                break;
+            default:
+                type = LifeEventType.UserReturned;
+                break;
+        }
         AppendLifeEvent(type, "activity", category, 35, 45, null);
     }
 

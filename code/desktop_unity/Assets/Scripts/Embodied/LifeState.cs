@@ -7,6 +7,8 @@ public enum LifeEventType
     ConversationCompleted,
     UserReturned,
     UserInactive,
+    UserWorking,
+    UserInteracting,
     DirectInteraction,
     ActionStarted,
     ActionCompleted,
@@ -231,6 +233,14 @@ public sealed class LifeStateStore
             case LifeEventType.UserInactive:
                 SetPresence(LifePresence.Away, metadata);
                 SetActivity(LifeActivity.Idle, metadata);
+                break;
+            case LifeEventType.UserWorking:
+                SetPresence(LifePresence.Present, metadata);
+                SetActivity(LifeActivity.Working, metadata);
+                break;
+            case LifeEventType.UserInteracting:
+                SetPresence(LifePresence.Present, metadata);
+                SetActivity(LifeActivity.Interacting, metadata);
                 break;
             case LifeEventType.DirectInteraction:
                 SetPresence(LifePresence.Present, metadata);
