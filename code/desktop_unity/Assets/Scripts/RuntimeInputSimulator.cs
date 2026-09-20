@@ -57,6 +57,24 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.Equals("life-timeline", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer == null)
+            {
+                Debug.LogWarning("[LifeTimeline] snapshot unavailable: Live2DRenderer missing");
+                return true;
+            }
+            LifeTimelineEntry[] entries = renderer.LifeTimeline;
+            Debug.Log("[LifeTimeline] snapshot count=" + entries.Length + " version=" + renderer.LifeStateSnapshot.Version);
+            foreach (LifeTimelineEntry entry in entries)
+                Debug.Log(string.Format(CultureInfo.InvariantCulture,
+                    "[LifeTimeline] seq={0} type={1} source={2} correlation={3} state={4} reason={5} hash={6} version={7}",
+                    entry.Sequence, entry.EventType, entry.Source, entry.CorrelationId ?? "none",
+                    entry.State, entry.Reason ?? "none", entry.SummaryHash, entry.LifeVersion));
+            return true;
+        }
+
         if (body.Equals("life-state", StringComparison.OrdinalIgnoreCase))
         {
             Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();

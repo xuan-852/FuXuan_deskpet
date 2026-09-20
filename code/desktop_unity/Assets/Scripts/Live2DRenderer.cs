@@ -407,6 +407,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private readonly ExecutionMonitor _executionMonitor = new ExecutionMonitor();
     private readonly EmbodiedEventStore _embodiedEventStore = new EmbodiedEventStore(128);
     private readonly LifeStateStore _lifeStateStore = new LifeStateStore(128);
+    private readonly LifeTimelineStore _lifeTimelineStore = new LifeTimelineStore(128);
     private long _lifeEventSequence;
     private float _lastLifeBodyObservationTime = -1f;
     private ChatManager _lifeChatManager;
@@ -416,6 +417,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     public BodyStateSnapshot BodyStateSnapshot => _bodyStateStore.CaptureSnapshot();
     public ExecutionMonitorSnapshot ExecutionMonitorSnapshot => _executionMonitor.Snapshot;
     public EmbodiedEvent[] EmbodiedEvents => _embodiedEventStore.Snapshot();
+    public LifeTimelineEntry[] LifeTimeline => _lifeTimelineStore.Snapshot();
     public LifeStateSnapshot LifeStateSnapshot => _lifeStateStore.Snapshot;
     private Live2DInputLease _idleInputLease;
     private Live2DInputLease _candidateTestInputLease;
@@ -1529,6 +1531,23 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             AppendLifeEvent(LifeEventType.BodyObserved, "body", reason, 20, 2, null);
         }
         _lifeStateStore.Expire(now);
+        PublishLifeTimeline(now, reason);
+    }
+
+    private void PublishLifeTimeline(DateTime now, string reason)
+    {
+        var snapshot = _lifeStateStore.Snapshot;
+        _lifeTimelineStore.Append(now, "life-state", "snapshot", null,
+            snapshot.ActionStatus.ToString(), reason, snapshot.ActionStatus.ToString(), snapshot.Version);
+        var body = _bodyStateStore.CaptureSnapshot();
+        _lifeTimelineStore.Append(now, "body", "observation", null,
+            body == null ? "Unavailable" : body.Desktop == null ? "Observed" : body.Desktop.Mode.ToString(),
+            reason, body == null ? "none" : body.Version.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            snapshot.Version);
+        var execution = _executionMonitor.Snapshot;
+        _lifeTimelineStore.Append(now, "execution", "health", null,
+            execution.Health.ToString(), execution.LastReason, execution.ObservationCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            snapshot.Version);
     }
 
     private void ObserveLifeActivity(DateTime now)
@@ -1593,6 +1612,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             lease.IsValid ? lease.Owner : "renderer", state, reason, 0,
             lease.IsValid ? lease.Resources : EmbodiedResource.None,
             pose != null ? pose.Version : 0, null));
+        _lifeTimelineStore.Append(DateTime.UtcNow, "motion", kind,
+            lease.IsValid ? lease.RequestId.ToString(System.Globalization.CultureInfo.InvariantCulture) : null,
+            state, reason, kind + ":" + state, _lifeStateStore.Snapshot.Version);
         LifeEventType lifeType = state == "Completed" ? LifeEventType.ActionCompleted
             : state == "Cancelled" || state == "Interrupted" ? LifeEventType.ActionInterrupted
             : state == "Accepted" ? LifeEventType.ActionStarted : LifeEventType.BodyObserved;

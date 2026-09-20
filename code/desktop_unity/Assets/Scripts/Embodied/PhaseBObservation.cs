@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 
 /// <summary>
 /// 无敏感数据的具身观测事件。事件只携带短标识、枚举状态和摘要哈希，绝不承载原文、窗口标题或截图。
@@ -88,6 +90,112 @@ public sealed class EmbodiedEventStore
         var start = (_next - _count + _buffer.Length) % _buffer.Length;
         for (var index = 0; index < _count; index++) result[index] = _buffer[(start + index) % _buffer.Length];
         return result;
+    }
+}
+
+public sealed class LifeTimelineEntry
+{
+    public long Sequence { get; private set; }
+    public DateTime UtcTimestamp { get; private set; }
+    public string Source { get; private set; }
+    public string EventType { get; private set; }
+    public string CorrelationId { get; private set; }
+    public string State { get; private set; }
+    public string Reason { get; private set; }
+    public string SummaryHash { get; private set; }
+    public long LifeVersion { get; private set; }
+    internal string DedupeKey { get; private set; }
+
+    internal LifeTimelineEntry(long sequence, DateTime utcTimestamp, string source,
+        string eventType, string correlationId, string state, string reason,
+        string summaryHash, long lifeVersion, string dedupeKey)
+    {
+        Sequence = sequence;
+        UtcTimestamp = utcTimestamp;
+        Source = source;
+        EventType = eventType;
+        CorrelationId = correlationId;
+        State = state;
+        Reason = reason;
+        SummaryHash = summaryHash;
+        LifeVersion = lifeVersion;
+        DedupeKey = dedupeKey;
+    }
+}
+
+public sealed class LifeTimelineStore
+{
+    private readonly LifeTimelineEntry[] _entries;
+    private int _next;
+    private int _count;
+    private long _sequence;
+    private readonly HashSet<string> _dedupe = new HashSet<string>();
+
+    public LifeTimelineStore(int capacity)
+    {
+        if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+        _entries = new LifeTimelineEntry[capacity];
+    }
+
+    public int Count { get { return _count; } }
+
+    public bool Append(DateTime utcTimestamp, string source, string eventType,
+        string correlationId, string state, string reason, string summary,
+        long lifeVersion)
+    {
+        if (utcTimestamp.Kind != DateTimeKind.Utc) throw new ArgumentException("UTC timestamp required", nameof(utcTimestamp));
+        ValidateToken(source, nameof(source));
+        ValidateToken(eventType, nameof(eventType));
+        ValidateToken(state, nameof(state));
+        ValidateOptionalToken(correlationId, nameof(correlationId));
+        ValidateOptionalToken(reason, nameof(reason));
+        ValidateOptionalToken(summary, nameof(summary));
+        if (lifeVersion < 0) throw new ArgumentOutOfRangeException(nameof(lifeVersion));
+        string key = string.Concat(source, "|", eventType, "|", correlationId ?? "", "|", state, "|", reason ?? "", "|", summary ?? "");
+        if (!_dedupe.Add(key)) return false;
+        string hash = ObservationSummaryHash.Compute(summary);
+        var entry = new LifeTimelineEntry(++_sequence, utcTimestamp, source, eventType,
+            correlationId, state, reason, hash, lifeVersion, key);
+        if (_count == _entries.Length)
+        {
+            var removed = _entries[_next];
+            _dedupe.Remove(removed.DedupeKey);
+        }
+        else _count++;
+        _entries[_next] = entry;
+        _next = (_next + 1) % _entries.Length;
+        return true;
+    }
+
+    private static void ValidateToken(string value, string name)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 96)
+            throw new ArgumentException("short non-sensitive identifier required", name);
+        ValidateOptionalToken(value, name);
+    }
+
+    private static void ValidateOptionalToken(string value, string name)
+    {
+        if (value == null) return;
+        if (value.Length > 256 || value.IndexOf('\n') >= 0 || value.IndexOf('\r') >= 0)
+            throw new ArgumentException("bounded single-line summary required", name);
+    }
+
+    public LifeTimelineEntry[] Snapshot()
+    {
+        var result = new LifeTimelineEntry[_count];
+        var start = (_next - _count + _entries.Length) % _entries.Length;
+        for (var index = 0; index < _count; index++) result[index] = _entries[(start + index) % _entries.Length];
+        return result;
+    }
+}
+
+public static class ObservationSummaryHash
+{
+    public static string Compute(string value)
+    {
+        using (var sha256 = SHA256.Create())
+            return BitConverter.ToString(sha256.ComputeHash(Encoding.UTF8.GetBytes(value ?? ""))).Replace("-", "").ToLowerInvariant();
     }
 }
 
