@@ -1345,11 +1345,13 @@ public class DesktopPet : MonoBehaviour
     {
         if (pause)
         {
+            ReleasePhysicsInputLease("application-paused");
+            CancelInvoke(nameof(Resume));
             Debug.Log("[DesktopPet] ⏸ 系统挂起（睡眠），暂停活动");
             isPaused = true;
             // 记下暂停时间戳，唤醒后根据耗时判断是否真的睡了
-            PlayerPrefs.SetString("_suspend_time", DateTime.Now.ToString("O"));
-            PlayerPrefs.Save();
+            SafePrefsSetString("_suspend_time", DateTime.Now.ToString("O"));
+            SafePrefsSave();
         }
         else
         {
@@ -1402,6 +1404,8 @@ public class DesktopPet : MonoBehaviour
     {
         if (_shutdownStarted) return;
         _shutdownStarted = true;
+        CancelInvoke(nameof(Resume));
+        isPaused = true;
         ReleasePhysicsInputLease("shutdown-" + source);
         Debug.Log($"[DesktopPet] 开始退出清理（来源: {source}）");
 
@@ -1462,7 +1466,10 @@ public class DesktopPet : MonoBehaviour
     /// </summary>
     public void Pause(float durationSeconds)
     {
+        if (_shutdownStarted) return;
+        CancelInvoke(nameof(Resume));
         isPaused = true;
+        ReleasePhysicsInputLease("paused");
         if (durationSeconds > 0)
         {
             Invoke(nameof(Resume), durationSeconds);
@@ -1474,6 +1481,7 @@ public class DesktopPet : MonoBehaviour
     /// </summary>
     public void Resume()
     {
+        if (_shutdownStarted) return;
         isPaused = false;
         if (onGround)
         {

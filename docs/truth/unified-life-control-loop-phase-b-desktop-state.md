@@ -14,7 +14,7 @@
 ## 验证证据
 
 - `build.ps1 -Quick`：通过，输出 `[OK] Build succeeded!`。
-- `build.ps1 -RunTests`：新鲜结果为 `total=287`、`passed=283`、`failed=3`、`skipped=1`；LifeState 迟到中断断言已通过，剩余 3 个失败均为本机缺少 `es.exe` 的 Everything 环境依赖，不能记为完整 EditMode 全绿。
+- `build.ps1 -RunTests`：本轮新鲜结果为 `failed=0`；Everything 集成测试在本机缺少 `es.exe`/IPC 时明确 `skipped`，其余 EditMode 测试通过。
 - 使用全新隔离输出目录 `Build/phaseb-validation-20260921-011750/DesktopPet.exe` 完成 Player 生命周期验收。初始状态为 `Idle`（version 104）；强制行走后为 `Walking`、`velocityX=1`（version 141）；`@@sim:pause:0` 后为 `Paused`、`paused=true`（version 166），暂停期间版本冻结；`@@sim:resume` 后恢复 `Idle`、`paused=false`（version 168）。
 - 同一 Player 日志观察到 walking 租约活动时 `desktop-physics` 被拒绝，但 PhysicsRoot 仍继续推进：`Rejected DesktopPhysics/physics-update: active=Walking/walking-state#109`，随后仍有 `DesktopState ... mode=Walking ... velocity=(1,0)`。
 - 退出前查询保留了脱敏的 `life-state`/`life-timeline` marker；退出日志出现 `[EmbodiedSafeRecovery] recovered: test-exit` 与 Renderer test-exit cleanup，且未出现 `NullReferenceException`、`AssertionException` 或 event rejected。
@@ -23,5 +23,5 @@
 
 ## 明确未完成
 
-- 仍需单独设计并验证物理命令、拖拽优先级、落地恢复和与认证动作的双向仲裁；renderer disable/destroy/rebuild、overlay RT/camera rebuild、Windows application pause callback 顺序、Windows 关机/注销、真实 OS 鼠标拖拽、完整认证动作双向 handoff 仍未完成。
+- 仍需单独设计并验证物理命令、拖拽优先级、落地恢复和与认证动作的双向仲裁；renderer disable/destroy/rebuild、overlay RT/camera rebuild、Windows application pause callback 顺序、Windows 关机/注销、真实 OS 鼠标拖拽、完整认证动作双向 handoff 仍未完成。代码层拖拽租约和各 teardown 清理已补齐，但尚无上述边界的独立 Player 证据。
 - `drag-response` 仍未迁移，资源级并行或抢占仍未引入；不能因本阶段步行/物理租约和快照证据宣称“身体控制已统一”。

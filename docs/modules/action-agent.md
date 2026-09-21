@@ -59,8 +59,9 @@
 
 2026-09-21 统一控制闭环 Phase B-4 步行与桌面物理输入租约边界：`walk-pose` 与 `desktop-physics` 已登记为 `InputLeaseOnly`；`Live2DRenderer` 通过共享桌面对象上的全局单租约协调器维持步行期间及停止淡出期间的所有权，`DesktopPet` 为 PhysicsRoot 步进登记短生命周期物理租约，冲突时仍继续原有物理步进。新鲜隔离 Player 已验证 `Walking` 状态、暂停期间快照版本冻结、恢复，以及 `desktop-physics` 被 walking 拒绝时 PhysicsRoot 仍推进；test-exit 也出现安全恢复和清理日志。新增协调器测试验证步行/物理元数据、互斥、stale release、显式停止后的更高 `requestId` 重取得和 teardown；不迁移 `drag-response`，不开放原始参数，不引入资源级并行或抢占。
 
-2026-09-21 认证动作 action handoff 验收：新鲜隔离 Player 在 walking 状态拒绝 `external_Hiyori_Hiyori_m06`，停止 walking 后同一实例恢复静止并成功取得 `certified-motion` 准入，动作自然完成后姿态、准入、租约和 cleanup 均收束；独立 test-exit 驱动验证动作中取消与安全恢复。该证据不覆盖认证动作 Player timeout、真实拖拽 handoff、Renderer 重建或 `drag-response` 迁移。
+2026-09-21 认证动作 action handoff 验收：新鲜隔离 Player 在 walking 状态拒绝 `external_Hiyori_Hiyori_m06`，停止 walking 后同一实例恢复静止并成功取得 `certified-motion` 准入，动作自然完成后姿态、准入、租约和 cleanup 均收束；独立 test-exit 驱动验证动作中取消与安全恢复。该证据不覆盖认证动作 Player timeout、真实拖拽 handoff、Renderer 重建或拖拽租约的真实 OS 输入验收。
 
+2026-09-21 拖拽与桌面物理生命周期收束：`drag-response` 已登记为 `InputLeaseOnly`，`DragHandler` 在正常释放、失焦、禁用、销毁和退出路径释放租约，`Live2DRenderer.SafeRecoverExternalActions` 也主动调用拖拽恢复入口；`DesktopPet` 在系统挂起和重复 Pause 时释放物理租约、取消旧 Resume 调用，并在 shutdown 后拒绝延迟 Resume。新鲜隔离 Player 的 idle lease、desktop physics、模拟拖拽和认证 handoff 均通过；真实 OS 鼠标、Renderer 重建、Windows 关机/注销、资源级并行和完整 PoseState 仍未验收。
 - 2026-09-20 生命状态 Attention 只读摘要：`@@sim:life-state` 仅输出 `AttentionTarget` 与其来源/置信度/原因的脱敏字段；Attention 仍只是 LifeState 的字符串目标和 metadata，不包含坐标、强度或主动策略，也不获得 Live2D 写入权。EditMode TTL 边界与当前源码隔离 Player 查询均通过。详见 [统一生命控制闭环 Phase A](../truth/unified-life-control-loop-phase-a.md)。
 
 ### 2.1 ActionAgent 文件清单（15 个 .cs）

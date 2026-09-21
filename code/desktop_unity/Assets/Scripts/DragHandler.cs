@@ -497,6 +497,13 @@ public class DragHandler : MonoBehaviour
         _velocityFrames = 0;
     }
 
+    internal void RecoverDragResponse(string reason)
+    {
+        AbortPointerInteraction();
+        if (_window != null)
+            _window.SetClickThrough(true);
+    }
+
     private void OnDisable()
     {
         AbortPointerInteraction();

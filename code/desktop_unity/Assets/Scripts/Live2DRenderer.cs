@@ -3766,6 +3766,15 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] certified cleanup failed: " + error.Message); }
         try { CleanupExternalInputState(reason); }
         catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] external input cleanup failed: " + error.Message); }
+        try
+        {
+            if (_dragHandler != null)
+                _dragHandler.RecoverDragResponse("renderer-" + reason);
+        }
+        catch (System.Exception error)
+        {
+            Debug.LogError("[EmbodiedSafeRecovery] drag cleanup failed: " + error.Message);
+        }
         finally
         {
             CancelInvoke(nameof(ReleaseActionLock));

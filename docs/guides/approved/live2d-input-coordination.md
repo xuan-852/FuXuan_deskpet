@@ -40,7 +40,7 @@ Chat / Tool / Idle-compatible caller
 状态机：`Idle -> Leased -> Executing -> Released`；拒绝保持 `Idle`，超时或销毁进入 `SafeRecovery` 后释放。表情替换或动作开始前，必须先以零淡出停止已有表情并释放其租约，不能让两段淡出/关键帧并写。
 
 - **C-INPUT-01**：禁止新增绕过协调器的外部 `ActionController.PlayAction/PlayExpression`、`MotionGenerator` 或直接 Cubism 写入入口。
-- **C-INPUT-02**：`Live2DRenderer` 的行走与桌面物理已接入全局单租约，但仍是 `InputLeaseOnly` 的内部基线；拖拽仍待迁移。它们的最终参数赋值必须经 `ParameterCommitBridge`，不等同于已认证原语，修改其行为规则须另建任务包。
+- **C-INPUT-02**：`Live2DRenderer` 的行走与桌面物理已接入全局单租约，拖拽响应也已登记为 `InputLeaseOnly` 并覆盖 DragHandler/Renderer teardown 清理；它们仍是内部基线，不等同于认证原语。真实 OS 鼠标、Renderer 重建、资源级并行和完整身体动作所有权仍需专项验收，修改行为规则须另建任务包。
 - **C-INPUT-03**：旧预设进入 `LegacyAction` 独占租约；不得与生成动作或表情并行。
 - **C-INPUT-04**：取消、超时和异常退出不得让桌宠永久暂停或遗留输入锁；必须恢复现有安全姿态/行走链。
 - **C-INPUT-05**：所有测试用 `FU_XUAN_DATA` 与 `.test_mode`，不得调用云端或污染生产记忆。
