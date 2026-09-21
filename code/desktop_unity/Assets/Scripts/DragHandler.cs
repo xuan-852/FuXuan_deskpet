@@ -35,6 +35,9 @@ public class DragHandler : MonoBehaviour
     private DesktopPet _pet;
     private WindowOverlay _window;
     private IPetRenderer _renderer;
+    private Live2DInputCoordinatorHost _inputCoordinatorHost;
+    private Live2DInputLease _dragInputLease;
+    private const string DragInputOwner = "drag-response";
 
     [Header("拖拽设置")]
     [Tooltip("触发拖拽的最小移动像素")]
@@ -94,6 +97,7 @@ public class DragHandler : MonoBehaviour
         if (_window == null)
             _window = FindObjectOfType<WindowOverlay>();
         _renderer = GetComponent<IPetRenderer>();
+        _inputCoordinatorHost = Live2DInputCoordinatorHost.GetOrCreate(gameObject);
 
         _ballPanel = GetComponent<BallPanel>();
         if (_ballPanel == null) _ballPanel = FindObjectOfType<BallPanel>();
@@ -383,6 +387,15 @@ public class DragHandler : MonoBehaviour
         Vector2 deltaFromStart = mousePos - _dragStartMouse;
         if (!_isDragging && deltaFromStart.magnitude >= dragThreshold)
         {
+            if (_inputCoordinatorHost == null
+                || !_inputCoordinatorHost.TryBeginDragResponse(
+                    DragInputOwner, out _dragInputLease))
+            {
+                Debug.Log("[DragHandler] 拖动已拒绝：drag-response 输入租约被占用");
+                _isClickCandidate = false;
+                return;
+            }
+
             _isDragging = true;
             _pet.isDragging = true;
             if (_renderer != null) _renderer.ShowDragPose();
@@ -421,7 +434,8 @@ public class DragHandler : MonoBehaviour
     {
         if (_isDragging)
         {
-            _pet.isDragging = false;
+            if (_pet != null)
+                _pet.isDragging = false;
             if (applyThrow)
             {
                 Vector2 avgVelocity = _velocityFrames > 0
@@ -444,8 +458,16 @@ public class DragHandler : MonoBehaviour
 
         _isDragging = false;
         _isClickCandidate = false;
+        ReleaseDragInputLease("drag-release");
         _velocityBuffer = Vector2.zero;
         _velocityFrames = 0;
+    }
+
+    private void ReleaseDragInputLease(string reason)
+    {
+        if (!_dragInputLease.IsValid) return;
+        _inputCoordinatorHost?.ReleaseDragResponse(_dragInputLease, reason);
+        _dragInputLease = default;
     }
 
     private void ApplyClick(Vector2 screenPos, bool simulated)
@@ -459,11 +481,35 @@ public class DragHandler : MonoBehaviour
 
     private void AbortPointerInteraction()
     {
-        _pet.isDragging = false;
+        // Stop the simulated producer before clearing state or its next frame can
+        // write through after the drag lease has been released.
+        if (_simulatedDragRoutine != null)
+        {
+            StopCoroutine(_simulatedDragRoutine);
+            _simulatedDragRoutine = null;
+        }
+        if (_pet != null)
+            _pet.isDragging = false;
         _isDragging = false;
         _isClickCandidate = false;
+        ReleaseDragInputLease("drag-aborted");
         _velocityBuffer = Vector2.zero;
         _velocityFrames = 0;
+    }
+
+    private void OnDisable()
+    {
+        AbortPointerInteraction();
+    }
+
+    private void OnDestroy()
+    {
+        AbortPointerInteraction();
+    }
+
+    private void OnApplicationQuit()
+    {
+        AbortPointerInteraction();
     }
 
     private void OnApplicationFocus(bool hasFocus)

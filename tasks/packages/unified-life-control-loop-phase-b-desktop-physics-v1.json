@@ -1,0 +1,41 @@
+{
+  "packageId": "unified-life-control-loop-phase-b-desktop-physics-v1",
+  "primaryGuide": "docs/guides/approved/unified-life-control-loop.md",
+  "requirementIds": ["FR-ULC-02", "C-ULC-01", "C-ULC-02"],
+  "acceptanceObjective": "Migrate the DesktopPet PhysicsRoot writer into the global single-lease boundary without changing gravity, landing, bounds, pause, or action-lock behavior; preserve read-only DesktopBodySnapshot observation and prove recovery on cancellation and teardown.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/",
+    "code/desktop_unity/Assets/Scripts/DesktopPet.cs",
+    "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "docs/truth/",
+    "docs/modules/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "docs/decisions/",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/openclaw_bridge.js",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/"
+  ],
+  "constraints": [
+    "Keep one global active input lease; do not add resource-level parallelism or preemption.",
+    "Do not expose raw Live2D Param* values or a new LLM/tool entry point.",
+    "PhysicsRoot remains distinct from Live2D BodyRoot parameters and DesktopBodySnapshot remains read-only.",
+    "Preserve physics-before-Cubism-Physics and visual-after-Physics ordering where the writer crosses into renderer behavior.",
+    "Cancellation, action handoff, pause/resume, renderer disable, application quit, and destruction must release or safely recover the owner."
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": [
+    "docs/truth/unified-life-control-loop-phase-b-desktop-state.md",
+    "docs/truth/unified-life-control-loop-phase-b-input-ownership.md"
+  ],
+  "riskLevel": "high",
+  "externalEvidence": false,
+  "notes": "Follow-up design package only. Do not implement this migration as part of the walking lease task. Use isolated FU_XUAN_DATA/.test_mode evidence and report unrelated environment failures separately."
+}

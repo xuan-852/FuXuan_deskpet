@@ -394,13 +394,15 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     public Live2DParameterMapper Mapper => _mapper;
     // Baseline renderer/physics writes remain legacy internals until the
     // parameter commit bridge can migrate them as one verified unit.
-    private readonly Live2DInputCoordinator _inputCoordinator = new Live2DInputCoordinator();
+    private Live2DInputCoordinator _inputCoordinator;
+    private Live2DInputCoordinatorHost _inputCoordinatorHost;
     private ParameterCommitBridge _parameterCommitBridge;
     private Live2DInputLease _expressionInputLease;
     private int _expressionGeneration;
     private int _expressionReleaseGeneration;
     private float _expressionStartedAt;
     private Live2DInputLease _actionInputLease;
+    private Live2DInputLease _walkingInputLease;
 
     // 只读生产观测：进程内、有界事件，不参与参数决策或恢复。
     private readonly BodyStateStore _bodyStateStore = new BodyStateStore();
@@ -654,6 +656,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         Debug.Log("[Live2DRenderer] Start() 被调用了");
         _pet = GetComponent<DesktopPet>();
+        _inputCoordinatorHost = Live2DInputCoordinatorHost.GetOrCreate(gameObject);
+        _inputCoordinator = _inputCoordinatorHost.Coordinator;
         _dragHandler = GetComponent<DragHandler>();
         _chatBubble = GetComponent<ChatBubble>();
         if (_chatBubble == null) _chatBubble = FindObjectOfType<ChatBubble>();
@@ -940,6 +944,43 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
     }
 
+    private bool UpdateWalkingInputLease(bool walking, string reason)
+    {
+        if (walking && !_walkingInputLease.IsValid)
+        {
+            if (!_inputCoordinator.TryBegin(Live2DInputKind.Walking,
+                "walking-state", out _walkingInputLease))
+                return false;
+        }
+
+        if (!walking && _walkingInputLease.IsValid
+            && !_wasWalkingLastFrame && _walkBlendRemaining <= 0f)
+        {
+            _inputCoordinator.Release(_walkingInputLease, reason);
+            _walkingInputLease = default;
+        }
+
+        return _walkingInputLease.IsValid;
+    }
+
+    private void ReleaseWalkingInputLease(string reason)
+    {
+        if (!_walkingInputLease.IsValid) return;
+        if (_inputCoordinator != null)
+            _inputCoordinator.Release(_walkingInputLease, reason);
+        _walkingInputLease = default;
+    }
+
+    private void ReleaseAllInputLeases(string reason)
+    {
+        ReleaseWalkingInputLease(reason);
+        ReleaseExpressionInputLease(_expressionGeneration, reason);
+        if (_actionInputLease.IsValid)
+            ReleaseActionLock(reason);
+        if (_inputCoordinatorHost != null)
+            _inputCoordinatorHost.ReleaseAllLeases(reason);
+    }
+
     private void Update()
     {
         if (!_loaded || _cubismModel == null) return;
@@ -968,6 +1009,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         // ★ 拖拽中不累积走路相位、不走体态逻辑（由 UpdateDragStruggle 接管身体参数给物理）
         if (_pet != null && _pet.isDragging)
         {
+            ReleaseWalkingInputLease("drag-started");
             _walkPhase = 0f;
             _walkBounceOffset = 0f;
             UpdateModelPosition();
@@ -1003,8 +1045,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         // ★ 体态提前给物理用：Physics 在 CubismUpdateController.LateUpdate(0)
         //   中读取 ParamBodyAngleX/Y/Z 来驱动衣服。我们在 Update() 中先设好
         //   走路的转体/前倾/低头，确保物理拿到正确的体态输入。
-        bool isWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
-            && !_pet.isPaused && !_actionLocked && !_aiControlLocked);
+        bool requestedWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
+            && !_pet.isPaused && !_actionLocked && !_aiControlLocked
+            && !_pet.isDragging);
+        bool walkingLeaseActive = UpdateWalkingInputLease(requestedWalking,
+            requestedWalking ? "walking-active" : "walking-stopped");
+        bool isWalking = requestedWalking && walkingLeaseActive;
         if (!isWalking && !_aiControlLocked && _wasWalkingLastFrame && _walkBlendRemaining <= 0f)
             _walkBlendRemaining = IDLE_BLEND_DURATION;
         if (isWalking)
@@ -1121,8 +1167,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         // ★ 走路/空闲统一在 LateUpdate 中设置参数
         // 此时 _walkPhase 已在 Update() 中更新完毕，相位准确
-        bool isWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
-            && !_pet.isPaused && !_actionLocked && !_aiControlLocked);
+        bool requestedWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
+            && !_pet.isPaused && !_actionLocked && !_aiControlLocked
+            && !_pet.isDragging);
+        bool walkingLeaseActive = UpdateWalkingInputLease(requestedWalking,
+            requestedWalking ? "walking-active" : "walking-stopped");
+        bool isWalking = requestedWalking && walkingLeaseActive;
 
         // Locomotion takes priority over an automatic idle action. Forced
         // actions are protected by _actionLocked and are physically paused.
@@ -1136,11 +1186,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         // 表现为身体和后发丝突然卡一下。
         if (_aiControlLocked)
         {
+            ReleaseWalkingInputLease("ai-control");
             _walkBlendRemaining = 0f;
             _walkFadeInRemaining = 0f;
             _wasWalkingLastFrame = false;
         }
-        else if (isWalking)
+        else if (isWalking && walkingLeaseActive)
         {
             if (!_wasWalkingLastFrame && !_actionLocked)
             {
@@ -1869,8 +1920,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// </summary>
     private void UpdateIdleAnimation()
     {
-        bool isWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
-            && !_pet.isPaused && !_actionLocked && !_aiControlLocked);
+        bool requestedWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
+            && !_pet.isPaused && !_actionLocked && !_aiControlLocked
+            && !_pet.isDragging);
+        bool walkingLeaseActive = UpdateWalkingInputLease(requestedWalking,
+            requestedWalking ? "walking-active" : "walking-stopped");
+        bool isWalking = requestedWalking && walkingLeaseActive;
 
         // === 呼吸（为物理提供驱动信号，使衣服手臂自然摆动）===
         float breath = (Mathf.PerlinNoise(_breathPhase, 0f) - 0.5f) * BREATH_AMPLITUDE;
@@ -3650,6 +3705,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         SafeRecoverExternalActions("before-test-exit");
         StopExpressionForInputTransition();
+        // SafeRecoverExternalActions releases only renderer-owned leases. The
+        // test-exit path is the explicit final process boundary for the shared arbiter.
         _inputCoordinator.ReleaseAll("test-exit-fallback");
         Debug.Log("[EmbodiedSafeRecovery] recovered: test-exit");
         Debug.Log("[Live2DRenderer] test-exit input cleanup completed");
@@ -3719,6 +3776,14 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
                 _inputCoordinator.Release(_actionInputLease, "safe-recovery-" + reason);
                 _actionInputLease = default;
             }
+            try
+            {
+                ReleaseWalkingInputLease("safe-recovery-" + reason);
+            }
+            catch (System.Exception error)
+            {
+                Debug.LogError("[EmbodiedSafeRecovery] walking lease cleanup failed: " + error.Message);
+            }
             if (_pet != null && _pet.isPaused)
                 _pet.Resume();
 
@@ -3787,7 +3852,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _expressionGeneration++;
         _expressionReleaseGeneration = 0;
         _expressionInputLease = default;
-        _inputCoordinator.ReleaseAll(reason);
+        ReleaseWalkingInputLease("external-input-cleanup-" + reason);
     }
 
     /// <summary>

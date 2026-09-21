@@ -9,7 +9,7 @@
 - `EmbodiedActionRequest` 现带有只读审计用途的 `Source` 与 `CorrelationId`；`EmbodiedRuntimeAdmission` 为认证生产路径填入 `certified-runtime` 和每次请求的关联 ID。它们不提供参数写入接口。
 - `EmbodiedCoordinator` 的拒绝分支均写入 `Rejected` 和 `TerminalReason`；完成、取消、超时和抢占后的重复收束保持幂等并只释放所属资源。
 - `EmbodiedPoseSnapshot` 现输出版本、活动请求 ID、来源、关联 ID、技能、资源、终态和终态原因；`EmbodiedPoseState` 在动作开始清除旧终态，在收束后清除活动所有者并保留终态原因。恢复回调异常时会继续尝试其他参数，失败项保留供重试。
-- `BodyWriterInventory` 明确登记九类生产写入路径及其当前控制等级：`certified-motion` 是 `CertifiedCoordinator`；表达、旧动作、生成动作、空闲和鼠标视线是 `InputLeaseOnly`；步行、桌面物理和拖拽响应仍是 `LegacyUnmanaged`。该清册是迁移与审计依据，**不是**参数白名单、能力注册表或“已经统一控制”的声明。
+- `BodyWriterInventory` 明确登记九类生产写入路径及其当前控制等级：`certified-motion` 是 `CertifiedCoordinator`；表达、旧动作、生成动作、空闲、鼠标视线、步行和桌面物理是 `InputLeaseOnly`；拖拽响应仍是 `LegacyUnmanaged`。该清册是迁移与审计依据，**不是**参数白名单、能力注册表或“已经统一控制”的声明。
 - `EmbodiedRecoveryTests` 覆盖认证快照的所有者/关联 ID/终态原因，以及清册中“认证受控”和“待迁移”路径的区分。
 - `PhaseBObservation.cs` 新增进程内有界 `EmbodiedEventStore`、只读组合 `BodyStateSnapshot/BodyStateStore` 和只读 `ExecutionMonitor`；事件字段只允许短单行标识与摘要哈希，不写磁盘、不联网、不保存截图、原文或窗口信息。姿态层与桌面 PhysicsRoot 状态仍保持分层。
 - `LifeState.cs` 新增 LifeState v1 影子 reducer：以有界 `LifeEvent` 汇总用户在场/活动、动作生命周期、身体观测和最小情绪摘要，生成带版本、TTL、来源、置信度和原因的只读快照；事件仅进程内保存，不获得 Live2D 写入权。认证动作阶段使用关联键与阶段类型组合去重，允许合法生命周期链并拒绝重复终态；`@@sim:life-state` 输出 LifeState、BodyState 和 ExecutionMonitor 的脱敏健康摘要，不触发动作。Attention 当前仅复用快照中的字符串目标与 `LifeSignalMetadata`，不构成完整 `AttentionState`，不包含坐标、强度或主动策略。

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using NUnit.Framework;
 
 public class LifeStateTests
@@ -92,7 +92,7 @@ public class LifeStateTests
         Assert.IsTrue(completed.Append(Event("start", LifeEventType.ActionStarted, now, "wave", "completed-1"), now));
         Assert.IsTrue(completed.Append(Event("done", LifeEventType.ActionCompleted,
             now.AddSeconds(1), "completed", "completed-1"), now.AddSeconds(1)));
-        Assert.IsTrue(completed.Append(Event("interrupt", LifeEventType.ActionInterrupted,
+        Assert.IsFalse(completed.Append(Event("interrupt", LifeEventType.ActionInterrupted,
             now.AddSeconds(2), "late-interrupt", "completed-1"), now.AddSeconds(2)));
         Assert.AreEqual(LifeActionStatus.Completed, completed.Snapshot.ActionStatus);
         Assert.AreEqual("completed", completed.Snapshot.LastActionResult);

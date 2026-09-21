@@ -66,8 +66,42 @@ public class PhaseBObservationTests
         Assert.IsTrue(first.RendererReady);
         Assert.IsFalse(second.RendererReady);
         Assert.AreEqual(DesktopBodyMode.Walking, first.Desktop.Mode);
+        Assert.AreEqual(10, first.Desktop.X);
+        Assert.AreEqual(20, first.Desktop.Y);
+        Assert.AreEqual(1, first.Desktop.VelocityX);
+        Assert.IsTrue(first.Desktop.OnGround);
         first.Pose.PendingParameterIds[0] = "mutated";
         Assert.AreEqual("ParamA", store.CaptureSnapshot().Pose.PendingParameterIds[0]);
+    }
+
+    [Test] public void 桌面快照边界不暴露租约所有者或Cubism参数值()
+    {
+        var snapshotType = typeof(DesktopBodySnapshot);
+        Assert.IsNull(snapshotType.GetProperty("LeaseId"));
+        Assert.IsNull(snapshotType.GetProperty("Owner"));
+        Assert.IsNull(snapshotType.GetProperty("Param94"));
+        Assert.IsNull(snapshotType.GetProperty("Parameters"));
+        Assert.IsNull(snapshotType.GetProperty("Mapper"));
+        Assert.IsNull(snapshotType.GetProperty("CubismModel"));
+
+        var desktop = new DesktopBodyState();
+        desktop.Update(1, 2, 0, 0, true, false, true, false, "StopTime");
+        var paused = desktop.CaptureSnapshot();
+        Assert.AreEqual(DesktopBodyMode.Paused, paused.Mode);
+        Assert.IsTrue(paused.IsPaused);
+        Assert.AreEqual("StopTime", paused.GroundTask);
+    }
+
+    [Test] public void 动作移动锁优先于暂停且快照只包含桌面状态()
+    {
+        var desktop = new DesktopBodyState();
+        desktop.Update(1, 2, 1, 0, true, false, true, true, "StopTime");
+        var snapshot = desktop.CaptureSnapshot();
+        Assert.AreEqual(DesktopBodyMode.ActionMovementLocked, snapshot.Mode);
+        Assert.IsTrue(snapshot.IsPaused);
+        Assert.IsTrue(snapshot.IsActionMovementLocked);
+        Assert.AreEqual(1, snapshot.X);
+        Assert.AreEqual(2, snapshot.Y);
     }
 
     [Test] public void 执行监测暴露健康字段并累计故障()

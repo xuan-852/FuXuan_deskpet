@@ -1,8 +1,8 @@
 # 统一生命控制闭环 Phase B-4：桌面身体状态边界
 
-> **证据日期**：2026-09-18  
+> **证据日期**：2026-09-21
 > **任务包**：`unified-life-control-loop-phase-b-desktop-state-v1`  
-> **状态**：已建立 PhysicsRoot 的只读快照；尚未把物理、行走或拖拽迁入认证动作协调器。
+> **状态**：已建立 PhysicsRoot 的只读快照；步行、桌面物理和真实 DragHandler 模拟拖拽已完成隔离 Player 验证，并保持与认证动作的单一全局租约边界；资源级并行和抢占仍未引入。
 
 ## 已验证事实
 
@@ -13,13 +13,15 @@
 
 ## 验证证据
 
-- `build.ps1 -Quick`：测试执行至结果保存，日志中无 C# 编译错误。
-- `build.ps1 -RunTests`：最新 EditMode 结果为 `total=235`、`passed=234`、`failed=0`、`ignored=1`。
-- `EmbodiedRecoveryTests.桌面身体快照与Live2D参数状态分离且模式可复核` 覆盖位置/速度/任务快照、拖拽优先级和动作移动锁优先级。
-- 第三阶段隔离 Player 使用当前源码构建的 `.artifacts/player-timeline/DesktopPet.exe` 验证了 `@@sim:life-timeline` 查询边界：时间线快照为 4 条有序记录，查询后各观测计数未回退，临时数据根目录退出后清理，生产记忆文件未变化。
+- `build.ps1 -Quick`：通过，输出 `[OK] Build succeeded!`。
+- `build.ps1 -RunTests`：新鲜结果为 `total=287`、`passed=283`、`failed=3`、`skipped=1`；LifeState 迟到中断断言已通过，剩余 3 个失败均为本机缺少 `es.exe` 的 Everything 环境依赖，不能记为完整 EditMode 全绿。
+- 使用全新隔离输出目录 `Build/phaseb-validation-20260921-011750/DesktopPet.exe` 完成 Player 生命周期验收。初始状态为 `Idle`（version 104）；强制行走后为 `Walking`、`velocityX=1`（version 141）；`@@sim:pause:0` 后为 `Paused`、`paused=true`（version 166），暂停期间版本冻结；`@@sim:resume` 后恢复 `Idle`、`paused=false`（version 168）。
+- 同一 Player 日志观察到 walking 租约活动时 `desktop-physics` 被拒绝，但 PhysicsRoot 仍继续推进：`Rejected DesktopPhysics/physics-update: active=Walking/walking-state#109`，随后仍有 `DesktopState ... mode=Walking ... velocity=(1,0)`。
+- 退出前查询保留了脱敏的 `life-state`/`life-timeline` marker；退出日志出现 `[EmbodiedSafeRecovery] recovered: test-exit` 与 Renderer test-exit cleanup，且未出现 `NullReferenceException`、`AssertionException` 或 event rejected。
+- 真实 `DragHandler` 隔离 Player 驱动完成模拟拖拽的 admission、拖拽中状态、generated-motion 冲突拒绝、抛掷速度、落地和 walking handoff；退出日志出现 test-exit safe recovery，未发现异常日志。该证据使用测试模式 `@@sim:drag`，不等同于真实 OS 鼠标输入。
+- 新鲜隔离 Player 完成同实例 action handoff：walking 中认证动作被稳定静止门禁拒绝，发送 `@@sim:walk:stop` 后恢复静止并成功启动 `external_Hiyori_Hiyori_m06`；动作自然完成后 pose、准入、租约和 cleanup 均收束。独立退出驱动验证动作中 test-exit 的取消与安全恢复；临时 Player 构建目录不固化在 truth 文档中。
 
 ## 明确未完成
 
-- `walk-pose`、`desktop-physics` 与 `drag-response` 在 `BodyWriterInventory` 中仍是 `LegacyUnmanaged`；它们尚未取得输入租约，也没有资源级并行仲裁。
-- 快照目前是观察边界而非命令入口。拖拽位置写入、地面任务和物理步进仍由既有 `DesktopPet` / `DragHandler` 路径执行。
-- 还需单独设计并验证物理命令、拖拽优先级、落地恢复和与认证动作的双向仲裁，不能因本阶段快照存在而宣称“身体控制已统一”。
+- 仍需单独设计并验证物理命令、拖拽优先级、落地恢复和与认证动作的双向仲裁；renderer disable/destroy/rebuild、overlay RT/camera rebuild、Windows application pause callback 顺序、Windows 关机/注销、真实 OS 鼠标拖拽、完整认证动作双向 handoff 仍未完成。
+- `drag-response` 仍未迁移，资源级并行或抢占仍未引入；不能因本阶段步行/物理租约和快照证据宣称“身体控制已统一”。

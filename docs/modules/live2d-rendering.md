@@ -215,12 +215,14 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 - `Assets/Scripts/Embodied/Live2DInputCoordinator.cs` 为表情、旧预设动作与 AI 生成动作分配递增的 `Live2DInputLease`；当前采用安全优先的全局单租约，活动租约未释放时第二个外部输入必定拒绝。
 - `Live2DRenderer.StopAllActionsAndExpressions()` 是 Renderer 层的统一停止网关：停止表情时同步处理 expression lease、generation、延迟释放与模型刷新；停止旧动作时同步处理 action lease、移动锁和恢复。`StopActionTool`、生成动作前置收束、自检路径和测试命令经由该网关；生成动作租约仍由其调用方拥有和释放。`PlayAction()` 先申请旧动作租约，申请失败不会停止当前表情。
 - `Live2DRenderer.PlayExpression()`、`PlayAction()`、`GenerateMotionTool`、`MotionAgent` 的自主/组合/表情动作以及 `VisionMotionVerifier` 已接入该协调器。`GenerateMotionTool` 先申请 `GeneratedMotion` 租约，再通过 Renderer 网关以零淡出收束表情；申请被拒绝时保留当前表情及其租约。成功取得生成动作租约后的 Renderer 交接、AI 锁和多帧播放均位于同一 `try/finally` 释放边界；动作正常完成、超时以及 Renderer 销毁会释放租约。非当前 `requestId` 不能释放活动租约。该次隔离 Player 证据覆盖语义接管与恢复顺序，不等同于生成动作语义或自然度认证。
-- 本轮没有迁移 `Live2DRenderer` 自身的行走、掉落、拖拽、物理与空闲逐帧基线写入；它们仍是未经外部租约仲裁的内部基线。其最终参数提交现已经 `ParameterCommitBridge`，但这不等同于全模型已经完成动作资源级仲裁或唯一语义动作所有者。
-- 已新增 `Live2DInputCoordinatorTests` 覆盖互斥、错误释放、防重用与 `ReleaseAll`；2026-09-16 隔离 `build.ps1 -RunTests` 通过（failed=0）。实施边界与后续桥接要求见 `docs/guides/approved/live2d-input-coordination.md`。
+- 本轮已将行走输入的生命周期接入 `Live2DInputCoordinator`：`walk-pose` 是 `InputLeaseOnly`，步行租约在停止淡出期间保持，淡出完成后释放；拖拽开始、AI 接管、SafeRecovery 和外部输入清理会主动释放。`UpdateWalkAnimation` 与 `ApplyWalkBodyPose` 仍是渲染器内部硬编码姿态写入，最终参数提交经 `ParameterCommitBridge`，不等同于完成资源级仲裁或统一身体动作所有者。
+- `desktop-physics` 已通过同一桌面对象上的 `Live2DInputCoordinatorHost` 接入全局单租约：`DesktopPet` 在 pause/drag/action-lock gate 后尝试取得 `desktop-physics`，物理步进完成后释放；walking 或其他输入持有租约时，PhysicsRoot 仍执行原有 `StepPet()`，因此不会因 Live2D 渲染器状态阻塞桌面物理。新鲜隔离 Player 已观察到 `Rejected DesktopPhysics/physics-update: active=Walking/walking-state#109` 后仍持续 `DesktopState ... mode=Walking ... velocity=(1,0)`，并验证 `Idle → Walking → Paused → Idle`、暂停期间快照版本冻结和 test-exit 安全恢复。该边界不暴露 raw `Param*`，不引入资源级并行或抢占；`drag-response` 仍未迁移。
+- `build.ps1 -Quick`：通过，`[OK] Build succeeded!`。
+- `build.ps1 -RunTests`：本轮完整 EditMode 结果为 `total=284`、`passed=279`、`failed=4`、`skipped=1`；失败为既有 `LifeStateTests.已完成动作不会被普通中断覆盖且恢复失败优先` 与 3 个依赖 `es.exe` 的 Everything 测试，未修改无关测试或环境配置。
 
 - 为 `AC-INPUT-04` 增加了只在 `.test_mode` 下可用的语义测试命令：`@@sim:lease:generated:begin|release` 只取得/释放 `GeneratedMotion` 租约，`@@sim:legacy:stretch` 只请求既有 `PlayAction("stretch")`；它们不接受参数 ID 或数值。2026-09-19 新鲜隔离 Player 同时验证：生成动作租约活动时表情和旧动作均被拒绝；表情活动时旧动作被拒绝且不会停止表情；停止表情后旧动作可取得租约；旧动作活动时生成动作被拒绝并在完成后释放。该证据只验证全局单租约互斥与收束，不认证任何动作语义或自然度。
 - `@@test:quit` 在测试模式下会先调用 `Live2DRenderer.PrepareForTestExit()`：它通过 `SafeRecoverExternalActions("before-test-exit")` 收束 Param94、Wave、Torso 候选、认证动作及旧动作状态，再停止表情并以 `ReleaseAll("test-exit-fallback")` 处理未知活动租约，最后才走既有托盘退出回调；非测试模式调用会被拒绝。2026-09-19 隔离复核已分别验证 Param94、Wave、Torso 候选和完整性校验通过的 `external_Hiyori_Hiyori_m06` 认证动作在活动期间退出：认证路径同时记录姿态恢复、运行时准入取消、认证清理和 `recovered: test-exit`。此项只提供测试退出的确定性收束证据；`OnDisable`、`OnApplicationQuit`、`OnDestroy` 已在代码中复用同一网关，但其 Unity 回调顺序、Windows 关机/注销和 Renderer 重建仍未独立运行时验收。
-- SafeRecovery 的最终清理还会取消旧动作超时 `Invoke`，释放残留旧动作租约，停止/清空候选与认证协程句柄，解除 `DesktopPet` 动作移动锁，并重试登记的 Live2D 参数基线；恢复回调失败时成功项清除、失败项保留重试。该边界不扩展到步行、桌面物理、拖拽、视线等未迁移写入者，也不代表资源级并行控制。
+- 新鲜隔离 Player `Build/action-handoff-20260921-$(Get-Date -Format yyyyMMdd-HHmmss)/DesktopPet.exe` 完成认证动作与 walking 的双向 handoff：`certified_motion_handoff_drive.cjs` 先确认 walking 中稳定静止门禁拒绝且未启动动作，再停止 walking，确认同一实例取得 `certified-motion` 准入并自然完成，出现姿态恢复、准入释放和 cleanup。`certified_motion_exit_cleanup_drive.cjs` 另行确认动作中 `@@test:quit` 的姿态恢复、准入取消、租约释放与 `recovered: test-exit`。
 
 ### 2.21 参数提交桥接（2026-09-16）
 

@@ -113,6 +113,47 @@ public class Live2DInputCoordinatorTests
     }
 
     [Test]
+    public void WalkingLease_UsesWalkPoseWriterMetadata()
+    {
+        var coordinator = new Live2DInputCoordinator();
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "ground-task", out var lease), Is.True);
+
+        Assert.That(lease.WriterId, Is.EqualTo("walk-pose"));
+        Assert.That(lease.Resources & EmbodiedResource.Movement, Is.Not.EqualTo(EmbodiedResource.None));
+        Assert.That(lease.Resources & EmbodiedResource.Body, Is.Not.EqualTo(EmbodiedResource.None));
+        Assert.That(lease.ControlLevel, Is.EqualTo(BodyWriterControlLevel.InputLeaseOnly));
+    }
+
+    [Test]
+    public void WalkingLease_IsMutuallyExclusiveWithOtherInputs()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "ground-task", out var walking), Is.True);
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Expression, "happy", out _), Is.False);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.LegacyAction, "stretch", out _), Is.False);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.GeneratedMotion, "wave", out _), Is.False);
+        Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.False);
+
+        Assert.That(coordinator.Release(walking, "ground-task-stopped"), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Expression, "happy", out var expression), Is.True);
+        Assert.That(coordinator.Release(expression, "expression-stopped"), Is.True);
+    }
+
+    [Test]
+    public void StaleWalkingLease_CannotReleaseReplacementLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "first", out var oldLease), Is.True);
+        Assert.That(coordinator.Release(oldLease, "stopped"), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "second", out var currentLease), Is.True);
+
+        Assert.That(coordinator.Release(oldLease, "stale-stop"), Is.False);
+        Assert.That(coordinator.ActiveLease.RequestId, Is.EqualTo(currentLease.RequestId));
+    }
+
+    [Test]
     public void LowPriorityOverlay_IsSuppressedWhileAnyRegisteredWriterOwnsInput()
     {
         var coordinator = new Live2DInputCoordinator();
@@ -123,5 +164,123 @@ public class Live2DInputCoordinatorTests
 
         Assert.That(coordinator.Release(expression, "expression-stopped"), Is.True);
         Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.True);
+    }
+
+    [Test]
+    public void DesktopPhysicsLease_ExposesDeclaredMetadata()
+    {
+        var coordinator = new Live2DInputCoordinator();
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.DesktopPhysics, "physics-update", out var lease), Is.True);
+        Assert.That(lease.WriterId, Is.EqualTo("desktop-physics"));
+        Assert.That(lease.Resources, Is.EqualTo(EmbodiedResource.Movement | EmbodiedResource.Body | EmbodiedResource.Effect));
+        Assert.That(lease.ControlLevel, Is.EqualTo(BodyWriterControlLevel.InputLeaseOnly));
+    }
+
+    [Test]
+    public void DesktopPhysicsLease_IsMutuallyExclusiveWithWalkingAndReacquiresAfterRelease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.DesktopPhysics, "physics-update", out var physics), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out var walking), Is.False);
+        Assert.That(walking.IsValid, Is.False);
+
+        Assert.That(coordinator.Release(physics, "physics-complete"), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out walking), Is.True);
+        Assert.That(walking.RequestId, Is.GreaterThan(physics.RequestId));
+    }
+
+    [Test]
+    public void StaleDesktopPhysicsRelease_CannotReleaseReplacementLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.DesktopPhysics, "first", out var oldLease), Is.True);
+        Assert.That(coordinator.Release(oldLease, "complete"), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.DesktopPhysics, "second", out var currentLease), Is.True);
+
+        Assert.That(coordinator.Release(oldLease, "stale"), Is.False);
+        Assert.That(coordinator.ActiveLease.RequestId, Is.EqualTo(currentLease.RequestId));
+        coordinator.ReleaseAll("teardown");
+        Assert.That(coordinator.HasActiveLease, Is.False);
+    }
+
+    [Test]
+    public void DragResponseLease_ExposesDeclaredMetadata()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.DragResponse, "drag-response", out var lease), Is.True);
+        Assert.That(lease.WriterId, Is.EqualTo("drag-response"));
+        Assert.That(lease.Resources & EmbodiedResource.Movement, Is.Not.EqualTo(EmbodiedResource.None));
+        Assert.That(lease.ControlLevel, Is.EqualTo(BodyWriterControlLevel.InputLeaseOnly));
+        Assert.That(BodyWriterInventory.TryGet("drag-response", out var writer), Is.True);
+        Assert.That(writer.RecoveryOwner, Is.EqualTo("ReleaseDragResponseInputLease"));
+    }
+
+    [Test]
+    public void DragResponseLease_IsExclusiveAndCanReacquireAfterRelease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.DragResponse, "drag-response", out var drag), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out var walking), Is.False);
+        Assert.That(walking.IsValid, Is.False);
+        Assert.That(coordinator.Release(drag, "drag-release"), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out walking), Is.True);
+        Assert.That(coordinator.Release(walking, "walking-stop"), Is.True);
+    }
+
+    [Test]
+    public void StaleDragResponseRelease_CannotReleaseReplacementLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.DragResponse, "drag-response", out var oldLease), Is.True);
+        Assert.That(coordinator.Release(oldLease, "drag-release"), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.DragResponse, "drag-response", out var currentLease), Is.True);
+        Assert.That(coordinator.Release(oldLease, "stale-abort"), Is.False);
+        Assert.That(coordinator.ActiveLease.RequestId, Is.EqualTo(currentLease.RequestId));
+        coordinator.ReleaseAll("teardown");
+    }
+
+    [Test]
+    public void WalkingLease_RemainsActiveUntilExplicitStopRelease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out var walking), Is.True);
+
+        // The renderer owns the lease through its stop blend; the coordinator must
+        // not infer a release merely because another caller is waiting.
+        Assert.That(coordinator.HasActiveLease, Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Expression, "happy", out _), Is.False);
+        Assert.That(coordinator.ActiveLease.RequestId, Is.EqualTo(walking.RequestId));
+
+        Assert.That(coordinator.Release(walking, "walking-stopped-after-blend"), Is.True);
+        Assert.That(coordinator.HasActiveLease, Is.False);
+    }
+
+    [Test]
+    public void WalkingLease_CanBeReacquiredWithNewRequestAfterStop()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "first-walk", out var first), Is.True);
+        Assert.That(coordinator.Release(first, "walking-stopped-after-blend"), Is.True);
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "second-walk", out var second), Is.True);
+        Assert.That(second.RequestId, Is.GreaterThan(first.RequestId));
+        Assert.That(second.WriterId, Is.EqualTo("walk-pose"));
+        Assert.That(coordinator.Release(second, "walking-stopped-after-blend"), Is.True);
+    }
+
+    [Test]
+    public void WalkingLease_IsRejectedWhileAnotherInputOwnsCoordinator()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.LegacyAction, "stretch", out var action), Is.True);
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out var walking), Is.False);
+        Assert.That(walking.IsValid, Is.False);
+        Assert.That(coordinator.ActiveLease.RequestId, Is.EqualTo(action.RequestId));
+
+        Assert.That(coordinator.Release(action, "action-finished"), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out walking), Is.True);
+        Assert.That(coordinator.Release(walking, "walking-stopped"), Is.True);
     }
 }

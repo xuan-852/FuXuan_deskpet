@@ -5,6 +5,67 @@ using UnityEngine;
 /// A single global lease is intentional: resource-level composition is not
 /// enabled until it has been separately verified.
 /// </summary>
+[DisallowMultipleComponent]
+public sealed class Live2DInputCoordinatorHost : MonoBehaviour
+{
+    private readonly Live2DInputCoordinator _coordinator = new Live2DInputCoordinator();
+
+    internal Live2DInputCoordinator Coordinator => _coordinator;
+
+    internal bool TryBegin(
+        Live2DInputKind kind,
+        string owner,
+        out Live2DInputLease lease)
+    {
+        return _coordinator.TryBegin(kind, owner, out lease);
+    }
+
+    internal bool ReleaseLease(Live2DInputLease lease, string reason)
+    {
+        return _coordinator.Release(lease, reason);
+    }
+
+    internal void ReleaseAllLeases(string reason)
+    {
+        _coordinator.ReleaseAll(reason);
+    }
+
+    // The physics bridge is lifecycle-only; it does not expose model parameters.
+    internal bool TryBeginDesktopPhysics(string owner, out Live2DInputLease lease)
+    {
+        return TryBegin(Live2DInputKind.DesktopPhysics, owner, out lease);
+    }
+
+    internal bool ReleaseDesktopPhysics(Live2DInputLease lease, string reason)
+    {
+        return ReleaseLease(lease, reason);
+    }
+
+    internal void ReleaseAllDesktopPhysics(string reason)
+    {
+        Live2DInputLease active = _coordinator.ActiveLease;
+        if (active.IsValid && active.Kind == Live2DInputKind.DesktopPhysics)
+            _coordinator.Release(active, reason);
+    }
+
+    internal bool TryBeginDragResponse(string owner, out Live2DInputLease lease)
+    {
+        return TryBegin(Live2DInputKind.DragResponse, owner, out lease);
+    }
+
+    internal bool ReleaseDragResponse(Live2DInputLease lease, string reason)
+    {
+        return ReleaseLease(lease, reason);
+    }
+
+    internal static Live2DInputCoordinatorHost GetOrCreate(GameObject target)
+    {
+        if (target == null) return null;
+        var host = target.GetComponent<Live2DInputCoordinatorHost>();
+        return host != null ? host : target.AddComponent<Live2DInputCoordinatorHost>();
+    }
+}
+
 public sealed class Live2DInputCoordinator
 {
     private int _nextRequestId = 1;
@@ -53,6 +114,9 @@ public sealed class Live2DInputCoordinator
             Live2DInputKind.Expression => "expression",
             Live2DInputKind.LegacyAction => "legacy-action",
             Live2DInputKind.GeneratedMotion => "generated-motion",
+            Live2DInputKind.Walking => "walk-pose",
+            Live2DInputKind.DesktopPhysics => "desktop-physics",
+            Live2DInputKind.DragResponse => "drag-response",
             _ => "generated-motion"
         };
     }
@@ -80,7 +144,10 @@ public enum Live2DInputKind
     Expression,
     LegacyAction,
     GeneratedMotion,
+    Walking,
     CandidateTest,
+    DesktopPhysics,
+    DragResponse,
 }
 
 public readonly struct Live2DInputLease

@@ -349,6 +349,67 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.Equals("desktop-state", StringComparison.OrdinalIgnoreCase))
+        {
+            DesktopPet pet = UnityEngine.Object.FindObjectOfType<DesktopPet>();
+            if (pet == null)
+            {
+                Debug.LogWarning("[TestInbox] desktop-state failed: 未找到 DesktopPet");
+                return true;
+            }
+
+            DesktopBodySnapshot snapshot = pet.DesktopBodySnapshot;
+            Debug.Log(string.Format(CultureInfo.InvariantCulture,
+                "[DesktopState] version={0} mode={1} x={2} y={3} velocity=({4},{5}) onGround={6} dragging={7} paused={8} actionLocked={9} groundTask={10}",
+                snapshot.Version, snapshot.Mode, snapshot.X, snapshot.Y,
+                snapshot.VelocityX, snapshot.VelocityY, snapshot.OnGround,
+                snapshot.IsDragging, snapshot.IsPaused,
+                snapshot.IsActionMovementLocked, snapshot.GroundTask));
+            return true;
+        }
+
+        if (body.Equals("pause", StringComparison.OrdinalIgnoreCase)
+            || body.StartsWith("pause:", StringComparison.OrdinalIgnoreCase))
+        {
+            DesktopPet pet = UnityEngine.Object.FindObjectOfType<DesktopPet>();
+            if (pet == null)
+            {
+                Debug.LogWarning("[TestInbox] pause failed: 未找到 DesktopPet");
+                return true;
+            }
+
+            float duration = 0f;
+            if (body.Length > "pause".Length)
+            {
+                string rawDuration = body.Substring("pause:".Length).Trim();
+                if (!float.TryParse(rawDuration, NumberStyles.Float, CultureInfo.InvariantCulture, out duration)
+                    || duration < 0f)
+                {
+                    WarnFormat("pause", rawDuration, "非负秒数");
+                    return true;
+                }
+            }
+
+            pet.Pause(duration);
+            Debug.Log(string.Format(CultureInfo.InvariantCulture,
+                "[TestInbox] pause accepted: duration={0:0.###} paused={1}", duration, pet.isPaused));
+            return true;
+        }
+
+        if (body.Equals("resume", StringComparison.OrdinalIgnoreCase))
+        {
+            DesktopPet pet = UnityEngine.Object.FindObjectOfType<DesktopPet>();
+            if (pet == null)
+            {
+                Debug.LogWarning("[TestInbox] resume failed: 未找到 DesktopPet");
+                return true;
+            }
+
+            pet.Resume();
+            Debug.Log("[TestInbox] resume accepted: paused=" + pet.isPaused);
+            return true;
+        }
+
         DragHandler drag = UnityEngine.Object.FindObjectOfType<DragHandler>();
         if (drag == null)
         {

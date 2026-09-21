@@ -23,6 +23,15 @@ public class EmbodiedRecoveryTests
         Assert.AreEqual(DesktopBodyMode.ActionMovementLocked, state.CaptureSnapshot().Mode);
     }
 
+    [Test] public void 桌面快照不包含租约所有者或Cubism参数字段()
+    {
+        var snapshotType = typeof(DesktopBodySnapshot);
+        Assert.IsNull(snapshotType.GetProperty("LeaseId"));
+        Assert.IsNull(snapshotType.GetProperty("Owner"));
+        Assert.IsNull(snapshotType.GetProperty("Param94"));
+        Assert.IsNull(snapshotType.GetProperty("Parameters"));
+    }
+
     [Test] public void 记录写入后可恢复到基线且幂等()
     {
         var state = new EmbodiedPoseState();
@@ -145,14 +154,34 @@ public class EmbodiedRecoveryTests
         Assert.AreEqual(BodyWriterControlLevel.CertifiedCoordinator, certified.ControlLevel);
         Assert.AreEqual("EmbodiedSafeRecovery", certified.RecoveryOwner);
 
+        var walking = Array.Find(writers, item => item.WriterId == "walk-pose");
+        Assert.NotNull(walking);
+        Assert.AreEqual(BodyWriterControlLevel.InputLeaseOnly, walking.ControlLevel);
+        Assert.AreEqual("walking-state", walking.RecoveryOwner);
+        Assert.That(walking.Resources & EmbodiedResource.Movement,
+            Is.Not.EqualTo(EmbodiedResource.None));
+        Assert.That(walking.Resources & EmbodiedResource.Body,
+            Is.Not.EqualTo(EmbodiedResource.None));
+        Assert.That(walking.Resources & EmbodiedResource.LeftArm,
+            Is.Not.EqualTo(EmbodiedResource.None));
+        Assert.That(walking.Resources & EmbodiedResource.RightArm,
+            Is.Not.EqualTo(EmbodiedResource.None));
+
         var idle = Array.Find(writers, item => item.WriterId == "idle-action");
         Assert.NotNull(idle);
         Assert.AreEqual(BodyWriterControlLevel.InputLeaseOnly, idle.ControlLevel);
         Assert.That(idle.Resources & EmbodiedResource.LeftArm, Is.Not.EqualTo(EmbodiedResource.None));
 
+        var physics = Array.Find(writers, item => item.WriterId == "desktop-physics");
+        Assert.NotNull(physics);
+        Assert.AreEqual(BodyWriterControlLevel.InputLeaseOnly, physics.ControlLevel);
+        Assert.AreEqual("physics-state", physics.RecoveryOwner);
+        Assert.AreEqual(EmbodiedResource.Movement | EmbodiedResource.Body | EmbodiedResource.Effect,
+            physics.Resources);
+
         var drag = Array.Find(writers, item => item.WriterId == "drag-response");
         Assert.NotNull(drag);
-        Assert.AreEqual(BodyWriterControlLevel.LegacyUnmanaged, drag.ControlLevel);
-        Assert.IsFalse(string.IsNullOrWhiteSpace(drag.RecoveryOwner));
+        Assert.AreEqual(BodyWriterControlLevel.InputLeaseOnly, drag.ControlLevel);
+        Assert.AreEqual("ReleaseDragResponseInputLease", drag.RecoveryOwner);
     }
 }

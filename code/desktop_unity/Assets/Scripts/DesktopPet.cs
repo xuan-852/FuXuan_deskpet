@@ -188,6 +188,8 @@ public class DesktopPet : MonoBehaviour
 
     private WindowOverlay _windowOverlay;
     private IPetRenderer _renderer;
+    private Live2DInputCoordinatorHost _inputCoordinatorHost;
+    private Live2DInputLease _physicsInputLease;
     private SystemTrayManager _trayManager;
     private PerformanceMonitor _perfMonitor;
     private bool _pendingEscToTray = false;  // ESC 按下时托盘未就绪，等就绪后自动隐藏
@@ -831,8 +833,32 @@ public class DesktopPet : MonoBehaviour
         Debug.LogWarning("[DesktopPet] 等待窗口句柄超时，托盘管理器未初始化");
     }
 
+    private void EnsurePhysicsInputCoordinator()
+    {
+        if (_inputCoordinatorHost == null)
+            _inputCoordinatorHost = Live2DInputCoordinatorHost.GetOrCreate(gameObject);
+    }
+
+    private bool TryBeginPhysicsInputLease(string owner)
+    {
+        EnsurePhysicsInputCoordinator();
+        return _inputCoordinatorHost != null
+            && _inputCoordinatorHost.TryBeginDesktopPhysics(owner, out _physicsInputLease);
+    }
+
+    private void ReleasePhysicsInputLease(string reason)
+    {
+        if (!_physicsInputLease.IsValid) return;
+        if (_inputCoordinatorHost != null)
+            _inputCoordinatorHost.ReleaseDesktopPhysics(_physicsInputLease, reason);
+        _physicsInputLease = default;
+    }
+
     private void Update()
     {
+        EnsurePhysicsInputCoordinator();
+        ReleasePhysicsInputLease("frame-boundary");
+
         // ★★★ 时间间隙检测：Windows 睡眠后 Update() 停止，唤醒后 Time.realtimeSinceStartup 有巨大跳变。
         //     这是最可靠的睡眠检测方式。必须在最顶部执行，因为 Win32 操作（在 DragHandler.Update 等中）
         //     可能在稍后触发处于 DWM 恢复期的窗口操作，导致 DWM 崩溃。
@@ -897,13 +923,22 @@ public class DesktopPet : MonoBehaviour
         }
 #endif
 
-        // 暂停时不更新物理
         if (isPaused)
+        {
+            ReleasePhysicsInputLease("paused");
+            PublishDesktopBodyState();
+            if (_renderer != null)
+            {
+                _renderer.OnPetUpdate(petX, petY, petWidth, petHeight,
+                    petVx, petVy, onGround, isDragging, isPaused);
+            }
             return;
+        }
 
         // ========== v1 行为：拖拽时完全冻结物理 ==========
         if (isDragging)
         {
+            ReleasePhysicsInputLease("dragging");
             // ★ 拖拽时仍要通知渲染器切换挣扎动画（物理不更新）
             PublishDesktopBodyState();
             if (_renderer != null)
@@ -945,8 +980,23 @@ public class DesktopPet : MonoBehaviour
             _taskEndTime = 0f;
         }
 
-        // 物理步进
-        StepPet();
+        // 物理步进始终运行；若其他输入当前持有全局租约，物理仍不能被渲染器状态阻塞。
+        // 成功取得租约时登记本次 PhysicsRoot 写入边界，完成后立即释放。
+        if (TryBeginPhysicsInputLease("physics-update"))
+        {
+            try
+            {
+                StepPet();
+            }
+            finally
+            {
+                ReleasePhysicsInputLease("physics-update-complete");
+            }
+        }
+        else
+        {
+            StepPet();
+        }
 
         // 地面状态机更新
         if (onGround && !isPaused && !_actionMovementLocked)
@@ -1271,6 +1321,11 @@ public class DesktopPet : MonoBehaviour
         BeginShutdown("Unity 生命周期");
     }
 
+    private void OnDisable()
+    {
+        ReleasePhysicsInputLease("component-disabled");
+    }
+
     /// <summary>
     /// Windows 已确认关机/注销时的退出入口。WM_QUERYENDSESSION 阶段只返回允许，
     /// 到 WM_ENDSESSION 才进入清理，避免用户取消关机后提前关闭外置窗口。
@@ -1347,6 +1402,7 @@ public class DesktopPet : MonoBehaviour
     {
         if (_shutdownStarted) return;
         _shutdownStarted = true;
+        ReleasePhysicsInputLease("shutdown-" + source);
         Debug.Log($"[DesktopPet] 开始退出清理（来源: {source}）");
 
         if (_trayManager != null)

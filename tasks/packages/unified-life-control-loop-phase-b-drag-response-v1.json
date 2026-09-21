@@ -1,0 +1,42 @@
+{
+  "packageId": "unified-life-control-loop-phase-b-drag-response-v1",
+  "primaryGuide": "docs/guides/approved/unified-life-control-loop.md",
+  "requirementIds": ["FR-ULC-02", "C-ULC-01", "C-ULC-02", "AC-ULC-B"],
+  "acceptanceObjective": "Migrate the Live2D drag-response writer into the global single-lease boundary while preserving the two-stage physics-before input and physics-after visual response, normal release, focus-loss cancellation, and renderer/application recovery.",
+  "allowedPaths": [
+    "code/desktop_unity/Assets/Scripts/Embodied/",
+    "code/desktop_unity/Assets/Scripts/DragHandler.cs",
+    "code/desktop_unity/Assets/Scripts/Live2DRenderer.cs",
+    "code/desktop_unity/Assets/Editor/Tests/",
+    "docs/truth/",
+    "docs/modules/",
+    "tasks/packages/"
+  ],
+  "forbiddenPaths": [
+    "docs/decisions/",
+    "code/desktop_unity/Assets/Scripts/Live2DFramework/ParamMaps/fuxuan_map.json",
+    "code/desktop_unity/Assets/Resources/Live2D/",
+    "code/desktop_unity/openclaw_bridge.js",
+    "code/desktop_unity/Assets/Scripts/ToolEngine/"
+  ],
+  "constraints": [
+    "Keep one global active input lease; do not add resource-level parallelism or preemption.",
+    "The renderer owns drag-response lease lifecycle; DragHandler remains responsible for pointer capture, position, velocity sampling, throw, and focus-loss cancellation.",
+    "Preserve physics-before-Cubism-Physics input writes and physics-after visual struggle/final parameter writes.",
+    "Normal mouse release, simulated release, focus loss, renderer disable, application quit, destruction, and SafeRecovery must clear drag ownership and leave no stale lease.",
+    "Do not expose raw Live2D Param* values or a new LLM/tool entry point; final parameter submission continues through ParameterCommitBridge."
+  ],
+  "verificationCommands": [
+    ".\\build.ps1 -Quick",
+    ".\\build.ps1 -RunTests",
+    "node scripts/docs/generate_document_map.cjs"
+  ],
+  "expectedTruthDocuments": [
+    "docs/truth/unified-life-control-loop-phase-b-desktop-state.md",
+    "docs/truth/unified-life-control-loop-phase-b-input-ownership.md",
+    "docs/modules/live2d-rendering.md"
+  ],
+  "riskLevel": "high",
+  "externalEvidence": false,
+  "notes": "Follow-up design package only. Do not implement drag-response lease integration as part of the walking lease task. Use isolated FU_XUAN_DATA/.test_mode and existing @@sim drag commands; do not use real mouse automation."
+}

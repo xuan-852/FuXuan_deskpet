@@ -55,9 +55,11 @@
 
 2026-09-18 统一控制闭环 Phase B-3：鼠标注视作为低优先级 Face 叠加层，任何活动表情/动作/认证输入租约均会抑制其 LateUpdate 覆盖；租约释放后才恢复平滑注视。未引入资源级并行。Quick 和 EditMode（235 total、234 passed、failed=0、1 ignored）通过。详见 [Phase B-3 鼠标注视优先级门控](../truth/unified-life-control-loop-phase-b-mouse-gaze-priority.md)。
 
-2026-09-19 表情生命周期入口收束与冲突验收：`Live2DRenderer.StopAllActionsAndExpressions` 成为 Renderer 层的停止网关，工具、生成动作前置和自检路径不再直接绕过 Renderer 清理表情租约；`TryPlayExpression` 的未知表情回滚、停止后复用、生成动作/旧动作双向冲突和 test-exit 清理均在隔离 Player `AC-EXPRESSION-LIFECYCLE` / `AC-INPUT-04` 驱动中通过。旧动作停止仍由 Renderer 维护 owner lease，单全局租约语义保持不变。Quick、EditMode（249 total、248 passed、failed=0、1 ignored）和新鲜 Player 均通过。步行、物理、拖拽、Renderer 重建、资源级并行和执行器自动纠偏仍未完成。
+2026-09-19 表情生命周期入口收束与冲突验收：`Live2DRenderer.StopAllActionsAndExpressions` 成为 Renderer 层的停止网关，工具、生成动作前置和自检路径不再直接绕过 Renderer 清理表情租约；`TryPlayExpression` 的未知表情回滚、停止后复用、生成动作/旧动作双向冲突和 test-exit 清理均在隔离 Player `AC-EXPRESSION-LIFECYCLE` / `AC-INPUT-04` 驱动中通过。旧动作停止仍由 Renderer 维护 owner lease，单全局租约语义保持不变。Quick、EditMode（249 total、248 passed、failed=0、1 ignored）和新鲜 Player 均通过。该历史证据日期时步行、物理、拖拽、Renderer 重建、资源级并行和执行器自动纠偏仍未完成；后续 Phase B-4 已覆盖步行与桌面物理租约边界，拖拽、Renderer 重建、资源级并行和执行器自动纠偏仍未完成。
 
-2026-09-19 SafeRecovery 生命周期补证：`Live2DRenderer` 的 `OnDisable`、`OnApplicationQuit`、`OnDestroy` 与测试专用 `PrepareForTestExit` 统一调用同一尽力收束网关。隔离 Player 已在活动期间对 Param94、Wave、Torso 候选和完整性校验通过的 `external_Hiyori_Hiyori_m06` 认证动作执行 `@@test:quit`；认证路径记录姿态恢复、输入租约释放、运行时准入取消、认证清理和 `recovered: test-exit`。这只证明测试退出入口的跨层收束，不证明 Windows 关机/注销、Renderer 重建或 Unity 回调精确顺序；步行、物理、拖拽、视线等写入者仍待迁移，资源级并行与完整虚拟骨架也未完成。详见 [L3 动作生命周期与安全收束](../truth/l3-action-lifecycle-recovery.md)。
+2026-09-21 统一控制闭环 Phase B-4 步行与桌面物理输入租约边界：`walk-pose` 与 `desktop-physics` 已登记为 `InputLeaseOnly`；`Live2DRenderer` 通过共享桌面对象上的全局单租约协调器维持步行期间及停止淡出期间的所有权，`DesktopPet` 为 PhysicsRoot 步进登记短生命周期物理租约，冲突时仍继续原有物理步进。新鲜隔离 Player 已验证 `Walking` 状态、暂停期间快照版本冻结、恢复，以及 `desktop-physics` 被 walking 拒绝时 PhysicsRoot 仍推进；test-exit 也出现安全恢复和清理日志。新增协调器测试验证步行/物理元数据、互斥、stale release、显式停止后的更高 `requestId` 重取得和 teardown；不迁移 `drag-response`，不开放原始参数，不引入资源级并行或抢占。
+
+2026-09-21 认证动作 action handoff 验收：新鲜隔离 Player 在 walking 状态拒绝 `external_Hiyori_Hiyori_m06`，停止 walking 后同一实例恢复静止并成功取得 `certified-motion` 准入，动作自然完成后姿态、准入、租约和 cleanup 均收束；独立 test-exit 驱动验证动作中取消与安全恢复。该证据不覆盖认证动作 Player timeout、真实拖拽 handoff、Renderer 重建或 `drag-response` 迁移。
 
 - 2026-09-20 生命状态 Attention 只读摘要：`@@sim:life-state` 仅输出 `AttentionTarget` 与其来源/置信度/原因的脱敏字段；Attention 仍只是 LifeState 的字符串目标和 metadata，不包含坐标、强度或主动策略，也不获得 Live2D 写入权。EditMode TTL 边界与当前源码隔离 Player 查询均通过。详见 [统一生命控制闭环 Phase A](../truth/unified-life-control-loop-phase-a.md)。
 
