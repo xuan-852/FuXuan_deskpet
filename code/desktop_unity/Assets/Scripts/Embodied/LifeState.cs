@@ -326,7 +326,10 @@ public sealed class LifeStateStore
     private static string CorrelationPhaseKey(LifeEvent value)
     {
         if (string.IsNullOrEmpty(value.CorrelationId)) return null;
-        return value.CorrelationId + "|" + value.Type.ToString();
+        string phase = value.Type == LifeEventType.DirectInteraction
+            ? value.Summary ?? value.Type.ToString()
+            : value.Type.ToString();
+        return value.CorrelationId + "|" + phase;
     }
 
     private bool IsExpiredActionPhase(LifeEvent value)

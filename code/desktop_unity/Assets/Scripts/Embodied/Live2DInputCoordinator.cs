@@ -53,6 +53,22 @@ public sealed class Live2DInputCoordinatorHost : MonoBehaviour
         return TryBegin(Live2DInputKind.DragResponse, owner, out lease);
     }
 
+    internal bool TryHandoffWalkingToDragResponse(
+        Live2DInputLease walkingLease,
+        string owner,
+        out Live2DInputLease dragLease)
+    {
+        return _coordinator.TryHandoffWalkingToDragResponse(walkingLease, owner, out dragLease);
+    }
+
+    internal bool TryInterruptToDragResponse(
+        Live2DInputLease currentLease,
+        string owner,
+        out Live2DInputLease dragLease)
+    {
+        return _coordinator.TryInterruptToDragResponse(currentLease, owner, out dragLease);
+    }
+
     internal bool ReleaseDragResponse(Live2DInputLease lease, string reason)
     {
         return ReleaseLease(lease, reason);
@@ -129,6 +145,61 @@ public sealed class Live2DInputCoordinator
         Debug.Log($"[Live2DInputCoordinator] Released {_activeLease.Kind}/{_activeLease.WriterId}/{_activeLease.Owner}"
             + $"#{_activeLease.RequestId}: {reason}");
         _activeLease = default;
+        return true;
+    }
+
+    public bool TryHandoffWalkingToDragResponse(
+        Live2DInputLease walkingLease,
+        string owner,
+        out Live2DInputLease dragLease)
+    {
+        dragLease = default;
+        if (!walkingLease.IsValid || !_activeLease.IsValid
+            || walkingLease.RequestId != _activeLease.RequestId
+            || _activeLease.Kind != Live2DInputKind.Walking)
+        {
+            return false;
+        }
+
+        return TryReplaceActiveLeaseWithDragResponse(walkingLease, owner, out dragLease);
+    }
+
+    public bool TryInterruptToDragResponse(
+        Live2DInputLease currentLease,
+        string owner,
+        out Live2DInputLease dragLease)
+    {
+        dragLease = default;
+        if (!currentLease.IsValid || !_activeLease.IsValid
+            || currentLease.RequestId != _activeLease.RequestId
+            || _activeLease.Kind == Live2DInputKind.DragResponse)
+        {
+            return false;
+        }
+
+        return TryReplaceActiveLeaseWithDragResponse(currentLease, owner, out dragLease);
+    }
+
+    private bool TryReplaceActiveLeaseWithDragResponse(
+        Live2DInputLease currentLease,
+        string owner,
+        out Live2DInputLease dragLease)
+    {
+        dragLease = default;
+        if (!BodyWriterInventory.TryGet("drag-response", out var writer))
+        {
+            Debug.LogWarning("[Live2DInputCoordinator] Rejected DragResponse/" + owner
+                + ": unknown-writer=drag-response");
+            return false;
+        }
+
+        Debug.Log($"[Live2DInputCoordinator] Handoff {_activeLease.Kind}/{_activeLease.WriterId}/{_activeLease.Owner}"
+            + $"#{_activeLease.RequestId} -> DragResponse/{writer.WriterId}/{owner}");
+        dragLease = new Live2DInputLease(_nextRequestId++, Live2DInputKind.DragResponse,
+            writer.WriterId, owner ?? "unknown", writer.Resources, writer.ControlLevel);
+        _activeLease = dragLease;
+        Debug.Log($"[Live2DInputCoordinator] Accepted {dragLease.Kind}/{dragLease.WriterId}/{dragLease.Owner}"
+            + $"#{dragLease.RequestId} resources={dragLease.Resources} control={dragLease.ControlLevel}");
         return true;
     }
 

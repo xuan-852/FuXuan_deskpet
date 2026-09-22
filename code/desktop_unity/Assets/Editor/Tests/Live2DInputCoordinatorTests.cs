@@ -270,6 +270,113 @@ public class Live2DInputCoordinatorTests
     }
 
     [Test]
+    public void WalkingLease_CanAtomicallyHandoffToDragResponse()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out var walking), Is.True);
+
+        Assert.That(coordinator.TryHandoffWalkingToDragResponse(
+            walking, "drag-response", out var drag), Is.True);
+        Assert.That(drag.IsValid, Is.True);
+        Assert.That(drag.Kind, Is.EqualTo(Live2DInputKind.DragResponse));
+        Assert.That(drag.RequestId, Is.GreaterThan(walking.RequestId));
+        Assert.That(coordinator.ActiveLease.RequestId, Is.EqualTo(drag.RequestId));
+
+        Assert.That(coordinator.Release(walking, "stale-walking-release"), Is.False);
+        Assert.That(coordinator.Release(drag, "drag-release"), Is.True);
+    }
+
+    [Test]
+    public void WalkingHandoff_DoesNotPreemptNonWalkingLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.GeneratedMotion,
+            "certified-motion", "motion", out var active), Is.True);
+
+        var fakeWalking = new Live2DInputLease(active.RequestId,
+            Live2DInputKind.Walking, "walk-pose", "walking-state",
+            EmbodiedResource.Movement, BodyWriterControlLevel.InputLeaseOnly);
+        Assert.That(coordinator.TryHandoffWalkingToDragResponse(
+            fakeWalking, "drag-response", out var drag), Is.False);
+        Assert.That(drag.IsValid, Is.False);
+        Assert.That(coordinator.ActiveLease.RequestId, Is.EqualTo(active.RequestId));
+        Assert.That(coordinator.Release(active, "motion-finished"), Is.True);
+    }
+
+    [Test]
+    public void StaleWalkingHandoff_CannotReplaceCurrentLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out var oldWalking), Is.True);
+        Assert.That(coordinator.Release(oldWalking, "walking-stopped"), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out var currentWalking), Is.True);
+
+        Assert.That(coordinator.TryHandoffWalkingToDragResponse(
+            oldWalking, "drag-response", out var drag), Is.False);
+        Assert.That(drag.IsValid, Is.False);
+        Assert.That(coordinator.ActiveLease.RequestId, Is.EqualTo(currentWalking.RequestId));
+        Assert.That(coordinator.Release(currentWalking, "walking-stopped"), Is.True);
+    }
+
+    [Test]
+    public void WalkingHandoff_DragReleaseAllowsWalkingToReacquire()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out var walking), Is.True);
+        Assert.That(coordinator.TryHandoffWalkingToDragResponse(
+            walking, "drag-response", out var drag), Is.True);
+        Assert.That(coordinator.Release(drag, "drag-release"), Is.True);
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking,
+            "walking-state", out var resumedWalking), Is.True);
+        Assert.That(resumedWalking.RequestId, Is.GreaterThan(drag.RequestId));
+        Assert.That(coordinator.Release(resumedWalking, "walking-resumed-stop"), Is.True);
+    }
+
+    [Test]
+    public void WalkingHandoff_RequiresCurrentWalkingLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        var invalid = default(Live2DInputLease);
+
+        Assert.That(coordinator.TryHandoffWalkingToDragResponse(
+            invalid, "drag-response", out var drag), Is.False);
+        Assert.That(drag.IsValid, Is.False);
+        Assert.That(coordinator.HasActiveLease, Is.False);
+    }
+
+    [Test]
+    public void InterruptToDragResponse_ReplacesCurrentCancellableLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.LegacyAction,
+            "legacy-action", out var action), Is.True);
+
+        Assert.That(coordinator.TryInterruptToDragResponse(
+            action, "drag-response", out var drag), Is.True);
+        Assert.That(drag.Kind, Is.EqualTo(Live2DInputKind.DragResponse));
+        Assert.That(drag.RequestId, Is.GreaterThan(action.RequestId));
+        Assert.That(coordinator.Release(action, "stale-action-release"), Is.False);
+        Assert.That(coordinator.Release(drag, "drag-release"), Is.True);
+    }
+
+    [Test]
+    public void InterruptToDragResponse_RequiresCurrentLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Expression,
+            "expression", out var current), Is.True);
+        var stale = new Live2DInputLease(current.RequestId + 1,
+            Live2DInputKind.LegacyAction, "legacy-action", "stale",
+            EmbodiedResource.Body, BodyWriterControlLevel.InputLeaseOnly);
+
+        Assert.That(coordinator.TryInterruptToDragResponse(
+            stale, "drag-response", out var drag), Is.False);
+        Assert.That(drag.IsValid, Is.False);
+        Assert.That(coordinator.ActiveLease.RequestId, Is.EqualTo(current.RequestId));
+        Assert.That(coordinator.Release(current, "expression-stopped"), Is.True);
+    }
+
+    [Test]
     public void WalkingLease_IsRejectedWhileAnotherInputOwnsCoordinator()
     {
         var coordinator = new Live2DInputCoordinator();
@@ -281,6 +388,21 @@ public class Live2DInputCoordinatorTests
 
         Assert.That(coordinator.Release(action, "action-finished"), Is.True);
         Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out walking), Is.True);
+        Assert.That(coordinator.Release(walking, "walking-stopped"), Is.True);
+    }
+
+    [Test]
+    public void WalkingLease_RetryAfterBlockingInputReleaseGetsNewLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Expression, "expression", out var expression), Is.True);
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out var blocked), Is.False);
+        Assert.That(blocked.IsValid, Is.False);
+        Assert.That(coordinator.Release(expression, "expression-transition"), Is.True);
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "walking-state", out var walking), Is.True);
+        Assert.That(walking.RequestId, Is.GreaterThan(expression.RequestId));
         Assert.That(coordinator.Release(walking, "walking-stopped"), Is.True);
     }
 }

@@ -71,6 +71,21 @@ public class LifeStateTests
     }
 
     [Test]
+    public void 直接交互同一关联键允许生命周期阶段并拒绝重复阶段()
+    {
+        DateTime now = DateTime.UtcNow;
+        var store = new LifeStateStore();
+        Assert.IsTrue(store.Append(Event("drag-start", LifeEventType.DirectInteraction,
+            now, "direct-drag-start", "drag-1"), now));
+        Assert.IsTrue(store.Append(Event("drag-end", LifeEventType.DirectInteraction,
+            now.AddSeconds(1), "direct-drag-end", "drag-1"), now.AddSeconds(1)));
+        Assert.IsFalse(store.Append(Event("drag-end-duplicate", LifeEventType.DirectInteraction,
+            now.AddSeconds(2), "direct-drag-end", "drag-1"), now.AddSeconds(2)));
+        Assert.AreEqual("pet", store.Snapshot.AttentionTarget);
+        Assert.AreEqual("direct-drag-end", store.Snapshot.AttentionMetadata.Reason);
+    }
+
+    [Test]
     public void 工作和交互活动会映射到对应生命语义()
     {
         DateTime now = DateTime.UtcNow;

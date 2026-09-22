@@ -70,6 +70,7 @@
 
 - 接入直接交互事件和用户授权模式事件，建立有界事件时间线。
 - 将动作结果存为最小具身经验，供记忆、情绪和策略读取。
+- 当前已接入桌宠直接 click/drag 边沿：`DragHandler` 生成短 correlation，`AttentionReactionAdapter` 将 click、drag-start、drag-end、drag-abort 写入 `LifeState`/`LifeTimeline`/`EmbodiedEventStore`，并通知 `MotionAgent` 重置交互空闲计时；事件不携带窗口标题、剪贴板、屏幕内容或鼠标轨迹。
 
 **AC-ULC-C**：系统能解释一次动作的发起、结果、恢复与冷却/替代原因；事件过期、测试隔离和隐私断言通过。
 

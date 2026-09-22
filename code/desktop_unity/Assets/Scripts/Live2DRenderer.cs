@@ -403,6 +403,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private float _expressionStartedAt;
     private Live2DInputLease _actionInputLease;
     private Live2DInputLease _walkingInputLease;
+    // Walking admission is a frame-level decision. Update, LateUpdate and the
+    // idle writer must observe the same result instead of racing the global lease.
+    private int _walkingAdmissionFrame = -1;
+    private bool _walkingIntentThisFrame;
+    private bool _walkingLeaseActiveThisFrame;
+    private string _walkingAdmissionBlockReason = "uninitialized";
 
     // 只读生产观测：进程内、有界事件，不参与参数决策或恢复。
     private readonly BodyStateStore _bodyStateStore = new BodyStateStore();
@@ -635,6 +641,9 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private int _dragVelocityFrame = -1;
     private float _dragFrameVelocity = 0f;
     private bool _dragInited = false;
+    // Raised before an action lease is replaced so the same frame cannot re-enter
+    // idle/action writers between cleanup and DragResponse admission.
+    private bool _dragTakeoverPending = false;
     // 拖拽输入目标与当前速度：对应官方 CubismTargetPoint 的 target/current velocity 思路。
     private Vector2 _dragPointerScreen;
     private Vector2 _dragPointerDelta;
@@ -946,11 +955,27 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     private bool UpdateWalkingInputLease(bool walking, string reason)
     {
+        if (_walkingAdmissionFrame == Time.frameCount)
+            return _walkingLeaseActiveThisFrame;
+
+        _walkingAdmissionFrame = Time.frameCount;
+        _walkingIntentThisFrame = walking;
+        _walkingAdmissionBlockReason = "none";
+
         if (walking && !_walkingInputLease.IsValid)
         {
             if (!_inputCoordinator.TryBegin(Live2DInputKind.Walking,
                 "walking-state", out _walkingInputLease))
+            {
+                Live2DInputLease active = _inputCoordinator.ActiveLease;
+                _walkingAdmissionBlockReason = active.IsValid
+                    ? "active-" + active.Kind + "#" + active.RequestId
+                    : "walking-admission-rejected";
+                _walkingLeaseActiveThisFrame = false;
+                Debug.Log("[Live2DRenderer] WalkingBlockedByInput"
+                    + " requested=true active=" + _walkingAdmissionBlockReason);
                 return false;
+            }
         }
 
         if (!walking && _walkingInputLease.IsValid
@@ -960,7 +985,34 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _walkingInputLease = default;
         }
 
-        return _walkingInputLease.IsValid;
+        _walkingLeaseActiveThisFrame = _walkingInputLease.IsValid;
+        return _walkingLeaseActiveThisFrame;
+    }
+
+    private bool IsAutomaticIdleActionActive()
+    {
+        return _currentIdleAction != 0
+            && !_actionLocked
+            && _idleInputLease.IsValid;
+    }
+
+    private bool HasWalkingIntent()
+    {
+        return _pet != null
+            && _pet.onGround
+            && _pet.petVx != 0
+            && !_pet.isPaused
+            && !_pet.isDragging
+            && !_aiControlLocked;
+    }
+
+    private void ClearAutomaticIdleActionForWalking()
+    {
+        if (!IsAutomaticIdleActionActive()) return;
+
+        int staleAction = _currentIdleAction;
+        ResetIdleAction(true);
+        Debug.Log("[Live2DRenderer] walking transition cleared stale automatic idle action: " + staleAction);
     }
 
     private void ReleaseWalkingInputLease(string reason)
@@ -969,6 +1021,112 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (_inputCoordinator != null)
             _inputCoordinator.Release(_walkingInputLease, reason);
         _walkingInputLease = default;
+    }
+
+    internal bool TryInterruptForDrag(
+        string owner,
+        out Live2DInputLease dragLease,
+        out string reason)
+    {
+        dragLease = default;
+        reason = "no-active-input";
+        if (_inputCoordinatorHost == null || _inputCoordinator == null)
+        {
+            reason = "input-coordinator-unavailable";
+            return false;
+        }
+
+        _dragTakeoverPending = true;
+        Live2DInputLease active = _inputCoordinator.ActiveLease;
+        if (!active.IsValid)
+        {
+            bool admitted = _inputCoordinatorHost.TryBeginDragResponse(owner, out dragLease);
+            _dragTakeoverPending = false;
+            return admitted;
+        }
+
+        if (active.Kind == Live2DInputKind.Walking)
+        {
+            _dragTakeoverPending = false;
+            reason = "walking-requires-dedicated-handoff";
+            return false;
+        }
+
+        // Generated motion may be owned by an external coroutine. Do not replace
+        // its lease while that coroutine can still write model parameters.
+        if (active.Kind == Live2DInputKind.GeneratedMotion
+            && !_certifiedMotionActive)
+        {
+            _dragTakeoverPending = false;
+            reason = "generated-motion-owner-not-cancellable";
+            return false;
+        }
+
+        bool interrupted = false;
+        if (_certifiedMotionActive)
+        {
+            FinishCertifiedMotion("drag-interrupt");
+            interrupted = true;
+        }
+
+        if (_testParam94GestureActive || _testParam94GestureCoroutine != null)
+            interrupted |= CancelTestParam94Gesture("drag-interrupt");
+        if (_testWaveCandidateActive || _testWaveCandidateCoroutine != null)
+            interrupted |= CancelTestWaveCandidate("drag-interrupt");
+        if (_testWaveMatrixActive || _testWaveMatrixCoroutine != null)
+            interrupted |= CancelTestWaveMatrix("drag-interrupt");
+        if (_testTorsoZGestureActive || _testTorsoZGestureCoroutine != null)
+            interrupted |= CancelTestTorsoZGesture("drag-interrupt");
+
+        if (_currentIdleAction != 0 || _actionInputLease.IsValid || _actionLocked)
+        {
+            StopAllActionsAndExpressions(0f);
+            interrupted = true;
+        }
+        else if (_expressionInputLease.IsValid)
+        {
+            StopExpressionForInputTransition();
+            interrupted = true;
+        }
+
+        active = _inputCoordinator.ActiveLease;
+        if (active.IsValid)
+        {
+            _dragTakeoverPending = false;
+            reason = "active-input-remains-" + active.Kind;
+            return false;
+        }
+
+        if (!_inputCoordinatorHost.TryBeginDragResponse(owner, out dragLease))
+        {
+            _dragTakeoverPending = false;
+            reason = "drag-response-admission-rejected";
+            return false;
+        }
+
+        _dragTakeoverPending = false;
+        reason = interrupted ? "action-interrupted" : "input-cleared";
+        Debug.Log("[Live2DRenderer] 已为拖拽中断当前动作并取得 drag-response: " + reason);
+        return true;
+    }
+
+    internal bool TryHandoffWalkingToDragResponse(string owner, out Live2DInputLease dragLease)
+    {
+        dragLease = default;
+        if (!_walkingInputLease.IsValid || _inputCoordinator == null)
+            return false;
+
+        if (!_inputCoordinatorHost.TryHandoffWalkingToDragResponse(
+            _walkingInputLease, owner, out dragLease))
+            return false;
+
+        _walkingInputLease = default;
+        _walkPhase = 0f;
+        _walkBounceOffset = 0f;
+        _walkBlendRemaining = 0f;
+        _wasWalkingLastFrame = false;
+        Debug.Log("[Live2DRenderer] 已将 walking 输入租约交接给拖拽: " + owner);
+        return true;
     }
 
     private void ReleaseAllInputLeases(string reason)
@@ -1012,6 +1170,11 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             ReleaseWalkingInputLease("drag-started");
             _walkPhase = 0f;
             _walkBounceOffset = 0f;
+            // DragResponse owns the final body pose for this frame. Clear the
+            // previous action before physics and before the struggle writer.
+            ClearStarSpinArmPose();
+            if (_paramStore != null)
+                _paramStore.SaveParameters();
             UpdateModelPosition();
             // DesktopPet.Update 在本脚本之前执行；这里是 CubismPhysics 的 LateUpdate 之前，
             // 适合把鼠标拖动速度写入 ParamAngle/ParamBody 输入，让物理产生滞后和回弹。
@@ -1042,14 +1205,25 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         UpdateModelPosition();
 
+        if (_dragTakeoverPending)
+            return;
+
+        // Automatic idle actions must yield before the walking lease is requested.
+        // Otherwise the stale LegacyAction lease makes walking look active in
+        // DesktopPet while the renderer keeps writing the old action pose.
+        if (HasWalkingIntent() && !_actionLocked)
+            ClearAutomaticIdleActionForWalking();
+
         // ★ 体态提前给物理用：Physics 在 CubismUpdateController.LateUpdate(0)
         //   中读取 ParamBodyAngleX/Y/Z 来驱动衣服。我们在 Update() 中先设好
         //   走路的转体/前倾/低头，确保物理拿到正确的体态输入。
         bool requestedWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
             && !_pet.isPaused && !_actionLocked && !_aiControlLocked
             && !_pet.isDragging);
-        bool walkingLeaseActive = UpdateWalkingInputLease(requestedWalking,
-            requestedWalking ? "walking-active" : "walking-stopped");
+        bool walkingLeaseActive = _walkingAdmissionFrame == Time.frameCount
+            ? _walkingLeaseActiveThisFrame
+            : UpdateWalkingInputLease(requestedWalking,
+                requestedWalking ? "walking-active" : "walking-stopped");
         bool isWalking = requestedWalking && walkingLeaseActive;
         if (!isWalking && !_aiControlLocked && _wasWalkingLastFrame && _walkBlendRemaining <= 0f)
             _walkBlendRemaining = IDLE_BLEND_DURATION;
@@ -1107,11 +1281,18 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         if (!_loaded || _cubismModel == null) return;
 
+        if (_dragTakeoverPending)
+            return;
+
         // ★ 拖拽中 → 物理(order 800)已跑完，挣扎参数被物理覆盖了，在这里重新设一遍
         if (_pet != null && _pet.isDragging)
         {
-            // 平滑转身（_dragSmoothBodyY 在 UpdateDragStruggle 中更新）
+            // DragResponse is the sole final body writer during pointer capture.
+            // Clear old action output before applying the drag struggle pose.
+            ClearStarSpinArmPose();
             UpdateDragStruggle();
+            if (_paramStore != null)
+                _paramStore.SaveParameters();
             ForceUpdateModelNow();
             // 物理和拖拽参数已完成后再更新取景，避免同一帧在 Update 阶段重复计算。
             UpdateOverlayFraming();
@@ -1170,8 +1351,10 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         bool requestedWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
             && !_pet.isPaused && !_actionLocked && !_aiControlLocked
             && !_pet.isDragging);
-        bool walkingLeaseActive = UpdateWalkingInputLease(requestedWalking,
-            requestedWalking ? "walking-active" : "walking-stopped");
+        bool walkingLeaseActive = _walkingAdmissionFrame == Time.frameCount
+            ? _walkingLeaseActiveThisFrame
+            : UpdateWalkingInputLease(requestedWalking,
+                requestedWalking ? "walking-active" : "walking-stopped");
         bool isWalking = requestedWalking && walkingLeaseActive;
 
         // Locomotion takes priority over an automatic idle action. Forced
@@ -1692,6 +1875,19 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
     }
 
+    internal void PublishDirectInteraction(string phase, string correlationId)
+    {
+        if (string.IsNullOrEmpty(phase) || string.IsNullOrEmpty(correlationId)) return;
+        string summary = "direct-" + phase;
+        DateTime now = DateTime.UtcNow;
+        _embodiedEventStore.Append(new EmbodiedEvent(now, 0, "drag-handler",
+            "direct-interaction", "pet", phase, "user-interaction", 0,
+            EmbodiedResource.None, _embodiedPoseState.CaptureSnapshot().Version, null));
+        _lifeTimelineStore.Append(now, "interaction", "direct", correlationId,
+            phase, "user-interaction", summary, _lifeStateStore.Snapshot.Version);
+        AppendLifeEvent(LifeEventType.DirectInteraction, "drag-handler", summary, 80, 8, correlationId);
+    }
+
     /// <summary>
     /// 待机气泡逻辑：长时间无交互时偶尔冒泡
     /// </summary>
@@ -1920,11 +2116,18 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// </summary>
     private void UpdateIdleAnimation()
     {
+        // DragResponse owns the final body pose. Do not let the idle scheduler
+        // re-enter a legacy/special action during the same frame as takeover.
+        if (_pet != null && _pet.isDragging)
+            return;
+
         bool requestedWalking = (_pet != null && _pet.onGround && _pet.petVx != 0
             && !_pet.isPaused && !_actionLocked && !_aiControlLocked
             && !_pet.isDragging);
-        bool walkingLeaseActive = UpdateWalkingInputLease(requestedWalking,
-            requestedWalking ? "walking-active" : "walking-stopped");
+        bool walkingLeaseActive = _walkingAdmissionFrame == Time.frameCount
+            ? _walkingLeaseActiveThisFrame
+            : UpdateWalkingInputLease(requestedWalking,
+                requestedWalking ? "walking-active" : "walking-stopped");
         bool isWalking = requestedWalking && walkingLeaseActive;
 
         // === 呼吸（为物理提供驱动信号，使衣服手臂自然摆动）===
@@ -2768,6 +2971,45 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         SetParameter("Param119", layer * 1f);
     }
 
+    private void ClearStarSpinArmPose()
+    {
+        if (_mapper != null && _mapper.IsLoaded)
+        {
+            _mapper.Set("arm_right_upper", 0f);
+            _mapper.Set("arm_right_mid", 0f);
+            _mapper.Set("arm_right_lower", 0f);
+            _mapper.Set("arm_right_rotation", 0f);
+            _mapper.Set("arm_right_base_rotation", 0f);
+            _mapper.Set("arm_right_reach", 0f);
+            _mapper.Set("arm_right_wrist_z", 0f);
+        }
+
+        SetHandLayer(0f);
+        SetParameter("Param92", 0f);
+        SetParameter("Param94", 0f);
+        SetParameter("Param97", 0f);
+        SetParameter("Param93", 0f);
+        SetParameter("Param118", 0f);
+        SetParameter("Param99", 0f);
+        SetParameter("Param31", 0f);
+        SetParameter("Param32", 0f);
+        SetParameter("Param33", 0f);
+        SetParameter("Param34", 0f);
+        SetParameter("Param36", 0f);
+        SetParameter("Param37", 0f);
+        SetParameter("Param102", 0f);
+        SetParameter("Param103", 0f);
+        SetParameter("Param105", 0f);
+        SetParameter("Param106", 0f);
+        SetParameter("Param107", 0f);
+        SetParameter("Param110", 0f);
+        SetParameter("Param111", 0f);
+        SetParameter("Param112", 0f);
+        SetParameter("Param113", 0f);
+        SetParameter("Param114", 0f);
+        SetParameter("Param115", 0f);
+    }
+
     // ================================================================
     // ★ 左臂(Param34/36/37) 物理权重管理
     //    "手臂L"子刚体内部有弹簧动量（Particles[].Velocity 等），
@@ -2871,6 +3113,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         StopExpression(0.15f);
 
         // 清理可能被改过的参数（表情/特殊参数）
+        ClearStarSpinArmPose();
         SetParameter("ParamAngleZ", 0f);
         SetParameter("ParamEyeLSmile", 0f);
         SetParameter("ParamEyeRSmile", 0f);
@@ -4501,10 +4744,11 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         ActionController?.Actions?.Stop();
         ActionController?.StopLegacyAction();
 
+        ClearStarSpinArmPose();
         CancelInvoke(nameof(ReleaseActionLock));
         if (_actionLocked)
             ReleaseActionLock("renderer-stop-all");
-        else if (_currentIdleAction != 0)
+        if (_currentIdleAction != 0)
             ResetIdleAction(true);
 
         ForceUpdateModelNow();
@@ -4890,6 +5134,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
         SetParameter("ParamBodyAngleX", 0f);
         SetParameter("ParamAngleX", 0f);
+        ClearStarSpinArmPose();
         _poseLocked = false;
         // 记录当前帧位置，重置速度追踪（新拖拽从零开始）
         _lastDragPetX = _pet != null ? _pet.petX : 0;
@@ -4922,7 +5167,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             Camera cam = Camera.main;
             if (cam != null && _pet != null)
             {
-                float hitNormY = Mathf.Clamp01((screenPos.y - _pet.petY) / _pet.petHeight);
+                float topLeftY = Screen.height - screenPos.y;
+                float hitNormY = Mathf.Clamp01((topLeftY - _pet.petY) / _pet.petHeight);
                 hitPart = EstimateBodyPartByHeight(hitNormY);
             }
         }
@@ -5005,6 +5251,15 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     public void ShowLandPose()
     {
+        // Landing is the physical recovery boundary after drag takeover. Make
+        // cleanup idempotent so a duplicate land callback cannot revive action state.
+        CancelInvoke(nameof(ReleaseActionLock));
+        if (_certifiedMotionActive)
+            FinishCertifiedMotion("drag-land-recovery");
+        if (_actionLocked || _actionInputLease.IsValid || _currentIdleAction != 0)
+            StopAllActionsAndExpressions(0f);
+        if (_pet != null && _pet.IsActionMovementLocked)
+            _pet.SetActionMovementLock(false);
         SetParameter("ParamBodyAngleX", 0f);
         _poseLocked = false;
     }
@@ -5467,6 +5722,27 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     /// <summary>是否有 AI 参数动作正在独占模型参数写入。</summary>
     public bool IsAiControlLocked => _aiControlLocked;
+
+    /// <summary>测试模式只读观测星辉手臂相关参数是否仍有非零残留。</summary>
+    public string GetDebugStarSpinArmState()
+    {
+        if (_cubismModel == null) return "star-arm=unavailable";
+        string[] names = {
+            "Param92", "Param94", "Param97", "Param93", "Param118", "Param99",
+            "Param31", "Param32", "Param33", "Param34", "Param36", "Param37",
+            "Param102", "Param103", "Param105", "Param106", "Param107",
+            "Param110", "Param111", "Param112", "Param113", "Param114", "Param115",
+            "Param95", "Param117", "Param98", "Param100", "Param116", "Param120", "Param108", "Param119"
+        };
+        System.Text.StringBuilder result = new System.Text.StringBuilder("star-arm");
+        result.Append(" dragging=").Append(_pet != null && _pet.isDragging ? "True" : "False");
+        foreach (string name in names)
+        {
+            CubismParameter parameter = FindCachedParameter(name);
+            if (parameter != null) result.Append(' ').Append(name).Append('=').Append(parameter.Value.ToString("F3", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        return result.ToString();
+    }
 
     /// <summary>Semantic gateway for generated motion; no parameter access is exposed.</summary>
     public bool TryBeginGeneratedMotion(string owner, out Live2DInputLease lease)

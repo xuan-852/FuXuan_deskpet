@@ -643,6 +643,13 @@ public class DesktopPet : MonoBehaviour
             Debug.Log("[DesktopPet] 自动添加了 DragHandler 组件");
         }
 
+        // 直接交互适配层只发布本地注意力/生命事件，不写 Live2D 参数。
+        if (GetComponent<AttentionReactionAdapter>() == null)
+        {
+            gameObject.AddComponent<AttentionReactionAdapter>();
+            Debug.Log("[DesktopPet] 自动添加了 AttentionReactionAdapter 组件");
+        }
+
         // 自动确保 HybridRenderer 存在
         if (GetComponent<HybridRenderer>() == null)
         {

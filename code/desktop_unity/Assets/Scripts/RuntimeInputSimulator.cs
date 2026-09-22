@@ -349,6 +349,14 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.Equals("star-arm-state", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer == null) Debug.LogWarning("[StarArmState] renderer unavailable");
+            else Debug.Log("[StarArmState] " + renderer.GetDebugStarSpinArmState());
+            return true;
+        }
+
         if (body.Equals("desktop-state", StringComparison.OrdinalIgnoreCase))
         {
             DesktopPet pet = UnityEngine.Object.FindObjectOfType<DesktopPet>();

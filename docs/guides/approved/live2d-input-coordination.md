@@ -31,6 +31,7 @@ Chat / Tool / Idle-compatible caller
 | `Release(lease, reason)` | 原始租约 | 成功/失败 | 仅当前同 `requestId` 的所有者可释放 |
 | `ReleaseAll(reason)` | 生命周期原因 | 清空当前租约 | 仅 Renderer 销毁/受控恢复使用 |
 | `TryBeginGeneratedMotion` | 动作描述 | 生成动作租约 | 不暴露参数映射或 Cubism 对象 |
+| `TryHandoffWalkingToDragResponse` | 当前 walking lease + 拖拽 owner | 新 drag-response 租约或拒绝 | 仅当前 walking lease 可交接；不抢占其他输入 |
 | `ParameterCommitBridge.Commit` | 已验证的参数 ID 与值 | 单次 Cubism 写入 | 仅 renderer/mapper 内部可调用；上层无此接口 |
 
 固定输入类别为 `Expression`、`LegacyAction`、`GeneratedMotion`。当前是安全优先的全局互斥；资源级并行（如 Face 与 Hand）必须等能力目录、组合验收与 `ParameterCommitBridge` 均完成后，另行批准。
@@ -40,7 +41,7 @@ Chat / Tool / Idle-compatible caller
 状态机：`Idle -> Leased -> Executing -> Released`；拒绝保持 `Idle`，超时或销毁进入 `SafeRecovery` 后释放。表情替换或动作开始前，必须先以零淡出停止已有表情并释放其租约，不能让两段淡出/关键帧并写。
 
 - **C-INPUT-01**：禁止新增绕过协调器的外部 `ActionController.PlayAction/PlayExpression`、`MotionGenerator` 或直接 Cubism 写入入口。
-- **C-INPUT-02**：`Live2DRenderer` 的行走与桌面物理已接入全局单租约，拖拽响应也已登记为 `InputLeaseOnly` 并覆盖 DragHandler/Renderer teardown 清理；它们仍是内部基线，不等同于认证原语。真实 OS 鼠标、Renderer 重建、资源级并行和完整身体动作所有权仍需专项验收，修改行为规则须另建任务包。
+- **C-INPUT-02**：`Live2DRenderer` 的行走与桌面物理已接入全局单租约，拖拽响应也已登记为 `InputLeaseOnly`。拖拽是直接用户接管：普通动作锁不能拒绝拖拽；walking 仍持有租约时通过受控的 walking→drag 原子交接进入，Renderer-owned idle/legacy/certified/test action 则先取消并恢复姿态、动作锁和移动锁，再取得 `DragResponse`。落地时幂等清理且不恢复旧动作。明确的用户暂停仍是输入屏障；外部 GeneratedMotion 若没有可证明的取消协议，不得盲目替换其租约。资源级并行、Renderer 重建和真实 OS 鼠标仍需专项验收，修改行为规则须另建任务包。
 - **C-INPUT-03**：旧预设进入 `LegacyAction` 独占租约；不得与生成动作或表情并行。
 - **C-INPUT-04**：取消、超时和异常退出不得让桌宠永久暂停或遗留输入锁；必须恢复现有安全姿态/行走链。
 - **C-INPUT-05**：所有测试用 `FU_XUAN_DATA` 与 `.test_mode`，不得调用云端或污染生产记忆。

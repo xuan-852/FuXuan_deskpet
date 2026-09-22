@@ -74,6 +74,11 @@ public class DragHandler : MonoBehaviour
     public System.Action OnPetClicked;
     public System.Action OnDragEnded;
 
+    // 结构化直接交互生命周期（供具身注意力适配层监听）。
+    public event System.Action<string> OnInteraction;
+    private int _interactionSequence;
+    private string _activeDragCorrelation;
+
     // 上次交互时间（供睡觉系统检测无交互时长）
     [System.NonSerialized]
     public float lastInteractionTime = 0f;
@@ -185,8 +190,20 @@ public class DragHandler : MonoBehaviour
                 // ★ 不再打开旧 ContextMenu
         }
 
-        if (_pet.isPaused)
+        // Renderer-owned actions pause physics while still allowing direct user takeover.
+        // An explicit/user pause remains a hard input barrier.
+        if (_pet.isPaused && !_pet.IsActionMovementLocked)
+        {
+            // Pause can arrive while the physical mouse button is still held.
+            // Abort without throwing so a later frame cannot resume a stale candidate.
+            if (_isClickCandidate || _isDragging)
+            {
+                AbortPointerInteraction();
+                _window?.SetClickThrough(true);
+            }
+            UpdateEyeFollow();
             return;
+        }
 
         // ========== 3. 鼠标左键按下 ==========
         if (Input.GetMouseButtonDown(0))
@@ -292,7 +309,7 @@ public class DragHandler : MonoBehaviour
     /// </summary>
     public bool SimulateClick(Vector2 screenPos)
     {
-        if (_pet == null || _pet.isPaused)
+        if (_pet == null || (_pet.isPaused && !_pet.IsActionMovementLocked))
         {
             Debug.LogWarning("[DragHandler] 模拟点击忽略：宠物未就绪或当前暂停");
             return false;
@@ -314,7 +331,7 @@ public class DragHandler : MonoBehaviour
     /// </summary>
     public bool SimulateDrag(Vector2 start, Vector2 end, int steps = 12)
     {
-        if (_pet == null || _pet.isPaused)
+        if (_pet == null || (_pet.isPaused && !_pet.IsActionMovementLocked))
         {
             Debug.LogWarning("[DragHandler] 模拟拖动忽略：宠物未就绪或当前暂停");
             return false;
@@ -387,17 +404,42 @@ public class DragHandler : MonoBehaviour
         Vector2 deltaFromStart = mousePos - _dragStartMouse;
         if (!_isDragging && deltaFromStart.magnitude >= dragThreshold)
         {
-            if (_inputCoordinatorHost == null
-                || !_inputCoordinatorHost.TryBeginDragResponse(
-                    DragInputOwner, out _dragInputLease))
+            Live2DRenderer live2DRenderer = _renderer as Live2DRenderer;
+            bool handedOffWalking = live2DRenderer != null
+                && live2DRenderer.TryHandoffWalkingToDragResponse(
+                    DragInputOwner, out _dragInputLease);
+            string interruptReason = null;
+            bool interruptedAction = false;
+            if (!handedOffWalking && live2DRenderer != null)
             {
-                Debug.Log("[DragHandler] 拖动已拒绝：drag-response 输入租约被占用");
+                interruptedAction = live2DRenderer.TryInterruptForDrag(
+                    DragInputOwner, out _dragInputLease, out interruptReason);
+            }
+            if (!handedOffWalking && !interruptedAction
+                && (_inputCoordinatorHost == null
+                    || !_inputCoordinatorHost.TryBeginDragResponse(
+                        DragInputOwner, out _dragInputLease)))
+            {
+                Debug.Log("[DragHandler] 拖动已拒绝：drag-response 输入租约被占用"
+                    + (string.IsNullOrEmpty(interruptReason) ? "" : ", reason=" + interruptReason));
                 _isClickCandidate = false;
                 return;
             }
 
+            if (handedOffWalking)
+            {
+                Debug.Log("[DragHandoff] walking-to-drag accepted");
+                Debug.Log("[DragHandler] walking input handed off; drag started");
+            }
+            else if (interruptedAction)
+            {
+                Debug.Log("[DragInterrupt] action-to-drag accepted: " + interruptReason);
+                Debug.Log("[DragHandler] action interrupted; drag started: " + interruptReason);
+            }
             _isDragging = true;
             _pet.isDragging = true;
+            _activeDragCorrelation = "drag-" + (++_interactionSequence).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            OnInteraction?.Invoke("drag-start:" + _activeDragCorrelation);
             if (_renderer != null) _renderer.ShowDragPose();
             Debug.Log("[DragHandler] 拖动已启动");
         }
@@ -449,6 +491,7 @@ public class DragHandler : MonoBehaviour
                 _pet.SavePetPosition();
                 Debug.Log($"[DragHandler] 抛掷: ({vx}, {vy})");
                 OnDragEnded?.Invoke();
+                EmitDragInteraction("drag-end");
             }
         }
         else if (_isClickCandidate && applyThrow)
@@ -477,6 +520,14 @@ public class DragHandler : MonoBehaviour
         _pet.Pause(clickPauseDuration);
         Debug.Log($"[DragHandler] {(simulated ? "模拟点击" : "轻击宠物")}: screen=({screenPos.x:F0},{screenPos.y:F0})");
         OnPetClicked?.Invoke();
+        OnInteraction?.Invoke("click:click-" + (++_interactionSequence).ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    private void EmitDragInteraction(string phase)
+    {
+        if (string.IsNullOrEmpty(_activeDragCorrelation)) return;
+        OnInteraction?.Invoke(phase + ":" + _activeDragCorrelation);
+        _activeDragCorrelation = null;
     }
 
     private void AbortPointerInteraction()
@@ -490,6 +541,8 @@ public class DragHandler : MonoBehaviour
         }
         if (_pet != null)
             _pet.isDragging = false;
+        if (_isDragging)
+            EmitDragInteraction("drag-abort");
         _isDragging = false;
         _isClickCandidate = false;
         ReleaseDragInputLease("drag-aborted");
@@ -571,9 +624,9 @@ public class DragHandler : MonoBehaviour
     private bool IsPointInPet(Vector2 mousePos)
     {
         return mousePos.x >= _pet.petX &&
-               mousePos.x <= _pet.petX + _pet.petWidth &&
+               mousePos.x < _pet.petX + _pet.petWidth &&
                mousePos.y >= _pet.petY &&
-               mousePos.y <= _pet.petY + _pet.petHeight;
+               mousePos.y < _pet.petY + _pet.petHeight;
     }
 
     private System.IntPtr GetUnityWindowHandle()

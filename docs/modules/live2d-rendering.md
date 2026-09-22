@@ -17,6 +17,8 @@
   - 天气/表情/空闲动作怎么联动？
 - **关联文档**: `code-truth-architecture.md`（物理与渲染层）｜`modules/action-agent.md`（动作执行端）｜`modules/chat-ui.md`（像素模式并行渲染）。旧版硬编码迁移清单已并入本模块，不再单独维护。
 
+- `Live2DRenderer` 的动作→拖拽接管在 2026-09-22 增加了拖拽接管屏障：动作清理到 DragResponse 准入期间跳过普通动作写入；`ClearStarSpinArmPose()` 统一清理星辉硬编码 `arm_right_*` 语义参数及 Param94/97/93/118/99/31-33、手部图层参数，并覆盖剑指/手指参数 Param92、Param102/103/105-107、Param110-115；拖拽期间先清理旧动作再写入 DragResponse 并同步 `CubismParameterStore`，落地恢复也会清理。全新隔离 Player 参数回归已确认星辉抬手基线（Param94=10、Param97=4、Param99=-8、Param31-33=1、手部图层为星辉值）在 DragResponse 快照中不再出现，Param92 和手指残留为 0，落地后相关参数归零；该证据使用 `@@sim:*`，不等同真实 OS 鼠标动作中断。
+
 ## 二、基本架构
 
 ### 2.1 渲染链路
@@ -42,6 +44,14 @@ Editor: Assets/Live2D/Models/Fuxuan/符玄.prefab
   → 失败时 Resources.Load("Fuxuan") 回退
 Player: StreamingAssets/Live2D/Fuxuan/符玄.model3.json
 ```
+
+这三层路径是当前项目的代码事实，不等于通用 Live2D 目录扫描、运行时换模或热插拔能力。任意新模型需要单独建立合法资源登记、适配器实现、隔离 Probe 证据和人工验收；现有 Fuxuan 参数映射只能作为本地适配案例。
+
+## 2.21 直接交互进入生命注意力链（2026-09-22）
+
+- `DragHandler` 保留 `OnPetClicked`/`OnDragEnded` 兼容 AutoChat，并新增 `OnInteraction` 生命周期事件：点击、成功取得 DragResponse 后的 `drag-start`、正常释放的 `drag-end`、失焦/禁用/销毁/模拟重置的 `drag-abort`；拖拽阶段共享短 correlation id，不记录鼠标轨迹或桌面内容。
+- `AttentionReactionAdapter` 订阅原始 DragHandler 事件，调用 `MotionAgent.NotifyInteraction()` 并通过 `Live2DRenderer.PublishDirectInteraction()` 写入有界的 `EmbodiedEvent`、`LifeTimeline` 和 `LifeState.DirectInteraction`。适配层不写 Cubism 参数、不创建新动作、不改变全局单租约。
+- DirectInteraction 使用有限 TTL 与关联阶段去重；点击和拖拽边沿进入 AttentionTarget=`pet`，事件过期后由 `LifeStateStore` 回落。该实现已通过 `build.ps1 -Quick` 与 `build.ps1 -RunTests`（EditMode failed=0）；隔离 Player 的 click/drag/abort 证据仍待补充，不能将本轮描述为真实 OS 鼠标专项验收。
 
 这三层路径是当前项目的代码事实，不等于通用 Live2D 目录扫描、运行时换模或热插拔能力。任意新模型需要单独建立合法资源登记、适配器实现、隔离 Probe 证据和人工验收；现有 Fuxuan 参数映射只能作为本地适配案例。
 
@@ -215,9 +225,9 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 - `Assets/Scripts/Embodied/Live2DInputCoordinator.cs` 为表情、旧预设动作与 AI 生成动作分配递增的 `Live2DInputLease`；当前采用安全优先的全局单租约，活动租约未释放时第二个外部输入必定拒绝。
 - `Live2DRenderer.StopAllActionsAndExpressions()` 是 Renderer 层的统一停止网关：停止表情时同步处理 expression lease、generation、延迟释放与模型刷新；停止旧动作时同步处理 action lease、移动锁和恢复。`StopActionTool`、生成动作前置收束、自检路径和测试命令经由该网关；生成动作租约仍由其调用方拥有和释放。`PlayAction()` 先申请旧动作租约，申请失败不会停止当前表情。
 - `Live2DRenderer.PlayExpression()`、`PlayAction()`、`GenerateMotionTool`、`MotionAgent` 的自主/组合/表情动作以及 `VisionMotionVerifier` 已接入该协调器。`GenerateMotionTool` 先申请 `GeneratedMotion` 租约，再通过 Renderer 网关以零淡出收束表情；申请被拒绝时保留当前表情及其租约。成功取得生成动作租约后的 Renderer 交接、AI 锁和多帧播放均位于同一 `try/finally` 释放边界；动作正常完成、超时以及 Renderer 销毁会释放租约。非当前 `requestId` 不能释放活动租约。该次隔离 Player 证据覆盖语义接管与恢复顺序，不等同于生成动作语义或自然度认证。
-- 本轮已将行走输入的生命周期接入 `Live2DInputCoordinator`：`walk-pose` 是 `InputLeaseOnly`，步行租约在停止淡出期间保持，淡出完成后释放；拖拽开始、AI 接管、SafeRecovery 和外部输入清理会主动释放。`UpdateWalkAnimation` 与 `ApplyWalkBodyPose` 仍是渲染器内部硬编码姿态写入，最终参数提交经 `ParameterCommitBridge`，不等同于完成资源级仲裁或统一身体动作所有者。
+- 本轮已将行走输入的生命周期接入 `Live2DInputCoordinator`：`walk-pose` 是 `InputLeaseOnly`，步行租约在停止淡出期间保持，淡出完成后释放；同一渲染帧内由 `Update` 完成一次 walking admission，`LateUpdate` 与 `UpdateIdleAnimation` 只复用该结果，避免全局租约被重复申请导致“DesktopPet 在走但 Live2D 姿态冻结”；被其他输入阻塞时记录 `WalkingBlockedByInput` 与活动种类/requestId，并在后续帧重试。拖拽开始、AI 接管、SafeRecovery 和外部输入清理会主动释放。`UpdateWalkAnimation` 与 `ApplyWalkBodyPose` 仍是渲染器内部硬编码姿态写入，最终参数提交经 `ParameterCommitBridge`，不等同于完成资源级仲裁或统一身体动作所有者。
 - `desktop-physics` 已通过同一桌面对象上的 `Live2DInputCoordinatorHost` 接入全局单租约：`DesktopPet` 在 pause/drag/action-lock gate 后尝试取得 `desktop-physics`，物理步进完成后释放；walking 或其他输入持有租约时，PhysicsRoot 仍执行原有 `StepPet()`，因此不会因 Live2D 渲染器状态阻塞桌面物理。新鲜隔离 Player 已观察到 `Rejected DesktopPhysics/physics-update: active=Walking/walking-state#109` 后仍持续 `DesktopState ... mode=Walking ... velocity=(1,0)`，并验证 `Idle → Walking → Paused → Idle`、暂停期间快照版本冻结和 test-exit 安全恢复。该边界不暴露 raw `Param*`，不引入资源级并行或抢占。
-- `drag-response` 已登记为 `InputLeaseOnly`，由 `DragHandler` 负责 pointer capture、位置/速度/抛掷和租约持有；正常释放、失焦、禁用、销毁和退出均经幂等恢复，`Live2DRenderer.SafeRecoverExternalActions` 也会调用 `RecoverDragResponse`。代码与隔离 Player 模拟拖拽证据均通过，但真实 OS 鼠标、Renderer 重建和认证动作双向 handoff 仍未独立验收。
+- `drag-response` 已登记为 `InputLeaseOnly`，由 `DragHandler` 负责 pointer capture、位置/速度/抛掷和租约持有；当 `walk-pose` 仍持有全局租约时，拖拽阈值通过 `Live2DRenderer` 与 `Live2DInputCoordinator` 的窄化原子 handoff 将 walking 替换为 drag-response。渲染器自有 idle/legacy/certified/test action 在阈值触发后先取消、恢复姿态并清除 action/movement lock，再取得 DragResponse；落地回调幂等清理，不恢复被打断动作。明确的用户暂停仍是输入屏障，动作-owned pause 可被拖拽接管。生成动作若不归 Renderer 控制，仍拒绝盲目替换。正常释放、失焦、禁用、销毁和退出均经幂等恢复；隔离 Player 已验证 walking → drag → throw → land → walking，真实 OS 鼠标、Renderer 重建和完整外部生成动作 handoff 仍未独立验收。
 - `build.ps1 -Quick`：通过，`[OK] Build succeeded!`。
 - `build.ps1 -RunTests`：本轮完整 EditMode 结果为 `failed=0`；Everything 集成测试在缺少 `es.exe`/IPC 时明确跳过，安全回退测试仍通过。
 
