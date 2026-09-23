@@ -112,5 +112,10 @@ installer/dist/
 /model-workspaces/**/*.cmo3
 /model-workspaces/**/*.psd
 
+# Local build artifacts and harness scratch files
+/.artifacts/
+/.zcodeignore
+/nul
+
 # OS metadata
 .DS_Store

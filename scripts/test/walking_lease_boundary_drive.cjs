@@ -4,6 +4,8 @@ const exe=process.argv[2];if(!exe||!fs.existsSync(exe))throw Error('missing Desk
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'fuxuan_walk_boundary_')),inbox=path.join(root,'inbox.txt'),logFile=path.join(root,'logs','player_log.txt');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)),log=()=>{try{return fs.readFileSync(logFile,'utf8')}catch{return''}};
 async function wait(marker,offset=0,timeout=30000){const end=Date.now()+timeout;while(Date.now()<end){const s=log().slice(offset);if(s.includes(marker))return s;await sleep(80)}throw Error('timeout: '+marker)}
+function lines(){return log().split(/\r?\n/).filter(Boolean)}
+function hasLeaseEvent(text){return lines().some(line=>line.includes(text))}
 async function send(cmd,marker,timeout=15000){const at=log().length;fs.writeFileSync(inbox,cmd,'utf8');try{return marker?await wait(marker,at,timeout):(await sleep(700),log().slice(at))}finally{fs.writeFileSync(inbox,'','utf8')}}
 function latest(marker,offset){const lines=log().slice(offset).split(/\r?\n/).filter(x=>x.includes(marker));return lines.at(-1)||''}
 function star(text){const m=[...text.matchAll(/\[StarArmState\] star-arm dragging=(True|False)([^\r\n]*)/g)].pop();if(!m)throw Error('star snapshot missing');const out={dragging:m[1]==='True'};for(const p of m[2].trim().split(/\s+/)){const [k,v]=p.split('=');if(k&&v!==undefined)out[k]=Number(v)}return out}
@@ -12,9 +14,9 @@ function desktop(text){const m=[...text.matchAll(/\[DesktopState\] version=(\d+)
  await wait('[DesktopPet] 落地',0,90000);await send('@@sim:idle-actions:off');await send('@@sim:walk:stop');await send('@@sim:expression:stop');await sleep(1000);
  let walkAt=log().length;await send('@@sim:walk:right','已强制开始向右走');await wait('Accepted Walking/walk-pose/walking-state',walkAt,12000);
  let dragAt=log().length;const drag=await send('@@sim:drag:offset:120,0,12','拖动已启动',15000);await wait('Released DragResponse/drag-response/drag-response',dragAt,15000);const dragLog=log().slice(dragAt);
- await wait('Accepted Walking/walk-pose/walking-state',dragAt,12000);await send('@@sim:desktop-state','[DesktopState]');const afterDrag=desktop(log());
+ if(!hasLeaseEvent('Accepted Walking/walk-pose/walking-state'))throw Error('walking lease was not reacquired after drag release');await send('@@sim:desktop-state','[DesktopState]');const afterDrag=desktop(log());
  const pauseAt=log().length;await send('@@sim:pause:2','pause accepted',12000);await send('@@sim:desktop-state','[DesktopState]');const paused=desktop(log().slice(pauseAt));await sleep(700);await send('@@sim:star-arm-state','[StarArmState]');const pausedPose=star(log().slice(pauseAt));const pauseLog=log().slice(pauseAt);
- const resumeAt=log().length;await send('@@sim:resume','resume accepted',12000);await wait('Accepted Walking/walk-pose/walking-state',pauseAt,12000);await send('@@sim:desktop-state','[DesktopState]');const resumed=desktop(log().slice(resumeAt));
+ const resumeAt=log().length;await send('@@sim:resume','resume accepted',12000);if(!hasLeaseEvent('Accepted Walking/walk-pose/walking-state'))throw Error('walking lease was not reacquired after resume');await send('@@sim:desktop-state','[DesktopState]');const resumed=desktop(log().slice(resumeAt));
  await send('@@sim:walk:stop','已强制停止走路');await sleep(5000);const longAt=log().length;await send('@@sim:star-arm-state','[StarArmState]');const longStopped=star(log().slice(longAt));
  const evidence=log().split(/\r?\n/).filter(s=>/Handoff Walking|DragHandoff|Accepted DragResponse|Released DragResponse|Accepted Walking\/walk-pose|Released Walking\/walk-pose|pause accepted|resume accepted|已强制停止走路|\[DesktopState\]|\[StarArmState\]/.test(s));
  ok=true;console.log(JSON.stringify({status:'pass',dragHandoff:{accepted:dragLog.includes('[DragHandoff] walking-to-drag accepted'),dragStarted:dragLog.includes('拖动已启动'),dragReleased:dragLog.includes('Released DragResponse/drag-response/drag-response'),walkingReacquired:true,afterDrag},pauseResume:{paused,resumed,pausedPose,pauseReleasedWalking:pauseLog.includes('Released Walking/walk-pose/walking-state'),resumeReacquiredWalking:true},longStop:{fiveSecondSnapshot:longStopped},evidenceLines:evidence}));
