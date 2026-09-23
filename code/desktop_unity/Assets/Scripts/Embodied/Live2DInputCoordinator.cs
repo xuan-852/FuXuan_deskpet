@@ -109,6 +109,11 @@ public sealed class Live2DInputCoordinator
             Debug.LogWarning($"[Live2DInputCoordinator] Rejected {kind}/{owner}: unknown-writer={writerId}");
             return false;
         }
+        if (writer.ControlLevel == BodyWriterControlLevel.InternalOnly)
+        {
+            Debug.LogWarning($"[Live2DInputCoordinator] Rejected {kind}/{owner}: writer-not-leasable={writerId}");
+            return false;
+        }
         if (_activeLease.IsValid)
         {
             Debug.Log($"[Live2DInputCoordinator] Rejected {kind}/{owner}: active="

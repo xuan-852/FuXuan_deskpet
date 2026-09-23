@@ -75,6 +75,19 @@ public class Live2DInputCoordinatorTests
         Assert.That(coordinator.HasActiveLease, Is.False);
     }
 
+    [TestCase("mouse-gaze")]
+    [TestCase("renderer-parameter-commit")]
+    public void InternalWriter_CannotAcquireExternalLease(string writerId)
+    {
+        var coordinator = new Live2DInputCoordinator();
+        LogAssert.Expect(UnityEngine.LogType.Warning,
+            "[Live2DInputCoordinator] Rejected GeneratedMotion/test: writer-not-leasable=" + writerId);
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.GeneratedMotion, writerId, "test", out var lease), Is.False);
+        Assert.That(lease.IsValid, Is.False);
+        Assert.That(coordinator.HasActiveLease, Is.False);
+    }
+
     [Test]
     public void ReleaseAll_IsIdempotentAndAllowsNextExpressionLease()
     {
@@ -405,4 +418,5 @@ public class Live2DInputCoordinatorTests
         Assert.That(walking.RequestId, Is.GreaterThan(expression.RequestId));
         Assert.That(coordinator.Release(walking, "walking-stopped"), Is.True);
     }
+
 }

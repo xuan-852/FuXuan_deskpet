@@ -175,9 +175,23 @@ public class EmbodiedRecoveryTests
         var physics = Array.Find(writers, item => item.WriterId == "desktop-physics");
         Assert.NotNull(physics);
         Assert.AreEqual(BodyWriterControlLevel.InputLeaseOnly, physics.ControlLevel);
+        Assert.AreEqual(BodyWriterRole.DesktopStateLease, physics.Role);
         Assert.AreEqual("physics-state", physics.RecoveryOwner);
         Assert.AreEqual(EmbodiedResource.Movement | EmbodiedResource.Body | EmbodiedResource.Effect,
             physics.Resources);
+
+        var gaze = Array.Find(writers, item => item.WriterId == "mouse-gaze");
+        Assert.NotNull(gaze);
+        Assert.AreEqual(BodyWriterControlLevel.InternalOnly, gaze.ControlLevel);
+        Assert.AreEqual(BodyWriterRole.LeaseGatedOverlay, gaze.Role);
+        Assert.AreEqual("gaze-update", gaze.RecoveryOwner);
+
+        var renderer = Array.Find(writers, item => item.WriterId == "renderer-parameter-commit");
+        Assert.NotNull(renderer);
+        Assert.AreEqual(BodyWriterControlLevel.InternalOnly, renderer.ControlLevel);
+        Assert.AreEqual(BodyWriterRole.InternalParameterLayer, renderer.Role);
+        Assert.AreEqual(EmbodiedResource.None, renderer.Resources);
+        Assert.AreEqual("ParameterCommitBridge", renderer.RecoveryOwner);
 
         var drag = Array.Find(writers, item => item.WriterId == "drag-response");
         Assert.NotNull(drag);

@@ -176,13 +176,22 @@ public sealed class DesktopBodyState
     }
 }
 
-public enum BodyWriterControlLevel { CertifiedCoordinator, InputLeaseOnly, LegacyUnmanaged }
+public enum BodyWriterControlLevel { CertifiedCoordinator, InputLeaseOnly, LegacyUnmanaged, InternalOnly }
+
+public enum BodyWriterRole
+{
+    ExternalLeaseWriter,
+    LeaseGatedOverlay,
+    DesktopStateLease,
+    InternalParameterLayer
+}
 
 public sealed class BodyWriterDescriptor
 {
     public string WriterId { get; internal set; }
     public EmbodiedResource Resources { get; internal set; }
     public BodyWriterControlLevel ControlLevel { get; internal set; }
+    public BodyWriterRole Role { get; internal set; }
     public string RecoveryOwner { get; internal set; }
 }
 
@@ -190,15 +199,16 @@ public static class BodyWriterInventory
 {
     private static readonly BodyWriterDescriptor[] Descriptors =
     {
-        new BodyWriterDescriptor { WriterId = "certified-motion", Resources = EmbodiedResource.Body | EmbodiedResource.Face | EmbodiedResource.LeftArm | EmbodiedResource.RightArm, ControlLevel = BodyWriterControlLevel.CertifiedCoordinator, RecoveryOwner = "EmbodiedSafeRecovery" },
-        new BodyWriterDescriptor { WriterId = "expression", Resources = EmbodiedResource.Face, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, RecoveryOwner = "ReleaseExpressionInputLease" },
-        new BodyWriterDescriptor { WriterId = "legacy-action", Resources = EmbodiedResource.Body | EmbodiedResource.Face | EmbodiedResource.LeftArm | EmbodiedResource.RightArm, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, RecoveryOwner = "ReleaseActionLock" },
-        new BodyWriterDescriptor { WriterId = "generated-motion", Resources = EmbodiedResource.Body | EmbodiedResource.Face | EmbodiedResource.LeftArm | EmbodiedResource.RightArm, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, RecoveryOwner = "EndGeneratedMotion" },
-        new BodyWriterDescriptor { WriterId = "idle-action", Resources = EmbodiedResource.Body | EmbodiedResource.Face | EmbodiedResource.LeftArm | EmbodiedResource.RightArm | EmbodiedResource.Effect, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, RecoveryOwner = "ResetIdleAction" },
-        new BodyWriterDescriptor { WriterId = "walk-pose", Resources = EmbodiedResource.Movement | EmbodiedResource.Body | EmbodiedResource.LeftArm | EmbodiedResource.RightArm, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, RecoveryOwner = "walking-state" },
-        new BodyWriterDescriptor { WriterId = "desktop-physics", Resources = EmbodiedResource.Movement | EmbodiedResource.Body | EmbodiedResource.Effect, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, RecoveryOwner = "physics-state" },
-        new BodyWriterDescriptor { WriterId = "mouse-gaze", Resources = EmbodiedResource.Face, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, RecoveryOwner = "gaze-update" },
-        new BodyWriterDescriptor { WriterId = "drag-response", Resources = EmbodiedResource.Movement | EmbodiedResource.Body | EmbodiedResource.Face | EmbodiedResource.LeftArm | EmbodiedResource.RightArm | EmbodiedResource.Effect, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, RecoveryOwner = "ReleaseDragResponseInputLease" }
+        new BodyWriterDescriptor { WriterId = "certified-motion", Resources = EmbodiedResource.Body | EmbodiedResource.Face | EmbodiedResource.LeftArm | EmbodiedResource.RightArm, ControlLevel = BodyWriterControlLevel.CertifiedCoordinator, Role = BodyWriterRole.ExternalLeaseWriter, RecoveryOwner = "EmbodiedSafeRecovery" },
+        new BodyWriterDescriptor { WriterId = "expression", Resources = EmbodiedResource.Face, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, Role = BodyWriterRole.ExternalLeaseWriter, RecoveryOwner = "ReleaseExpressionInputLease" },
+        new BodyWriterDescriptor { WriterId = "legacy-action", Resources = EmbodiedResource.Body | EmbodiedResource.Face | EmbodiedResource.LeftArm | EmbodiedResource.RightArm, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, Role = BodyWriterRole.ExternalLeaseWriter, RecoveryOwner = "ReleaseActionLock" },
+        new BodyWriterDescriptor { WriterId = "generated-motion", Resources = EmbodiedResource.Body | EmbodiedResource.Face | EmbodiedResource.LeftArm | EmbodiedResource.RightArm, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, Role = BodyWriterRole.ExternalLeaseWriter, RecoveryOwner = "EndGeneratedMotion" },
+        new BodyWriterDescriptor { WriterId = "idle-action", Resources = EmbodiedResource.Body | EmbodiedResource.Face | EmbodiedResource.LeftArm | EmbodiedResource.RightArm | EmbodiedResource.Effect, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, Role = BodyWriterRole.ExternalLeaseWriter, RecoveryOwner = "ResetIdleAction" },
+        new BodyWriterDescriptor { WriterId = "walk-pose", Resources = EmbodiedResource.Movement | EmbodiedResource.Body | EmbodiedResource.LeftArm | EmbodiedResource.RightArm, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, Role = BodyWriterRole.ExternalLeaseWriter, RecoveryOwner = "walking-state" },
+        new BodyWriterDescriptor { WriterId = "desktop-physics", Resources = EmbodiedResource.Movement | EmbodiedResource.Body | EmbodiedResource.Effect, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, Role = BodyWriterRole.DesktopStateLease, RecoveryOwner = "physics-state" },
+        new BodyWriterDescriptor { WriterId = "mouse-gaze", Resources = EmbodiedResource.Face, ControlLevel = BodyWriterControlLevel.InternalOnly, Role = BodyWriterRole.LeaseGatedOverlay, RecoveryOwner = "gaze-update" },
+        new BodyWriterDescriptor { WriterId = "renderer-parameter-commit", Resources = EmbodiedResource.None, ControlLevel = BodyWriterControlLevel.InternalOnly, Role = BodyWriterRole.InternalParameterLayer, RecoveryOwner = "ParameterCommitBridge" },
+        new BodyWriterDescriptor { WriterId = "drag-response", Resources = EmbodiedResource.Movement | EmbodiedResource.Body | EmbodiedResource.Face | EmbodiedResource.LeftArm | EmbodiedResource.RightArm | EmbodiedResource.Effect, ControlLevel = BodyWriterControlLevel.InputLeaseOnly, Role = BodyWriterRole.ExternalLeaseWriter, RecoveryOwner = "ReleaseDragResponseInputLease" }
     };
 
     public static BodyWriterDescriptor[] Snapshot()
@@ -207,7 +217,7 @@ public static class BodyWriterInventory
         for (var index = 0; index < Descriptors.Length; index++)
         {
             var item = Descriptors[index];
-            snapshot[index] = new BodyWriterDescriptor { WriterId = item.WriterId, Resources = item.Resources, ControlLevel = item.ControlLevel, RecoveryOwner = item.RecoveryOwner };
+            snapshot[index] = Copy(item);
         }
         return snapshot;
     }
@@ -219,10 +229,21 @@ public static class BodyWriterInventory
         for (var index = 0; index < Descriptors.Length; index++)
         {
             if (Descriptors[index].WriterId != writerId) continue;
-            var item = Descriptors[index];
-            descriptor = new BodyWriterDescriptor { WriterId = item.WriterId, Resources = item.Resources, ControlLevel = item.ControlLevel, RecoveryOwner = item.RecoveryOwner };
+            descriptor = Copy(Descriptors[index]);
             return true;
         }
         return false;
+    }
+
+    private static BodyWriterDescriptor Copy(BodyWriterDescriptor item)
+    {
+        return new BodyWriterDescriptor
+        {
+            WriterId = item.WriterId,
+            Resources = item.Resources,
+            ControlLevel = item.ControlLevel,
+            Role = item.Role,
+            RecoveryOwner = item.RecoveryOwner
+        };
     }
 }

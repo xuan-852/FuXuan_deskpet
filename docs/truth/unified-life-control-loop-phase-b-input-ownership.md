@@ -7,7 +7,7 @@
 ## 已验证事实
 
 - `Live2DInputCoordinator` 在保持“一次只允许一个输入租约”的原有语义下，要求每个新租约解析到 `BodyWriterInventory` 的已登记写入者；未知写入者被拒绝且不会取得租约。
-- `Live2DInputLease` 现公开 `WriterId`、声明资源和控制等级，用于审计与后续迁移，不提供参数写入能力。
+- `Live2DInputLease` 现公开 `WriterId`、声明资源和控制等级，用于审计与后续迁移，不提供参数写入能力。`BodyWriterDescriptor.Role` 进一步区分外部租约 writer、租约门控 overlay、桌面状态租约和 Renderer 内部参数提交层；该分类仅为审计元数据，不改变运行时仲裁。
 - `PlayCertifiedMotion` 使用显式 `certified-motion` 写入者，而不是泛化为 `generated-motion`；其资源和认证协调控制等级可由租约读取。
 - 表情、旧预设和生成动作继续走既有默认映射，分别保留为 `InputLeaseOnly`。它们尚未迁入 `EmbodiedCoordinator`，不能声称已完成单一身体仲裁。
 - `DesktopPet` 的 `desktop-physics` 写入者已登记为 `InputLeaseOnly`，资源为 `Movement | Body | Effect`，恢复所有者为 `physics-state`。它通过与 `Live2DRenderer` 共享的 `Live2DInputCoordinatorHost` 取得全局单租约；租约取得失败时仍执行 PhysicsRoot 的既有物理步进，因此不引入资源级并行或抢占，也不把桌面物理变成 Live2D 参数命令入口。

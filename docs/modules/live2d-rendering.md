@@ -1,4 +1,4 @@
-﻿# Live2D 渲染管道 — 渲染、参数映射与硬编码迁移
+# Live2D 渲染管道 — 渲染、参数映射与硬编码迁移
 
 > **文档作用**: 本模块文档描述桌宠「Live2D 渲染」子系统的**代码真相**——模型加载双保险、80+ 参数映射、Perlin 噪声微动、天气↔表情联动、以及 `Live2DRenderer.cs` 约 427 处 `SetParameter`/`SetParameterValue` 匹配的迁移清单（P0-P4 分级）。改渲染/表情/动作参数相关代码前必读。
 > **基本架构**: `HybridRenderer` → `Live2DRenderer`（恒走 Live2D，3D 分支不可用）→ Cubism SDK 5-r.4。当前渲染器是固定 Fuxuan fixture 的适配实现，不是通用模型 provider：编辑器优先读取 `Assets/Live2D/Models/Fuxuan/符玄.prefab`，构建运行时从 `StreamingAssets/Live2D/Fuxuan/符玄.model3.json` 读取，`Resources.Load("Fuxuan")` 仅作回退。参数映射：`Live2DParameterMapper`（语义名 ↔ Cubism 参数 ID）双向映射，核心入口 `Live2DRenderer.SetParameterValue(string, float)`。渲染器现由 `Live2DRenderer.cs`（模型加载、动作与参数）+ `Live2DRenderer.OverlayRendering.cs`（置顶叠加相机、RT、OnGUI 和性能档位）组成同一 partial 类。执行顺序：DesktopPet.Update（0）→ CubismPhysicsController.LateUpdate（800）→ Live2DRenderer.LateUpdate（801，覆盖物理重置参数）。
@@ -52,6 +52,12 @@ Player: StreamingAssets/Live2D/Fuxuan/符玄.model3.json
 - `DragHandler` 保留 `OnPetClicked`/`OnDragEnded` 兼容 AutoChat，并新增 `OnInteraction` 生命周期事件：点击、成功取得 DragResponse 后的 `drag-start`、正常释放的 `drag-end`、失焦/禁用/销毁/模拟重置的 `drag-abort`；拖拽阶段共享短 correlation id，不记录鼠标轨迹或桌面内容。
 - `AttentionReactionAdapter` 订阅原始 DragHandler 事件，调用 `MotionAgent.NotifyInteraction()` 并通过 `Live2DRenderer.PublishDirectInteraction()` 写入有界的 `EmbodiedEvent`、`LifeTimeline` 和 `LifeState.DirectInteraction`。适配层不写 Cubism 参数、不创建新动作、不改变全局单租约。
 - DirectInteraction 使用有限 TTL 与关联阶段去重；点击和拖拽边沿进入 AttentionTarget=`pet`，事件过期后由 `LifeStateStore` 回落。该实现已通过 `build.ps1 -Quick` 与 `build.ps1 -RunTests`（EditMode failed=0）；隔离 Player 的 click/drag/abort 证据仍待补充，不能将本轮描述为真实 OS 鼠标专项验收。
+
+### 2.22 身体写入清册角色（2026-09-23）
+
+- `BodyWriterInventory` 的 `Role` 将 `ExternalLeaseWriter` 与内部路径分开：`mouse-gaze` 是 `InternalOnly/LeaseGatedOverlay`，由全局活动 lease 和动作锁门控，不取得独立租约；`desktop-physics` 是 `InputLeaseOnly/DesktopStateLease`，登记桌面物理生命周期，但 PhysicsRoot 在 lease 冲突时仍按既有逻辑推进。
+- `renderer-parameter-commit` 是 `InternalOnly/InternalParameterLayer` 的审计边界，表示 Renderer 内部姿态、表情、效果等参数提交经 `ParameterCommitBridge`；它不是一个运行时动作 writer，也不代表已逐项拆分所有内部写入源。
+- 这些字段只修正清册语义，不改变参数提交、动作视觉或租约仲裁。
 
 这三层路径是当前项目的代码事实，不等于通用 Live2D 目录扫描、运行时换模或热插拔能力。任意新模型需要单独建立合法资源登记、适配器实现、隔离 Probe 证据和人工验收；现有 Fuxuan 参数映射只能作为本地适配案例。
 

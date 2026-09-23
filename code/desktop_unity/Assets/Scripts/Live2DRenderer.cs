@@ -1,4 +1,4 @@
-﻿using Live2D.Cubism.Core;
+using Live2D.Cubism.Core;
 using Live2D.Cubism.Framework;
 using Live2D.Cubism.Framework.Physics;
 using Live2D.Cubism.Framework.Raycasting;

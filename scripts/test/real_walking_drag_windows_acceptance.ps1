@@ -36,28 +36,41 @@ try {
   if($matches.Count -eq 0){throw 'missing desktop state'}
   $m=$matches[$matches.Count-1]
   $petX=[int]$m.Groups[3].Value; $petY=[int]$m.Groups[4].Value
-  if($m.Groups[2].Value -ne 'Walking' -or $m.Groups[7].Value -ne 'True'){throw ('not walking/grounded: ' + $m.Value)}
+  if($m.Groups[7].Value -ne 'True'){throw ('not grounded: ' + $m.Value)}
   $p.Refresh(); $rect=New-Object NativeDrag+RECT
   [NativeDrag]::SetForegroundWindow($p.MainWindowHandle)|Out-Null
   Start-Sleep -Milliseconds 500
   if(-not [NativeDrag]::GetWindowRect($p.MainWindowHandle,[ref]$rect)){throw 'GetWindowRect failed'}
   $windowW=$rect.Right-$rect.Left
   $windowH=$rect.Bottom-$rect.Top
-  $startX=$rect.Left+[int](($petX+50)*$windowW/1920.0)
-  $startY=$rect.Top+[int](($petY+85)*$windowH/1600.0)
+  # The overlay can be cropped to the pet region, while petX/petY are desktop coordinates.
+  # Use the reported desktop-space pet center directly instead of scaling by window size.
+  $startX=$petX+50
+  $startY=$petY+85
   Write-Output ("ROOT=$root`nPID=$($p.Id)`nPET=$petX,$petY`nWINDOW=$($rect.Left),$($rect.Top),$($rect.Right),$($rect.Bottom)`nCLICK=$startX,$startY SCALE=$windowW/$windowH")
+  $during=$false
   [NativeDrag]::SetCursorPos($startX,$startY)|Out-Null
-  Start-Sleep -Milliseconds 700
+  Start-Sleep -Milliseconds 1000
   [NativeDrag]::mouse_event([NativeDrag]::LEFTDOWN,0,0,0,[UIntPtr]::Zero)
-  Start-Sleep -Milliseconds 250
-  for($i=1;$i -le 15;$i++){ [NativeDrag]::SetCursorPos($startX+[int](260*$i/15),$startY-[int](100*$i/15))|Out-Null; Start-Sleep -Milliseconds 120 }
-  Start-Sleep -Milliseconds 400
+  Start-Sleep -Milliseconds 700
+  for($i=1;$i -le 20;$i++){
+    [NativeDrag]::SetCursorPos($startX+[int](80*$i/20),$startY-[int](30*$i/20))|Out-Null
+    Start-Sleep -Milliseconds 180
+    $stateText=LogText
+    if($stateText -like '*dragging=True*'){$during=$true}
+  }
+  Start-Sleep -Milliseconds 500
   [NativeDrag]::mouse_event([NativeDrag]::LEFTUP,0,0,0,[UIntPtr]::Zero)
   Start-Sleep -Milliseconds 1200
   $after=LogText
   $evidence=$after | Select-String -Pattern 'Handoff Walking|DragResponse|drag-release|拖动已启动|拖动已拒绝|抛掷:' | Select-Object -Last 30
   $evidence
-  if(-not ($after.Contains('[DragHandoff] walking-to-drag accepted') -and $after.Contains('DragResponse/drag-response'))){ throw 'real mouse DragHandler evidence missing' }
+  $dragAccepted = $after -match 'Accepted DragResponse/drag-response/drag-response' -and $after -match 'DragHandler.*drag'
+  $handoffAccepted = $after -like '*DragHandoff*walking-to-drag accepted*'
+  $interruptAccepted = $after -like '*DragInterrupt*action-to-drag accepted*'
+  if(-not $dragAccepted){ throw "real mouse DragResponse evidence missing" }
+  if(-not $handoffAccepted){ throw "real mouse walking-to-drag handoff evidence missing; interrupt=$interruptAccepted" }
+  Write-Output ("RESULT=drag-completed HANDOFF=" + $handoffAccepted + " INTERRUPT=" + $interruptAccepted)
   Send '@@test:quit' 700
   WaitAscii 'recovered: test-exit' 20000
   Write-Output 'RESULT=completed'
