@@ -37,6 +37,7 @@ const requestedTheme = themeArg ? themeArg.slice('--theme='.length) : '';
 
 // 正式主题（与 HolidayThemeRuntime.Themes 表一致，含 default）
 const THEMES = [
+  ['ink', '墨韵'],
   ['cn_new_year', '新春'],
   ['lantern_festival', '元宵'],
   ['dragon_boat', '端午'],
