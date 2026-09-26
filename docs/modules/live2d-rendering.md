@@ -302,6 +302,14 @@ Set-Content "$env:TEMP\fuxuan_smoke_test\inbox.txt" '@@sim:drag:offset:120,20,12
 - 中途取消验收已完成：测试专用 `@@sim:gesture:param94:cancel` 在候选序列中段停止协程，记录 `candidate-test-cancelled` 释放和 `[CandidateTest] cleanup`，随后普通走路再次达到 `velocity=(1,0)`。测试退出验收也已完成：`@@test:quit` 在进入原有桌宠退出链前显式清理仍在运行的测试候选，并记录 `candidate-test-before-test-exit` 释放；这只为隔离测试提供可审计证据，不改变托盘退出或 Windows 关机/注销的既有验收结论。
 - 它仍为 `Supporting` 候选：只允许用于开发者时序、抢占和恢复实验；不得注册为 `CertifiedSkillRegistry` 项、不得加入自主动作、不得改写正式参数映射。
 
+### 2.25 SoulLink 离线批量动作 PoC（2026-09-26）
+
+- `scripts/live2d-probe/` 新增完全离线的 SoulLink 适配链：Profile 核对、emotion × intensity × seed 时间线扫描、候选曲线转换、既有特征提取器桥接和本地 exact/near dedupe。输入与输出根必须是绝对路径；输出根必须位于系统临时目录并带 `.test_mode`。
+- Profile 审计以 `capability-catalog/v1` 为唯一参数存在性、范围、reset stability 和 production status 来源，报告固定包含 `parameterCoverage`、`missingParameters`、`reservedParameters`、`safeEmotionChannels` 和 `safeBodyChannels`。安全通道声明必须与参数级 allowlist 一致，未显式允许的参数继续保留为 reserved。
+- 扫描器要求 adapter 提供 `createManualClock()`，每个 case 独立推进固定帧率并运行两次比较确定性哈希；fixture smoke 已通过。时间线和候选始终是 evidence-only，`uncertified`、`productionStatus=not-certified`、`mapWriteAllowed=false`、`llmExposureAllowed=false`。
+- 时间线中出现过的参数不会因后续帧省略而丢失；转换器使用 Cubism type-0 linear segments，并在末尾将每个参数显式回填到 Profile neutral/default 或 catalog baseline。候选只进入本地特征与 survivor 白名单，不进入 `Resources`、正式映射、运行时动作库或 LLM。
+- 当前公开 `@soullink-emotion/engine` 包尚未验证同时导出可 set 的 `createManualClock()` 与所需 runtime 边界；fixture 通过不等同真实 engine、语义自然度或 Unity 播放验收。详见 [L3 SoulLink 离线批量动作 PoC](../truth/l3-soullink-offline-poc.md)。
+
 ## 三、开发历史迭代
 
 | 版本 | 日期 | 变更 |

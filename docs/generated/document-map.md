@@ -64,6 +64,7 @@
 - [L3 轻回应式抬手隔离人工审核包](../../docs/truth/l3-screen-side-arm-raise-isolated-human-review.md) — `docs/truth/l3-screen-side-arm-raise-isolated-human-review.md`
 - [L3 认证技能的 AI 暴露边界](../../docs/truth/l3-semantic-skill-exposure-boundary.md) — `docs/truth/l3-semantic-skill-exposure-boundary.md`
 - [L3 六项认证动作隔离运行时复验](../../docs/truth/l3-six-certified-motion-isolated-runtime-verification.md) — `docs/truth/l3-six-certified-motion-isolated-runtime-verification.md`
+- [L3 SoulLink 离线批量动作 PoC](../../docs/truth/l3-soullink-offline-poc.md) — `docs/truth/l3-soullink-offline-poc.md`
 - [L3 躯干保守动态与动作边界验证](../../docs/truth/l3-torso-conservative-dynamic-boundary.md) — `docs/truth/l3-torso-conservative-dynamic-boundary.md`
 - [L3 躯干 Z 轴候选：双模型自然度评审](../../docs/truth/l3-torso-z-candidate-review.md) — `docs/truth/l3-torso-z-candidate-review.md`
 - [L3 躯干 Z 运行时连续性验证](../../docs/truth/l3-torso-z-runtime-continuity.md) — `docs/truth/l3-torso-z-runtime-continuity.md`

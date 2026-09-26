@@ -45,3 +45,19 @@ For a sequence use `type: "sequence"`, `wristScale`, `steps`, and `repeats`. For
 Optional local ROI evidence can be added to an experiment manifest with normalized rectangles for `face`, `left_arm`, `right_arm`, and `torso`; the report records peak RGB delta, adjacent-frame delta, coverage, reset stability, and `EvidenceOnly` status. ROI reads only the current Probe report's explicit frame list, so stale files in `probe_window` are ignored; ablation reports keep separate `full`/`without-*` ROI evidence. Sequence reports additionally expose `phaseRoiEvidence` for stages such as `baseline`, `raise_arm`, `set_hand`, `wrist_swing`, `return_arm`, `reset_hand`, and the exact `reset` stage. ROI failures are recorded as derived evidence failures without changing the completed experiment's `not-certified` safety state. ROI output is mechanical evidence only and does not infer body-part semantics.
 
 Run platform smoke test: `node scripts/live2d/test/platform_cli_smoke.cjs` and ROI smoke test: `node scripts/live2d/test/roi_analysis_smoke.cjs`.
+
+## Offline SoulLink batch PoC
+
+The separate `scripts/live2d-probe/` pipeline can audit an explicit `soullink-fuxuan-profile/v1`, scan an emotion × intensity × seed matrix, convert timelines into evidence-only curve candidates, extract existing motion features, and locally select exact/near-duplicate survivors:
+
+```powershell
+node scripts/live2d-probe/soullink_profile_check.cjs C:/absolute/profile.json C:/absolute/catalog.json C:/absolute/audit.json
+node scripts/live2d-probe/soullink_engine_scan.cjs C:/absolute/manifest.json --adapter C:/absolute/fixture-or-adapter.cjs
+node scripts/live2d-probe/soullink_timeline_to_candidate.cjs C:/absolute/timeline.json C:/absolute/profile.json C:/absolute/catalog.json C:/absolute/candidate.json
+node scripts/live2d-probe/soullink_extract_features.cjs C:/absolute/candidate.json C:/absolute/test-root C:/absolute/feature-packet.json
+node scripts/live2d-probe/soullink_select_candidates.cjs C:/absolute/test-root
+```
+
+The output root must be inside the system temporary directory and contain `.test_mode`. Every candidate remains `uncertified` with `productionStatus=not-certified`, `mapWriteAllowed=false`, and `llmExposureAllowed=false`. Timeline conversion uses Cubism type-0 linear segments and explicitly returns every parameter observed in the timeline to its profile neutral/default (or catalog baseline) at the end; omitted later frames are not treated as model defaults. The scanner runs each case twice under an adapter-provided `createManualClock()` and rejects nondeterministic or undeclared output. Selection is local only: `cloud-review-survivors.json` is a whitelist for a later isolated Player capture, and the PoC makes no cloud requests.
+
+The checked-in fixture proves the offline adapter contract only. The available public `@soullink-emotion/engine` package has not been verified to expose the required settable `createManualClock()` boundary, so this PoC does not claim real-engine or runtime naturalness validation. See [`docs/truth/l3-soullink-offline-poc.md`](../../docs/truth/l3-soullink-offline-poc.md).
