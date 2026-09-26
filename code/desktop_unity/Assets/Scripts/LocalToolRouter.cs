@@ -61,7 +61,7 @@ public static class LocalToolRouter
     {
         "set_expression", "stop_action", "take_screenshot",
         "inspect_motion_memory", "inspect_personality",
-        "explore_body", "explore_body_vision", "run_verification", "vis_verify", "self_review",
+        "explore_body", "explore_body_vision", "run_verification", "vis_verify",
         "knowledge_index", "get_system_info", "get_mouse_pos", "query_reminders",
         "set_reminder", "mark_reminder_done", "delete_reminder",
         "set_preference", "query_preferences", "remove_preference",
@@ -89,7 +89,7 @@ public static class LocalToolRouter
         "query_schedule", "query_scores", "query_task_templates", "query_user_status",
         "remove_preference", "remove_task_template", "run_command", "run_verification",
         "save_task_template", "search", "search_file", "search_files", "search_web",
-        "self_review", "set_clipboard", "set_expression", "set_preference", "set_reminder",
+        "set_clipboard", "set_expression", "set_preference", "set_reminder",
         "stop_action", "take_screenshot", "vis_verify", "generate_ppt", "generate_docx",
         "generate_xlsx", "file_info", "file_read", "file_copy", "file_move", "file_rename",
         "file_create", "dir_create", "set_volume", "mute", "lock_screen", "power"
@@ -621,11 +621,9 @@ public static class LocalToolRouter
                 JsonConvert.SerializeObject(new { description = message }), "用户明确生成 Excel");
         }
 
-        if (ContainsAny(message, "播放", "做一个") && ContainsAny(message, "动作", "挥手", "点头", "微笑"))
-        {
-            return AssignPlan(out plan, "play_action",
-                JsonConvert.SerializeObject(new { action = message }), "用户明确播放动作");
-        }
+        // 旧 play_action 关键词分支已移除（2026-09-27）：工具已按 L3 决策禁用，
+        // 身体动作的唯一入口是上方的 request_body_skill 确定性路由；未匹配
+        // 认证技能的请求按 L4 安全退化为文字，不再规划注定被拒的旧动作。
 
         return false;
     }

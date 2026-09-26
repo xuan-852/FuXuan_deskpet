@@ -76,12 +76,12 @@ qwen2.5:3b（普通请求）/ qwen3:8b（PDF、Office、OpenClaw、多步骤请�
 | `ReminderAcademicTools.cs` | 8 | set_reminder / query_reminders / mark_reminder_done / delete_reminder / query_exams / query_scores / query_schedule / query_user_status | 卜算记事簿/传讯 |
 | `Live2DSyncTools.cs` | 6 | set_expression / play_action / stop_action / inspect_motion_memory / inspect_personality / explore_body | 演武/表情/动作 |
 
-`control_body`、`play_action` 与 `generate_motion` 已按 L3 人工决策从正式注册、LLM Function Schema、本地路由与 benchmark 中移除。遗留 `ToolRegistry.Execute(...)` 调用会明确返回“已禁用”，不会降级为参数写入或旧动作播放；原始参数知识也不再注入运行时 LLM 提示词。未来只能通过已认证的语义技能重新开放身体动作能力。
+`control_body`、`play_action`、`generate_motion` 与 `self_review` 已按 L3 人工决策从正式注册、LLM Function Schema、本地路由与 benchmark 中移除。遗留 `ToolRegistry.Execute(...)` 调用会明确返回“已禁用”，不会降级为参数写入或旧动作播放；原始参数知识也不再注入运行时 LLM 提示词。未来只能通过已认证的语义技能重新开放身体动作能力。`self_review` 于 2026-09-26 加入禁用清单（其自评路径直接 `PlayAction` 旧动作模板、未经认证仲裁，详见 [L3 self_review 仲裁绕过口关闭](../truth/l3-self-review-arbitration-closure.md)），实际注册数相应再减一，以 `ToolRegistry.ToolCount` 为准。
 
 > **当前计数说明（2026-09-16）**：运行时实际注册数为 **62**。历史表格中的 64/65 是迁移前盘点，不能用于推断当前 Schema；以 `ToolRegistry.ToolCount` 和本节 L3 准入说明为准。
 | `VisionKnowledgeTools.cs` | 5 | take_screenshot / knowledge_search / knowledge_index / openclaw_search / openclaw_task | 摄形/藏书阁 RAG/OpenClaw 搜索+任务外包 |
 | `OfficeTools.cs` | 3 | generate_ppt / generate_docx / generate_xlsx（经 OpenClawBridge 调 `/generate_office`，输出 `DataPathConfig.DocumentsDir`） | 办公文档生成 |
-| `MotionCoroutineTools.cs` | 5 | generate_motion / explore_body_vision / run_verification / vis_verify / self_review | 异步动作生成(协程)/视觉验证；`generate_motion` 在隔离测试策略下先取得 `GeneratedMotion` 输入租约，再经 Renderer 网关收束表情；拒绝时不清除既有表情，成功取得租约后的同步交接与生成播放统一由 `finally` 释放租约 |
+| `MotionCoroutineTools.cs` | 5 | generate_motion / explore_body_vision / run_verification / vis_verify / self_review | 异步动作生成(协程)/视觉验证；`generate_motion` 在隔离测试策略下先取得 `GeneratedMotion` 输入租约，再经 Renderer 网关收束表情；拒绝时不清除既有表情，成功取得租约后的同步交接与生成播放统一由 `finally` 释放租约。`self_review` 自 2026-09-26 起禁用（不注册、不进 Schema、本地路由白名单摘除），类本体保留 |
 | `PoggetTool.cs` | 1 | launch_pogget（启动 `d:\pogget\Pogget.exe`） | 启动 Pogget |
 | `PoggetAgentTool.cs` | 1 | pogget_agent（8 子命令：ping/list_containers/get_container_items/add_to_container/remove_from_container/create_container/organize_desktop/quickpanel_status） | Agent IPC |
 | `LatexCompileTool.cs` | 1 | compile_latex（经 OpenClawBridge.CompileLatexAsync，输出 `DataPathConfig.DocumentsDir`） | 问天录 |

@@ -62,6 +62,7 @@
 - [L3 运行时超时安全收束接线](../../docs/truth/l3-runtime-timeout-safe-recovery.md) — `docs/truth/l3-runtime-timeout-safe-recovery.md`
 - [L3 画面侧单臂上抬候选技能](../../docs/truth/l3-screen-side-arm-raise-candidate.md) — `docs/truth/l3-screen-side-arm-raise-candidate.md`
 - [L3 轻回应式抬手隔离人工审核包](../../docs/truth/l3-screen-side-arm-raise-isolated-human-review.md) — `docs/truth/l3-screen-side-arm-raise-isolated-human-review.md`
+- [L3 self_review 仲裁绕过口关闭](../../docs/truth/l3-self-review-arbitration-closure.md) — `docs/truth/l3-self-review-arbitration-closure.md`
 - [L3 认证技能的 AI 暴露边界](../../docs/truth/l3-semantic-skill-exposure-boundary.md) — `docs/truth/l3-semantic-skill-exposure-boundary.md`
 - [L3 六项认证动作隔离运行时复验](../../docs/truth/l3-six-certified-motion-isolated-runtime-verification.md) — `docs/truth/l3-six-certified-motion-isolated-runtime-verification.md`
 - [L3 SoulLink 离线批量动作 PoC](../../docs/truth/l3-soullink-offline-poc.md) — `docs/truth/l3-soullink-offline-poc.md`

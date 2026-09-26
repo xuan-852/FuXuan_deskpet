@@ -43,7 +43,8 @@ public static class ToolRegistry
         {
             ["control_body"] = "原始 Live2D 参数控制已关闭；仅已认证的语义技能可在后续开放。",
             ["play_action"] = "旧预设身体动作尚未完成四层认证；当前仅保留步行、物理与表情基线。",
-            ["generate_motion"] = "旧生成动作尚未完成四层认证；当前仅保留步行、物理与表情基线。"
+            ["generate_motion"] = "旧生成动作尚未完成四层认证；当前仅保留步行、物理与表情基线。",
+            ["self_review"] = "旧动作自评未经认证仲裁即播放旧动作模板，已关闭；身体动作一律经 request_body_skill 认证技能执行。"
         };
 
     public static bool IsDisabled(string name) =>
