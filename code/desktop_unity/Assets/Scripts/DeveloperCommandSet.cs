@@ -123,7 +123,7 @@ public static class DeveloperCommandSet
                 reply = "开发指令格式：/mode set test 或 /mode set normality";
                 return true;
             case CommandType.InvalidTheme:
-                reply = "主题指令格式：/tell theme <主题ID>；可用：cn_new_year、lantern_festival、dragon_boat、qixi、mid_autumn、off、auto";
+                reply = "主题指令格式：/tell theme <主题ID>；可用：ink、cn_new_year、lantern_festival、dragon_boat、qixi、mid_autumn、off、auto";
                 return true;
             case CommandType.InvalidTell:
                 reply = "开发指令格式：/tell mode 或 /tell theme <主题ID>";

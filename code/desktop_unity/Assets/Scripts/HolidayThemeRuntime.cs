@@ -219,6 +219,8 @@ public static class HolidayThemeRuntime
 
     private static readonly Theme LanternFestivalTheme = new Theme(
         "lantern_festival", "元宵主题", "lantern_festival_lantern", LanternFestivalSkin);
+    private static readonly Theme InkTheme = new Theme(
+        "ink", "墨韵", "", ThemeComposer.Compose(ThemeComposer.Ink));
     private static readonly Theme DragonBoatTheme = new Theme(
         "dragon_boat", "端午主题", "dragon_boat_leaf", DragonBoatSkin);
     private static readonly Theme QixiTheme = new Theme(
@@ -285,6 +287,8 @@ public static class HolidayThemeRuntime
     private static readonly Dictionary<string, Theme> Themes = new Dictionary<string, Theme>(StringComparer.OrdinalIgnoreCase)
     {
         { "default", DefaultTheme },
+        { "ink", InkTheme },
+        { "墨韵", InkTheme },
         { "cn_new_year", ChineseNewYearTheme },
         { "spring_festival", ChineseNewYearTheme },
         { "cny", ChineseNewYearTheme },
@@ -345,7 +349,7 @@ public static class HolidayThemeRuntime
 
         if (normalized.Equals("list", StringComparison.OrdinalIgnoreCase))
         {
-            message = "可用节日主题: default, cn_new_year, lantern_festival, dragon_boat, qixi, mid_autumn, auto";
+            message = "可用主题: default, ink(墨韵), cn_new_year, lantern_festival, dragon_boat, qixi, mid_autumn, auto";
             return true;
         }
 

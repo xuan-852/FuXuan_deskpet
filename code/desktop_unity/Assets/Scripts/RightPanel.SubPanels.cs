@@ -350,10 +350,10 @@ public partial class RightPanel
             themeHelpStyle);
         GUIStyle themeIdStyle = new GUIStyle(themeHelpStyle) { fontSize = 12 };
         GUI.Label(new Rect(x, themeSec.yMax + 32f, w, 22f),
-            "新春 cn_new_year · 元宵 lantern_festival · 端午 dragon_boat",
+            "墨韵 ink · 新春 cn_new_year · 元宵 lantern_festival",
             themeIdStyle);
         GUI.Label(new Rect(x, themeSec.yMax + 54f, w, 22f),
-            "七夕 qixi · 中秋 mid_autumn · 关闭 off · 自动 auto",
+            "端午 dragon_boat · 七夕 qixi · 中秋 mid_autumn · 关闭 off · 自动 auto",
             themeIdStyle);
 
         // —— 小节标题：任务权重 ——
