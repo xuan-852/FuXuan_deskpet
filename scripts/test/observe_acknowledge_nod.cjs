@@ -1,0 +1,170 @@
+'use strict';
+
+// Run this from the user's own interactive terminal so the Unity window appears
+// on the same desktop the reviewer is watching. All runtime data stays isolated.
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const readline = require('readline');
+const { spawn } = require('child_process');
+
+const repoRoot = path.resolve(__dirname, '../..');
+const exe = path.resolve(process.argv[2] && !process.argv[2].startsWith('--')
+  ? process.argv[2]
+  // 曲线/认证数据变更后必须重建 Player：旧产物内嵌旧曲线哈希会拒绝新数据根文件。
+  : path.join(repoRoot, 'Build/nod_v6_20260927/DesktopPet.exe'));
+const automatic = process.argv.includes('--auto');
+const asset = path.join(repoRoot,
+  'code/desktop_unity/Assets/Resources/Live2D/CertifiedMotions/acknowledge_nod.json');
+const root = path.join(os.tmpdir(), `fuxuan_manual_nod_${process.pid}_${Date.now()}`);
+const inbox = path.join(root, 'inbox.txt');
+const logPath = path.join(root, 'logs/player_log.txt');
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+let player;
+let prompt;
+
+function logText() {
+  try { return fs.readFileSync(logPath, 'utf8'); }
+  catch { return ''; }
+}
+
+function checkRoot() {
+  const temp = path.resolve(os.tmpdir());
+  const target = path.resolve(root);
+  if (!target.startsWith(temp + path.sep)
+    || !path.basename(target).startsWith('fuxuan_manual_nod_')) {
+    throw new Error('test data root must be an owned temporary directory');
+  }
+}
+
+async function waitFor(marker, after = 0, timeoutMs = 90000) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    const text = logText().slice(after);
+    if (text.includes(marker)) return text;
+    if (player && player.exitCode !== null) throw new Error(`DesktopPet exited before ${marker}`);
+    await sleep(100);
+  }
+  throw new Error(`timeout waiting for ${marker}`);
+}
+
+async function send(command, marker, timeoutMs = 15000) {
+  const offset = logText().length;
+  fs.writeFileSync(inbox, command, 'utf8');
+  try { return await waitFor(marker, offset, timeoutMs); }
+  finally {
+    fs.writeFileSync(inbox, '', 'utf8');
+    await sleep(100);
+  }
+}
+
+function latestDesktopState(text) {
+  const matches = [...text.matchAll(/\[DesktopState\] version=\d+ mode=\S+ x=(-?\d+) y=(-?\d+) velocity=\((-?\d+),(-?\d+)\)/g)];
+  if (!matches.length) throw new Error('desktop state missing');
+  const last = matches[matches.length - 1];
+  return { x: Number(last[1]), y: Number(last[2]), vx: Number(last[3]), vy: Number(last[4]) };
+}
+
+async function centerAndSettle() {
+  await send('@@sim:idle-actions:off', '测试隔离：已暂停空闲动作调度');
+  await send('@@sim:walk:stop', '已强制停止走路');
+  await sleep(500);
+  const widthMatch = logText().match(/主屏尺寸:\s*(\d+)x\d+/);
+  if (!widthMatch) throw new Error('primary screen width missing from isolated Player log');
+  const width = Number(widthMatch[1]);
+  const state = latestDesktopState(await send('@@sim:desktop-state', '[DesktopState] version='));
+  const offsetX = Math.round(width / 2 - 50 - state.x);
+  if (Math.abs(offsetX) > 100) {
+    const before = logText().length;
+    await send(`@@sim:drag:offset:${offsetX},0,60`, '[DragHandler] 模拟拖动开始');
+    await waitFor('[DragHandler] 抛掷:', before, 10000);
+    await sleep(1200);
+  }
+  await send('@@sim:walk:stop', '已强制停止走路');
+  const centered = latestDesktopState(await send('@@sim:desktop-state', '[DesktopState] version='));
+  if (centered.x < width / 3 || centered.x > width * 2 / 3)
+    throw new Error(`pet did not settle near screen center: x=${centered.x}, screen=${width}`);
+  return { x: centered.x, y: centered.y, screenWidth: width };
+}
+
+async function ask(question) {
+  return new Promise(resolve => prompt.question(question, answer => resolve(answer.trim())));
+}
+
+async function run() {
+  if (!fs.existsSync(exe)) throw new Error(`DesktopPet.exe missing: ${exe}`);
+  if (!fs.existsSync(asset)) throw new Error(`acknowledge_nod asset missing: ${asset}`);
+  checkRoot();
+  fs.mkdirSync(path.join(root, 'certified_motions'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.test_mode'), '');
+  fs.copyFileSync(asset, path.join(root, 'certified_motions/acknowledge_nod.json'));
+  fs.writeFileSync(inbox, '', 'utf8');
+  prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
+  player = spawn(exe, [], {
+    cwd: path.dirname(exe),
+    env: { ...process.env, FU_XUAN_DATA: root },
+    stdio: 'ignore',
+    windowsHide: false
+  });
+  try {
+    await waitFor('[DesktopPet] 落地');
+    await waitFor('[NativeLive2DOverlay] sync visible');
+    const position = await centerAndSettle();
+    console.log(`隔离桌宠已启动，位置 x=${position.x}/${position.screenWidth}，靠近主屏底边。`);
+    console.log('测试目录：' + root);
+    if (!automatic) {
+      const answer = await ask('看到符玄后按回车开始；仍看不到请输入 q 后回车：');
+      if (answer.toLowerCase() === 'q') return;
+    }
+
+    const count = automatic ? 1 : 3;
+    for (let i = 1; i <= count; i++) {
+      await send('@@sim:walk:stop', '已强制停止走路');
+      const state = latestDesktopState(await send('@@sim:desktop-state', '[DesktopState] version='));
+      if (state.vx !== 0 || state.vy !== 0) throw new Error('pet is not stationary before nod');
+      const before = logText().length;
+      await send('@@sim:skill:acknowledge', '[CertifiedMotion] started: acknowledge_nod');
+      console.log(`正在播放第 ${i}/${count} 次（每次包含两个点头）`);
+      const motionLog = await waitFor('[CertifiedMotion] cleanup: certified-motion-completed', before, 10000);
+      if (!motionLog.includes('[EmbodiedSafeRecovery] pose-restored'))
+        throw new Error('pose-restored marker missing');
+      await sleep(2000);
+    }
+
+    if (automatic) {
+      console.log('隔离回放自动检查通过。');
+      return;
+    }
+    const countAnswer = await ask('能认出每次播放里的两个点头吗？[能/不能/不确定]：');
+    const rhythm = await ask('正常速度下的节奏自然吗？[自然/别扭/不确定]：');
+    const reset = await ask('结束后画面姿势恢复正常吗？[正常/残留/不确定]：');
+    const report = {
+      skill: 'acknowledge_nod',
+      source: 'user-interactive-window',
+      dataRootIsolated: true,
+      repetitions: count,
+      canRecognizeTwoNods: countAnswer,
+      rhythm,
+      visualReset: reset,
+      recordedAt: new Date().toISOString()
+    };
+    const reportPath = path.join(root, 'human-review.json');
+    fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n', 'utf8');
+    console.log('观察记录：' + reportPath);
+    console.log('请把三个观察结论发到对话里。');
+  } finally {
+    prompt.close();
+    if (player && player.exitCode === null) {
+      try { await send('@@test:quit', '[TestInbox] @@test:quit', 5000); }
+      catch { /* The owned test Player is stopped below if its inbox is unavailable. */ }
+      await Promise.race([new Promise(resolve => player.once('exit', resolve)), sleep(5000)]);
+      if (player.exitCode === null) player.kill();
+    }
+  }
+}
+
+run().catch(error => {
+  console.error(error.message);
+  console.error('保留隔离测试目录：' + root);
+  process.exitCode = 1;
+});
