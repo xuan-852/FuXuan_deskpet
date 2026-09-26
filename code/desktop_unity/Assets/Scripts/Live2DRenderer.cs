@@ -2269,31 +2269,11 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             && !isPaused && !_actionLocked && !_aiControlLocked
             && _idleActionSchedulingEnabled)
         {
-            // 行为层（C-L3-01/FR-L3-02）：空闲时机优先经生产执行器播放已认证且
-            // 已向 AI 暴露的技能；冷却未到、准入拒绝或数据缺失时回退旧空闲调度。
-            if (!TryStartCertifiedIdleBehavior())
-            {
-                int picked = PickNextIdleAction();
-                if (picked > 0)
-                {
-                    // 自动动作与强制动作一样，必须先取得完整生命周期租约，
-                    // 再阻止地面任务切换到走路。租约失败时不启动任何写入状态。
-                    if (!_inputCoordinator.TryBegin(Live2DInputKind.LegacyAction, "idle-action", "idle:auto:" + picked, out _idleInputLease))
-                    {
-                        Debug.Log("[Live2DRenderer] 忽略自动空闲动作 #" + picked + "：输入通道被占用");
-                        return;
-                    }
-                    if (_pet != null && !_pet.isPaused)
-                    {
-                        _pet.SetActionMovementLock(true);
-                        _idleActionMovementLockedPet = true;
-                    }
-                    _currentIdleAction = picked;
-                    _idleActionTime = 0f;
-                    _complexActionPhase = 0f;
-                    Debug.Log($"[Live2DRenderer] ▶ 动作 #{_currentIdleAction}");
-                }
-            }
+            // 行为层（C-L3-01/FR-L3-02；2026-09-27 产品决策修订）：空闲时机只经
+            // 生产执行器播放已认证且已向 AI 暴露的技能。旧硬编码空闲动作的
+            // 回退已退役——用户实机评审确认认证水位确立后旧预设动作均不合格；
+            // 认证层冷却或不可用时保持安静（呼吸/微动基线），宁缺毋滥。
+            TryStartCertifiedIdleBehavior();
         }
 
         // If locomotion resumes while an automatic idle action is active,
@@ -3447,27 +3427,6 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
                 onComplete?.Invoke();
             }
         }
-    }
-
-    /// <summary>
-    /// 按权重随机选取下一个空闲动作（阶段五：委托给 IdleActionScheduler）
-    /// </summary>
-    private int PickNextIdleAction()
-    {
-        if (_idleActionSchedulingEnabled && _idleScheduler != null)
-        {
-            float timeOfDay = (_timeController != null) ? (float)_timeController.hour : 12f;
-            bool isRaining = (_timeController != null && _timeController.weatherFetched &&
-                (_timeController.weather == TimeWeatherController.WeatherType.Rain ||
-                 _timeController.weather == TimeWeatherController.WeatherType.Drizzle ||
-                 _timeController.weather == TimeWeatherController.WeatherType.Thunder));
-            bool isSnowing = (_timeController != null && _timeController.weatherFetched &&
-                _timeController.weather == TimeWeatherController.WeatherType.Snow);
-
-            return _idleScheduler.PickNextAction(timeOfDay, isRaining, isSnowing);
-        }
-
-        return 0;
     }
 
     // 行为层冷却：成功后 90 秒内不再占用空闲槽位播认证动作；失败 30 秒后重试，

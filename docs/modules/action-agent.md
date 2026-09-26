@@ -45,7 +45,7 @@
 
 2026-09-18 协调器优先级抢占仲裁：`EmbodiedCoordinator.TryBegin` 在资源冲突时仅允许严格更高优先级的请求经正常取消路径（终态原因 `preempted`）抢占相交资源持有者；同级/更低维持拒绝，不相交资源并行不受影响。生产准入请求固定 `Priority=0`，运行时行为不变。延迟排队与旧动作入口迁移仍未实现。详见 [L3 协调器优先级抢占仲裁](../truth/l3-coordinator-priority-preemption.md)。
 
-2026-09-18 认证技能接入行为层：空闲槽位（原 `PickNextIdleAction` 触发点）优先从 `LlmExposedEntries` 随机挑选认证技能，经 `PlayCertifiedMotion` 生产执行器播放；成功冷却 90 秒、失败 30 秒、启动延迟 45 秒，冷却期与失败回退旧空闲调度。行为层不调 LLM、不写原始参数、只复用已认证且已暴露的技能。对话触发的确定性身体意图路由见 [L4 身体意图确定性路由](../truth/l4-body-intent-deterministic-routing.md)。详见 [L3 认证技能行为层接入](../truth/l3-certified-skill-behavior-layer.md)。
+2026-09-18 认证技能接入行为层：空闲槽位（原 `PickNextIdleAction` 触发点）优先从 `LlmExposedEntries` 随机挑选认证技能，经 `PlayCertifiedMotion` 生产执行器播放；成功冷却 90 秒、失败 30 秒、启动延迟 45 秒。行为层不调 LLM、不写原始参数、只复用已认证且已暴露的技能。2026-09-27 起旧硬编码空闲动作回退已按产品决策退役：认证层冷却或不可用时保持安静基线，空闲不再播旧预设动作。对话触发的确定性身体意图路由见 [L4 身体意图确定性路由](../truth/l4-body-intent-deterministic-routing.md)。详见 [L3 认证技能行为层接入](../truth/l3-certified-skill-behavior-layer.md)。
 
 2026-09-18 认证曲线完整性绑定：六项外部认证技能的评审包指纹与运行时曲线 SHA-256 分离登记；`PlayCertifiedMotion` 在反序列化前校验曲线，缺失、读取失败或哈希不匹配均拒绝执行。篡改夹具 EditMode 与六项隔离真机复验通过，详见 [L3 认证曲线完整性绑定](../truth/l3-certified-curve-integrity.md)。
 
