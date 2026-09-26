@@ -267,19 +267,23 @@ public class LocalToolRouterTests
     }
 
     [Test]
-    public void 点头请求识别但在未向AI暴露前安全拒绝()
+    public void 点头请求暴露后确定性路由到认证技能()
     {
         Assert.IsTrue(LocalToolRouter.IsExplicitBodyRequest("点点头给我看"));
         Assert.IsTrue(LocalToolRouter.IsExplicitBodyRequest("同意一下"));
         Assert.IsTrue(LocalToolRouter.IsExplicitBodyRequest("nod"));
-        Assert.IsFalse(CertifiedMotionLibrary.IsLlmExposed("acknowledge_nod"));
+        // 2026-09-27：v2 曲线通过真实可见窗口人工评审后向 AI 开放（truth 文档记录证据）。
+        Assert.IsTrue(CertifiedMotionLibrary.IsLlmExposed("acknowledge_nod"));
         Assert.IsTrue(EmbodiedRuntimeAdmission.IsSkillAdmissible("acknowledge_nod"));
-        Assert.IsFalse(LocalToolRouter.TryResolveCertifiedBodySkill("点点头给我看", out _));
-        Assert.IsFalse(LocalToolRouter.TryBuildKeywordPlan("body", "点点头给我看", out _));
-        Assert.IsFalse(LocalToolRouter.TryHardenPlanArguments(
+        Assert.IsTrue(LocalToolRouter.TryResolveCertifiedBodySkill("点点头给我看", out string resolved));
+        Assert.AreEqual("acknowledge_nod", resolved);
+        Assert.IsTrue(LocalToolRouter.TryBuildKeywordPlan("body", "点点头给我看", out LocalToolPlan plan));
+        Assert.AreEqual("request_body_skill", plan.ToolName);
+        StringAssert.Contains("acknowledge_nod", plan.ArgumentsJson);
+        Assert.IsTrue(LocalToolRouter.TryHardenPlanArguments(
             "request_body_skill", "点点头给我看", "{\"skill_id\":\"acknowledge_nod\"}",
-            out _, out string error));
-        StringAssert.Contains("未认证或未向 AI 开放", error);
+            out string hardened, out _));
+        StringAssert.Contains("acknowledge_nod", hardened);
     }
 
     [Test]

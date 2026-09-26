@@ -57,10 +57,10 @@ public static class CertifiedMotionLibrary
             SemanticBoundary = "短时两次轻微向下点头后回到基线；不是摇头、歪头、鞠躬、挥手或任意参数动作",
             DurationSeconds = 2.0f, Resources = EmbodiedResource.Body,
             PacketSha256 = "0300738a92a781be54e896aa44c65d961b9870218fae8aa47dde042df8c00395",
-            CurveSha256 = "0300738a92a781be54e896aa44c65d961b9870218fae8aa47dde042df8c00395",
+            CurveSha256 = "81a28f2627e00ea155a24644976bcd8b78df44ce2b279bd87b5d0df1c4effbf2",
             DeepSeekNaturalnessScore = 80, GlmNaturalnessScore = 80,
             DualReviewId = "internal-motion-planner-c2-2026-09-25",
-            LlmExposed = false,
+            LlmExposed = true,
             BuiltInResourcePath = "Live2D/CertifiedMotions/acknowledge_nod"
         },
         new Entry

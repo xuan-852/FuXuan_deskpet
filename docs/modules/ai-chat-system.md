@@ -52,6 +52,7 @@
 - 2026-09-17 起，用户明确要求桌宠本人做动作会被分类为 `body` 意图；本地规划目录严格只含 `request_body_skill` 与 `stop_action`。`request_body_skill` 不再属于普通 `operation` 或跨意图安全目录，且系统提示词只列出已认证技能并禁止原始 Live2D 参数、关键帧与映射。规划失败按 L4 降级为文字，不猜测执行。
 - 2026-09-18 起，身体意图增加确定性路由：`LocalToolRouter.IsExplicitBodyRequest` 用强祈使短语（摇头/笑一个/看左边等）识别明确动作请求，本地规划路径与云端首轮 `_lastIntent` 均确定性置为 `body`，不再依赖 3B 分类器（真人首测中「摇摇头给我看」曾被误判为 knowledge 并规划 `self_review`）。`TryHardenPlanArguments` 对 `request_body_skill` 只放行已认证且已暴露的 `skill_id`，缺失或未暴露时按关键词确定性修复，仍失败即终态拒绝。详见 [L4 身体意图确定性路由](../truth/l4-body-intent-deterministic-routing.md)。
 - 2026-09-25 起，本地模式在 Ollama 健康检查前处理明确的身体动作请求：确定性 `body` 计划仍经技能白名单、参数校验和 `ToolCallInvoker` 执行，并把真实工具结果发布为聊天回复。因而 Ollama 离线时仍可请求已认证动作；未匹配认证技能的请求会明确拒绝。隔离 Player 已验证「歪歪头给我看」触发 m06、取消后再次完成，以及「挥挥手给我看」不启动动作。普通聊天及其他工具请求仍按原本地模型链路处理。
+- 2026-09-27 起，自研技能 `acknowledge_nod`（v2 曲线通过真实窗口人工评审）开放 `LlmExposed`：「点点头/点头/同意/nod/acknowledge」等明确请求经确定性路由真实执行认证动作并发布回执，形成第一条「自然语言 → 认证身体动作」端到端闭环（隔离 Player 验证：准入/完成/姿态复位/取消/超时/行走冲突拒绝全部通过，见 [acknowledge_nod 认证文档](../truth/l3-acknowledge-nod-certification.md)）。未暴露技能（如 `screen_side_arm_raise`）仍确定性拒绝。
 
 ### 2.1.2 请求生命周期分层（2026-08-26）
 

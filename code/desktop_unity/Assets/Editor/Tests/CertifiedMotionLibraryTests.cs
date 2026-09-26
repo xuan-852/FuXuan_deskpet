@@ -65,10 +65,13 @@ public class CertifiedMotionLibraryTests
     public void 点头候选曲线具有固定语义并回到基线()
     {
         Assert.IsTrue(CertifiedMotionLibrary.TryGet("acknowledge_nod", out var motion));
+        // v4（2026-09-27）：ParamAngleY 低头 + ParamBodyAngleY 身体跟随（约 1/5 幅度滞后）；
+        // 不写眼球参数——认证动作期间唯一的眼动来源，合成补偿会读作乱瞟（用户实测反馈）。
         Assert.AreEqual(EmbodiedResource.Body, motion.Resources);
         Assert.AreEqual(2.0f, motion.DurationSeconds, 0.001f);
         StringAssert.Contains("两次轻微向下点头", motion.SemanticBoundary);
-        Assert.IsFalse(motion.LlmExposed);
+        // 2026-09-27：v2 曲线通过真实可见窗口人工评审后向 AI 开放（truth 文档记录证据）。
+        Assert.IsTrue(motion.LlmExposed);
         Assert.IsTrue(motion.IsBuiltIn);
 
         string path = System.IO.Path.Combine(Application.dataPath, "Resources", "Live2D", "CertifiedMotions", "acknowledge_nod.json");
@@ -81,15 +84,32 @@ public class CertifiedMotionLibraryTests
         var candidate = JsonUtility.FromJson<EmbodiedMotionCandidate>(json);
         Assert.IsNotNull(candidate);
         Assert.AreEqual("acknowledge_nod", candidate.candidateId);
-        Assert.AreEqual(1, candidate.curves.Length);
+        Assert.AreEqual(2, candidate.curves.Length);
         Assert.AreEqual("ParamAngleY", candidate.curves[0].parameterId);
+        Assert.AreEqual("ParamBodyAngleY", candidate.curves[1].parameterId);
         var curve = new EmbodiedMotionCurve(candidate.curves[0].parameterId,
             Array.ConvertAll(candidate.curves[0].segments, value => (double)value), candidate.durationSeconds);
         Assert.AreEqual(0f, curve.Evaluate(0.0), 0.001f);
-        Assert.AreEqual(8f, curve.Evaluate(0.2), 0.001f);
-        Assert.AreEqual(0f, curve.Evaluate(0.5), 0.001f);
-        Assert.AreEqual(6f, curve.Evaluate(0.8), 0.001f);
+        Assert.AreEqual(-13f, curve.Evaluate(0.35), 0.001f);
+        Assert.AreEqual(0f, curve.Evaluate(0.7), 0.001f);
+        Assert.AreEqual(-9f, curve.Evaluate(0.98), 0.001f);
+        Assert.AreEqual(0f, curve.Evaluate(1.26), 0.001f);
         Assert.AreEqual(0f, curve.Evaluate(2.0), 0.001f);
+        // v2 曲线（2026-09-26）：负角度低头两次（-13/-9，幅度递减），全程不得高于基线——
+        // v1 正角度（+8/+6）实机读作“抬头”而非“点头”，人工评审否决。
+        foreach (float sample in new[] { 0.15f, 0.2f, 0.5f, 0.85f, 1.1f })
+        {
+            float value = curve.Evaluate(sample);
+            Assert.LessOrEqual(value, 0.001f, $"t={sample}: 点头曲线不得高于基线");
+            Assert.GreaterOrEqual(value, -13.001f, $"t={sample}");
+        }
+        // v3 身体跟随：滞后于头部、幅度约 1/5、平滑单次起伏（官方动作配比 0.15~0.2）。
+        var bodyCurve = new EmbodiedMotionCurve(candidate.curves[1].parameterId,
+            Array.ConvertAll(candidate.curves[1].segments, value => (double)value), candidate.durationSeconds);
+        Assert.AreEqual(0f, bodyCurve.Evaluate(0.0), 0.001f);
+        Assert.AreEqual(-2.6f, bodyCurve.Evaluate(0.9), 0.001f);
+        Assert.AreEqual(0f, bodyCurve.Evaluate(1.75), 0.001f);
+        Assert.AreEqual(0f, bodyCurve.Evaluate(2.0), 0.001f);
     }
 
     [Test]
@@ -163,7 +183,7 @@ public class CertifiedMotionLibraryTests
         Assert.IsFalse(CertifiedMotionLibrary.IsLlmExposed("not_registered"));
         foreach (var motion in CertifiedMotionLibrary.Entries)
         {
-            if (motion.SkillId == "screen_side_arm_raise" || motion.SkillId == "acknowledge_nod")
+            if (motion.SkillId == "screen_side_arm_raise")
             {
                 Assert.IsFalse(motion.LlmExposed, "candidate must remain hidden until exposure evidence is complete");
                 Assert.IsFalse(CertifiedMotionLibrary.IsLlmExposed(motion.SkillId));
