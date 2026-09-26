@@ -1,0 +1,19 @@
+{
+  "schema": "live2d-tool-manifest/v1",
+  "model": {
+    "model3Json": "D:/path/to/符玄.model3.json",
+    "expectedParameterCount": 244
+  },
+  "probe": {
+    "executable": "D:/path/to/Live2DProbe.exe"
+  },
+  "run": {
+    "outputRoot": "C:/Users/your-name/AppData/Local/Temp/fuxuan-live2d-run",
+    "mode": "scan"
+  },
+  "review": {
+    "provider": "deepseek",
+    "batchSize": 20,
+    "timeoutMs": 180000
+  }
+}

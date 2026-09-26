@@ -1,22 +1,19 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
 /// <summary>
 /// 符玄「法眼」— 行为活动追踪器
 ///
-/// 持续轮询 Windows 前台窗口，按进程名+窗口标题分类活动，
-/// 累计每日在各活动上的时长，提供摘要供 prompt 注入。
+/// 用户明确开启后才按前台进程类别统计活动；不读取窗口标题或浏览器标签。
 ///
 /// 分类规则（可扩展）：
 ///   coding        — 编程/开发工具（VS Code、VS、JetBrains、Unity、终端等）
-///   gaming        — 游戏（检测窗口标题中的游戏关键词）
+///   gaming        — 游戏进程
 ///   studying      — 学习/文档（Markdown、Office、PDF、词典、学习网站等）
 ///   browsing      — 普通网页浏览
 ///   entertainment — 视频/音乐（播放器、B站、YouTube 等）
@@ -30,19 +27,12 @@ public class ActivityTracker : MonoBehaviour
     [Tooltip("轮询间隔（秒），默认 2 秒")]
     public float pollInterval = 2f;
 
-    [Header("隐私")]
-    [Tooltip("脱敏后注入 AI：过滤窗口标题/浏览器标签中的 URL、邮箱、手机号、密钥等敏感信息")]
-    public bool privacySanitize = true;
-
     // ============================================================
     //  Win32 API
     // ============================================================
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
@@ -56,45 +46,7 @@ public class ActivityTracker : MonoBehaviour
     [DllImport("psapi.dll", CharSet = CharSet.Unicode)]
     private static extern uint GetModuleBaseName(IntPtr hProcess, IntPtr hModule, StringBuilder lpBaseName, uint nSize);
 
-    [DllImport("user32.dll")]
-    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsWindowVisible(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsIconic(IntPtr hWnd);
-
-    // ——— 多显示器支持 ———
-    [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern bool GetMonitorInfoW(IntPtr hMonitor, ref MONITORINFOEXW lpmi);
-
-    private const uint MONITOR_DEFAULTTONEAREST = 2;
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct MONITORINFOEXW
-    {
-        public int cbSize;
-        public RECT rcMonitor;
-        public RECT rcWork;
-        public uint dwFlags;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
-        public string szDevice;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct RECT
-    {
-        public int left, top, right, bottom;
-    }
-
-    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
     private const uint PROCESS_QUERY_INFORMATION = 0x0400;
-    private const uint PROCESS_VM_READ = 0x0010;
 
     /// <summary>
     /// 用 Win32 API 取进程名，避免 Process.GetProcessById 在进程瞬逝时抛异常
@@ -158,27 +110,18 @@ public class ActivityTracker : MonoBehaviour
     private IntPtr _lastHwnd = IntPtr.Zero;
     private string _lastProcName = "";
     private string _lastCategory = "";
+    private bool _trackingWasEnabled;
 
-    /// <summary>当前前台窗口标题（最新轮询结果，供 AI 注入）</summary>
-    public string CurrentWindowTitle { get; private set; } = "";
-    /// <summary>当前前台进程名（最新轮询结果，供 AI 注入）</summary>
+    public bool TrackingEnabled => PetConfig.Instance != null
+        && PetConfig.Instance.data != null
+        && PetConfig.Instance.data.activityCategoryTrackingEnabled;
+
+    /// <summary>当前前台进程名（只在用户开启类别统计后更新）</summary>
     public string CurrentProcessName { get; private set; } = "";
-    /// <summary>当前前台窗口所在显示器名称（如 \\.\DISPLAY1），空=未知</summary>
-    public string CurrentMonitorName { get; private set; } = "";
     /// <summary>当前活动分类</summary>
-    public string CurrentCategory => _lastCategory;
+    public string CurrentCategory => TrackingEnabled ? _lastCategory : "unknown";
     /// <summary>最近一次检测到用户活动的时间（Time.time），供 MotionAgent 等消费</summary>
     public float LastActivityTime { get; private set; } = float.MinValue;
-    // ——— 多窗口环境感知 ———
-    private string _lastMultiWindowSummary = "";
-    private float _multiWindowTimer = 0f;
-    private const float MULTI_WINDOW_INTERVAL = 10f; // 每 10 秒刷新一次多窗口快照
-
-    // ——— 浏览器标签页深度感知 ———
-    private string _lastBrowserTabsSummary = "";
-    private float _browserTabsTimer = 0f;
-    private const float BROWSER_TABS_INTERVAL = 5f; // 每 5 秒刷新一次浏览器标签
-
     // ============================================================
     //  路径
     // ============================================================
@@ -203,12 +146,21 @@ public class ActivityTracker : MonoBehaviour
     void Start()
     {
         _today.date = DateTime.Now.ToString("yyyy-MM-dd");
-        Load();
-        Debug.Log($"[ActivityTracker] 法眼已启动，日期={_today.date}，轮询间隔={pollInterval}s");
+        Debug.Log("[ActivityTracker] 前台进程类别统计=" + (TrackingEnabled ? "已开启" : "已关闭"));
     }
 
     void Update()
     {
+        if (!TrackingEnabled)
+        {
+            if (_trackingWasEnabled) OnTrackingPreferenceChanged();
+            return;
+        }
+        if (!_trackingWasEnabled)
+        {
+            _trackingWasEnabled = true;
+            Load();
+        }
         if (_suspended) return; // 睡眠期间暂停轮询
         _pollTimer += Time.deltaTime;
         if (_pollTimer < pollInterval) return;
@@ -216,24 +168,20 @@ public class ActivityTracker : MonoBehaviour
 
         PollForeground();
 
-        // ——— 多窗口环境快照（较低频率） ———
-        _multiWindowTimer += pollInterval;
-        if (_multiWindowTimer >= MULTI_WINDOW_INTERVAL)
-        {
-            _multiWindowTimer = 0f;
-            RefreshVisibleWindows();
-        }
+    }
 
-        // ——— 浏览器标签页深度感知（更高频率，仅在浏览器在前台时有效） ———
-        _browserTabsTimer += pollInterval;
-        if (_browserTabsTimer >= BROWSER_TABS_INTERVAL)
-        {
-            _browserTabsTimer = 0f;
-            if (BrowserTabReader.IsBrowser(_lastProcName))
-                RefreshBrowserTabs();
-            else
-                _lastBrowserTabsSummary = "";
-        }
+    public void OnTrackingPreferenceChanged()
+    {
+        if (TrackingEnabled) return;
+        if (_trackingWasEnabled) Save();
+        _trackingWasEnabled = false;
+        _pollTimer = 0f;
+        _saveTimer = 0f;
+        _lastHwnd = IntPtr.Zero;
+        _lastProcName = "";
+        _lastCategory = "";
+        CurrentProcessName = "";
+        LastActivityTime = float.MinValue;
     }
 
     private bool _suspended = false;
@@ -244,7 +192,7 @@ public class ActivityTracker : MonoBehaviour
         if (pauseStatus)
         {
             Debug.Log("[ActivityTracker] ⏸ 睡眠挂起，存档当前数据");
-            Save();
+            if (TrackingEnabled) Save();
         }
         else
         {
@@ -254,7 +202,7 @@ public class ActivityTracker : MonoBehaviour
 
     void OnApplicationQuit()
     {
-        Save();
+        if (TrackingEnabled) Save();
     }
 
     // ============================================================
@@ -293,18 +241,13 @@ public class ActivityTracker : MonoBehaviour
             _lastHwnd = hwnd;
             _lastProcName = procName;
 
-            StringBuilder sb = new StringBuilder(512);
-            GetWindowText(hwnd, sb, sb.Capacity);
-            string title = sb.ToString().Trim();
-            // ★ 保留窗口标题、进程名、所在显示器供 AI 注入（默认脱敏敏感信息）
-            CurrentWindowTitle = privacySanitize ? SanitizePrivacy(title) : title;
+            // 仅使用进程名分类；窗口标题属于私密内容，不读取。
             CurrentProcessName = procName;
-            CurrentMonitorName = GetMonitorName(hwnd);
-            _lastCategory = Classify(procName, title);
+            _lastCategory = Classify(procName);
             // ★ 窗口切换视为用户活动：更新时间戳供 MotionAgent 交互检测使用
             LastActivityTime = Time.time;
             if (_pollCount <= 5 || _pollCount % 30 == 0)
-                Debug.Log($"[ActivityTracker] 轮询#{_pollCount}: 窗口={procName} title=\"{title}\" → {_lastCategory}");
+                Debug.Log($"[ActivityTracker] 轮询#{_pollCount}: 类别={_lastCategory}");
         }
 
         // ★ 每次轮询都累加当前窗口时长（不是只在切换时）
@@ -338,177 +281,17 @@ public class ActivityTracker : MonoBehaviour
     }
 
     // ============================================================
-    //  多窗口环境感知
-    // ============================================================
-
-    /// <summary>刷新可见窗口快照（EnumWindows 枚举所有可见非最小化窗口）</summary>
-    private void RefreshVisibleWindows()
-    {
-        var windowInfos = new List<(string title, string proc)>();
-        var collectedPids = new HashSet<uint>();
-        object lockObj = new object();
-
-        EnumWindows((hWnd, lParam) =>
-        {
-            if (!IsWindowVisible(hWnd) || IsIconic(hWnd))
-                return true; // 继续枚举
-
-            // 跳过桌面和任务栏
-            GetWindowThreadProcessId(hWnd, out uint pid);
-            if (pid == 0) return true;
-
-            StringBuilder sb = new StringBuilder(512);
-            GetWindowText(hWnd, sb, sb.Capacity);
-            string title = sb.ToString().Trim();
-            if (string.IsNullOrEmpty(title))
-                return true; // 无标题窗口跳过
-
-            // 获取进程名
-            string procName = GetProcessNameByPid(pid) ?? "unknown";
-            if (procName == "unknown" || procName == "explorer")
-                return true; // 跳过未知和资源管理器
-
-            lock (lockObj)
-            {
-                if (!collectedPids.Contains(pid))
-                {
-                    collectedPids.Add(pid);
-                    windowInfos.Add((title, procName));
-                }
-            }
-            return true;
-        }, IntPtr.Zero);
-
-        // 去重：同一进程只保留最长的标题（通常信息量最大）
-        var procBestTitle = new Dictionary<string, string>();
-        foreach (var (title, proc) in windowInfos)
-        {
-            if (!procBestTitle.ContainsKey(proc) || title.Length > procBestTitle[proc].Length)
-                procBestTitle[proc] = title;
-        }
-
-        // 按类别排序：coding > studying > browsing > entertainment > communication > other
-        var ordered = procBestTitle
-            .OrderByDescending(kv => Classify(kv.Key, kv.Value) switch
-            {
-                "coding" => 6, "studying" => 5, "browsing" => 4,
-                "entertainment" => 3, "communication" => 2, _ => 1
-            })
-            .ThenBy(kv => kv.Key)
-            .ToList();
-
-        var sb2 = new StringBuilder();
-        sb2.Append("【法眼多窗 | 当前环境】");
-        int count = 0;
-        foreach (var kv in ordered)
-        {
-            string cat = Classify(kv.Key, kv.Value);
-            string catIcon = cat switch
-            {
-                "coding" => "🖥️", "gaming" => "🎮", "studying" => "📖",
-                "browsing" => "🌐", "entertainment" => "🎬", "communication" => "💬",
-                "idle" => "💤", _ => "📋"
-            };
-            // 截断超长标题
-            string shortTitle = kv.Value.Length > 40 ? kv.Value.Substring(0, 40) + "…" : kv.Value;
-            sb2.Append($" {catIcon}{shortTitle}");
-            count++;
-            if (count >= 6) break; // 最多列 6 个窗口
-        }
-        if (count == 0)
-        {
-            _lastMultiWindowSummary = "";
-            return;
-        }
-        _lastMultiWindowSummary = sb2.ToString();
-    }
-
-    /// <summary>
-    /// 获取多窗口环境摘要（供 SystemPrompt 注入）
-    /// 返回格式: 【法眼多窗 | 当前环境】🖥️ VS Code 🌐 Edge - B站 💬 WeChat
-    /// </summary>
-    public string GetVisibleWindowsSummary()
-    {
-        return _lastMultiWindowSummary;
-    }
-
-    // ——————————————————————————————————————————————
-    //  浏览器标签页深度感知
-    // ——————————————————————————————————————————————
-
-    /// <summary>刷新当前前台浏览器的标签页信息（UIA，后台线程 + 3s 超时避免主线程卡死）</summary>
-    private void RefreshBrowserTabs()
-    {
-        if (!BrowserTabReader.IsAvailable)
-        {
-            _lastBrowserTabsSummary = "📡 浏览器标签感知不可用（UIA 初始化失败）";
-            return;
-        }
-
-        try
-        {
-            var task = Task.Run(() => BrowserTabReader.ReadTabs(_lastHwnd));
-            if (task.Wait(3000)) // 3 秒超时，防止 UIA 挂死主线程
-            {
-                var tabs = task.Result;
-                if (tabs.Count == 0)
-                {
-                    _lastBrowserTabsSummary = "";
-                    return;
-                }
-
-                var sb = new StringBuilder();
-                sb.Append("【法眼浏览器 | 当前标签】");
-                int count = 0;
-                foreach (string tab in tabs)
-                {
-                    sb.Append($" {(privacySanitize ? SanitizePrivacy(tab) : tab)}");
-                    count++;
-                    if (count >= 10) break; // 最多列 10 个标签
-                }
-                _lastBrowserTabsSummary = sb.ToString();
-            }
-            else
-            {
-                Debug.LogWarning("[ActivityTracker] UIA 读取标签超时（3s），可能浏览器无响应");
-                _lastBrowserTabsSummary = "⏳ 浏览器暂时无响应";
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"[ActivityTracker] UIA 读取标签失败: {ex.Message}");
-            _lastBrowserTabsSummary = "";
-        }
-    }
-
-    /// <summary>
-    /// 获取浏览器标签页摘要（供 SystemPrompt 注入）
-    /// 返回格式: 【法眼浏览器 | 当前标签】📄 百度 📄 GitHub ⏳ 后台标签
-    /// </summary>
-    public string GetBrowserTabsSummary()
-    {
-        return _lastBrowserTabsSummary;
-    }
-
-    // ============================================================
     //  活动分类
     // ============================================================
 
-    private string Classify(string procName, string title)
+    private string Classify(string procName)
     {
         string p = procName.ToLowerInvariant();
-        string t = title.ToLowerInvariant();
 
         // ——— 屏保/锁屏/登录屏 ———
         if (p == "logonscreen" || p.Contains("screensaver") || p.StartsWith("scr") ||
             p.Contains("lockapp"))
             return "idle";
-
-        // ——— 窗口标题 fallback（即使进程名取不到也能归类） ———
-        if (t.Contains("visual studio code") || t.Contains(" - code") || t.Contains("vscode"))
-            return "coding";
-        if (t.Contains("visual studio") && !t.Contains("studio 司机") && !t.Contains("studio 驱动"))
-            return "coding";
 
         // ——— 开发工具 ———
         // 主流编辑器/IDE
@@ -533,26 +316,10 @@ public class ActivityTracker : MonoBehaviour
             p.Contains("mysql") || p.Contains("postgres") || p.Contains("redis"))
             return "coding";
 
-        // ——— 浏览器（按标题进一步细分） ———
+        // ——— 浏览器 ———
         if (p == "msedge" || p == "chrome" || p == "firefox" || p == "opera" ||
             p == "brave" || p == "vivaldi" || p == "safari")
-        {
-            if (t.Contains("课程") || t.Contains("教程") || t.Contains("学习") ||
-                t.Contains("documentation") || t.Contains("docs") || t.Contains("learn") ||
-                t.Contains("leetcode") || t.Contains("github") || t.Contains("stackoverflow") ||
-                t.Contains("mdn") || t.Contains("api") || t.Contains("wikipedia") ||
-                t.Contains("pdf") || t.Contains("论文") || t.Contains("文献"))
-                return "studying";
-            if (t.Contains("bilibili") || t.Contains("youtube") || t.Contains("netflix") ||
-                t.Contains("视频") || t.Contains("电影") || t.Contains("直播") ||
-                t.Contains("影视") || t.Contains("动漫") || t.Contains("番剧"))
-                return "entertainment";
-            if (t.Contains("chat") || t.Contains("gpt") || t.Contains("copilot") ||
-                t.Contains("deepseek") || t.Contains("doubao") || t.Contains("kimi") ||
-                t.Contains("通义") || t.Contains("文心"))
-                return "coding"; // AI 对话也归为 productive
             return "browsing";
-        }
 
         // ——— 学习/文档工具 ———
         if (p.Contains("onenote") || p == "notion" || p == "obsidian" ||
@@ -584,7 +351,7 @@ public class ActivityTracker : MonoBehaviour
             p.Contains("lark") || p.Contains("feishu"))
             return "communication";
 
-        // ——— 游戏（检测窗口标题中的游戏关键词） ———
+        // ——— 游戏进程 ———
         // 已知游戏进程名
         string[] gameProcs = { "game", "launcher", "steam", "epic", "origin", "ubisoft",
                                "wow", "lol", "dota", "csgo", "cs2", "valheim", "genshin",
@@ -595,16 +362,6 @@ public class ActivityTracker : MonoBehaviour
             if (p.Contains(gp))
                 return "gaming";
         }
-        if (t.Contains("unity") || t.Contains("unreal") || t.Contains("godot"))
-            return "coding"; // 游戏引擎编辑器也是 coding
-        // 窗口标题中常见的游戏特征
-        string[] gameTitleHints = { "游戏", "game", "play", "steam" };
-        foreach (string hint in gameTitleHints)
-        {
-            if (t.Contains(hint))
-                return "gaming";
-        }
-
         // ——— 未分类 ———
         return "other";
     }
@@ -625,12 +382,13 @@ public class ActivityTracker : MonoBehaviour
     // ============================================================
 
     /// <summary>
-    /// 获取今日活动摘要（用于注入 system prompt）
+    /// 获取已授权类别统计的今日摘要；不进入聊天 system prompt。
     /// 返回格式: 【法眼观测】🖥️ 编程2h30min 🌐 浏览45min 🎬 娱乐20min
     /// 若今日无数据或全是 <1min，返回空字符串
     /// </summary>
     public string GetSummary()
     {
+        if (!TrackingEnabled) return "";
         // 日期切换保护
         string today = DateTime.Now.ToString("yyyy-MM-dd");
         if (_today.date != today)
@@ -646,11 +404,6 @@ public class ActivityTracker : MonoBehaviour
         // 按时长降序排列
         var sorted = new List<KeyValuePair<string, float>>(_today.dict);
         sorted.Sort((a, b) => b.Value.CompareTo(a.Value));
-
-        // ★ 注入当前前台窗口所在显示器
-        string monitorInfo = "";
-        if (!string.IsNullOrEmpty(CurrentMonitorName))
-            monitorInfo = CurrentMonitorName.Replace("\\\\?\\", ""); // 把 \\.\DISPLAY1 简化为 DISPLAY1
 
         var sb = new StringBuilder("【法眼观测 | 今日行为】");
         bool hasData = false;
@@ -685,10 +438,6 @@ public class ActivityTracker : MonoBehaviour
 
         if (!hasData) return "";
 
-        // ★ 追加当前前台所在显示器
-        if (!string.IsNullOrEmpty(monitorInfo))
-            sb.Append($" | 当前在 {monitorInfo}");
-
         return sb.ToString();
     }
 
@@ -697,61 +446,10 @@ public class ActivityTracker : MonoBehaviour
     /// </summary>
     public int GetCategoryMinutes(string category)
     {
+        if (!TrackingEnabled) return 0;
         if (_today.dict.TryGetValue(category, out float sec))
             return Mathf.RoundToInt(sec / 60f);
         return 0;
-    }
-
-    /// <summary>
-    /// 获取窗口所在显示器的设备名（如 \\.\DISPLAY1），失败返回空
-    /// </summary>
-    private static string GetMonitorName(IntPtr hwnd)
-    {
-        try
-        {
-            IntPtr hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-            if (hMonitor == IntPtr.Zero) return "";
-
-            var mi = new MONITORINFOEXW();
-            mi.cbSize = Marshal.SizeOf(typeof(MONITORINFOEXW));
-            if (GetMonitorInfoW(hMonitor, ref mi))
-                return mi.szDevice;
-        }
-        catch { }
-        return "";
-    }
-
-    /// <summary>
-    /// 🔒 隐私脱敏 — 在注入 AI 前过滤窗口标题 / 浏览器标签中的敏感信息：
-    ///   URL 链接、邮箱、手机号、身份证号、密钥/口令（key=xxx, token: xxx 等）
-    ///   同时折叠空白并截断超长文本（防标题塞爆 prompt / 泄露信息）。
-    /// </summary>
-    public static string SanitizePrivacy(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return text;
-        string t = text;
-        try
-        {
-            // 密钥/口令：password/pwd/token/secret/api_key/key 后接 = 或 : 的值
-            t = System.Text.RegularExpressions.Regex.Replace(
-                t, @"(?i)(password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|session)\\s*[=:]\\s*[^\\s,;]+\\b",
-                m => m.Groups[1].Value + "=[已隐藏]");
-            // URL 链接（含协议）
-            t = System.Text.RegularExpressions.Regex.Replace(t, @"https?://[^\\s]+", "[链接]");
-            // 邮箱
-            t = System.Text.RegularExpressions.Regex.Replace(t, @"[\\w.+-]+@[\\w-]+\\.[\\w.]+\\b", "[邮箱]");
-            // 手机号（大陆 1[3-9]xxxxxxxxx）
-            t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<!\\d)1[3-9]\\d{9}(?!\\d)", "[手机号]");
-            // 身份证号（17 位数字 + 数字/X）
-            t = System.Text.RegularExpressions.Regex.Replace(t, @"(?<!\\d)\\d{17}[\\dXx](?!\\d)", "[证件号]");
-            // 折叠连续空白
-            t = System.Text.RegularExpressions.Regex.Replace(t, @"\\s+", " ").Trim();
-            // 截断超长文本（单条窗口标题/标签上限）
-            if (t.Length > 60)
-                t = t.Substring(0, 60) + "…";
-        }
-        catch { /* 脱敏失败时原样返回，不阻断主流程 */ }
-        return t;
     }
 
     // ============================================================ //

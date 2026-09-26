@@ -7,8 +7,8 @@ using UnityEngine;
 // 准入保持为空并报错，绝不降级放行。并行由 EmbodiedCoordinator 按资源
 // 掩码仲裁（C-L3-02：不相交资源可并行）；生产请求固定 Priority=0，同优先级
 // 冲突仍拒绝、不被抢占。完成与取消必须经 CompleteSkill。
-// 当前仅隔离测试执行器（@@sim:gesture:param94，仅 .test_mode）经过本汇点；
-// LLM 工具面仍为零。超时与取消由执行器生命周期负责。
+// 认证技能可由受控的 LLM body 工具和隔离测试入口请求；两者都必须经过同一汇点。
+// 超时与取消由执行器生命周期负责。
 public static class EmbodiedRuntimeAdmission
 {
     // Update 中的超时检查发生在协程收尾之前；给已知时长的动作留出一小段收尾窗口，

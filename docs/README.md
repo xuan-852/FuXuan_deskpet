@@ -71,7 +71,9 @@ docs/generated/        自动生成索引，禁止手工编辑
 | [`code-truth-architecture.md`](code-truth-architecture.md) | 代码真相架构审计（六层架构） | 改架构/子系统前 |
 | [`embodied-ai-optimization-architecture.md`](embodied-ai-optimization-architecture.md) | **具身 AI 优化设计**（分层仲裁、状态/命令接口、安全约束与实施阶段） | 规划或修改 ActionAgent 架构前 |
 | [`embodied-intelligence-guidance.md`](embodied-intelligence-guidance.md) | **具身智能指导文档**（已确认边界、能力普查、LLM 控制与验收规范） | 设计、实现或验收具身智能前 |
+| [`decisions/2026-09-24-product-experience-and-project-goals.md`](decisions/2026-09-24-product-experience-and-project-goals.md) | **产品体验与项目顶层设计目标**（北极星、生命生动感/对话优雅感/工具实用感、可靠可控、优先级与反目标） | 判断功能价值、评审体验方向或处理目标冲突前 |
 | [`decisions/2026-09-15-product-direction-baseline.md`](decisions/2026-09-15-product-direction-baseline.md) | **产品方向决策基线**（L0–L6 已确认目标、边界与待细化项；非代码真相） | 编写功能指导文档、下发任务或处理方向冲突前 |
+| [`decisions/2026-09-24-life-state-action-control-iteration-direction.md`](decisions/2026-09-24-life-state-action-control-iteration-direction.md) | **生命状态与动作控制中枢迭代方向**（模型能力边界、代码矛盾、组合动作、行为噪声与 Phase 1–6 出口） | 推进生命状态、Live2D 能力、动作资产和统一控制中枢前 |
 | [`decisions/documentation-governance.md`](decisions/documentation-governance.md) | **文档治理与任务分发规范**（目录即状态、任务包边界、冲突阻断与生成索引） | 新建/迁移文档、下发任务包或验收前 |
 | [`generated/document-map.md`](generated/document-map.md) | **自动文档与任务索引**（由脚本生成，禁止手工编辑） | 快速查看当前决策、指导文档、代码真相与任务包 |
 | [`desktop-assistant-roadmap.md`](desktop-assistant-roadmap.md) | **冻结的旧路线图**（v0.3，2026-08-29） | 只查历史背景；新方向以决策/指导文档为准 |

@@ -46,6 +46,7 @@ public sealed class EmbodiedActionRequest
     public EmbodiedActionStatus Status { get; internal set; }
     public DateTime StartedAtUtc { get; internal set; }
     public string TerminalReason { get; internal set; }
+    public string BehaviorExecutionId { get; set; }
 }
 
 public sealed class EmbodiedCoordinator

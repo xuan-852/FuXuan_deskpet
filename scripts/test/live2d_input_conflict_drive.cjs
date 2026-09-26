@@ -88,12 +88,19 @@ async function assertAbsent(marker, after, durationMs = 700) {
         await sendAndWait('@@sim:legacy:stretch', 'Accepted LegacyAction/legacy-action/stretch');
         await waitFor('Released LegacyAction/legacy-action/stretch', recoveredLegacyOffset, 15000);
 
+        // 自主散步可能在前一动作完成后重新取得全局租约；先回到静止基线。
+        await sendAndWait('@@sim:walk:stop', '[TestInbox] 已强制停止走路');
+        await sleep(1600);
+        await sendAndWait('@@sim:status', 'velocity=(0,0)');
         await sendAndWait('@@sim:lease:generated:begin', 'generated-motion lease accepted');
         const generatedLegacyOffset = readLog().length;
         await sendAndWait('@@sim:legacy:stretch', 'legacy action requested: stretch');
         await assertAbsent('Accepted LegacyAction/legacy-action/stretch', generatedLegacyOffset);
         await sendAndWait('@@sim:lease:generated:release', 'generated-motion lease released');
 
+        await sendAndWait('@@sim:walk:stop', '[TestInbox] 已强制停止走路');
+        await sleep(1600);
+        await sendAndWait('@@sim:status', 'velocity=(0,0)');
         await sendAndWait('@@sim:legacy:stretch', 'Accepted LegacyAction/legacy-action/stretch');
         const activeLegacyOffset = readLog().length;
         await sendAndWait('@@sim:lease:generated:begin', 'generated-motion lease rejected');
@@ -106,6 +113,9 @@ async function assertAbsent(marker, after, durationMs = 700) {
             legacyThenGenerated: 'generated request was rejected while LegacyAction lease was active',
         }, null, 2));
 
+        await sendAndWait('@@sim:walk:stop', '[TestInbox] 已强制停止走路');
+        await sleep(1600);
+        await sendAndWait('@@sim:status', 'velocity=(0,0)');
         await sendAndWait('@@sim:expression:happy', '[TestInbox] expression accepted: happy');
         await sendAndWait('@@test:quit', 'test-exit input cleanup completed', 15000);
         fs.writeFileSync(path.join(root, 'ac-expression-lifecycle-result.json'), JSON.stringify({

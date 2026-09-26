@@ -6,6 +6,8 @@
 
 - [符玄桌宠产品方向基线（L0–L6）](../../docs/decisions/2026-09-15-product-direction-baseline.md) — `docs/decisions/2026-09-15-product-direction-baseline.md`
 - [Live2D 平台与符玄私有 Fixture 范围决策](../../docs/decisions/2026-09-18-live2d-platform-and-fuxuan-fixture-scope.md) — `docs/decisions/2026-09-18-live2d-platform-and-fuxuan-fixture-scope.md`
+- [生命状态与动作控制中枢迭代方向](../../docs/decisions/2026-09-24-life-state-action-control-iteration-direction.md) — `docs/decisions/2026-09-24-life-state-action-control-iteration-direction.md`
+- [符玄桌宠项目产品体验与顶层设计目标](../../docs/decisions/2026-09-24-product-experience-and-project-goals.md) — `docs/decisions/2026-09-24-product-experience-and-project-goals.md`
 - [首版默认运行阈值](../../docs/decisions/default-operational-thresholds.md) — `docs/decisions/default-operational-thresholds.md`
 - [文档治理与任务分发规范](../../docs/decisions/documentation-governance.md) — `docs/decisions/documentation-governance.md`
 - [旧文档迁移与归档计划](../../docs/decisions/legacy-document-migration-plan.md) — `docs/decisions/legacy-document-migration-plan.md`
@@ -34,6 +36,7 @@
 
 ## 代码真相
 
+- [L3 `acknowledge_nod` 认证具身技能](../../docs/truth/l3-acknowledge-nod-certification.md) — `docs/truth/l3-acknowledge-nod-certification.md`
 - [L3 动作生命周期与安全收束（最小集）](../../docs/truth/l3-action-lifecycle-recovery.md) — `docs/truth/l3-action-lifecycle-recovery.md`
 - [L3 参数能力普查：机械基线证据](../../docs/truth/l3-capability-census-mechanical.md) — `docs/truth/l3-capability-census-mechanical.md`
 - [L3 认证曲线完整性绑定](../../docs/truth/l3-certified-curve-integrity.md) — `docs/truth/l3-certified-curve-integrity.md`

@@ -1,4 +1,4 @@
-using Live2D.Cubism.Core;
+﻿using Live2D.Cubism.Core;
 using Live2DFramework.ActionAgent;
 using System;
 using System.Collections;
@@ -577,11 +577,6 @@ public class MotionAgent : MonoBehaviour
         // 3. 用户状态
         if (_activityTracker != null)
         {
-            string title = _activityTracker.CurrentWindowTitle;
-            string proc = _activityTracker.CurrentProcessName;
-            if (!string.IsNullOrEmpty(title))
-                parts.Add($"用户在操作: {title} ({proc})");
-
             float idleDuration = Time.time - _lastInteractionTime;
             parts.Add($"用户已 {idleDuration:F0} 秒未交互");
         }

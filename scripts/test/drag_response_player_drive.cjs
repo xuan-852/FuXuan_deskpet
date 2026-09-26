@@ -128,6 +128,10 @@ function assertNoBadLogs(text) {
     const activeLog = readLog().slice(dragStart);
     if (!activeLog.includes('[DragHandoff] walking-to-drag accepted')) throw new Error('walking-to-drag handoff evidence missing');
     if (!activeLog.includes('drag-response')) throw new Error('drag-response admission evidence missing');
+    const lifeOffset = readLog().length;
+    await send('@@sim:life-state');
+    if (!/\[LifeState\] snapshot[^\r\n]*action=Active/.test(readLog().slice(lifeOffset)))
+      throw new Error('drag handoff did not leave current action active');
     await sendAndWait('@@sim:lease:generated:begin', 'generated-motion lease rejected', 10000);
     const conflictLog = readLog().slice(dragStart);
     if (!conflictLog.includes('generated-motion lease rejected')) throw new Error('generated-motion conflict rejection missing');
@@ -167,10 +171,10 @@ function assertNoBadLogs(text) {
     const starBaseline = await waitForStarSignature();
     if (starBaseline.dragging) throw new Error('star baseline unexpectedly reported active drag');
 
+    const starDragStart = readLog().length;
     await send('@@sim:drag:offset:220,-250,900', 100);
     await waitFor('[DragInterrupt] action-to-drag accepted', 10000);
     await waitFor('[DragHandler] 拖动已启动', 10000);
-    const starDragStart = readLog().length;
     const starDragSnapshots = [];
     await sendAndWait('@@sim:star-arm-state', '[StarArmState]', 5000);
     const snapshot = latestStarArmState();
@@ -220,6 +224,18 @@ function assertNoBadLogs(text) {
     if (!actionRecoveryLog.slice(actionStart).includes('[DesktopPet] 落地')) throw new Error('action landing evidence missing');
     if (recoveredAfterAction.dragging || recoveredAfterAction.actionLocked) throw new Error('action state remained after action drag landing');
     if (recoveredAfterAction.x === actionRect.x && recoveredAfterAction.y === actionRect.y) throw new Error('action drag did not move pet');
+
+    const behaviorOffset = readLog().length;
+    await send('@@sim:behavior-state');
+    const behaviorLog = readLog().slice(behaviorOffset);
+    for (const [writer, terminal] of [
+      ['walking', 'Cancelled'],
+      ['dragresponse', 'Completed'],
+      ['legacyaction', 'Cancelled']
+    ]) {
+      if (!new RegExp(`\\[BehaviorState\\] intent=[^\\r\\n]*execution=input-${writer}-\\d+[^\\r\\n]*status=${terminal}`).test(behaviorLog))
+        throw new Error(`${writer} behavior terminal ${terminal} missing`);
+    }
 
     const preExit = readLog();
     await sendAndWait('@@test:quit', '[EmbodiedSafeRecovery] recovered: test-exit', 20000);

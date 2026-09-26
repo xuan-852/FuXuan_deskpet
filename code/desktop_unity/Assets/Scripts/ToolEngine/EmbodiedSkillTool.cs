@@ -29,7 +29,11 @@ public class RequestBodySkillTool : IPetTool
             return $"❌ 技能 {skillId} 未认证或不存在，请求被拒绝";
         var renderer = GameObject.FindObjectOfType<Live2DRenderer>();
         if (renderer == null) return "❌ 本座法身未现";
-        return renderer.PlayCertifiedMotion(skillId);
+        return renderer.PlayCertifiedMotion(
+            skillId,
+            "request_body_skill",
+            "user_requested_body_skill",
+            true);
     }
 
     public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)

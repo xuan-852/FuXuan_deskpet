@@ -1,4 +1,4 @@
-using Live2D.Cubism.Core;
+﻿using Live2D.Cubism.Core;
 using Live2D.Cubism.Framework;
 using Live2D.Cubism.Framework.Physics;
 using Live2D.Cubism.Framework.Raycasting;
@@ -398,6 +398,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private Live2DInputCoordinatorHost _inputCoordinatorHost;
     private ParameterCommitBridge _parameterCommitBridge;
     private Live2DInputLease _expressionInputLease;
+    private string _expressionBehaviorExecutionId;
     private int _expressionGeneration;
     private int _expressionReleaseGeneration;
     private float _expressionStartedAt;
@@ -416,6 +417,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private readonly EmbodiedEventStore _embodiedEventStore = new EmbodiedEventStore(128);
     private readonly LifeStateStore _lifeStateStore = new LifeStateStore(128);
     private readonly LifeTimelineStore _lifeTimelineStore = new LifeTimelineStore(128);
+    private BehaviorCoordinator _behaviorCoordinator;
     private long _lifeEventSequence;
     private float _lastLifeBodyObservationTime = -1f;
     private ChatManager _lifeChatManager;
@@ -427,6 +429,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     public EmbodiedEvent[] EmbodiedEvents => _embodiedEventStore.Snapshot();
     public LifeTimelineEntry[] LifeTimeline => _lifeTimelineStore.Snapshot();
     public LifeStateSnapshot LifeStateSnapshot => _lifeStateStore.Snapshot;
+    internal BehaviorCoordinator BehaviorCoordinator => _behaviorCoordinator;
     private Live2DInputLease _idleInputLease;
     private Live2DInputLease _candidateTestInputLease;
     private EmbodiedActionRequest _candidateActionRequest;
@@ -582,6 +585,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     // 是否已加载
     private bool _loaded = false;
+    private bool _modelRebuildInProgress;
 
     // ForceUpdateNow 可观测性：用于定位特殊动作/物理拦截造成的重复刷新。
     public int ForceUpdateCountThisFrame { get; private set; }
@@ -660,6 +664,11 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     private float _eyeSmoothX = 0f;
     private float _eyeSmoothY = 0f;
     private bool _eyeSmoothActive = false;
+
+    private void Awake()
+    {
+        _behaviorCoordinator = new BehaviorCoordinator(_lifeStateStore);
+    }
 
     private void Start()
     {
@@ -1011,7 +1020,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (!IsAutomaticIdleActionActive()) return;
 
         int staleAction = _currentIdleAction;
-        ResetIdleAction(true);
+        ResetIdleAction(true, "walking-transition");
         Debug.Log("[Live2DRenderer] walking transition cleared stale automatic idle action: " + staleAction);
     }
 
@@ -1141,7 +1150,14 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     private void Update()
     {
-        if (!_loaded || _cubismModel == null) return;
+        if (!_loaded || _cubismModel == null || _modelRoot == null)
+        {
+            if (_certifiedMotionActive)
+                SafeRecoverExternalActions("model-unavailable");
+            if (_loaded && !_modelRebuildInProgress && (_cubismModel == null || _modelRoot == null))
+                TryRebuildModel("model-unavailable");
+            return;
+        }
 
         if (_certifiedMotionActive && _certifiedMotionRequest != null)
         {
@@ -1281,6 +1297,12 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         if (!_loaded || _cubismModel == null) return;
 
+        // A lease may begin after the click callback but before this frame's
+        // renderer phase. Cancel the non-owning overlay before any early return
+        // so it cannot survive a handoff and replay after the lease ends.
+        if (_poseLocked && !CanApplyClickPose())
+            CancelClickPose("active-input-lease");
+
         if (_dragTakeoverPending)
             return;
 
@@ -1301,16 +1323,24 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         }
 
         // ★ 点击/摸头锁定中 → 重新设置被物理覆盖的参数
-        // ★ 但如果已有强制动作（如法阵），跳过点击锁定，让动作驱动参数
+        // ★ 但如果已有强制动作（如法阵）或其他输入租约，不能让点击
+        // ★ 这个非拥有叠加层提前返回并跳过当前写入者。
         if (_poseLocked && Time.time < _poseLockUntil && !_actionLocked)
         {
-            foreach (var kv in _clickSavedParams)
-                SetParameter(kv.Key, kv.Value);
-            ForceUpdateModelNow();
-            // 点击锁定同样提前返回，仍需在最终姿态完成后更新局部 RT 取景。
-            UpdateOverlayFraming();
-            PublishEmbodiedObservation();
-            return;
+            if (!CanApplyClickPose())
+            {
+                CancelClickPose("active-input-lease");
+            }
+            else
+            {
+                foreach (var kv in _clickSavedParams)
+                    SetParameter(kv.Key, kv.Value);
+                ForceUpdateModelNow();
+                // 点击锁定同样提前返回，仍需在最终姿态完成后更新局部 RT 取景。
+                UpdateOverlayFraming();
+                PublishEmbodiedObservation();
+                return;
+            }
         }
 
         // ★ 更新新动作系统（表情淡入淡出）
@@ -1361,7 +1391,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         // actions are protected by _actionLocked and are physically paused.
         if (isWalking && _currentIdleAction > 0 && !_actionLocked && !_aiControlLocked)
         {
-            ResetIdleAction(true);
+            ResetIdleAction(true, "walking-transition");
         }
 
         // AI 动作已经接管参数时，禁止这里再补写一帧走路/淡出姿态。
@@ -2267,7 +2297,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         // stop the action before it writes another frame of parameters.
         if (_currentIdleAction > 0 && isWalking && !_actionLocked && !_aiControlLocked)
         {
-            ResetIdleAction(true);
+            ResetIdleAction(true, "walking-transition");
         }
 
         if (_currentIdleAction > 0)
@@ -3060,7 +3090,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
     /// <summary>重置空闲动作，清理参数</summary>
     /// <param name="force">true=强制重置（动作自然完成时用，跳过 _actionLocked 守卫）</param>
-    private void ResetIdleAction(bool force = false)
+    private void ResetIdleAction(bool force = false, string releaseReason = "idle-action-reset")
     {
         // 🛡️ 防御性守卫：强制动作锁定期间禁止重置
         //     防止某个尚未确定的代码路径在强制动作（如法阵#7）播放期间
@@ -3085,7 +3115,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         // ★ 保存当前动作ID（在清零前），用于特殊冷却判断
         int prevAction = _currentIdleAction;
-        _inputCoordinator.Release(_idleInputLease, "idle-action-reset");
+        _inputCoordinator.Release(_idleInputLease, releaseReason);
         _idleInputLease = default;
 
         bool wasLocked = _actionLocked;
@@ -3234,7 +3264,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         // 否则 ResetIdleAction(true) 会提前恢复宠物移动。
         if (_currentIdleAction != 0 && !_actionLocked)
         {
-            ResetIdleAction(true);
+            ResetIdleAction(true, "ai-control");
         }
     }
 
@@ -3293,7 +3323,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         // 空闲动作通过输入租约登记。先收束此前空闲/表情，避免旧写入者
         // 在当前帧继续写参数后才发现资源已交接。
         if (_currentIdleAction != 0)
-            ResetIdleAction(true);
+            ResetIdleAction(true, "idle-replaced");
         StopExpressionForInputTransition();
         if (!_inputCoordinator.TryBegin(Live2DInputKind.LegacyAction, "idle-action", "idle:" + actionId, out _idleInputLease))
         {
@@ -3486,7 +3516,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _idleActionSchedulingEnabled = enabled;
         if (!enabled)
         {
-            ResetIdleAction(true);
+            ResetIdleAction(true, "idle-scheduling-disabled");
             if (_certifiedMotionActive || _certifiedMotionCoroutine != null)
                 CancelCertifiedMotion("idle-scheduling-disabled");
             Debug.Log("[Live2DRenderer] 测试隔离：已暂停空闲动作调度");
@@ -3696,7 +3726,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         if (_testWaveMatrixCapturedParameters.Count == 0)
             return;
-        _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+        _embodiedPoseState.RestoreAll(RestoreParameterOrThrow);
     }
 
     public bool CancelTestWaveMatrix(string reason = "wave-matrix-cancelled")
@@ -3851,7 +3881,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _testWaveCandidateEyeSmile = _testWaveCandidateMouthForm = 0f;
         _testWaveCandidateTorsoLean = _testWaveCandidateHeadTilt = 0f;
         _actionLocked = false;
-        var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+        var restored = _embodiedPoseState.RestoreAll(RestoreParameterOrThrow);
         _testWaveCandidateCapturedParameters.Clear();
         if (restored.Count > 0) Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
         _inputCoordinator.Release(_candidateTestInputLease, reason);
@@ -3899,7 +3929,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         if (stopCoroutine && _testTorsoZGestureCoroutine != null) StopCoroutine(_testTorsoZGestureCoroutine);
         _testTorsoZGestureCoroutine = null; _testTorsoZGestureValue = 0f; _testTorsoZGestureActive = false; _actionLocked = false;
-        var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+        var restored = _embodiedPoseState.RestoreAll(RestoreParameterOrThrow);
         if (restored.Count > 0) Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
         _inputCoordinator.Release(_candidateTestInputLease, reason); _candidateTestInputLease = default;
         _pet.SetActionMovementLock(false); Debug.Log("[TorsoCandidateTest] cleanup: " + reason);
@@ -3964,7 +3994,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _testParam94GestureValue = 0f;
         _testParam94GestureActive = false;
         _actionLocked = false;
-        var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+        var restored = _embodiedPoseState.RestoreAll(RestoreParameterOrThrow);
         if (restored.Count > 0) Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
         _inputCoordinator.Release(_candidateTestInputLease, reason);
         _candidateTestInputLease = default;
@@ -3972,6 +4002,17 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _candidateActionRequest = null;
         if (_pet != null) _pet.SetActionMovementLock(false);
         Debug.Log("[CandidateTest] cleanup: " + reason);
+    }
+
+    private void OnEnable()
+    {
+        // Unity invokes OnEnable before Start on first load. A later component
+        // re-enable must restore the chat event subscription released below.
+        if (_behaviorCoordinator == null || _lifeChatManager != null) return;
+        _lifeChatManager = FindObjectOfType<ChatManager>();
+        if (_lifeChatManager == null) return;
+        _lifeChatManager.OnRequestStarted += OnLifeChatRequestStarted;
+        _lifeChatManager.OnNewReply += OnLifeChatReply;
     }
 
     private void OnDisable()
@@ -4007,6 +4048,8 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] torso cleanup failed: " + error.Message); }
         try { CancelCertifiedMotion("certified-motion-" + reason); }
         catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] certified cleanup failed: " + error.Message); }
+        try { AbortIdleActionForRecovery(reason); }
+        catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] idle cleanup failed: " + error.Message); }
         try { CleanupExternalInputState(reason); }
         catch (System.Exception error) { Debug.LogError("[EmbodiedSafeRecovery] external input cleanup failed: " + error.Message); }
         try
@@ -4059,7 +4102,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _testTorsoZGestureValue = 0f;
             try
             {
-                var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+                var restored = _embodiedPoseState.RestoreAll(RestoreParameterOrThrow);
                 if (restored.Count > 0)
                     Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
             }
@@ -4081,10 +4124,34 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _certifiedMotionRequest = null;
             _certifiedMotionLease = default;
             _candidateTestInputLease = default;
+            try { _inputCoordinatorHost?.ReleaseAllLeases("safe-recovery-" + reason); }
+            catch (System.Exception error)
+            { Debug.LogError("[EmbodiedSafeRecovery] remaining lease cleanup failed: " + error.Message); }
             _testWaveMatrixCapturedParameters.Clear();
             _actionLocked = false;
             if (_pet != null) _pet.SetActionMovementLock(false);
         }
+    }
+
+    private void AbortIdleActionForRecovery(string reason)
+    {
+        if (_currentIdleAction == 0 && !_idleInputLease.IsValid) return;
+        if (_modelRoot != null && _cubismModel != null)
+        {
+            ResetIdleAction(true, "safe-recovery-" + reason);
+            return;
+        }
+
+        if (_idleInputLease.IsValid && _inputCoordinator != null)
+            _inputCoordinator.Release(_idleInputLease, "safe-recovery-" + reason);
+        _idleInputLease = default;
+        _currentIdleAction = 0;
+        _idleActionTime = 0f;
+        _complexActionPhase = 0f;
+        _idleActionMovementLockedPet = false;
+        _idleActionPausedPet = false;
+        _actionLocked = false;
+        if (_pet != null) _pet.SetActionMovementLock(false);
     }
 
     private void StopTeardownCoroutine(Coroutine routine)
@@ -4098,12 +4165,16 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         CancelInvoke(nameof(ReleaseExpressionInputLease));
         CancelInvoke(nameof(ForceRefreshModelAfterFade));
-        ActionController?.Expressions?.StopImmediate();
-        if (_expressionInputLease.IsValid)
-            AppendEmbodiedEvent("expression", "Cancelled", reason, _expressionInputLease);
-        _expressionGeneration++;
-        _expressionReleaseGeneration = 0;
-        _expressionInputLease = default;
+        try { ActionController?.Expressions?.StopImmediate(); }
+        finally
+        {
+            try { ReleaseExpressionInputLease(_expressionGeneration, "safe-recovery-" + reason); }
+            finally
+            {
+                _expressionGeneration++;
+                _expressionReleaseGeneration = 0;
+            }
+        }
         ReleaseWalkingInputLease("external-input-cleanup-" + reason);
     }
 
@@ -4114,6 +4185,15 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// </summary>
     public string PlayCertifiedMotion(string skillId)
     {
+        return PlayCertifiedMotion(skillId, null, null, false);
+    }
+
+    /// <summary>
+    /// 由受控工具入口请求认证身体技能。Renderer 仍负责唯一准入、租约、曲线和恢复；
+    /// 成功准入后才登记 BehaviorIntent，避免协调器再创建第二份运行时请求。
+    /// </summary>
+    public string PlayCertifiedMotion(string skillId, string source, string reason, bool registerBehaviorIntent)
+    {
         if (string.IsNullOrWhiteSpace(skillId)) return "❌ 未指定身体技能";
         if (!CertifiedMotionLibrary.TryGet(skillId, out var entry)) return $"❌ 技能 {skillId} 未认证或不存在";
         if (_certifiedMotionActive || _testParam94GestureActive) return "❌ 已有身体动作正在执行，请稍后再试";
@@ -4121,13 +4201,20 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         bool movementTaskActive = gatePet != null && gatePet.IsMovementTaskPendingOrActive;
         bool locomotionActive = gatePet != null && (movementTaskActive || gatePet.petVx != 0
             || _walkBlendRemaining > 0f || _walkFadeInRemaining > 0f);
-        if (_actionLocked || _aiControlLocked || locomotionActive) return "❌ 当前未处于稳定静止状态，动作已拒绝";
+        bool airborne = gatePet != null && !gatePet.onGround;
+        if (_actionLocked || _aiControlLocked || locomotionActive || airborne)
+            return "❌ 当前未处于稳定静止状态，动作已拒绝";
 
         string dataPath = System.IO.Path.Combine(DataPathConfig.DataRoot, "certified_motions", skillId + ".json");
-        if (!System.IO.File.Exists(dataPath)) return $"❌ 动作数据未安装：{skillId}";
-        if (!CertifiedMotionLibrary.TryVerifyCurveFile(entry, dataPath, out var integrityReason))
+        if (!CertifiedMotionLibrary.TryLoadCandidateJson(entry, dataPath, out string candidateJson,
+            out string candidateSource, out var integrityReason))
+        {
+            if (integrityReason == "motion-data-missing" || integrityReason == "built-in-motion-missing")
+                return $"❌ 动作数据未安装：{skillId}";
             return $"❌ 动作数据完整性校验失败：{integrityReason}";
-        EmbodiedMotionCandidate def = JsonUtility.FromJson<EmbodiedMotionCandidate>(System.IO.File.ReadAllText(dataPath));
+        }
+        Debug.Log($"[CertifiedMotion] candidate loaded: {skillId}, source={candidateSource}");
+        EmbodiedMotionCandidate def = JsonUtility.FromJson<EmbodiedMotionCandidate>(candidateJson);
         if (def == null || !def.IsValid || def.candidateId != skillId) return $"❌ 动作数据无效：{skillId}";
 
         CubismModel model = CubismModel;
@@ -4147,7 +4234,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         // 已迁移的空闲路径必须先经自己的恢复点释放租约；其他来源仍由
         // 同一输入协调器拒绝，认证技能不会静默抢占。
-        if (_currentIdleAction != 0) ResetIdleAction(true);
+        if (_currentIdleAction != 0) ResetIdleAction(true, "certified-motion-transition");
         if (!_inputCoordinator.TryBegin(Live2DInputKind.GeneratedMotion, "certified-motion", "certified-motion:" + skillId, out _certifiedMotionLease))
             return "❌ 动作通道被占用";
         if (!EmbodiedRuntimeAdmission.TryBeginSkill(skillId, out _certifiedMotionRequest, out var admissionReason))
@@ -4156,9 +4243,42 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             _certifiedMotionLease = default;
             return $"❌ 动作准入被拒绝：{admissionReason}";
         }
+
+        if (registerBehaviorIntent)
+        {
+            if (_behaviorCoordinator == null)
+            {
+                EmbodiedRuntimeAdmission.CancelSkill(_certifiedMotionRequest, "behavior-coordinator-unavailable");
+                _certifiedMotionRequest = null;
+                _inputCoordinator.Release(_certifiedMotionLease, "behavior-coordinator-unavailable");
+                _certifiedMotionLease = default;
+                return "❌ 行为协调器未就绪，动作已拒绝";
+            }
+
+            var behaviorExecution = _behaviorCoordinator.RegisterAdmittedExecution(
+                "request_body_skill",
+                string.IsNullOrWhiteSpace(source) ? "request_body_skill" : source,
+                string.IsNullOrWhiteSpace(reason) ? "user_requested_body_skill" : reason,
+                _certifiedMotionRequest.CorrelationId,
+                skillId,
+                _certifiedMotionRequest,
+                System.DateTime.UtcNow);
+            if (behaviorExecution == null)
+            {
+                EmbodiedRuntimeAdmission.CancelSkill(_certifiedMotionRequest, "behavior-intent-registration-failed");
+                _certifiedMotionRequest = null;
+                _inputCoordinator.Release(_certifiedMotionLease, "behavior-intent-registration-failed");
+                _certifiedMotionLease = default;
+                return "❌ 行为意图登记失败，动作已拒绝";
+            }
+        }
+
         _embodiedPoseState.BeginAction(_certifiedMotionRequest);
-        AppendLifeEvent(LifeEventType.ActionStarted, "certified-motion", skillId,
-            80, 30, "certified-motion:" + _certifiedMotionRequest.RequestId.ToString());
+        if (!registerBehaviorIntent)
+        {
+            AppendLifeEvent(LifeEventType.ActionStarted, "certified-motion", skillId,
+                80, 30, "certified-motion:" + _certifiedMotionRequest.RequestId.ToString());
+        }
 
         _certifiedMotionCurves = curves;
         _certifiedMotionParameters = parameters;
@@ -4216,7 +4336,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             : reason == "certified-motion-completed" ? EmbodiedActionStatus.Completed : EmbodiedActionStatus.Cancelled;
         try
         {
-            var restored = _embodiedPoseState.RestoreAll((id, value) => SetParameter(id, value));
+            var restored = _embodiedPoseState.RestoreAll(RestoreParameterOrThrow);
             if (restored.Count > 0)
                 Debug.Log($"[EmbodiedSafeRecovery] pose-restored: {string.Join(",", restored)} ({reason})");
         }
@@ -4270,18 +4390,44 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
 
         if (cleanupErrors.Count > 0)
         {
-            AppendLifeEvent(LifeEventType.ActionRecoveryFailed, "certified-motion",
-                skillId + ":cleanup-failed:" + string.Join(",", cleanupErrors), 95, 30,
-                request == null ? null : "certified-motion:" + request.RequestId.ToString());
+            string cleanupReason = reason + ":cleanup-failed:" + string.Join(",", cleanupErrors);
+            bool behaviorLinked = request != null
+                && !string.IsNullOrWhiteSpace(request.BehaviorExecutionId)
+                && _behaviorCoordinator != null;
+            if (!behaviorLinked)
+            {
+                AppendLifeEvent(LifeEventType.ActionRecoveryFailed, "certified-motion",
+                    skillId + ":" + cleanupReason, 95, 30,
+                    request == null ? null : "certified-motion:" + request.RequestId.ToString());
+            }
+            else if (!_behaviorCoordinator.RecordTerminal(request.BehaviorExecutionId,
+                BehaviorExecutionStatus.RecoveryFailed, cleanupReason, System.DateTime.UtcNow))
+            {
+                Debug.LogWarning("[CertifiedMotion] behavior recovery terminal was already recorded or missing: " + request.BehaviorExecutionId);
+            }
             Debug.LogError($"[EmbodiedSafeRecovery] cleanup-failed: skill={skillId}, request={(request == null ? 0 : request.RequestId)}, reason={reason}, errors={string.Join(" | ", cleanupErrors)}");
         }
         else
         {
-            LifeEventType observedType = terminalStatus == EmbodiedActionStatus.Completed
-                ? LifeEventType.ActionCompleted : LifeEventType.ActionInterrupted;
-            AppendLifeEvent(observedType, "certified-motion",
-                skillId + ":" + reason, 75, 30,
-                request == null ? null : "certified-motion:" + request.RequestId.ToString());
+            bool behaviorLinked = request != null
+                && !string.IsNullOrWhiteSpace(request.BehaviorExecutionId)
+                && _behaviorCoordinator != null;
+            if (behaviorLinked)
+            {
+                var behaviorStatus = terminalStatus == EmbodiedActionStatus.Completed
+                    ? BehaviorExecutionStatus.Completed
+                    : terminalStatus == EmbodiedActionStatus.TimedOut ? BehaviorExecutionStatus.Expired : BehaviorExecutionStatus.Cancelled;
+                if (!_behaviorCoordinator.RecordTerminal(request.BehaviorExecutionId, behaviorStatus, reason, System.DateTime.UtcNow))
+                    Debug.LogWarning("[CertifiedMotion] behavior terminal was already recorded or missing: " + request.BehaviorExecutionId);
+            }
+            else
+            {
+                LifeEventType observedType = terminalStatus == EmbodiedActionStatus.Completed
+                    ? LifeEventType.ActionCompleted : LifeEventType.ActionInterrupted;
+                AppendLifeEvent(observedType, "certified-motion",
+                    skillId + ":" + reason, 75, 30,
+                    request == null ? null : "certified-motion:" + request.RequestId.ToString());
+            }
         }
         Debug.Log("[CertifiedMotion] cleanup: " + reason);
     }
@@ -4290,6 +4436,73 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     {
         if (!_certifiedMotionActive) return;
         FinishCertifiedMotion(reason);
+    }
+
+    private void RestoreParameterOrThrow(string id, float value)
+    {
+        if (_cubismModel == null || _modelRoot == null || _parameterCommitBridge == null
+            || !_parameterCommitBridge.Commit(id, value))
+            throw new System.InvalidOperationException("model-parameter-unavailable:" + id);
+    }
+
+    internal bool TestExpireCertifiedMotion()
+    {
+        if (!DataPathConfig.IsTestMode || !_certifiedMotionActive || _certifiedMotionRequest == null) return false;
+        var request = _certifiedMotionRequest;
+        EmbodiedRuntimeAdmission.ExpireDue(request.StartedAtUtc.Add(request.Timeout).AddMilliseconds(1));
+        if (request.Status != EmbodiedActionStatus.TimedOut) return false;
+        FinishCertifiedMotion("certified-motion-timeout");
+        return true;
+    }
+
+    internal bool TestDestroyCertifiedModel()
+    {
+        if (!DataPathConfig.IsTestMode || !_certifiedMotionActive || _modelRoot == null) return false;
+        Destroy(_modelRoot);
+        return true;
+    }
+
+    private bool TryRebuildModel(string reason)
+    {
+        if (_modelRebuildInProgress || !_loaded) return false;
+        _modelRebuildInProgress = true;
+        try
+        {
+            SafeRecoverExternalActions("model-rebuild-" + reason);
+            ReleaseAllInputLeases("model-rebuild-" + reason);
+            ReleaseOverlayRendering();
+            if (_modelRoot != null) Destroy(_modelRoot);
+            _modelRoot = null;
+            _cubismModel = null;
+            _physicsController = null;
+            _paramStore = null;
+            _cubismRaycaster = null;
+            _leftArmSubRig = null;
+            _parameterCacheModel = null;
+            _parameterCache.Clear();
+            _parameterCommitBridge = null;
+            _mapper = null;
+            ActionController = null;
+            _loaded = false;
+            TryLoadModel();
+            if (!_loaded || _cubismModel == null) return false;
+            if (_embodiedPoseState.HasPendingRestore)
+                _embodiedPoseState.RestoreAll(RestoreParameterOrThrow);
+            Debug.Log("[Live2DRenderer] model rebuilt after " + reason);
+            return true;
+        }
+        catch (System.Exception error)
+        {
+            Debug.LogError("[Live2DRenderer] model rebuild failed: " + error.Message);
+            return false;
+        }
+        finally { _modelRebuildInProgress = false; }
+    }
+
+    internal bool TestModelReady()
+    {
+        return DataPathConfig.IsTestMode && _loaded && _modelRoot != null
+            && _cubismModel != null && _parameterCommitBridge != null;
     }
 
     private static CubismParameter FindParameterById(CubismModel model, string id)
@@ -4687,7 +4900,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             Debug.Log($"[Live2DRenderer] 忽略表情 {name}：当前动作正在独占参数写入");
             return false;
         }
-        if (_currentIdleAction != 0) ResetIdleAction(true);
+        if (_currentIdleAction != 0) ResetIdleAction(true, "expression-transition");
         StopExpressionForInputTransition();
         if (!_inputCoordinator.TryBegin(Live2DInputKind.Expression, "expression", name, out var expressionLease))
         {
@@ -4700,6 +4913,17 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
             AppendEmbodiedEvent("expression", "Rejected", "expression-not-found", expressionLease);
             return false;
         }
+        var behaviorExecution = _behaviorCoordinator == null ? null
+            : _behaviorCoordinator.RegisterInputExecution("expression", "expression", "expression-started",
+                "expression-" + expressionLease.RequestId, name, expressionLease, System.DateTime.UtcNow);
+        if (behaviorExecution == null)
+        {
+            ActionController.StopExpression(0f);
+            _inputCoordinator.Release(expressionLease, "expression-intent-registration-failed");
+            AppendEmbodiedEvent("expression", "Rejected", "expression-intent-registration-failed", expressionLease);
+            return false;
+        }
+        _expressionBehaviorExecutionId = behaviorExecution.Handle.ExecutionId;
         _expressionInputLease = expressionLease;
         _expressionGeneration++;
         _expressionStartedAt = Time.time;
@@ -4740,6 +4964,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// </summary>
     public void StopAllActionsAndExpressions(float fadeTime = 0.2f)
     {
+        CancelCertifiedMotion("renderer-stop-all");
         StopExpression(fadeTime);
         ActionController?.Actions?.Stop();
         ActionController?.StopLegacyAction();
@@ -4749,7 +4974,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (_actionLocked)
             ReleaseActionLock("renderer-stop-all");
         if (_currentIdleAction != 0)
-            ResetIdleAction(true);
+            ResetIdleAction(true, "renderer-stop-all");
 
         ForceUpdateModelNow();
     }
@@ -4764,9 +4989,18 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         if (generation != _expressionGeneration) return;
         var lease = _expressionInputLease;
         if (!lease.IsValid) return;
-        _inputCoordinator.Release(lease, reason);
-        _expressionInputLease = default;
-        AppendEmbodiedEvent("expression", reason == "expression-completed" ? "Completed" : "Cancelled", reason, lease);
+        bool released = false;
+        try { released = _inputCoordinator.Release(lease, reason); }
+        finally
+        {
+            _expressionInputLease = default;
+            var status = !released ? BehaviorExecutionStatus.RecoveryFailed
+                : reason == "expression-completed" ? BehaviorExecutionStatus.Completed : BehaviorExecutionStatus.Cancelled;
+            if (!string.IsNullOrWhiteSpace(_expressionBehaviorExecutionId) && _behaviorCoordinator != null)
+                _behaviorCoordinator.RecordTerminal(_expressionBehaviorExecutionId, status, reason, System.DateTime.UtcNow);
+            _expressionBehaviorExecutionId = null;
+            AppendEmbodiedEvent("expression", status.ToString(), reason, lease);
+        }
     }
 
     /// <summary>
@@ -4926,7 +5160,7 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _inputCoordinator.Release(_actionInputLease, releaseReason);
         _actionInputLease = default;
         // ★ 超时强制清理动作参数（含 Param132 眼睛白色覆盖层）
-        ResetIdleAction();
+        ResetIdleAction(true, releaseReason);
         ForceUpdateModelNow();
         // ★ 注意：不要调 ForceRefreshModelAfterFade()，它会把 OverrideFlag=true 固化，
         //   导致表情系统再也无法控制 ArtMesh 颜色 → 眼睛发白。
@@ -5154,8 +5388,33 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
         _dragInited = true;
     }
 
+    private bool CanApplyClickPose()
+    {
+        // The click response is a low-priority visual overlay, not a lease
+        // owner. During startup there is no coordinator yet, so preserve the
+        // existing renderer behavior until the host has been initialized.
+        return _inputCoordinator == null || _inputCoordinator.CanApplyLowPriorityOverlay;
+    }
+
+    private void CancelClickPose(string reason)
+    {
+        bool hadClickState = _poseLocked || _clickSavedParams.Count > 0;
+        _poseLocked = false;
+        _poseLockUntil = 0f;
+        _clickSavedParams.Clear();
+        if (hadClickState)
+            Debug.Log($"[Live2DRenderer] 点击姿势已取消: {reason}");
+    }
+
     public void ShowClickPose(Vector2 screenPos)
     {
+        if (!CanApplyClickPose())
+        {
+            CancelClickPose("active-input-lease");
+            Debug.Log("[Live2DRenderer] 点击姿势已抑制: active-input-lease");
+            return;
+        }
+
         _clickSavedParams.Clear();
 
         // ★ 先用 CubismRaycaster 精确检测命中的身体部位

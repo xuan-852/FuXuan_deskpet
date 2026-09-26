@@ -43,7 +43,7 @@
 | 🪄 **本地也能执行术式** | qwen2.5:3b 规划 JSON → 本地白名单 → ToolEngine 执行 → qwen3:8b 根据真实结果回复 |
 | 🎭 **Live2D 活灵活现** | Cubism 5-r.4 参数化动画 + 语义化普通空闲动作 + 物理模拟（裙/发/法盘惯性跟随）+ 模型局部 RT + DWM 透明窗口融入桌面 |
 | 🧠 **忆境与人格** | 相关性记忆检索、核心事实、对话摘要、五维人格与本地知识库 RAG |
-| 🔍 **感知你的一举一动** | 前台窗口、浏览器标签、时间天气、系统性能、GPU 负载、剪贴板 |
+| 🔍 **可控的环境感知** | 时间天气、系统性能、GPU 负载；前台进程类别统计默认关闭，可在「关于与数据」开启 |
 | 🏃 **具身动作闭环** | 轻量本地模型决策 → 动作模板/关键帧播放 → 可选视觉验证与运动记忆沉淀 |
 | 🖥️ **任务外包执行** | 经本地 Node 桥接调用 OpenClaw 智能体，浏览器/命令行/定时任务全外包，**进度可视化 + 关键步审批** |
 | 📋 **办公文档生成** | 一句话生成 PPT / Word / Excel（python-pptx / python-docx / openpyxl） |
@@ -82,9 +82,9 @@
 │  IdleChatGenerator · ProactiveMessageScheduler              │
 ├────────────────────────────────────────────────────────────┤
 │                    感知层                                   │
-│  ActivityTracker · BrowserTabReader · PetMemory            │
+│  ActivityTracker(需开启) · PetMemory                        │
 │  TimeWeatherController · PerformanceMonitor · GpuLoad      │
-│  KnowledgeBaseManager · MemoryGovernance · ClipboardListener│
+│  KnowledgeBaseManager · MemoryGovernance                    │
 ├────────────────────────────────────────────────────────────┤
 │                    具身层                                   │
 │  MotionAgent · MotionTranslator · MotionPlanner            │
@@ -288,9 +288,8 @@ setx DESKTOP_TOKEN "your-server-token-here"
 
 | 系统 | 方式 | 用途 |
 |------|------|------|
-| 法眼 | 2s 轮询前台窗口 | 8 类分类：编程/游戏/学习/浏览/娱乐/通讯/空闲/其他 |
-| 多窗口 | EnumWindows 扫描 | 环境感知（注入 prompt） |
-| 浏览器标签 | UIA 反射 | 读取 6 种浏览器标签 |
+| 法眼 | 默认关闭；开启后约 2s 轮询前台进程名 | 8 类本地活动统计，关闭后停止轮询 |
+| 被动桌面内容 | 不读取窗口标题、多窗口标题、浏览器标签和剪贴板 | 不注入聊天 prompt；显式工具调用仍按审批规则执行 |
 | 忆境记忆 | 分层 JSON 持久化 | `entries`、`coreFacts`、`conversationSummary`；写入经过重要度/置信度/相关性治理 |
 | 知识库 | Ollama 嵌入语义检索 | `nomic-embed-text` + 余弦 TopK，25+ 文件类型分块索引 |
 | 人格 | 五维 + 三维关系 | 跨会话连续演化 |

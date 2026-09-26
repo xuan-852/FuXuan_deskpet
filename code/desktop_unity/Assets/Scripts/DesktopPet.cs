@@ -1468,6 +1468,19 @@ public class DesktopPet : MonoBehaviour
         Debug.Log($"[DesktopPet] 拖拽释放: vx={petVx}, vy={petVy}");
     }
 
+    internal void SetAirborneZeroVelocityForTest()
+    {
+        petX = Mathf.Clamp(petX, 0, Mathf.Max(0, _screenWidth - petWidth));
+        petY = Mathf.Max(0, _screenHeight + GROUND_Y_MARGIN - petHeight - 100);
+        petVx = 0;
+        petVy = 0;
+        onGround = false;
+        isDragging = false;
+        isPaused = false;
+        _movementTaskPendingOrActive = false;
+        currentTask = GroundTask.None;
+    }
+
     /// <summary>
     /// 暂停宠物运动
     /// </summary>

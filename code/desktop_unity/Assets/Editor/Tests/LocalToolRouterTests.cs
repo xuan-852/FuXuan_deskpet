@@ -267,6 +267,22 @@ public class LocalToolRouterTests
     }
 
     [Test]
+    public void 点头请求识别但在未向AI暴露前安全拒绝()
+    {
+        Assert.IsTrue(LocalToolRouter.IsExplicitBodyRequest("点点头给我看"));
+        Assert.IsTrue(LocalToolRouter.IsExplicitBodyRequest("同意一下"));
+        Assert.IsTrue(LocalToolRouter.IsExplicitBodyRequest("nod"));
+        Assert.IsFalse(CertifiedMotionLibrary.IsLlmExposed("acknowledge_nod"));
+        Assert.IsTrue(EmbodiedRuntimeAdmission.IsSkillAdmissible("acknowledge_nod"));
+        Assert.IsFalse(LocalToolRouter.TryResolveCertifiedBodySkill("点点头给我看", out _));
+        Assert.IsFalse(LocalToolRouter.TryBuildKeywordPlan("body", "点点头给我看", out _));
+        Assert.IsFalse(LocalToolRouter.TryHardenPlanArguments(
+            "request_body_skill", "点点头给我看", "{\"skill_id\":\"acknowledge_nod\"}",
+            out _, out string error));
+        StringAssert.Contains("未认证或未向 AI 开放", error);
+    }
+
+    [Test]
     public void 身体技能参数加固拒绝未暴露技能并可用确定性匹配修复()
     {
         Assert.IsFalse(LocalToolRouter.TryHardenPlanArguments("request_body_skill", "随便动一下",

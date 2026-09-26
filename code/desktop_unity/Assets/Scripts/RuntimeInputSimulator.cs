@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using UnityEngine;
 
@@ -72,6 +72,34 @@ public static class RuntimeInputSimulator
                     "[LifeTimeline] seq={0} type={1} source={2} correlation={3} state={4} reason={5} hash={6} version={7}",
                     entry.Sequence, entry.EventType, entry.Source, entry.CorrelationId ?? "none",
                     entry.State, entry.Reason ?? "none", entry.SummaryHash, entry.LifeVersion));
+            return true;
+        }
+
+        if (body.Equals("behavior-state", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            BehaviorCoordinatorSnapshot snapshot = renderer != null
+                ? renderer.BehaviorCoordinator?.Snapshot
+                : null;
+            if (snapshot == null)
+            {
+                Debug.LogWarning("[BehaviorState] snapshot unavailable: BehaviorCoordinator missing");
+                return true;
+            }
+
+            Debug.Log("[BehaviorState] snapshot count=" + snapshot.Executions.Count);
+            foreach (BehaviorExecution execution in snapshot.Executions)
+            {
+                if (execution == null || execution.Intent == null || execution.Handle == null) continue;
+                Debug.Log(string.Format(CultureInfo.InvariantCulture,
+                    "[BehaviorState] intent={0} execution={1} correlation={2} status={3} request={4} requestExecution={5}",
+                    execution.Intent.IntentId,
+                    execution.Handle.ExecutionId,
+                    execution.Intent.CorrelationId,
+                    execution.Status,
+                    execution.Handle.RequestId,
+                    execution.Handle.Request == null ? "none" : execution.Handle.Request.BehaviorExecutionId ?? "none"));
+            }
             return true;
         }
 
@@ -245,12 +273,106 @@ public static class RuntimeInputSimulator
             return true;
         }
 
+        if (body.Equals("stop-body-skill", StringComparison.OrdinalIgnoreCase))
+        {
+            string result = ToolRegistry.Execute("stop_action", "{}");
+            Debug.Log("[TestInbox] stop-body-skill result: " + result);
+            return true;
+        }
+
+        if (body.Equals("expire-body-skill", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            Debug.Log("[TestInbox] expire-body-skill result: "
+                + (renderer != null && renderer.TestExpireCertifiedMotion()));
+            return true;
+        }
+
+        if (body.Equals("disable-enable-renderer", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer == null) Debug.LogWarning("[TestInbox] disable-enable-renderer: renderer missing");
+            else
+            {
+                renderer.enabled = false;
+                renderer.enabled = true;
+                Debug.Log("[TestInbox] disable-enable-renderer result: true");
+            }
+            return true;
+        }
+
+        if (body.Equals("destroy-body-model", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            Debug.Log("[TestInbox] destroy-body-model result: "
+                + (renderer != null && renderer.TestDestroyCertifiedModel()));
+            return true;
+        }
+
+        if (body.Equals("body-model-ready", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            Debug.Log("[TestInbox] body-model-ready result: "
+                + (renderer != null && renderer.TestModelReady()));
+            return true;
+        }
+
+        if (body.StartsWith("request-body-skill:", StringComparison.OrdinalIgnoreCase))
+        {
+            string skillId = body.Substring("request-body-skill:".Length).Trim();
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer == null)
+            {
+                Debug.LogWarning("[TestInbox] request-body-skill failed: 未找到 Live2DRenderer");
+                return true;
+            }
+
+            string result = ToolRegistry.Execute(
+                "request_body_skill",
+                "{\"skill_id\":\"" + skillId.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"}");
+            Debug.Log("[TestInbox] request-body-skill result: " + result);
+            return true;
+        }
+
+        if (body.Equals("skill:acknowledge", StringComparison.OrdinalIgnoreCase)
+            || body.Equals("skill:nod", StringComparison.OrdinalIgnoreCase))
+        {
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (renderer == null)
+            {
+                Debug.LogWarning("[TestInbox] skill:acknowledge failed: 未找到 Live2DRenderer");
+                return true;
+            }
+            string result = renderer.PlayCertifiedMotion(
+                "acknowledge_nod", "test-skill", "test-acknowledge-nod", true);
+            Debug.Log("[TestInbox] skill:acknowledge result: " + result);
+            return true;
+        }
+
         if (body.StartsWith("certified-motion:", StringComparison.OrdinalIgnoreCase))
         {
             string skillId = body.Substring("certified-motion:".Length).Trim();
             Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
             if (renderer == null) Debug.LogWarning("[TestInbox] certified-motion failed: 未找到 Live2DRenderer");
             else Debug.Log("[TestInbox] certified-motion result: " + renderer.PlayCertifiedMotion(skillId));
+            return true;
+        }
+
+        if (body.StartsWith("airborne-zero-velocity:", StringComparison.OrdinalIgnoreCase))
+        {
+            string skillId = body.Substring("airborne-zero-velocity:".Length).Trim();
+            DesktopPet pet = UnityEngine.Object.FindObjectOfType<DesktopPet>();
+            Live2DRenderer renderer = UnityEngine.Object.FindObjectOfType<Live2DRenderer>();
+            if (pet == null || renderer == null)
+            {
+                Debug.LogWarning("[TestInbox] airborne-zero-velocity failed: DesktopPet or Live2DRenderer missing");
+                return true;
+            }
+
+            pet.SetAirborneZeroVelocityForTest();
+            Debug.Log("[TestInbox] airborne-zero-velocity injected: velocity=(0,0) onGround=false");
+            Debug.Log("[TestInbox] airborne-zero-velocity result: " + renderer.PlayCertifiedMotion(
+                skillId, "test-airborne", "test-airborne-zero-velocity", true));
             return true;
         }
 

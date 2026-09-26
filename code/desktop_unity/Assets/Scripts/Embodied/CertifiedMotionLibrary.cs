@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
+using System.Text;
+using UnityEngine;
 
 // 认证动作技能库（数据层）：登记已完成四层认证的外部动作候选元数据。
 // 曲线数据不入版本库（许可约束），运行时从数据根 certified_motions/<skillId>.json 加载。
@@ -21,6 +23,10 @@ public static class CertifiedMotionLibrary
         public string DualReviewId;
         // Runtime certification and model exposure are separate decisions.
         public bool LlmExposed;
+        // Built-in candidates are shipped with the application and are used only
+        // when the isolated/user data root does not provide an override.
+        public string BuiltInResourcePath;
+        public bool IsBuiltIn => !string.IsNullOrWhiteSpace(BuiltInResourcePath);
 
         public int NaturalnessScore => Math.Min(DeepSeekNaturalnessScore, GlmNaturalnessScore);
         public SkillCertificationRecord CreateRecord() => new SkillCertificationRecord
@@ -44,6 +50,18 @@ public static class CertifiedMotionLibrary
             PacketSha256 = "b7045039e5b9edf25e4431dccf705bb6479020252f0a45e72bf0984acdade091",
             CurveSha256 = "569e88a39a32f6fd292706039438cda886d453d6df189850ed822880614060a9",
             DeepSeekNaturalnessScore = 85, GlmNaturalnessScore = 92, DualReviewId = "dual-packet-b7045039-2026-09-16", LlmExposed = false
+        },
+        new Entry
+        {
+            SkillId = "acknowledge_nod",
+            SemanticBoundary = "短时两次轻微向下点头后回到基线；不是摇头、歪头、鞠躬、挥手或任意参数动作",
+            DurationSeconds = 2.0f, Resources = EmbodiedResource.Body,
+            PacketSha256 = "0300738a92a781be54e896aa44c65d961b9870218fae8aa47dde042df8c00395",
+            CurveSha256 = "0300738a92a781be54e896aa44c65d961b9870218fae8aa47dde042df8c00395",
+            DeepSeekNaturalnessScore = 80, GlmNaturalnessScore = 80,
+            DualReviewId = "internal-motion-planner-c2-2026-09-25",
+            LlmExposed = false,
+            BuiltInResourcePath = "Live2D/CertifiedMotions/acknowledge_nod"
         },
         new Entry
         {
@@ -124,10 +142,7 @@ public static class CertifiedMotionLibrary
             using (FileStream stream = File.OpenRead(path))
             {
                 byte[] hash = sha256.ComputeHash(stream);
-                string actual = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-                if (string.Equals(actual, entry.CurveSha256, StringComparison.OrdinalIgnoreCase)) return true;
-                reason = "curve-hash-mismatch";
-                return false;
+                return VerifyHash(entry, hash, out reason);
             }
         }
         catch (Exception ex)
@@ -135,6 +150,82 @@ public static class CertifiedMotionLibrary
             reason = "curve-hash-read-failed:" + ex.GetType().Name;
             return false;
         }
+    }
+
+    public static bool TryVerifyCurveText(Entry entry, string json, out string reason)
+    {
+        reason = null;
+        if (json == null)
+        {
+            reason = "curve-text-missing";
+            return false;
+        }
+        if (entry == null || string.IsNullOrWhiteSpace(entry.CurveSha256) || entry.CurveSha256.Length != 64)
+        {
+            reason = "missing-curve-hash";
+            return false;
+        }
+
+        using (SHA256 sha256 = SHA256.Create())
+            return VerifyHash(entry, sha256.ComputeHash(Encoding.UTF8.GetBytes(json)), out reason);
+    }
+
+    public static bool TryLoadCandidateJson(Entry entry, string dataPath, out string json,
+        out string source, out string reason)
+    {
+        json = null;
+        source = null;
+        reason = null;
+        if (entry == null)
+        {
+            reason = "skill-not-certified";
+            return false;
+        }
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(dataPath) && File.Exists(dataPath))
+            {
+                if (!TryVerifyCurveFile(entry, dataPath, out reason)) return false;
+                json = File.ReadAllText(dataPath);
+                source = "data-root";
+                return true;
+            }
+
+            if (!entry.IsBuiltIn)
+            {
+                reason = "motion-data-missing";
+                return false;
+            }
+
+            TextAsset asset = Resources.Load<TextAsset>(entry.BuiltInResourcePath);
+            if (asset == null)
+            {
+                reason = "built-in-motion-missing";
+                return false;
+            }
+            json = asset.text;
+            if (!TryVerifyCurveText(entry, json, out reason)) return false;
+            source = "built-in";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = "curve-read-failed:" + ex.GetType().Name;
+            return false;
+        }
+    }
+
+    private static bool VerifyHash(Entry entry, byte[] hash, out string reason)
+    {
+        string actual = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+        if (string.Equals(actual, entry.CurveSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            reason = null;
+            return true;
+        }
+        reason = "curve-hash-mismatch";
+        return false;
     }
 
     public static bool IsLlmExposed(string skillId)

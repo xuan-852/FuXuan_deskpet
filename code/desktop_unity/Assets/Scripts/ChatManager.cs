@@ -466,6 +466,36 @@ public partial class ChatManager : MonoBehaviour
 
     private IEnumerator DoOllamaOnlyReply()
     {
+        string userMessage = GetLastUserMessage();
+        if (LocalToolRouter.IsExplicitBodyRequest(userMessage))
+        {
+            // 明确身体请求先走确定性认证路由；聊天模型不可用时也能执行真实技能。
+            // 仍复用原有白名单、参数加固和 ToolCallInvoker，不开放原始参数入口。
+            LocalToolPlan bodyPlan;
+            if (!LocalToolRouter.TryBuildKeywordPlan("body", userMessage, out bodyPlan)
+                || bodyPlan.ToolName != "request_body_skill"
+                || !LocalToolRouter.IsAllowed(bodyPlan.ToolName, "body"))
+            {
+                PublishDeterministicBodyReply("目前没有与这个请求匹配的已认证身体动作，本座不会随意尝试未经验证的动作。");
+                yield break;
+            }
+
+            string hardenedArgs;
+            string hardeningError;
+            if (!LocalToolRouter.TryHardenPlanArguments(bodyPlan.ToolName, userMessage,
+                bodyPlan.ArgumentsJson, out hardenedArgs, out hardeningError))
+            {
+                PublishDeterministicBodyReply("身体动作请求未通过认证校验：" + hardeningError);
+                yield break;
+            }
+            bodyPlan.ArgumentsJson = hardenedArgs;
+            string bodyResult = null;
+            yield return StartCoroutine(ExecuteLocalPlannedToolCoroutine(bodyPlan, result => bodyResult = result));
+            if (_abortRequested) yield break;
+            PublishDeterministicBodyReply(bodyResult ?? "身体动作请求没有返回结果，请稍后重试。");
+            yield break;
+        }
+
         SetRequestStatus("检查本地模型…", RequestStage.Thinking);
         // 桌宠可能先于 Ollama 启动；启动阶段的一次健康检查失败不能永久锁死聊天。
         // 发送消息时主动重试，确保 Ollama 后启动或模型刚加载完成后仍能恢复对话。
@@ -500,7 +530,6 @@ public partial class ChatManager : MonoBehaviour
         }
 
         SetRequestStatus("本地灵识判断中…", RequestStage.LocalGenerating);
-        string userMessage = GetLastUserMessage();
         string localToolContext = null;
 
         // 本地模型不直接接收 65 个 Function Calling schema。
@@ -629,6 +658,16 @@ public partial class ChatManager : MonoBehaviour
             SetRequestStatus("生成失败，请重试", RequestStage.Error);
             OnRequestError?.Invoke("⚠ 本地模型这次没有完成生成。请稍后重试；若持续失败，请在设置 → 模型中点击“检查连接”。");
         }
+    }
+
+    private void PublishDeterministicBodyReply(string reply)
+    {
+        string display = CleanDisplayText(reply);
+        _history.Add(new Entry { role = "assistant", content = reply });
+        TrimHistory();
+        _fullReplyText = display;
+        PublishFinalReply(display, reply);
+        Debug.Log("[ChatManager] 确定性身体请求回执已发布");
     }
 
     private static string DescribeLocalModelFailure(string detail)

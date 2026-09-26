@@ -464,6 +464,7 @@ function startTask(taskText, mode, timeoutMs, maxSteps) {
         steps: [],           // ★ 步骤轨迹：[{tool, summary, ts}]，来自 agent 事件流
         seenToolCalls: new Set(), // ★ 已记录工具调用去重（tool.start 与 item.start 双推）
         pendingApproval: null, // ★ 挂起的 exec 审批：{id, command, cwd, createdAtMs, expiresAtMs}
+        approvalResolutionInFlight: false, // ★ 防止同一审批在 Gateway 回执未完成时重复提交
         createdAt: Date.now(),
     };
     taskStore.set(id, entry);
@@ -1304,6 +1305,12 @@ function startHttpServer() {
                             res.end(JSON.stringify({ success: false, error: 'Gateway not connected' }));
                             return;
                         }
+                        if (entry.approvalResolutionInFlight) {
+                            res.writeHead(409, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: false, error: 'approval resolution already in flight' }));
+                            return;
+                        }
+                        entry.approvalResolutionInFlight = true;
                         const approvalId = entry.pendingApproval.id;
                         const kind = entry.pendingApproval.kind || 'plugin';
                         try {
@@ -1340,11 +1347,12 @@ function startHttpServer() {
                             res.writeHead(200, { 'Content-Type': 'application/json' });
                             res.end(JSON.stringify({ success: true, task_id: taskId, decision }));
                         } catch (err) {
-                            // 回执失败也清除挂起，避免任务永久卡在等待审批
-                            entry.pendingApproval = null;
+                            // HTTP 失败只代表本次回执未确认；保留 pendingApproval 供用户重试。
                             console.error(`[Bridge] Approval resolve failed: ${err.message}`);
                             res.writeHead(500, { 'Content-Type': 'application/json' });
                             res.end(JSON.stringify({ success: false, error: err.message }));
+                        } finally {
+                            entry.approvalResolutionInFlight = false;
                         }
                     } catch (err) {
                         res.writeHead(500, { 'Content-Type': 'application/json' });

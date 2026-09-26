@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using UnityEngine;
 
 /// <summary>
@@ -34,6 +34,8 @@ public class PetConfig : MonoBehaviour
 
         // ===== MotionAgent（分神化身）配置 =====
         public bool motionAgentEnabled = true;
+        // 仅在用户明确开启后按前台进程类别统计活动；不采集窗口标题或内容。
+        public bool activityCategoryTrackingEnabled = false;
         public string localModel = "qwen2.5:3b";
         public string localApiUrl = "http://127.0.0.1:11434/v1";
 

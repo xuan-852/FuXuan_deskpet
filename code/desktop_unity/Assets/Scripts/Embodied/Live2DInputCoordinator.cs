@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// Runtime arbiter for externally requested Live2D input.
@@ -9,8 +9,107 @@ using UnityEngine;
 public sealed class Live2DInputCoordinatorHost : MonoBehaviour
 {
     private readonly Live2DInputCoordinator _coordinator = new Live2DInputCoordinator();
+    private readonly System.Collections.Generic.Dictionary<int, string> _behaviorExecutions =
+        new System.Collections.Generic.Dictionary<int, string>();
+    private string _physicsExecutionId;
+    private int _lastPhysicsFrame = -1;
+    private float _nextLifeActionRenewalTime;
 
     internal Live2DInputCoordinator Coordinator => _coordinator;
+
+    private void Awake()
+    {
+        _coordinator.OnLeaseStarting = RegisterBehaviorExecution;
+        _coordinator.OnLeaseEnded = CompleteBehaviorExecution;
+    }
+
+    private bool RegisterBehaviorExecution(Live2DInputLease lease)
+    {
+        // A frame-scoped physics session must finish before the next body's
+        // ActionStarted event, otherwise its delayed terminal hides that action.
+        if (lease.Kind != Live2DInputKind.DesktopPhysics && _physicsExecutionId != null)
+            CompletePhysicsExecution("physics-interrupted");
+        // These two owners register after playback or certified admission succeeds.
+        if (lease.Kind == Live2DInputKind.Expression
+            || lease.Kind == Live2DInputKind.CandidateTest
+            || (lease.Kind == Live2DInputKind.GeneratedMotion
+                && lease.Owner.StartsWith("certified-motion:", System.StringComparison.Ordinal)))
+            return true;
+
+        var renderer = GetComponent<Live2DRenderer>();
+        var behavior = renderer == null ? null : renderer.BehaviorCoordinator;
+        if (behavior == null) return false;
+        if (lease.Kind == Live2DInputKind.DesktopPhysics && _physicsExecutionId != null)
+        {
+            _lastPhysicsFrame = Time.frameCount;
+            return true;
+        }
+        var execution = behavior.RegisterInputExecution(
+            lease.WriterId.Replace('-', '_'), lease.WriterId, "input-lease-accepted",
+            "input-lease-" + lease.RequestId, lease.Owner, lease, System.DateTime.UtcNow,
+            lease.Kind != Live2DInputKind.DesktopPhysics);
+        if (execution == null) return false;
+        if (lease.Kind == Live2DInputKind.DesktopPhysics)
+        {
+            _physicsExecutionId = execution.Handle.ExecutionId;
+            _lastPhysicsFrame = Time.frameCount;
+        }
+        else _behaviorExecutions[lease.RequestId] = execution.Handle.ExecutionId;
+        return true;
+    }
+
+    private void CompleteBehaviorExecution(Live2DInputLease lease, string reason)
+    {
+        if (lease.Kind == Live2DInputKind.DesktopPhysics)
+        {
+            if (reason != "physics-update-complete" && reason != "frame-boundary")
+                CompletePhysicsExecution(reason);
+            return;
+        }
+        if (!_behaviorExecutions.TryGetValue(lease.RequestId, out string executionId)) return;
+        _behaviorExecutions.Remove(lease.RequestId);
+        var renderer = GetComponent<Live2DRenderer>();
+        var behavior = renderer == null ? null : renderer.BehaviorCoordinator;
+        if (behavior == null) return;
+        bool completed = reason == "action-completed" || reason == "drag-release"
+            || reason == "idle-action-reset" || reason == "walking-stopped"
+            || reason == "walking-settled" || reason == "physics-completed"
+            || reason == "generated-motion-completed"
+            || reason == "vision-verification-motion-completed";
+        var status = reason != null && reason.Contains("timeout")
+            ? BehaviorExecutionStatus.Expired
+            : completed ? BehaviorExecutionStatus.Completed : BehaviorExecutionStatus.Cancelled;
+        behavior.RecordTerminal(executionId, status, reason, System.DateTime.UtcNow);
+    }
+
+    private void LateUpdate()
+    {
+        if (_physicsExecutionId != null && Time.frameCount - _lastPhysicsFrame > 1)
+            CompletePhysicsExecution("physics-idle");
+
+        if (Time.unscaledTime < _nextLifeActionRenewalTime) return;
+
+        Live2DInputLease activeLease = _coordinator.ActiveLease;
+        if (!activeLease.IsValid || activeLease.Kind == Live2DInputKind.DesktopPhysics
+            || !_behaviorExecutions.TryGetValue(activeLease.RequestId, out string executionId))
+            return;
+
+        var renderer = GetComponent<Live2DRenderer>();
+        if (renderer?.BehaviorCoordinator?.RenewInputExecution(executionId,
+            System.DateTime.UtcNow, System.TimeSpan.FromSeconds(30)) == true)
+            _nextLifeActionRenewalTime = Time.unscaledTime + 10f;
+    }
+
+    private void CompletePhysicsExecution(string reason)
+    {
+        if (_physicsExecutionId == null) return;
+        var renderer = GetComponent<Live2DRenderer>();
+        renderer?.BehaviorCoordinator?.RecordTerminal(_physicsExecutionId,
+            reason == "physics-idle" ? BehaviorExecutionStatus.Completed : BehaviorExecutionStatus.Cancelled,
+            reason, System.DateTime.UtcNow);
+        _physicsExecutionId = null;
+        _lastPhysicsFrame = -1;
+    }
 
     internal bool TryBegin(
         Live2DInputKind kind,
@@ -87,6 +186,9 @@ public sealed class Live2DInputCoordinator
     private int _nextRequestId = 1;
     private Live2DInputLease _activeLease;
 
+    public System.Func<Live2DInputLease, bool> OnLeaseStarting;
+    public System.Action<Live2DInputLease, string> OnLeaseEnded;
+
     public bool HasActiveLease => _activeLease.IsValid;
     public Live2DInputLease ActiveLease => _activeLease;
 
@@ -122,6 +224,12 @@ public sealed class Live2DInputCoordinator
         }
 
         lease = new Live2DInputLease(_nextRequestId++, kind, writer.WriterId, owner ?? "unknown", writer.Resources, writer.ControlLevel);
+        if (OnLeaseStarting != null && !OnLeaseStarting(lease))
+        {
+            Debug.LogWarning($"[Live2DInputCoordinator] Rejected {kind}/{owner}: behavior-registration-failed");
+            lease = default;
+            return false;
+        }
         _activeLease = lease;
         Debug.Log($"[Live2DInputCoordinator] Accepted {lease.Kind}/{lease.WriterId}/{lease.Owner}#{lease.RequestId}"
             + $" resources={lease.Resources} control={lease.ControlLevel}");
@@ -147,9 +255,11 @@ public sealed class Live2DInputCoordinator
         if (!lease.IsValid || !_activeLease.IsValid || lease.RequestId != _activeLease.RequestId)
             return false;
 
+        Live2DInputLease ended = _activeLease;
         Debug.Log($"[Live2DInputCoordinator] Released {_activeLease.Kind}/{_activeLease.WriterId}/{_activeLease.Owner}"
             + $"#{_activeLease.RequestId}: {reason}");
         _activeLease = default;
+        OnLeaseEnded?.Invoke(ended, reason);
         return true;
     }
 
@@ -202,7 +312,14 @@ public sealed class Live2DInputCoordinator
             + $"#{_activeLease.RequestId} -> DragResponse/{writer.WriterId}/{owner}");
         dragLease = new Live2DInputLease(_nextRequestId++, Live2DInputKind.DragResponse,
             writer.WriterId, owner ?? "unknown", writer.Resources, writer.ControlLevel);
+        if (OnLeaseStarting != null && !OnLeaseStarting(dragLease))
+        {
+            dragLease = default;
+            return false;
+        }
+        Live2DInputLease ended = _activeLease;
         _activeLease = dragLease;
+        OnLeaseEnded?.Invoke(ended, "drag-handoff");
         Debug.Log($"[Live2DInputCoordinator] Accepted {dragLease.Kind}/{dragLease.WriterId}/{dragLease.Owner}"
             + $"#{dragLease.RequestId} resources={dragLease.Resources} control={dragLease.ControlLevel}");
         return true;

@@ -207,7 +207,7 @@ public partial class RightPanel
 
     private void DrawAboutSubPanel(float x, float y, float w, float h, Vector2 mp)
     {
-        float contentH = Mathf.Max(h, 570f);
+        float contentH = Mathf.Max(h, 760f);
         _experienceScroll = GUI.BeginScrollView(new Rect(x, y, w, h), _experienceScroll,
             new Rect(0f, 0f, w - 14f, contentH), false, false, _invisibleScrollbar, _invisibleScrollbar);
         string dataRoot = DataPathConfig.DataRoot;
@@ -224,6 +224,16 @@ public partial class RightPanel
         DrawAboutRow("用户数据目录", dataRoot, ref yy, w);
         DrawAboutRow("数据目录状态", writable ? "可写入" : "无法写入（请检查目录权限）", ref yy, w);
         DrawAboutRow("开机自启", autostart ? "已开启" : "已关闭", ref yy, w);
+        bool tracking = PetConfig.Instance != null
+            && PetConfig.Instance.data.activityCategoryTrackingEnabled;
+        Rect trackingRect = new Rect(8f, yy, 300f, 38f);
+        if (GUI.Button(trackingRect,
+            tracking ? "✓ 前台活动类别统计：已开启" : "○ 前台活动类别统计：已关闭", _subBtnStyle))
+            SetActivityCategoryTracking(!tracking);
+        RegisterExtHit(trackingRect, () => SetActivityCategoryTracking(!tracking));
+        GUI.Label(new Rect(8f, yy + 41f, w - 32f, 36f),
+            "默认关闭；开启后仅按前台进程类别统计。不读取窗口标题、标签页或剪贴板。", _termLogDimStyle);
+        yy += 86f;
         yy += 8f;
         GUI.Label(new Rect(8f, yy, w - 32f, 48f), "更新只替换程序目录。聊天记录、偏好、记忆和设置都保存在用户数据目录，不会被覆盖。", _termLogStyle);
         yy += 62f;
@@ -238,6 +248,23 @@ public partial class RightPanel
         GUI.Label(new Rect(8f, yy + 30f, w - 32f, 170f), TruncateReleaseNotes(notes), _termLogDimStyle);
         if (!string.IsNullOrEmpty(_experienceStatus)) GUI.Label(new Rect(8f, yy + 210f, w - 32f, 35f), _experienceStatus, _termLogDimStyle);
         GUI.EndScrollView();
+    }
+
+    private void SetActivityCategoryTracking(bool enabled)
+    {
+        var config = PetConfig.Instance;
+        if (config == null)
+        {
+            _experienceStatus = "配置尚未就绪，请稍后重试。";
+            return;
+        }
+        config.data.activityCategoryTrackingEnabled = enabled;
+        config.Save();
+        ActivityTracker.Instance?.OnTrackingPreferenceChanged();
+        _experienceStatus = enabled
+            ? "已开启前台进程类别统计；不会读取窗口标题、标签页或剪贴板。"
+            : "已关闭前台进程类别统计；历史数据仍留在用户数据目录，可自行管理。";
+        Debug.Log("[Privacy] activity-category-tracking=" + (enabled ? "on" : "off"));
     }
 
     private void DrawAboutRow(string label, string value, ref float y, float w)

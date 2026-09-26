@@ -37,7 +37,7 @@
 - `PlayAction` 先申请 `LegacyAction` 全局租约，申请失败时不会再停止当前表情；申请成功后才以零淡出收束表情，避免被拒绝的旧动作破坏当前输入所有者。
 - 隔离 Player `AC-EXPRESSION-LIFECYCLE` 与 `AC-INPUT-04` 已验证未知表情拒绝、停止后复用、表情与生成/旧动作双向冲突、旧动作完成释放和 `test-exit` 清理。该证据只覆盖表情/旧动作/生成动作的当前单全局租约生命周期，不代表完整骨架 PoseState、步行、物理、拖拽或 Renderer 重建路径已经统一。
 
-- `build.ps1` 完整构建门禁以 `DesktopPet.exe` 时间戳判定产物新鲜度，但引导器 exe 在增量构建中不重写（托管代码在 `DesktopPet_Data/Managed/Assembly-CSharp.dll`），导致误报「构建未产出本次 exe」；建议后续任务改为校验 `Assembly-CSharp.dll` 时间戳与内容指纹。
+- 当时 `build.ps1` 仅以 `DesktopPet.exe` 时间戳判定产物新鲜度，增量构建复用引导器时会误报；2026-09-25 已改为检查本次 Player 文件刷新与构建日志成功标记。
 - 新增 `.cs` 文件后首次完整构建偶发 Bee 增量 DAG 陈旧（CS0246），第二次运行自愈；如连续失败按构建工作流使用 `-CleanBeeCache`。
 
 ## Renderer 生命周期 SafeRecovery 补充（2026-09-19）
@@ -45,6 +45,13 @@
 - `Live2DRenderer.SafeRecoverExternalActions(reason)` 是 Renderer 外部执行的幂等、尽力收束网关。`OnDisable`、`OnApplicationQuit`、`OnDestroy`（位于 `Live2DRenderer.OverlayRendering.cs`）和测试专用 `PrepareForTestExit` 均调用该网关；每个 Param94、Wave、Torso 候选与认证动作先独立尝试自身终止路径，再在 `finally` 中清理旧动作锁、协程句柄、动作移动锁、残留输入租约、运行时准入请求和待恢复姿态。一个恢复回调失败不会阻止后续资源清理，失败姿态项仍由 `EmbodiedPoseState` 保留以便重试。
 - 隔离 Player 的 `test-exit` 证据已覆盖四条执行路径：Param94 候选、Wave 候选、Torso 候选和完整性校验通过的 `external_Hiyori_Hiyori_m06` 认证动作。四者均在活动期间收到 `@@test:quit` 后记录租约释放；认证动作另外记录姿态恢复、`EmbodiedRuntimeAdmission` 取消、`[CertifiedMotion] cleanup` 和 `[EmbodiedSafeRecovery] recovered: test-exit`。候选路径分别通过 `scripts/test/param94_exit_cleanup_drive.cjs` 与 `scripts/test/candidate_exit_cleanup_drive.cjs`，认证路径通过 `scripts/test/certified_motion_exit_cleanup_drive.cjs`。
 - 这证明的是测试退出入口的跨层收束顺序，不证明 Windows 关机/注销、精确的 Unity 禁用与销毁回调顺序、Renderer 重建或生产退出时序。步行、桌面物理、拖拽、视线及其他未迁移写入者仍不属于统一认证协调范围；也不证明资源级并行执行或完整虚拟骨架 `PoseState`。
+
+## 2026-09-25 P0 故障边界复验
+
+- `Live2DRenderer.Update()` 在活动认证动作失去模型时进入 `SafeRecoverExternalActions`；姿态恢复回调检查 `ParameterCommitBridge.Commit` 的实际返回值。若模型已不可写，失败参数仍保留在 `EmbodiedPoseState`，释放输入租约、准入和移动锁，并记录 `BehaviorCoordinator.RecoveryFailed`。
+- 隔离 Player 的测试命令 `@@sim:expire-body-skill`、`@@sim:disable-enable-renderer` 和 `@@sim:destroy-body-model` 分别得到 `Expired`、`Cancelled` 和 `RecoveryFailed`，对应 UI 各写一次；禁用再启用后新认证动作完成。后续补充 `@@sim:body-model-ready` 查询，确认销毁旧模型后固定符玄模型、参数提交桥和 overlay RT/Camera 自动重建，待恢复姿态项重试，同一 Player 再执行认证动作并完成。真实显卡故障和 Windows 关机/注销仍需独立验收。
+- 本轮隔离 EditMode 为 317 total、313 passed、0 failed、4 skipped；`request_body_skill_runtime_drive.cjs` 与既有 `AC-INPUT-04`/`AC-EXPRESSION-LIFECYCLE` 隔离 Player 回归均通过。
+- 2026-09-25 后续复验的 EditMode 为 319 total、315 passed、0 failed、4 skipped；最终 Player 的认证动作故障注入、重建后再次完成、模拟 walking→drag 和 idle/legacy action→drag 的终态与姿势恢复均通过。旧输入租约的行为执行记录由 `Live2DInputCoordinatorHost` 统一映射；桌面物理只写行为账本，不覆盖 `LifeState` 的动作状态；原子交接时迟到的旧租约终态也不会覆盖新拖拽的活动状态。
 
 ## 本轮候选招手生命周期补充（2026-09-20）
 

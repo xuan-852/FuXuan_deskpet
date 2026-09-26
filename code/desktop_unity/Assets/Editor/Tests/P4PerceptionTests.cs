@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -163,12 +163,37 @@ public class P4PerceptionTests
     }
 
     // ================================================================
-    //  3. ClipboardMonitor 感知
+    //  3. 被动感知隐私边界
     // ================================================================
 
     [Test]
     public void ClipboardMonitor_无复制记录_摘要为空()
     {
         Assert.AreEqual("", ClipboardMonitor.GetRecentClipboardSummary());
+    }
+
+    [Test]
+    public void ClipboardMonitor_旧通知不产生内容事件()
+    {
+        string observed = null;
+        Action<string> observer = value => observed = value;
+        ClipboardMonitor.OnClipboardChanged += observer;
+        try
+        {
+            ClipboardMonitor.NotifyClipboardUpdated();
+            Assert.IsNull(observed);
+            Assert.AreEqual("", ClipboardMonitor.LastText);
+            Assert.AreEqual("", ClipboardMonitor.GetRecentClipboardSummary());
+        }
+        finally
+        {
+            ClipboardMonitor.OnClipboardChanged -= observer;
+        }
+    }
+
+    [Test]
+    public void ActivityCategoryTracking_新配置默认关闭()
+    {
+        Assert.IsFalse(new PetConfig.ConfigData().activityCategoryTrackingEnabled);
     }
 }

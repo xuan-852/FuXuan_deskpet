@@ -2,7 +2,8 @@ using UnityEngine;
 
 /// <summary>
 /// Bridges direct desktop-pet interaction into the local attention/life state.
-/// It does not write Live2D parameters or create actions.
+/// Click feedback remains a legacy renderer path in this iteration; this adapter
+/// only publishes interaction events and never fabricates a running behavior.
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class AttentionReactionAdapter : MonoBehaviour

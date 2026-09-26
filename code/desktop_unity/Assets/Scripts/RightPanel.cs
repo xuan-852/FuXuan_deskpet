@@ -370,6 +370,7 @@ public partial class RightPanel : MonoBehaviour
     private string _lastSeenApprovalId = ""; // 上次已见审批 id（检测新审批弹窗）
     private float _approvalShownAt = -1f;  // 审批弹窗打开时间（60s 自动拒绝）
     private bool _approvalDialogOpen = false; // 审批弹窗是否打开
+    private bool _approvalResolutionInFlight = false; // 回执进行中，阻止重复提交
 
     // ==================== QQ 式两级界面（会话列表 ⇄ 聊天）+ 子面板（设置/便签/报告） ====================
     /// <summary>窗口视图：SessionList=第一级窄条会话列表；Chat=第二级展开；ModelSettings=独立模型设置页</summary>
@@ -576,6 +577,7 @@ public partial class RightPanel : MonoBehaviour
     void Update()
     {
         RefreshRefs();
+        RefreshBodySkillTerminal();
         EnsureTrayHelpSubscription();
         RepositionForWorkAreaChange();
 
@@ -1090,6 +1092,18 @@ public partial class RightPanel : MonoBehaviour
             return;
         }
 
+        if (content.StartsWith("@@privacy:activity:") && ChatManager.IsTestMode)
+        {
+            string setting = content.Substring("@@privacy:activity:".Length).Trim();
+            if (setting == "on") SetActivityCategoryTracking(true);
+            else if (setting == "off") SetActivityCategoryTracking(false);
+            else if (setting != "status") Debug.LogWarning("[Privacy] unknown activity setting: " + setting);
+            bool enabled = PetConfig.Instance != null
+                && PetConfig.Instance.data.activityCategoryTrackingEnabled;
+            Debug.Log("[Privacy] activity-category-tracking=" + (enabled ? "on" : "off"));
+            return;
+        }
+
         // ★ 测试视图切换：@@view:settings|reminders|report|onboarding|about|chat|list|back|close|open
         //   终端测试链路——无需模拟鼠标点击，写一行文件即可可靠切页（仅测试模式）。
         //   设置/便签/报告 = 页内子面板；chat = 聊天视图；list = 会话列表；back = 子面板返回。
@@ -1385,9 +1399,8 @@ public partial class RightPanel : MonoBehaviour
         }
 
         // ——— 审批弹窗 60s 超时自动拒绝（防挂起） ———
-        if (_approvalDialogOpen && Time.time - _approvalShownAt > 60f)
+        if (_approvalDialogOpen && !_approvalResolutionInFlight && Time.time - _approvalShownAt > 60f)
         {
-            _approvalDialogOpen = false;
             AddLiveLog("⏰ OpenClaw 审批超时（60s），已自动拒绝", 2);
             _ = AutoDenyApproval();
         }
@@ -1408,10 +1421,56 @@ public partial class RightPanel : MonoBehaviour
     /// <summary>审批回执：允许一次 / 总是允许 / 拒绝（POST 桥接层，后台任务继续）</summary>
     private async void ResolveApproval(string decision)
     {
-        _approvalDialogOpen = false;
+        await ResolveApprovalAsync(decision);
+    }
+
+    /// <summary>
+    /// 应用一次审批回执结果。只有当前仍是同一审批时才关闭或恢复弹窗，
+    /// 避免旧请求的迟到结果覆盖新审批。
+    /// </summary>
+    private void ApplyApprovalResolutionResult(string approvalId, bool ok)
+    {
+        var current = OpenClawBridge.PendingApproval;
+        bool sameApproval = current != null && current.approvalId == approvalId;
+        if (sameApproval)
+        {
+            if (ok)
+            {
+                _approvalDialogOpen = false;
+            }
+            else
+            {
+                _approvalDialogOpen = true;
+                _approvalShownAt = Time.time;
+            }
+        }
+        else if (current == null && ok)
+        {
+            _approvalDialogOpen = false;
+        }
+    }
+
+    private async System.Threading.Tasks.Task ResolveApprovalAsync(string decision)
+    {
+        var approval = OpenClawBridge.PendingApproval;
+        if (approval == null || string.IsNullOrEmpty(approval.approvalId) || _approvalResolutionInFlight)
+            return;
+
         string taskId = OpenClawBridge.ActiveTaskId;
         if (string.IsNullOrEmpty(taskId)) taskId = OpenClawBridge.LastTaskId;
-        bool ok = await OpenClawBridge.ApproveTaskAsync(taskId, decision);
+        string approvalId = approval.approvalId;
+        _approvalResolutionInFlight = true;
+        bool ok = false;
+        try
+        {
+            ok = await OpenClawBridge.ApproveTaskAsync(taskId, decision);
+        }
+        finally
+        {
+            ApplyApprovalResolutionResult(approvalId, ok);
+            _approvalResolutionInFlight = false;
+        }
+
         string verb = decision == "deny" ? "拒绝" : (decision == "allow-always" ? "总是允许" : "允许");
         AddLiveLog(ok ? $"✔ 已{verb} OpenClaw 审批（{decision}）"
                       : $"❌ 审批回执失败: {OpenClawBridge.LastError}", 2);
@@ -1420,9 +1479,7 @@ public partial class RightPanel : MonoBehaviour
     /// <summary>审批超时自动拒绝（后台发送，不阻塞主线程）</summary>
     private async System.Threading.Tasks.Task AutoDenyApproval()
     {
-        string taskId = OpenClawBridge.ActiveTaskId;
-        if (string.IsNullOrEmpty(taskId)) taskId = OpenClawBridge.LastTaskId;
-        await OpenClawBridge.ApproveTaskAsync(taskId, "deny");
+        await ResolveApprovalAsync("deny");
     }
 
     void OnGUI()
@@ -1933,12 +1990,17 @@ public partial class RightPanel : MonoBehaviour
         // ——— 三选一按钮：允许一次 / 总是允许 / 拒绝 ———
         float bw = (w - 60f) / 3f;
         float by = wy + h - 46f;
+        if (_approvalResolutionInFlight)
+            GUI.Label(new Rect(wx + 18f, by - 22f, w - 36f, 18f), "正在提交审批回执…", _termLogDimStyle);
+        bool previousGuiEnabled = GUI.enabled;
+        GUI.enabled = previousGuiEnabled && !_approvalResolutionInFlight;
         if (GUI.Button(new Rect(wx + 18f, by, bw, 30f), "✓ 允许一次", _termToolBtnStyle))
             ResolveApproval("allow-once");
         if (GUI.Button(new Rect(wx + 24f + bw, by, bw, 30f), "↻ 总是允许", _termToolBtnStyle))
             ResolveApproval("allow-always");
         if (GUI.Button(new Rect(wx + 30f + bw * 2f, by, bw, 30f), "✕ 拒绝", _termToolBtnStyle))
             ResolveApproval("deny");
+        GUI.enabled = previousGuiEnabled;
         // 外部命中：审批三按钮（外置模式弹窗模态只响应这三个区域）
         RegisterExtHit(new Rect(wx + 18f, by, bw, 30f), () => ResolveApproval("allow-once"));
         RegisterExtHit(new Rect(wx + 24f + bw, by, bw, 30f), () => ResolveApproval("allow-always"));

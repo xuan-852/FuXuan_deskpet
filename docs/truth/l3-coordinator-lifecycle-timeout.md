@@ -17,5 +17,5 @@
 
 ## 明确未完成项
 
-- `EmbodiedRuntimeAdmission` 与 `Live2DRenderer` 尚未在帧循环调用 `ExpireDue`；当前执行器仍以自身生命周期收束为超时兜底。
-- 完整 `PoseState`、优先级抢占队列与所有旧动作入口迁移仍是后续任务。
+- 2026-09-25 现状补充：`Live2DRenderer.Update()` 已在认证动作活动时调用 `EmbodiedRuntimeAdmission.ExpireDue`。隔离 Player 通过测试模式将当前请求推进到超时点，验证 Renderer 收束、`BehaviorCoordinator.Expired` 与 UI 回执；协调器层取消失败记录 `RecoveryFailed`。旧输入租约已由适配层登记到行为执行账本；原子 walking→drag 交接中，旧 walking 仍写自己的 `Cancelled` 终态，但若新 drag 已是当前关联，不再向 `LifeState` 发布迟到的旧动作终态。EditMode 319 total、315 passed、0 failed、4 skipped；隔离 Player 还确认拖拽进行中 `LifeState=Active`。真实帧停滞和设备故障仍需另行验证。
+- 完整 `PoseState`、优先级抢占队列、旧写入者的资源级认证仲裁仍是后续任务。

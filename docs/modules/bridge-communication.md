@@ -56,7 +56,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 
 > `/health` 为本机免鉴权诊断端点；其他端点在路径分发前校验 `x-bridge-token`。Bridge Token 与 Gateway Token 必须分离。
 > ⚠️ `steps` 字段：工具调用轨迹数组 `[{tool, summary, ts}]`，桥接层实时事件（`stream: "tool"` phase start/result）按 `toolCallId` 去重收集，上限 `MAX_TASK_STEPS=200`。
-> ⚠️ `pendingApproval` 字段：`{kind, id, slug, command, cwd, host, createdAtMs, expiresAtMs}`，`kind` ∈ `exec`（exec.approval.requested 独立事件）/ `plugin`（agent 事件 approval 流）；来自 Gateway `stream: "approval"` 事件（phase requested/resolved）与 `exec.approval.requested` 独立事件；任务完成/取消后自动清空。
+> ⚠️ `pendingApproval` 字段：`{kind, id, slug, command, cwd, host, createdAtMs, expiresAtMs}`，`kind` ∈ `exec`（exec.approval.requested 独立事件）/ `plugin`（agent 事件 approval 流）；来自 Gateway `stream: "approval"` 事件（phase requested/resolved）与 `exec.approval.requested` 独立事件；任务完成/取消后自动清空。审批回执未被 Gateway 确认时保持原对象，便于重试。
 > ⚠️ 失败统一返回 `{success:false, error:"..."}`；404 兜底文案：`{error: 'Not found. Use /search?q=, /compile_latex, /generate_office, /extract_pdf, /task[...], or /health'}`。
 
 ### 2.4 健壮性机制（openclaw_bridge.js）
@@ -76,7 +76,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 | **生成子进程不阻塞 HTTP** | 办公生成、PDF 提取和 LaTeX 编译使用 `execFile` 的 Promise 版本；超时、错误和临时输入清理在 `finally` 中处理，健康检查与任务轮询不再被同步进程调用卡住。2026-09-06 已做语法与编译验证；受控慢任务下的响应时延仍应在独立桥接进程中测量。 |
 | **实时事件订阅** | Gateway WS `evt.event === 'agent'` → 按 `payload.stream` 分支：`"tool"`（phase:start/result, name, toolCallId, args, meta）、`"item"`（phase:start/end/update, itemId, kind, title, toolCallId）、`"approval"`（phase:requested/resolved, approvalId, approvalSlug, command, host, title）；`tool.call` 是轨迹导出事件名，实时不推送 |
 | **steps 去重** | `seenToolCalls` Set 按 `toolCallId` 去重——同一工具调用 start+result 只记一条，避免重复步骤 |
-| **审批回执** | `POST /task/{id}/approve` 校验 decision ∈ {allow-once, allow-always, deny} 后按 `pendingApproval.kind` 选决议 API：`kind='exec'` → `exec.approval.resolve`（RPC，`chatClient.client.request`），失败回退 plugin 通道；`kind='plugin'` → `resolvePluginApproval`（=`plugin.approval.resolve`），失败回退 exec 通道。⚠️ 2026-08-12 E2E 实测教训：exec 审批必须走 `exec.approval.resolve`，`plugin.approval.resolve` 不认识 exec 审批 id（报 `unknown or expired approval id`）；触发条件：openclaw.json `tools.exec.mode = "ask"` + security allowlist（**2026-08-12 已配置生效**） |
+| **审批回执** | `POST /task/{id}/approve` 校验 decision ∈ {allow-once, allow-always, deny} 后按 `pendingApproval.kind` 选决议 API：`kind='exec'` → `exec.approval.resolve`（RPC，`chatClient.client.request`），失败回退 plugin 通道；`kind='plugin'` → `resolvePluginApproval`（=`plugin.approval.resolve`），失败回退 exec 通道。任一通道确认成功才清除审批；两个通道均失败返回 HTTP 500 并保留原 `pendingApproval` 供重试。同一审批已有回执在途时返回 HTTP 409，不重复调用 Gateway。Unity 在回执失败时恢复相同审批弹窗，成功后清理本地审批快照。⚠️ 2026-08-12 E2E 实测教训：exec 审批必须走 `exec.approval.resolve`，`plugin.approval.resolve` 不认识 exec 审批 id（报 `unknown or expired approval id`）；触发条件：openclaw.json `tools.exec.mode = "ask"` + security allowlist（**2026-08-12 已配置生效**） |
 | **取消任务防崩溃** `cancelTask()` | ⚠️ 2026-08-13 修复：原实现直接 `w.reject(new Error('Task cancelled'))`，若 `sendChatAndWait` 尚未 `await responsePromise`（还停在 `chatClient.client.request` 内），reject 先于 catch 注册 → Node v15+ unhandled rejection 默认崩溃 → PM2 重启 14+ 次（search_web 失败叠加根因）。修复：`setImmediate(() => w.reject(...))` 延迟到当前微任务/宏任务栈跑完后再 reject，确保 catch 已挂上 |
 | **断线自动重连** | ⚠️ 2026-08-13 新增：原 `onDisconnected` 只置 `connected=false`，无自动重连（仅靠 PM2 兜底）。修复：`reconnecting` 标志防重连风暴 + 断线后 1s 重连，失败 5s 后再试；waiter reject 同样 `setImmediate` 包装防 unhandled rejection |
 

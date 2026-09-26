@@ -82,10 +82,10 @@ SendRequestCoroutine → CheckReflection (L518)
 | `glm_collages/` | DualModelValidator | 2×2 拼图（上限 50 张） |
 | `.test_mode` | 手动创建 | 测试模式标记（存在 = IsTestMode） |
 
-### 2.6 感知侧（ActivityTracker，关联注入）
+### 2.6 感知侧（ActivityTracker）
 
-- 2s 轮询前台窗口；8 类关键词匹配（coding/gaming/studying/browsing/entertainment/communication/idle/other）；30 天留存 `activity_log.json`
-- 摘要经 system prompt 注入对话（AI 对话系统 2.3 节注入链第 2 项）
+- 默认关闭；用户在「关于与数据」明确开启后，约每 2 秒按前台进程名归入 8 类，最多保留 30 天的 `activity_log.json`。关闭时停止轮询，旧数据留在用户数据目录。
+- 不读取窗口标题、多窗口标题或浏览器标签；类别不注入聊天 prompt，仅供本地模式判断。测试模式不写活动日志；`@@privacy:activity:on|off|status` 可在隔离 Player 验证开关。
 
 ### 2.7 主人偏好（PreferencesManager，P4.2）
 

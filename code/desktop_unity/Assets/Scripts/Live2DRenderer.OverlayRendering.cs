@@ -303,6 +303,11 @@ public partial class Live2DRenderer
     private void OnDestroy()
     {
         SafeRecoverExternalActions("renderer-destroyed");
+        ReleaseOverlayRendering();
+    }
+
+    private void ReleaseOverlayRendering()
+    {
         if (_nativeOverlay != null)
         {
             _nativeOverlay.DisposeOverlay();
@@ -320,6 +325,7 @@ public partial class Live2DRenderer
             _overlayCamera = null;
         }
         _overlayReady = false;
+        _overlayModelRenderers = null;
     }
 
     private void SetLayerRecursively(GameObject go, int layer)

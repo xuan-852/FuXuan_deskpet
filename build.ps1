@@ -418,17 +418,42 @@ try {
         Write-Host "[OK] Build succeeded! ($elapsed)"
 
         # EditMode test runs compile assemblies but intentionally do not emit a
-        # Player executable.  Only a full Player build may be verified against
-        # this invocation's DesktopPet.exe timestamp.
+        # Player executable. Unity incremental builds may reuse the launcher
+        # while refreshing managed code or asset files under <name>_Data.
         if (-not $Quick -and -not $RunTests) {
             $exeOutputDir = if ([string]::IsNullOrWhiteSpace($BuildOutputDir)) { $DefaultOutputDir } else { $BuildOutputDir }
             $exeName = if ($ProbeWindow) { "Live2DProbe.exe" } else { "DesktopPet.exe" }
             $exe = Join-Path $exeOutputDir $exeName
             if (Test-Path $exe) {
                 $exeItem = Get-Item $exe
-                if ($exeItem.LastWriteTime -lt $buildStartedAt.AddSeconds(-2)) {
-                    Write-Host "[FAIL] 构建未产出本次 $exeName：$exe 的修改时间为 $($exeItem.LastWriteTime.ToString('s'))，早于本次构建开始时间 $($buildStartedAt.ToString('s'))" -ForegroundColor Red
+                $freshAfter = $buildStartedAt.ToUniversalTime().AddSeconds(-2)
+                $freshArtifact = if ($exeItem.LastWriteTimeUtc -ge $freshAfter) { $exeItem } else { $null }
+                $dataDir = Join-Path $exeOutputDir ($exeName.Substring(0, $exeName.Length - 4) + "_Data")
+                if ($null -eq $freshArtifact -and (Test-Path $dataDir)) {
+                    $freshArtifact = Get-ChildItem -LiteralPath $dataDir -Recurse -File -ErrorAction SilentlyContinue |
+                        Where-Object { $_.LastWriteTimeUtc -ge $freshAfter } | Select-Object -First 1
+                }
+                $unityPlayer = Join-Path $exeOutputDir "UnityPlayer.dll"
+                if ($null -eq $freshArtifact -and (Test-Path $unityPlayer)) {
+                    $candidate = Get-Item -LiteralPath $unityPlayer
+                    if ($candidate.LastWriteTimeUtc -ge $freshAfter) { $freshArtifact = $candidate }
+                }
+                if ($null -eq $freshArtifact) {
+                    Write-Host "[FAIL] 构建未刷新本次 Player 产物：$exe、$dataDir 和 UnityPlayer.dll 均早于构建开始时间" -ForegroundColor Red
                     exit 1
+                }
+                if (-not $ProbeWindow) {
+                    $logItem = Get-Item -LiteralPath $LogFile -ErrorAction SilentlyContinue
+                    $logBody = if ($null -ne $logItem -and $logItem.LastWriteTimeUtc -ge $freshAfter) {
+                        Get-Content -LiteralPath $LogFile -Raw -ErrorAction SilentlyContinue
+                    } else { "" }
+                    if ($logBody -notmatch '\[BuildScript\] 构建完成: Succeeded') {
+                        Write-Host "[FAIL] 缺少本次 BuildScript 成功记录：$LogFile" -ForegroundColor Red
+                        exit 1
+                    }
+                }
+                if ($freshArtifact.FullName -ne $exeItem.FullName) {
+                    Write-Host "[Build] 增量构建沿用启动程序，已刷新 Player 文件: $($freshArtifact.FullName)"
                 }
                 $size = [math]::Round($exeItem.Length / 1MB, 1)
                 Write-Host "[OK] Output: $exe ($size MB)"

@@ -194,7 +194,7 @@ public static class LocalToolRouter
     private static readonly string[] ExplicitBodyPhrases =
     {
         "摇摇头", "点点头", "转个头", "歪歪头", "挥挥手", "招招手", "眨眨眼",
-        "笑一个", "笑一下", "笑一笑", "伸个懒腰", "待机一下", "放松一下",
+        "同意一下", "点头回应", "nod", "acknowledge", "笑一个", "笑一下", "笑一笑", "伸个懒腰", "待机一下", "放松一下",
         "往左看", "向左看", "看左边", "往右看", "向右看", "看右边",
         "做个动作", "做动作", "表演一个", "活动一下"
     };
@@ -259,6 +259,7 @@ public static class LocalToolRouter
     // 认证技能的确定性选择表：关键词 → 技能。技能必须在认证库中且已向 AI 暴露。
     private static readonly (string[] Keywords, string SkillId)[] BodySkillKeywordMap =
     {
+        (new[] { "点点头", "点头", "同意", "nod", "acknowledge" }, "acknowledge_nod"),
         (new[] { "看左边", "往左看", "向左看", "转头看左" }, "external_Hiyori_Hiyori_m05"),
         (new[] { "看右边", "往右看", "向右看", "转头看右" }, "external_Haru_haru_g_m20"),
         (new[] { "摇摇头", "摇头", "晃头", "摇摆" }, "external_Hiyori_Hiyori_m02"),

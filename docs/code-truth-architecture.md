@@ -50,8 +50,8 @@ code/desktop_unity/Assets/
 | `Live2DFramework/ActionAgent/MotionTranslator.cs` | **1,046** | LLM 动作翻译器 |
 | `ToolEngine/ToolHelpers.cs` | 960 | 工具辅助函数 |
 | `Live2DFramework/ActionAgent/DualModelValidator.cs` | 913 | 视觉验证（实为单模型 GLM-4V） |
-| `SystemTrayManager.cs` | 868 | 托盘、自启、剪贴板监听 |
-| `ActivityTracker.cs` | **845** | 前台活动追踪 |
+| `SystemTrayManager.cs` | 889 | 托盘、自启；不注册剪贴板监听 |
+| `ActivityTracker.cs` | **544** | 明确开启后的前台进程类别统计 |
 
 ---
 
@@ -78,9 +78,8 @@ flowchart TB
     end
 
     subgraph PER[感知层]
-        C1[ActivityTracker 前台感知]
+        C1[ActivityTracker 前台类别 可选]
         C2[TimeWeatherController 天气]
-        C3[BrowserTabReader 浏览器标签]
         C4[PerformanceMonitor 性能]
         C5[GpuLoadMonitor GPU 负载]
     end
@@ -155,13 +154,13 @@ flowchart TB
 
 `ChatManager.ContextBuilder.cs` 中的 `BuildSystemPrompt()` 实际注入（按序）：
 1. 基础人格（符玄人设）
-2. `ActivityTracker.GetSummary()` 活动摘要
-3. ★ 当前前台窗口（法眼实时观测）
-4. ★ 多窗口环境摘要 `GetVisibleWindowsSummary()`
-5. ★ 浏览器标签页深度感知 `GetBrowserTabsSummary()`
-6. `InjectParameterKnowledge()` → **`ParameterKnowledgeProvider.GenerateKnowledgePrompt()`**（身体参数知识）
-7. `InjectClosedLoopCapability()` → 闭环演武系统说明（GLM-4V 自评、演武心经、30 上限、无望淘汰）
-8. `MotionMemoryManager.GetFormattedMemories()` 演武心经经验
+2. 当前问题相关的长期记忆 → 人格关系 → 用户偏好 → 知识库缓存
+3. `InjectParameterKnowledge()` → **`ParameterKnowledgeProvider.GenerateKnowledgePrompt()`**（身体参数知识）
+4. `InjectClosedLoopCapability()` → 闭环演武系统说明；`InjectMultiActionCapability()` → 多步能力
+5. `MotionMemoryManager.GetFormattedMemories()` 演武心经经验 → 任务轨迹 → 任务模板
+6. 【当前时刻】固定尾部
+
+2026-09-25 起不注入活动摘要、前台窗口、多窗口、浏览器标签或剪贴板。`BrowserTabReader` 文件仍在仓库，生产轮询已断开。
 
 ### 3.3 本地 LLM 能力（LocalLLMAgentService）
 
@@ -284,7 +283,7 @@ flowchart TB
 | `VisualHeartbeat` 默认表情 "curious" | **实际默认 "surprise"** |
 | README "36 个核心脚本" | **实际顶层 67 + 子目录 55（共 122 个 .cs，2026-08-29 复核）** |
 | `PerformanceMonitor.GetResolutionScale()` 动态降分辨率 | **恒返回 1.0f**（仅性能档位调节目标帧率；Live2D 已改用角色局部 RT，局部区域仍保持全分辨率，防放大马赛克） |
-| `WindowOverlay.isMultiMonitor` 支持多屏 | **已真实实现（P4.4，2026-08-12）**：`SM_CXVIRTUALSCREEN` 差值法（`virtualW > w || virtualH > h`），供 AI 感知注入；主屏窗口定位仍用 `SM_CXSCREEN`（此前"恒 false"为过时结论） |
+| `WindowOverlay.isMultiMonitor` 支持多屏 | **已真实实现（P4.4，2026-08-12）**：`SM_CXVIRTUALSCREEN` 差值法（`virtualW > w || virtualH > h`）；主屏窗口定位仍用 `SM_CXSCREEN`（此前"恒 false"为过时结论） |
 
 ### 6.2 真实实现（已核实存在且可用）
 
@@ -292,7 +291,7 @@ flowchart TB
 |---|---|
 | `ReminderManager` | **三级推送真实**：气泡 → PowerShell-WinRT Toast（AppId '符玄'）→ Server酱³（`https://sctapi.ft07.com/send/{key}`）；存 `reminders.json` |
 | `ServerPollService` | localhost:3000；Bearer token（Inspector→`DESKTOP_TOKEN`→fallback）；考试提醒：前 3 天 19:00 + 考前 2h |
-| `ActivityTracker` | 2s 轮询；8 类关键词匹配（coding/gaming/studying/browsing/entertainment/communication/idle/other）；30 天留存 `activity_log.json` |
+| `ActivityTracker` | 默认关闭；用户明确开启后约 2s 轮询前台进程名并映射为 8 类，`activity_log.json` 最多保留 30 天；不读取标题/标签，不进入聊天 prompt |
 | `TimeWeatherController` | **默认天气源 wttr.in（cityCode="Nanjing"）**，QWeather 可选；DeepSeek 生成 6 行天气文案；天气→表情联动在 `Live2DRenderer.Update()` 消费 |
 | `PetMemory` | 存储 `entries+coreFacts+conversationSummary`；entries 按 durable/episodic/tool/reflection 四层配额治理，当前问题必须命中相关词元后最多注入 3 条，忆境段上限 1400 字符；核心事实最多注入 3 条 |
 | `KnowledgeBaseManager` | 真实 RAG：Ollama `/api/embed` + nomic-embed-text + 余弦 TopK；存 `knowledge_base.json` |

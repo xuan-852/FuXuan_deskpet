@@ -18,6 +18,7 @@
 - **关联文档**: `code-truth-architecture.md`（物理与渲染层）｜`modules/action-agent.md`（动作执行端）｜`modules/chat-ui.md`（像素模式并行渲染）。旧版硬编码迁移清单已并入本模块，不再单独维护。
 
 - `Live2DRenderer` 的动作→拖拽接管在 2026-09-22 增加了拖拽接管屏障：动作清理到 DragResponse 准入期间跳过普通动作写入；`ClearStarSpinArmPose()` 统一清理星辉硬编码 `arm_right_*` 语义参数及 Param94/97/93/118/99/31-33、手部图层参数，并覆盖剑指/手指参数 Param92、Param102/103/105-107、Param110-115；拖拽期间先清理旧动作再写入 DragResponse 并同步 `CubismParameterStore`，落地恢复也会清理。全新隔离 Player 参数回归已确认星辉抬手基线（Param94=10、Param97=4、Param99=-8、Param31-33=1、手部图层为星辉值）在 DragResponse 快照中不再出现，Param92 和手指残留为 0，落地后相关参数归零；该证据使用 `@@sim:*`，不等同真实 OS 鼠标动作中断。
+- 2026-09-25 P0 恢复边界：活动中的认证动作若失去模型，`Update()` 先进入安全收束；姿态恢复通过 `ParameterCommitBridge.Commit` 检查真实写入，失败参数保留待恢复并将执行标记为 `RecoveryFailed`。随后 `TryRebuildModel` 清理旧模型缓存、叠加 RT/Camera 和残留租约，重新加载固定符玄模型并尝试恢复待还原参数。Renderer 禁用再启用会恢复对话事件订阅。隔离 Player 的模型销毁、自动重建、`@@sim:body-model-ready` 查询和新认证动作再次完成已通过；真实显卡故障及任意模型热切换未验证。
 
 ## 二、基本架构
 
@@ -58,6 +59,20 @@ Player: StreamingAssets/Live2D/Fuxuan/符玄.model3.json
 - `BodyWriterInventory` 的 `Role` 将 `ExternalLeaseWriter` 与内部路径分开：`mouse-gaze` 是 `InternalOnly/LeaseGatedOverlay`，由全局活动 lease 和动作锁门控，不取得独立租约；`desktop-physics` 是 `InputLeaseOnly/DesktopStateLease`，登记桌面物理生命周期，但 PhysicsRoot 在 lease 冲突时仍按既有逻辑推进。
 - `renderer-parameter-commit` 是 `InternalOnly/InternalParameterLayer` 的审计边界，表示 Renderer 内部姿态、表情、效果等参数提交经 `ParameterCommitBridge`；它不是一个运行时动作 writer，也不代表已逐项拆分所有内部写入源。
 - 这些字段只修正清册语义，不改变参数提交、动作视觉或租约仲裁。
+
+### 2.23 点击视觉叠加与输入租约（2026-09-25）
+
+- `DragHandler.ApplyClick` 的点击事件、暂停、`OnPetClicked` 和 `OnInteraction` 不取得新的输入租约；`AttentionReactionAdapter` 仍只负责注意力/生命状态链，不写 Live2D 参数。
+- `Live2DRenderer.ShowClickPose` 是非拥有、低优先级的视觉叠加，复用 `Live2DInputCoordinator.CanApplyLowPriorityOverlay`：协调器已初始化且任意写入者持有全局租约时，不进行点击姿势参数写入，并清除 `_poseLocked`、`_poseLockUntil` 与 `_clickSavedParams`，不在租约释放后重放旧点击。
+- `LateUpdate` 在点击锁分支前再次检查同一门控；点击后才取得的租约会取消未提交的点击锁并让当前拥有者继续正常更新，避免点击锁的提前 `return` 跳过动作/行走/物理相关写入。点击视觉仍经 `ParameterCommitBridge` 提交，不新增 click writer 或租约类别。
+- 新鲜隔离 Player `scripts/test/click_pose_input_ownership_drive.cjs` 已验证：无租约点击记录点击姿势；生成动作租约期间点击姿势出现 suppression 证据，但 `attentionTarget=pet`、`attentionSource=drag-handler`、`attentionReason=direct-click` 与 timeline 点击事件仍保留；释放生成租约并停止自动行走后新的点击可再次应用。该证据使用临时 `FU_XUAN_DATA` 与 `.test_mode`，不等同真实 OS/DWM 鼠标验收。
+
+### 2.24 项目自有 `acknowledge_nod` 认证动作（2026-09-25）
+
+- 候选文件为 `Assets/Resources/Live2D/CertifiedMotions/acknowledge_nod.json`，固定 2 秒 `ParamAngleY` 曲线 `0→8→0→6→0`；语义边界是两次轻微向下点头后回到基线，不扩展为摇头、歪头、鞠躬、挥手或任意参数动作。
+- `Live2DRenderer.PlayCertifiedMotion` 对数据根候选优先读取并校验 SHA-256；数据根缺失时回退同一哈希绑定的内置 `Resources` 文本。候选结构和模型参数仍需通过统一校验，不降级到旧 MotionPlanner 或原始参数写入。
+- 认证执行共用 `certified-motion` 输入租约、`EmbodiedRuntimeAdmission`、`BehaviorIntent`、`EmbodiedPoseState` 和统一收束；正常完成、取消与测试超时分别写回 `Completed`、`Cancelled`、`Expired`，并恢复姿态、释放准入和租约。完整证据见 [L3 acknowledge_nod 认证具身技能](../truth/l3-acknowledge-nod-certification.md)。
+- 该技能当前 `LlmExposed=false`。隔离 Player 证明的是曲线执行和生命周期真相，不是可见播放器中的自然度、真人/双模型视觉认证，也不等于真实 OS/DWM 输入验收。
 
 这三层路径是当前项目的代码事实，不等于通用 Live2D 目录扫描、运行时换模或热插拔能力。任意新模型需要单独建立合法资源登记、适配器实现、隔离 Probe 证据和人工验收；现有 Fuxuan 参数映射只能作为本地适配案例。
 

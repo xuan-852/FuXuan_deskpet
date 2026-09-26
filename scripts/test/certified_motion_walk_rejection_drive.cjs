@@ -10,7 +10,7 @@ const [exe, skillId, candidateFile] = process.argv.slice(2);
 if (!exe || !fs.existsSync(exe)) throw new Error('missing DesktopPet.exe path');
 if (!skillId || !candidateFile || !fs.existsSync(candidateFile)) throw new Error('missing skill id or candidate json');
 
-const root = path.join(os.tmpdir(), `fuxuan_certified_motion_walk_rejection_${skillId.toLowerCase().replace(/[^a-z0-9]/g, '_')}`);
+const root = path.join(os.tmpdir(), `fuxuan_certified_motion_rejection_${skillId.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${process.pid}_${Date.now()}`);
 const inbox = path.join(root, 'inbox.txt');
 const logPath = path.join(root, 'logs', 'player_log.txt');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -41,6 +41,32 @@ async function send(command, holdMs = 500) {
         // The overlay becomes visible before the inbox poller is fully ready.
         await sleep(2500);
         await send('@@sim:idle-actions:off');
+
+        const airborneOffset = log().length;
+        await send(`@@sim:airborne-zero-velocity:${skillId}`);
+        await waitFor('[TestInbox] airborne-zero-velocity result:', airborneOffset);
+        const airborneLog = log().slice(airborneOffset);
+        if (!airborneLog.includes('velocity=(0,0) onGround=false'))
+            throw new Error('airborne zero-velocity fixture was not confirmed');
+        if (!airborneLog.includes('当前未处于稳定静止状态，动作已拒绝'))
+            throw new Error('certified motion did not reject airborne zero-velocity state');
+        if (airborneLog.includes(`[CertifiedMotion] started: ${skillId}`))
+            throw new Error('certified motion started while airborne');
+        if (airborneLog.includes(`[EmbodiedRuntimeAdmission] admitted: ${skillId}`))
+            throw new Error('airborne request reached embodied runtime admission');
+        if (airborneLog.includes(`[Live2DInputCoordinator] Accepted GeneratedMotion/generated-motion/certified-motion:${skillId}`))
+            throw new Error('airborne request acquired the certified-motion lease');
+        console.log('airborne-zero-velocity-rejection-confirmed');
+        await waitFor('[DesktopPet] 落地', airborneOffset);
+        await send('@@sim:walk:stop');
+        await sleep(500);
+
+        const groundedOffset = log().length;
+        await send(`@@sim:certified-motion:${skillId}`);
+        await waitFor(`[CertifiedMotion] started: ${skillId}`, groundedOffset);
+        await waitFor('[CertifiedMotion] cleanup: certified-motion-completed', groundedOffset);
+        console.log('post-landing-motion-accepted');
+
         await send('@@sim:walk:right');
         await send('@@sim:status');
         await waitFor('velocity=(1,');

@@ -1,6 +1,6 @@
 # L3 LLM 接入具身控制（架构试验）
 
-> **证据日期**：2026-09-17
+> **证据日期**：2026-09-25
 > **范围**：LLM 经认证技能白名单接入身体控制的 MVP 架构；主动/自主身体行为开放仍待决策。
 
 ## 数据积累（2026-09-17 批量认证）
@@ -19,17 +19,20 @@
 
 ## 新架构实现
 
-- **生产执行器** `Live2DRenderer.PlayCertifiedMotion(skillId)`：静态门禁（静止/无动作/非 AI 锁）→ `GeneratedMotion` 输入租约 → `EmbodiedRuntimeAdmission.TryBeginSkill` 准入 → 多参数曲线实时播放（`EmbodiedMotionCurve`，`EmbodiedPoseState` 登记还原基线）→ 完成时姿势还原、租约与准入释放、移动锁解除；取消/禁用/退出经统一收束。曲线数据从数据根 `certified_motions/<skillId>.json` 加载（不入版本库，许可约束）。
+- **生产执行器** `Live2DRenderer.PlayCertifiedMotion(skillId)`：静态门禁（静止/无动作/非 AI 锁）→ `GeneratedMotion` 输入租约 → `EmbodiedRuntimeAdmission.TryBeginSkill` 准入 → 多参数曲线实时播放（`EmbodiedMotionCurve`，`EmbodiedPoseState` 登记还原基线）→ 完成时姿势还原、租约与准入释放、移动锁解除；取消/禁用/退出经统一收束。曲线数据从数据根 `certified_motions/<skillId>.json` 加载（不入版本库，许可约束）。受控的 `request_body_skill` 请求在唯一准入成功后登记 `BehaviorIntent`/`SkillExecutionHandle`，并把 `EmbodiedActionRequest.BehaviorExecutionId` 回写到同一执行关联；`BehaviorCoordinator` 不会再次创建第二份准入。
 - **LLM 工具** `request_body_skill`（ToolEngine）：描述自动枚举认证技能与语义边界；只接受白名单内 skill_id，未认证请求即终态拒绝；无原始参数入口。它仅出现在 `LocalToolRouter` 的 `body` 意图闭集（另一个成员是 `stop_action`），不属于普通 `operation` 或跨意图安全白名单。
 - **测试链路** `@@sim:certified-motion:<skillId>`（仅 `.test_mode`）供确定性隔离驱动。
+- **生命周期测试**：`BehaviorIntentTests` 覆盖默认 Legacy adapter 拒绝、真实执行句柄要求、重复事件/关联去重、已准入请求与 `BehaviorExecutionId` 关联，以及完成、取消、超时、恢复失败终态幂等。
 
-## 可复核证据（2026-09-17）
+## 可复核证据（2026-09-25）
 
-- `build.ps1 -RunTests`：EditMode **215 用例、214 passed、failed=0**、1 ignored；`CertifiedMotionLibraryTests` 验证条目、全部注册准入、body 专属白名单与语义提示词，`LocalToolRouterTests` 验证 body 闭集拒绝普通操作和危险工具。
+- `build.ps1 -RunTests`：EditMode **313 项、309 passed、failed=0、4 ignored**；其中 `BehaviorIntentTests` **15/15 passed**，验证行为生命周期与已准入身体请求的关联。`CertifiedMotionLibraryTests` 继续验证条目、全部注册准入、body 专属白名单与语义提示词，`LocalToolRouterTests` 继续验证 body 闭集拒绝普通操作和危险工具。
 - 隔离真机驱动 `scripts/test/certified_motion_runtime_drive.cjs`：日志链完整——`admitted: external_Hiyori_Hiyori_m02` → `[CertifiedMotion] started (5.93s, 23 params)` → **23 参数姿势还原** → `released: certified-motion-completed` → cleanup；7 帧截图留证。
 
 ## 边界与待决
 
-- LLM 只能选择认证技能、按语义边界描述请求；`body` 仅由用户明确要求桌宠本人做动作时使用，规划失败退化为文字；拒绝是终态；结果以开始/拒绝状态返回，完成事实由运行时收束日志承载（C-L3-06 不回传参数轨迹）。
+- LLM 只能选择认证技能、按语义边界描述请求；`body` 仅由用户明确要求桌宠本人做动作时使用，规划失败退化为文字；拒绝是终态；工具结果只报告开始或拒绝，不回传参数轨迹。
+- `request_body_skill` 的同步响应表示“已开始执行”或明确拒绝，不把开始伪装成完成；真实完成、取消、超时和恢复失败由 Renderer 收束并回写同一行为关联。
+- 点击姿态、拖拽、空闲、表情和行走等其他入口仍可能属于旧路径或 `InputLeaseOnly`，本轮不声称它们已经全部迁移到 `BehaviorIntent`。
 - 指导文档默认 LLM 单次动作提案 ≤4 秒；本批动作 5.5–10 秒，当前仅限**用户明确请求的执行**与隔离试验。**主动行为与 >4s 动作的默认阈值需人工决策后调整**。
 - 主动/自主身体行为（IdleChat 联动、情绪驱动动作）未开放，属后续任务包。

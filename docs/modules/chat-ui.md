@@ -45,6 +45,8 @@
 
 **工具执行状态**（2026-09-13）：标题栏直接读取 `ChatManager.RequestStatusText`。本地规划和云端 tool-call 在执行前均调用 `GetToolDisplayName()`，显示“正在搜索文件… / 正在打开文件夹…”等用户可读动作，而非 `search_files` 等内部标识；未知工具保留其名称，便于如实定位问题。
 
+**具身动作终态与隐私开关**（2026-09-25）：`RightPanel.Update()` 增量读取 `Live2DRenderer.BehaviorCoordinator` 的 `request_body_skill` 执行记录，动作进入 `Completed`、`Cancelled`、`Expired` 或 `RecoveryFailed` 时在聊天动态日志按 execution ID 各写一次结果。执行账本裁剪旧终态时，UI 读取 `OldestExecutionIndex` 跳到仍保留的最早索引，避免长期运行反复扫描已删除项。隔离 Player 已验证 m06 的四种回执：正常完成、主动停止、测试推进超时、活动中销毁模型导致恢复失败；禁用再启用及模型自动重建后的新请求均可完成。`关于与数据` 提供默认关闭的前台进程类别统计开关；测试模式可用 `@@privacy:activity:on|off|status` 检查，无需模拟鼠标点击。真实按钮点击尚未做 Player 验收。
+
 > 数据流：`OpenClawBridge` 后台轮询 `RefreshTaskProgress` 写静态原子属性 → RightPanel `Update` 第 4c 步 `CheckOpenClawTaskProgress()`（新步骤写日志、新审批开弹窗 + `_approvalShownAt` 计时、60s 超时 `AutoDenyApproval`）→ 按钮调 `ResolveApproval(decision)`（用 `ActiveTaskId`→`LastTaskId` 兜底）→ `ApproveTaskAsync` POST 回执。任务结束自动关弹窗、清 `PendingApproval`。
 
 ### 2.2 对话核心事件链

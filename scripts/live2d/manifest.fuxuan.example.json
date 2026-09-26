@@ -1,0 +1,21 @@
+{
+  "schema": "live2d-tool-manifest/v1",
+  "model": {
+    "model3Json": "../../code/desktop_unity/Assets/StreamingAssets/Live2D/Fuxuan/符玄.model3.json",
+    "expectedParameterCount": 244
+  },
+  "probe": {
+    "executable": "C:/path/to/Live2DProbe.exe",
+    "args": []
+  },
+  "run": {
+    "outputRoot": "C:/Users/your-name/AppData/Local/Temp/fuxuan-live2d-platform-run",
+    "writerMode": "frozen",
+    "timeoutMs": 900000
+  },
+  "review": {
+    "provider": "deepseek",
+    "batchSize": 20,
+    "timeoutMs": 180000
+  }
+}

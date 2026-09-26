@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System;
 using System.Collections.Generic;
 
@@ -20,6 +20,63 @@ public partial class RightPanel
     // 外置输入栏的可见水平视口。原生 EDIT 仅作键盘/IME 宿主，Unity 字层必须自己
     // 维护横向滚动，否则长文本会一直从第 0 个字符绘制，光标只能被夹在右边。
     private float _inputHorizontalScroll;
+    private Live2DRenderer _bodySkillRenderer;
+    private BehaviorCoordinator _observedBehaviorCoordinator;
+    private int _nextBodyExecutionIndex;
+    private readonly List<BehaviorExecution> _pendingBodyExecutions = new List<BehaviorExecution>();
+
+    /// <summary>把已执行的身体技能终态展示给用户；工具的“已开始”不能充当完成结果。</summary>
+    private void RefreshBodySkillTerminal()
+    {
+        if (_bodySkillRenderer == null)
+            _bodySkillRenderer = FindObjectOfType<Live2DRenderer>();
+        var coordinator = _bodySkillRenderer != null ? _bodySkillRenderer.BehaviorCoordinator : null;
+        if (coordinator == null) return;
+        if (_observedBehaviorCoordinator != coordinator)
+        {
+            _observedBehaviorCoordinator = coordinator;
+            _nextBodyExecutionIndex = 0;
+            _pendingBodyExecutions.Clear();
+        }
+
+        // 执行记录是可变状态：即使动作在两帧之间开始并结束，也会在此处理一次。
+        _nextBodyExecutionIndex = Math.Max(_nextBodyExecutionIndex, coordinator.OldestExecutionIndex);
+        while (_nextBodyExecutionIndex < coordinator.ExecutionCount)
+        {
+            var execution = coordinator.GetExecutionAt(_nextBodyExecutionIndex++);
+            if (execution?.Intent?.IntentType == "request_body_skill"
+                && !string.IsNullOrEmpty(execution.Handle?.ExecutionId))
+                _pendingBodyExecutions.Add(execution);
+        }
+        for (int i = 0; i < _pendingBodyExecutions.Count; i++)
+        {
+            var execution = _pendingBodyExecutions[i];
+            string skill = execution.Intent.BodySkill ?? "身体动作";
+            string message;
+            switch (execution.Status)
+            {
+                case BehaviorExecutionStatus.Completed:
+                    message = "✓ 身体动作已完成：" + skill;
+                    break;
+                case BehaviorExecutionStatus.Cancelled:
+                    message = "身体动作已取消：" + skill;
+                    break;
+                case BehaviorExecutionStatus.Expired:
+                    message = "身体动作已超时：" + skill;
+                    break;
+                case BehaviorExecutionStatus.RecoveryFailed:
+                    message = "⚠ 身体动作恢复失败：" + skill;
+                    break;
+                default:
+                    continue;
+            }
+            AddLiveLog(message, 2);
+            Debug.Log("[BodySkillUI] terminal=" + execution.Status
+                + " execution=" + execution.Handle.ExecutionId);
+            _pendingBodyExecutions.RemoveAt(i--);
+            if (_windowOverlay != null) _windowOverlay.RequestRepaint();
+        }
+    }
 
     private float GetInputTextEndX(Rect inputRect, string text)
     {

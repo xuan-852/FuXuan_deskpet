@@ -164,14 +164,14 @@ Stop-Process -Name Tuanjie.Licensing.Client -Force -ErrorAction SilentlyContinue
 ### 2026-09-14 构建管线稳定性复测
 
 - `build.ps1` 默认保留 Hub 已刷新的 `Tuanjie.Licensing.Client`；只有传入 `-ResetLicensingClient` 才会显式重置授权客户端，避免普通构建在授权握手前主动丢失令牌。
-- `-RunTests` 仅验证新生成的 EditMode 结果，不要求生成 `DesktopPet.exe`；Player 输出时间戳校验只适用于完整构建。
+- `-RunTests` 仅验证新生成的 EditMode 结果，不要求生成 `DesktopPet.exe`；Player 输出新鲜度校验只适用于完整构建。增量构建可能复用 launcher exe，完整构建门禁接受本次更新的 exe、`DesktopPet_Data` 文件或 `UnityPlayer.dll`，同时要求本次构建日志的新鲜成功标记。
 - 在 8/32 逻辑核、`BelowNormal` 优先级下，Quick、EditMode（175 total、174 passed、0 failed、1 ignored）与临时输出目录的完整构建均通过；完整构建 CPU 均值 20%、峰值 30%。
 - 对本次临时 Player 的隔离首启/页面切换/截图/正常退出冒烟通过，测试目录自动清理，生产数据 SHA-256 未变化；运行中的生产桌宠未被终止。
 
 ## 五、给 codex 等代理的执行建议
 
 1. **卡住先诊断，别盲目重试**：`diagnose_tuanjie.ps1` 30 秒内给出结论，比反复 `build.ps1` 干等 4 分钟高效。
-2. **构建后核对 exe 时间戳**：`Get-Item Build\DesktopPet.exe | Select LastWriteTime`——确认包含最新提交（避免旧 exe 误测）。
+2. **构建后核对 Player 产物**：先看 `build.ps1` 的 `[OK] Output` 与本次日志成功标记；增量构建可复用 exe 启动器，应核对 `Build\DesktopPet_Data\Managed\Assembly-CSharp.dll` 等 Player 文件是否为本次产物，避免旧代码误测。
 3. **改动涉及外置窗口/渲染**：完整构建 + 冒烟 + 真机人工，三层都过才算完成。
 4. **失败时记录**：把 `direct_compile.log` 尾部 20 行 + 卡死现象写进验收报告，供下一轮定位。
 

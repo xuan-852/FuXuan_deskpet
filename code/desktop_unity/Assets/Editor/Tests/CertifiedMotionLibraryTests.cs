@@ -1,6 +1,8 @@
 using System;
+using System.IO;
 using System.Text;
 using NUnit.Framework;
+using UnityEngine;
 
 public class CertifiedMotionLibraryTests
 {
@@ -59,6 +61,62 @@ public class CertifiedMotionLibraryTests
         Assert.IsTrue(EmbodiedRuntimeAdmission.IsSkillAdmissible("screen_side_arm_raise"));
     }
 
+    [Test]
+    public void 点头候选曲线具有固定语义并回到基线()
+    {
+        Assert.IsTrue(CertifiedMotionLibrary.TryGet("acknowledge_nod", out var motion));
+        Assert.AreEqual(EmbodiedResource.Body, motion.Resources);
+        Assert.AreEqual(2.0f, motion.DurationSeconds, 0.001f);
+        StringAssert.Contains("两次轻微向下点头", motion.SemanticBoundary);
+        Assert.IsFalse(motion.LlmExposed);
+        Assert.IsTrue(motion.IsBuiltIn);
+
+        string path = System.IO.Path.Combine(Application.dataPath, "Resources", "Live2D", "CertifiedMotions", "acknowledge_nod.json");
+        Assert.IsTrue(File.Exists(path), "built-in candidate missing: " + path);
+        string json = File.ReadAllText(path);
+        Assert.IsTrue(CertifiedMotionLibrary.TryVerifyCurveText(motion, json, out var reason), reason);
+        TextAsset builtIn = Resources.Load<TextAsset>(motion.BuiltInResourcePath);
+        Assert.IsNotNull(builtIn, "built-in Resources asset missing");
+        Assert.IsTrue(CertifiedMotionLibrary.TryVerifyCurveText(motion, builtIn.text, out reason), reason);
+        var candidate = JsonUtility.FromJson<EmbodiedMotionCandidate>(json);
+        Assert.IsNotNull(candidate);
+        Assert.AreEqual("acknowledge_nod", candidate.candidateId);
+        Assert.AreEqual(1, candidate.curves.Length);
+        Assert.AreEqual("ParamAngleY", candidate.curves[0].parameterId);
+        var curve = new EmbodiedMotionCurve(candidate.curves[0].parameterId,
+            Array.ConvertAll(candidate.curves[0].segments, value => (double)value), candidate.durationSeconds);
+        Assert.AreEqual(0f, curve.Evaluate(0.0), 0.001f);
+        Assert.AreEqual(8f, curve.Evaluate(0.2), 0.001f);
+        Assert.AreEqual(0f, curve.Evaluate(0.5), 0.001f);
+        Assert.AreEqual(6f, curve.Evaluate(0.8), 0.001f);
+        Assert.AreEqual(0f, curve.Evaluate(2.0), 0.001f);
+    }
+
+    [Test]
+    public void 点头候选优先使用数据根覆盖并拒绝篡改()
+    {
+        Assert.IsTrue(CertifiedMotionLibrary.TryGet("acknowledge_nod", out var motion));
+        string dir = Path.Combine(Path.GetTempPath(), "fuxuan-certified-motion-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, "acknowledge_nod.json");
+        string assetPath = Path.Combine(Application.dataPath, "Resources", "Live2D", "CertifiedMotions", "acknowledge_nod.json");
+        string json = File.ReadAllText(assetPath);
+        try
+        {
+            File.WriteAllText(path, json, new UTF8Encoding(false));
+            Assert.IsTrue(CertifiedMotionLibrary.TryLoadCandidateJson(motion, path, out string loaded, out string source, out string reason), reason);
+            Assert.AreEqual("data-root", source);
+            Assert.AreEqual(json, loaded);
+            File.WriteAllText(path, json + " ", new UTF8Encoding(false));
+            Assert.IsFalse(CertifiedMotionLibrary.TryLoadCandidateJson(motion, path, out _, out _, out reason));
+            Assert.AreEqual("curve-hash-mismatch", reason);
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
     [Test] public void HiyoriM06只以已评审的头面技能语义登记()
     {
         Assert.IsTrue(CertifiedMotionLibrary.TryGet("external_Hiyori_Hiyori_m06", out var motion));
@@ -105,9 +163,9 @@ public class CertifiedMotionLibraryTests
         Assert.IsFalse(CertifiedMotionLibrary.IsLlmExposed("not_registered"));
         foreach (var motion in CertifiedMotionLibrary.Entries)
         {
-            if (motion.SkillId == "screen_side_arm_raise")
+            if (motion.SkillId == "screen_side_arm_raise" || motion.SkillId == "acknowledge_nod")
             {
-                Assert.IsFalse(motion.LlmExposed, "human-review candidate must remain hidden");
+                Assert.IsFalse(motion.LlmExposed, "candidate must remain hidden until exposure evidence is complete");
                 Assert.IsFalse(CertifiedMotionLibrary.IsLlmExposed(motion.SkillId));
             }
             else

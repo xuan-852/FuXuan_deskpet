@@ -23,7 +23,11 @@
 
 ### 2.0 L3 认证技能基础（2026-09-16）
 
-`Assets/Scripts/Embodied/CertifiedSkillFoundation.cs` 提供四层认证骨架：`SkillCertificationRecord → CertifiedSkillRegistry → EmbodiedActionRequest → EmbodiedCoordinator`。注册要求机械、视觉、语义、自然度、模型版本和映射版本均完整，且自然度不少于首版默认 75；请求没有原始参数字段，只能按技能声明资源占用。2026-09-17 `EmbodiedRuntimeAdmission` 作为生产准入汇点接线；认证工具 `request_body_skill` 仅可从 `body` 意图选择认证技能。协调器现为已接受请求登记 ID、UTC 开始时间、终态原因，并提供确定性取消/超时释放；超时扫描尚未接入渲染器帧循环。主动行为开放属后续任务包。详见 [L3 认证技能基础](../truth/l3-certified-skill-foundation.md)、[L3 LLM 接入](../truth/l3-llm-embodied-integration.md) 与 [协调器生命周期真相](../truth/l3-coordinator-lifecycle-timeout.md)。
+2026-09-25 隔离 Player 复验：`scripts/test/request_body_skill_runtime_drive.cjs` 经测试 inbox 调用 `request_body_skill`，m06 在 `BehaviorCoordinator` 中从 `Executing` 到 `Completed` 保持同一 intent、execution、correlation 和 request ID；认证准入只发生一次，完成后姿势还原、准入与输入租约释放。聊天自然语言「歪歪头给我看」也可触发认证曲线；停止后再次请求能完成，未知技能被拒绝。测试模式的超时推进得到 `Expired`，Renderer 禁用再启用得到 `Cancelled` 且随后能再次完成，活动中销毁模型得到 `RecoveryFailed`；`RightPanel` 对每个 execution ID 只记录一次终态。后续同一驱动已验证模型自动重建、待恢复参数重试和新认证动作再次完成；这些属于隔离 Player 故障注入，不等于真实设备故障。
+
+`Assets/Scripts/Embodied/CertifiedSkillFoundation.cs` 提供四层认证骨架：`SkillCertificationRecord → CertifiedSkillRegistry → EmbodiedActionRequest → EmbodiedCoordinator`。注册要求机械、视觉、语义、自然度、模型版本和映射版本均完整，且自然度不少于首版默认 75；请求没有原始参数字段，只能按技能声明资源占用。2026-09-17 `EmbodiedRuntimeAdmission` 作为生产准入汇点接线；认证工具 `request_body_skill` 仅可从 `body` 意图选择认证技能。协调器为已接受请求登记 ID、UTC 开始时间、终态原因，并提供确定性取消/超时释放；当前 `Live2DRenderer.Update()` 已在认证动作活动期间执行超时扫描。主动行为开放属后续任务包。详见 [L3 认证技能基础](../truth/l3-certified-skill-foundation.md)、[L3 LLM 接入](../truth/l3-llm-embodied-integration.md) 与 [协调器生命周期真相](../truth/l3-coordinator-lifecycle-timeout.md)。
+
+2026-09-25 表情只有在输入租约授予且播放成功后登记执行意图；停止、切换和安全恢复写回 `Cancelled`，租约释放失败写回 `RecoveryFailed`。随后 `Live2DInputCoordinatorHost` 将 walking、idle/legacy action、generated motion、desktop physics 和 drag-response 租约映射到 `BehaviorCoordinator`：准入失败不登记，租约释放或原子交接写终态。逐帧物理租约合并为连续执行记录，且不改写 `LifeState` 的动作状态；原子交接时旧终态不能覆盖新动作的活动状态。行为账本超过 512 条时从最早终态开始裁剪，活动记录不会被裁剪，查询索引保持递增。拖拽 Player 验证 walking 交接为 `Cancelled`、拖拽释放为 `Completed`、旧动作中断为 `Cancelled`，拖拽中 `LifeState=Active`。这些旧路径仍由输入协调器的单全局租约仲裁，不具备认证技能请求对象或资源级并行；表情租约释放失败分支尚未 Player 验收。
 
 2026-09-16 的运行时迁移决策采用 A：在首个认证技能出现前，`MotionAgent` 的旧生成、组合生成和生成式表情回退只允许隔离 `.test_mode` 离线复核；生产运行时拒绝。`play_action` 与 `generate_motion` 同时从 LLM 工具入口移除。步行、物理与表情基线未改动。详见 [L3 运行时认证准入审计](../truth/l3-runtime-admission-gap-audit.md)。
 
@@ -63,6 +67,8 @@
 
 2026-09-21 拖拽与桌面物理生命周期收束：`drag-response` 已登记为 `InputLeaseOnly`，`DragHandler` 在正常释放、失焦、禁用、销毁和退出路径释放租约，`Live2DRenderer.SafeRecoverExternalActions` 也主动调用拖拽恢复入口；`DesktopPet` 在系统挂起和重复 Pause 时释放物理租约、取消旧 Resume 调用，并在 shutdown 后拒绝延迟 Resume。新鲜隔离 Player 的 idle lease、desktop physics、模拟拖拽和认证 handoff 均通过；真实 OS 鼠标、Renderer 重建、Windows 关机/注销、资源级并行和完整 PoseState 仍未验收。
 - 2026-09-20 生命状态 Attention 只读摘要：`@@sim:life-state` 仅输出 `AttentionTarget` 与其来源/置信度/原因的脱敏字段；Attention 仍只是 LifeState 的字符串目标和 metadata，不包含坐标、强度或主动策略，也不获得 Live2D 写入权。EditMode TTL 边界与当前源码隔离 Player 查询均通过。详见 [统一生命控制闭环 Phase A](../truth/unified-life-control-loop-phase-a.md)。
+
+- 2026-09-25 首条项目自有认证点头技能 `acknowledge_nod` 已完成垂直生命周期验证：固定 `ParamAngleY` 两次轻微点头曲线（2 秒、`0→8→0→6→0`）经 `certified-motion` 单租约、`EmbodiedRuntimeAdmission`、单个 `BehaviorIntent`、姿态恢复和终态写回；新鲜隔离 Player 已验证 `Executing/Active → Completed`、取消 `Cancelled`、测试超时 `Expired`、走路租约冲突拒绝和确定性自然语言隐藏路由。该证据不等于真人/双模型视觉自然度认证，`LlmExposed` 仍为 `false`。详见 [L3 acknowledge_nod 认证具身技能](../truth/l3-acknowledge-nod-certification.md)。
 
 ### 2.1 ActionAgent 文件清单（15 个 .cs）
 

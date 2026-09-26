@@ -2,7 +2,7 @@
 
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
 > **基本架构**: 用户输入 → `ChatManager`（本地优先 / 10 轮云端回环 / 意图过滤 / 看门狗）；云端路径使用 `ApiClient`（DeepSeek SSE + Function Calling）→ `ToolEngine/` 插件调度；本地路径使用 `LocalToolRouter`（轻量模型 JSON 规划 + 白名单 + 同一 ToolEngine 执行）→ `LocalLLMAgentService` / `qwen3:8b` 生成最终回复。动作/分类/摘要/工具规划使用轻量 `qwen2.5:3b`，聊天单独使用质量优先的 `qwen3:8b`（均可由环境变量覆盖）；云端与本地聊天都经过同一 `PetMemory` 相关性检索，本地只使用更紧凑的忆境预算；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`、`ChatManager.RequestLifecycle.cs`、`ChatManager.ContextBuilder.cs`、`ChatManager.ToolLoop.cs`、`LocalToolRouter.cs`、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
-> **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 注入链新增偏好（PreferencesManager）与剪贴板感知（ClipboardMonitor），均置于【当前时刻】之前不破坏上下文缓存前缀；2026-08-12 P5 注入链新增任务轨迹（TaskTrajectoryManager，太卜手札）与任务模板（TaskTemplateManager，太卜阵法图），同样置于【当前时刻】之前；2026-08-18 成本闸门接入全部主要云端直连点，新增 `PromptContextBudget` / `ToolResultBudget` / `QualityTelemetry`，EditMode 99/99 通过。
+> **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 曾引入偏好与被动剪贴板注入，后者已于 2026-09-25 关闭；2026-08-12 P5 注入链新增任务轨迹与任务模板；2026-08-18 成本闸门接入云端直连点，新增 `PromptContextBudget` / `ToolResultBudget` / `QualityTelemetry`。
 > **编写注意事项**: ①测试必须开测试模式（`D:\DesktopPetData\.test_mode`）否则污染 pet_memory/pet_personality；②`{current_time}` 等动态内容**必须放 system prompt 尾部**（放开头会摧毁 DeepSeek 缓存命中，全价 ¥1/M）；③deepseek-v4-flash 是推理模型，必须显式 `"thinking":{"type":"disabled"}` + `max_tokens:1200` 否则 `content=""`；④历史裁剪须按字符预算且向前对齐最近 user 消息，防止切断 tool_calls↔tool 配对导致 API 400；⑤Ollama model tag（如 `qwen3:8b`）只表示本地服务中已安装的 LLM，不是 Live2D 角色模型、权重文件导入或通用 provider。
 
 ---
@@ -51,6 +51,7 @@
 - 2026-09-13 起，本地计划执行与云端工具回环会在工具启动前统一写入 `RequestStage.RunningTool`；`GetToolDisplayName()` 将常用工具名映射为“搜索文件”“打开文件夹”等可读状态，聊天标题栏可准确反映当前阶段，不泄露内部工具 ID。
 - 2026-09-17 起，用户明确要求桌宠本人做动作会被分类为 `body` 意图；本地规划目录严格只含 `request_body_skill` 与 `stop_action`。`request_body_skill` 不再属于普通 `operation` 或跨意图安全目录，且系统提示词只列出已认证技能并禁止原始 Live2D 参数、关键帧与映射。规划失败按 L4 降级为文字，不猜测执行。
 - 2026-09-18 起，身体意图增加确定性路由：`LocalToolRouter.IsExplicitBodyRequest` 用强祈使短语（摇头/笑一个/看左边等）识别明确动作请求，本地规划路径与云端首轮 `_lastIntent` 均确定性置为 `body`，不再依赖 3B 分类器（真人首测中「摇摇头给我看」曾被误判为 knowledge 并规划 `self_review`）。`TryHardenPlanArguments` 对 `request_body_skill` 只放行已认证且已暴露的 `skill_id`，缺失或未暴露时按关键词确定性修复，仍失败即终态拒绝。详见 [L4 身体意图确定性路由](../truth/l4-body-intent-deterministic-routing.md)。
+- 2026-09-25 起，本地模式在 Ollama 健康检查前处理明确的身体动作请求：确定性 `body` 计划仍经技能白名单、参数校验和 `ToolCallInvoker` 执行，并把真实工具结果发布为聊天回复。因而 Ollama 离线时仍可请求已认证动作；未匹配认证技能的请求会明确拒绝。隔离 Player 已验证「歪歪头给我看」触发 m06、取消后再次完成，以及「挥挥手给我看」不启动动作。普通聊天及其他工具请求仍按原本地模型链路处理。
 
 ### 2.1.2 请求生命周期分层（2026-08-26）
 
@@ -60,11 +61,11 @@
 
 ### 2.1.3 上下文构建分层（2026-08-27）
 
-- `ChatManager.ContextBuilder.cs` 负责 `BuildSystemPrompt()` 及长期记忆、人格、偏好、知识库、活动观测、Live2D 参数、动作经验、剪贴板、任务轨迹和模板注入。
+- `ChatManager.ContextBuilder.cs` 负责 `BuildSystemPrompt()` 及长期记忆、人格、偏好、知识库、Live2D 参数、动作经验、任务轨迹和模板注入；被动桌面内容不进入对话。
 - `ChatManager.ToolLoop.cs` 承载 `DoToolLoop()` 主体、本地规划与云端 tool_call 共用的危险操作确认等待、工具执行、`openclaw_task` 熔断、`ToolResultBudget.Compact()` 和 tool history 写回。
 - `ChatManager.ReplyFinalizer.cs` 承载最终回复发布、逐句队列触发、明确记忆写入和对话摘要；质量遥测与请求状态收尾仍由原流程负责，便于后续逐项核对。
 - 请求收尾使用 `_replyPublished` 作为成功信号：失败请求保留 `RequestStage.Error`，不启动质量复核、反思、人格演化或知识库后台任务；队列启动前先清理已完成协程引用，避免新请求句柄被旧协程覆盖。
-- 原有注入顺序、`PromptContextBudget` 截断规则和动态时间追加到 prompt 尾部的缓存策略保持不变；请求入口由 `RequestLifecycle` 负责，上下文由 `ContextBuilder` 负责，工具回环由 `ToolLoop` 负责。
+- `PromptContextBudget` 截断规则和动态时间追加到 prompt 尾部的缓存策略保持不变；2026-09-25 移除了被动活动、窗口、标签和剪贴板注入。
 - 当前分层只做职责隔离，不宣称已经降低 Token；任何预算或注入顺序调整必须另行测量 usage 和回复质量。
 
 ### 2.2 可靠性参数（ChatManager 常量，代码真相）
@@ -84,21 +85,16 @@
 2. `PetMemory.GetFormattedMemories(currentUserQuery)` 长期记忆（云端相关命中最多 3 条，忆境段最多 1400 字符；核心事实最多 3 条）
 3. `PersonalityManager.FormatForPrompt()` 人格特质与关系
 4. `PreferencesManager.FormatForPrompt()` 主人偏好【本座谨记】（P4.2）
-5. `TaskTrajectoryManager.FormatForPrompt()` 任务轨迹【太卜手札】（P5.2，空库返回空串）
-6. `TaskTemplateManager.FormatForPrompt()` 任务模板【太卜阵法图】（P5.3，含使用说明）
-7. 知识库上下文 `_cachedKnowledgeContext`（藏书阁检索缓存）
-8. `ActivityTracker.GetSummary()` 活动摘要
-9. ★ 当前前台窗口（法眼实时观测）
-10. ★ 多窗口环境摘要 `GetVisibleWindowsSummary()`
-11. ★ 浏览器标签页深度感知 `GetBrowserTabsSummary()`
-12. `InjectParameterKnowledge()` → 身体参数知识
-13. `InjectClosedLoopCapability()` → 闭环演武系统说明
-14. `InjectMultiActionCapability()` → 多步并行施法（T7）
-15. `MotionMemoryManager.GetFormattedMemories()` 演武心经经验
-16. `ClipboardMonitor.GetRecentClipboardSummary()` 剪贴板感知（P4.1，30 分钟时效）
-17. 【当前时刻】固定尾部（命中 DeepSeek 上下文缓存）
+5. 知识库上下文 `_cachedKnowledgeContext`（藏书阁检索缓存）
+6. `InjectParameterKnowledge()` → 身体参数知识
+7. `InjectClosedLoopCapability()` → 闭环演武系统说明
+8. `InjectMultiActionCapability()` → 多步并行施法（T7）
+9. `MotionMemoryManager.GetFormattedMemories()` 演武心经经验
+10. `TaskTrajectoryManager.FormatForPrompt()` 任务轨迹【太卜手札】（P5.2，空库返回空串）
+11. `TaskTemplateManager.FormatForPrompt()` 任务模板【太卜阵法图】（P5.3，含使用说明）
+12. 【当前时刻】固定尾部（命中 DeepSeek 上下文缓存）
 
-> ⚠️ 铁则：**动态内容（时间戳等）只允许出现在尾部固定段之后或 prompt 末尾**——T1 把 `{current_time}` 从开头挪到尾部后缓存命中率 23.9%→98.6%（50x 差价：¥1/M → ¥0.02/M）。P4 新增注入（偏好/剪贴板）均置于【当前时刻】之前，不影响静态前缀缓存。
+> ⚠️ 铁则：**动态内容（时间戳等）只允许出现在尾部固定段之后或 prompt 末尾**。前台进程类别仅在用户开启后供本地模式判断；窗口标题、浏览器标签和剪贴板不被动读取或注入。
 
 ### 2.4 言出法随 — 内嵌动作标记（StripAndExecuteActions）
 

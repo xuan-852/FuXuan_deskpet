@@ -180,6 +180,36 @@ public class Live2DInputCoordinatorTests
     }
 
     [Test]
+    public void ClickVisualOverlay_IsAllowedOnlyWithoutAnActiveLease()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.True);
+
+        Assert.That(coordinator.TryBegin(Live2DInputKind.GeneratedMotion, "click-conflict", out var active), Is.True);
+        Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.False);
+
+        var stale = new Live2DInputLease(active.RequestId + 1, Live2DInputKind.Expression, "stale-click-release");
+        Assert.That(coordinator.Release(stale, "stale-click-release"), Is.False);
+        Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.False);
+
+        Assert.That(coordinator.Release(active, "click-conflict-complete"), Is.True);
+        Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.True);
+    }
+
+    [Test]
+    public void ClickVisualOverlay_IsSuppressedForWalkingAndDragHandoff()
+    {
+        var coordinator = new Live2DInputCoordinator();
+        Assert.That(coordinator.TryBegin(Live2DInputKind.Walking, "click-walking", out var walking), Is.True);
+        Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.False);
+
+        Assert.That(coordinator.TryHandoffWalkingToDragResponse(walking, "click-drag", out var drag), Is.True);
+        Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.False);
+        Assert.That(coordinator.Release(drag, "click-drag-complete"), Is.True);
+        Assert.That(coordinator.CanApplyLowPriorityOverlay, Is.True);
+    }
+
+    [Test]
     public void DesktopPhysicsLease_ExposesDeclaredMetadata()
     {
         var coordinator = new Live2DInputCoordinator();

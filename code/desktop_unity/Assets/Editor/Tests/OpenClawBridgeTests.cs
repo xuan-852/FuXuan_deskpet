@@ -4,6 +4,21 @@ using NUnit.Framework;
 
 public class OpenClawBridgeTests
 {
+    private static readonly FieldInfo PendingApprovalBackingField = typeof(OpenClawBridge).GetField(
+        "<PendingApproval>k__BackingField", BindingFlags.NonPublic | BindingFlags.Static);
+
+    [SetUp]
+    public void SetUp()
+    {
+        PendingApprovalBackingField?.SetValue(null, null);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        PendingApprovalBackingField?.SetValue(null, null);
+    }
+
     private static string BuildErrorJson(string error, bool isScanned = false)
     {
         MethodInfo method = typeof(OpenClawBridge).GetMethod(
@@ -18,6 +33,35 @@ public class OpenClawBridgeTests
             "IsNetworkishError", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.IsNotNull(method, "OpenClawBridge.IsNetworkishError 不应被删除或改为实例方法");
         return (bool)method.Invoke(null, new object[] { error });
+    }
+
+    private static void RefreshTaskProgress(string json)
+    {
+        MethodInfo method = typeof(OpenClawBridge).GetMethod(
+            "RefreshTaskProgress", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method, "OpenClawBridge.RefreshTaskProgress 不应被删除或改为静态方法");
+        method.Invoke(null, new object[] { JObject.Parse(json) });
+    }
+
+    [Test]
+    public void PendingApprovalSnapshotRetainsExistingApprovalWhenFieldIsOmitted()
+    {
+        OpenClawBridge.InjectTestApproval("echo approval");
+        string approvalId = OpenClawBridge.PendingApproval.approvalId;
+
+        RefreshTaskProgress("{\"status\":\"running\"}");
+
+        Assert.AreEqual(approvalId, OpenClawBridge.PendingApproval?.approvalId);
+    }
+
+    [Test]
+    public void PendingApprovalSnapshotClearsOnlyWhenBridgeReportsResolvedObject()
+    {
+        OpenClawBridge.InjectTestApproval("echo approval");
+
+        RefreshTaskProgress("{\"pendingApproval\":{}}");
+
+        Assert.IsNull(OpenClawBridge.PendingApproval);
     }
 
     [Test]

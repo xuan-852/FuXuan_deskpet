@@ -1,12 +1,12 @@
-using System;
+﻿using System;
 
 /// <summary>
 /// ChatManager 的上下文构建层。
-/// 保持原有注入顺序与预算配置，只隔离 SystemPrompt 组装职责。
+/// 组装记忆、人格、知识库及工具能力说明；不注入被动桌面内容。
 /// </summary>
 public partial class ChatManager
 {
-    /// <summary>构建最终 SystemPrompt（注入长期记忆 + 行为观测）</summary>
+    /// <summary>构建最终 SystemPrompt（相关记忆 + 能力说明）</summary>
     private string BuildSystemPrompt()
     {
         string prompt = _systemPromptTemplate;
@@ -57,38 +57,7 @@ public partial class ChatManager
                 _cachedKnowledgeContext, PromptContextBudget.KnowledgeChars, "知识库");
         }
 
-        // 注入法眼观测（今日行为摘要 + 当前窗口 + 多窗口环境）
-        if (activityTracker != null)
-        {
-            string activity = PromptContextBudget.TrimSection(
-                activityTracker.GetSummary(), PromptContextBudget.ActivityChars, "活动摘要");
-            if (!string.IsNullOrEmpty(activity))
-                prompt += "\n" + activity;
-
-            // ★ 注入当前前台窗口信息（让 AI 知道用户此刻在干什么）
-            string title = activityTracker.CurrentWindowTitle;
-            string proc = activityTracker.CurrentProcessName;
-            if (!string.IsNullOrEmpty(title) || !string.IsNullOrEmpty(proc))
-            {
-                prompt += $"\n【法眼实时观测】主人当前在操作：「{title}」（{proc}）";
-            }
-
-            // ★ 注入多窗口环境摘要（让 AI 了解整体桌面环境）
-            string multiWindow = PromptContextBudget.TrimSection(
-                activityTracker.GetVisibleWindowsSummary(), PromptContextBudget.VisibleWindowsChars, "多窗口");
-            if (!string.IsNullOrEmpty(multiWindow))
-            {
-                prompt += "\n" + multiWindow;
-            }
-
-            // ★ 注入浏览器标签页深度感知（让 AI 了解当前浏览器打开了什么）
-            string browserTabs = PromptContextBudget.TrimSection(
-                activityTracker.GetBrowserTabsSummary(), PromptContextBudget.BrowserTabsChars, "浏览器标签");
-            if (!string.IsNullOrEmpty(browserTabs))
-            {
-                prompt += "\n" + browserTabs;
-            }
-        }
+        // 被动桌面内容不进入对话。活动类别仅供用户明确开启后的本地模式判断。
 
         // ★ 注入身体参数知识（让 AI 了解如何控制自己的 Live2D 身体）
         prompt += PromptContextBudget.TrimSection(
@@ -107,14 +76,6 @@ public partial class ChatManager
                 MotionMemoryManager.Instance.GetFormattedMemories(), PromptContextBudget.MotionMemoryChars, "演武心经");
             if (!string.IsNullOrEmpty(motionMemories))
                 prompt += "\n" + motionMemories;
-        }
-
-        // ★ P4.1: 注入剪贴板感知（主人最近复制的内容，过期自动失效）
-        string clipboardSummary = PromptContextBudget.TrimSection(
-            ClipboardMonitor.GetRecentClipboardSummary(), PromptContextBudget.ClipboardChars, "剪贴板");
-        if (!string.IsNullOrEmpty(clipboardSummary))
-        {
-            prompt += clipboardSummary;
         }
 
         // ★ P5.2: 注入太卜手札·任务轨迹摘要（过往外包任务成败，同类任务可参考）

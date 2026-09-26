@@ -205,6 +205,21 @@ public sealed class LifeStateStore
         return true;
     }
 
+    internal bool RenewActiveAction(string correlationId, DateTime nowUtc, TimeSpan ttl)
+    {
+        if (string.IsNullOrWhiteSpace(correlationId) || nowUtc.Kind != DateTimeKind.Utc
+            || ttl <= TimeSpan.Zero || _state.ActionStatus != LifeActionStatus.Active
+            || _state.ActionMetadata == null || _activeActionCorrelation != correlationId
+            || nowUtc < _state.ActionMetadata.UpdatedAtUtc
+            || nowUtc > _state.ActionMetadata.ExpiresAtUtc)
+            return false;
+
+        _state.ActionMetadata.UpdatedAtUtc = nowUtc;
+        _state.ActionMetadata.ExpiresAtUtc = nowUtc.Add(ttl);
+        Touch(nowUtc);
+        return true;
+    }
+
     public void Expire(DateTime nowUtc)
     {
         if (nowUtc.Kind != DateTimeKind.Utc) throw new ArgumentException("UTC timestamp required", nameof(nowUtc));

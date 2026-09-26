@@ -664,8 +664,17 @@ public static class OpenClawBridge
             {
                 var obj = JObject.Parse(req.downloadHandler?.text ?? "{}");
                 LastApprovalOk = obj["success"]?.Value<bool>() ?? false;
-                if (!LastApprovalOk)
+                if (LastApprovalOk)
+                {
+                    // Gateway 已明确确认；轮询响应可能暂时省略 pendingApproval，
+                    // 因此必须立即清理本地快照，避免保留陈旧审批上下文。
+                    PendingApproval = null;
+                    LastError = "";
+                }
+                else
+                {
                     LastError = obj["error"]?.ToString() ?? "审批回执失败";
+                }
                 return LastApprovalOk;
             }
             catch (Exception ex)
