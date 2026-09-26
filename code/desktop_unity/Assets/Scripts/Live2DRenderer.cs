@@ -47,8 +47,11 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     const float BODY_SWAY_Z        = 0.4f;   // 身体旋转
     const float HEAD_X             = 0.6f;   // 头部左右
     const float HEAD_Y             = 0.4f;   // 头部上下
-    const float EYE_X              = 3f;     // 眼珠左右
-    const float EYE_Y              = 2f;     // 眼珠上下
+    // 眼球闲置微动幅度（Perlin 输出 ×0.5 后乘此值）。曾为 3f/2f：输出超出
+    // 眼球参数 -1..1 量程被钳制，闲置眼球会漂到最左/最右并长时间卡住，
+    // 认证动作期间基线冻结也继承该极端位置（2026-09-27 实机反馈）。
+    const float EYE_X              = 0.6f;   // 左右微动 ±0.3
+    const float EYE_Y              = 0.4f;   // 上下微动 ±0.2
     const float SPIN_DURATION      = 6f;
 
     // 动作9: 法阵显现 ✨（起势→剑指朝天结印→指尖凝光→扩散至全屏→消散）
