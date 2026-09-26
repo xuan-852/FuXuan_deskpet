@@ -139,7 +139,7 @@ async function main() {
   const shotDir = path.join(DATA_ROOT, 'test_screenshots');
   const shots = fs.existsSync(shotDir) ? fs.readdirSync(shotDir).filter(n => n.endsWith('.png')).sort() : [];
   const themeLogs = (content.match(/\[TestInbox\] 当前节日主题/g) || []).length;
-  const listLogs = (content.match(/\[TestInbox\] 可用节日主题/g) || []).length;
+  const listLogs = (content.match(/\[TestInbox\] 可用主题/g) || []).length;
   const statusLogs = activeThemes.reduce((count, [, name]) =>
     count + (content.match(new RegExp('\\[TestInbox\\] 当前节日主题: ' + name, 'g')) || []).length, 0);
   const recoveryLogs = (content.match(/\[TestInbox\] 当前节日主题: 默认主题/g) || []).length;
