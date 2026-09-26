@@ -183,6 +183,11 @@ function mulberry32(a) {
 }
 const round3 = v => Math.round(v * 1000) / 1000;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+// 临时根（C:）与批次目录（可能 D:）常跨盘符，rename 会 EXDEV，必须 copy+delete。
+function moveFile(src, dest) {
+  fs.copyFileSync(src, dest);
+  fs.rmSync(src, { force: true });
+}
 
 // ---------------------------------------------------------------- capture
 
@@ -225,7 +230,7 @@ function capture(opts) {
     fs.mkdirSync(perCandidateDir, { recursive: true });
     const report = readJsonNoBom(reportPath);
     for (const frame of report.frames || []) {
-      if (frame && fs.existsSync(frame)) fs.renameSync(frame, path.join(perCandidateDir, path.basename(frame)));
+      if (frame && fs.existsSync(frame)) moveFile(frame, path.join(perCandidateDir, path.basename(frame)));
     }
     fs.writeFileSync(path.join(perCandidateDir, 'playback-report.json'), JSON.stringify(report, null, 1));
     entry.status = 'captured';
@@ -246,11 +251,15 @@ function capture(opts) {
 function prescreen(opts) {
   const batchDir = requireBatch(opts.batch);
   const manifest = readManifest(batchDir);
-  const minPeak = Number.parseFloat(opts['min-peak'] || '0.6');
-  const maxPeak = Number.parseFloat(opts['max-peak'] || '6.0');
+  const minPeak = Number.parseFloat(opts['min-peak'] || '0.012');
+  const maxPeak = Number.parseFloat(opts['max-peak'] || '1.2');
+  // 实测校准（2026-09-27 批次）：面部表情的全帧均值峰值差在 0.002–0.05 量级
+  // （脸只占全帧一小部分像素；全身动作参考值 1.7–8.6 不适用于面部）。
+  // 预筛只做粗排序，真值由 contact-sheet 人工评审给出。
   let surviving = 0;
+  const regatable = new Set(['captured', 'surviving', 'invisible', 'gross-change', 'reset-unstable']);
   for (const entry of manifest.candidates) {
-    if (entry.status !== 'captured') continue;
+    if (!regatable.has(entry.status)) continue;
     const m = entry.metrics;
     let gate;
     if (!m.resetStable) gate = 'reset-unstable';
@@ -270,8 +279,12 @@ function prescreen(opts) {
 function sheet(opts) {
   const batchDir = requireBatch(opts.batch);
   const manifest = readManifest(batchDir);
-  const rows = manifest.candidates.filter(c => c.status === 'surviving' || c.status.startsWith('gross') || c.status === 'reset-unstable');
-  if (!rows.length) throw new Error('没有可展示的候选（需要先 capture + prescreen）。');
+  const order = { 'surviving': 0, 'gross-change': 1, 'reset-unstable': 2, 'capture-failed': 4 };
+  const rows = manifest.candidates
+    .filter(c => c.metrics || c.status === 'capture-failed')
+    .sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3) ||
+      (b.metrics?.peakMeanDifference ?? 0) - (a.metrics?.peakMeanDifference ?? 0));
+  if (!rows.length) throw new Error('没有可展示的候选（需要先 capture）。');
   const holdFrameIndex = String(Math.floor(((rows[0].metrics?.steps || 16) * 0.6))).padStart(3, '0');
   const cards = rows.map(entry => {
     const dir = path.join('captures', entry.candidateId);
