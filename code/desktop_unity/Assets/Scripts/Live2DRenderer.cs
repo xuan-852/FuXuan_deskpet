@@ -4195,6 +4195,39 @@ public partial class Live2DRenderer : MonoBehaviour, IPetRenderer
     /// 由受控工具入口请求认证身体技能。Renderer 仍负责唯一准入、租约、曲线和恢复；
     /// 成功准入后才登记 BehaviorIntent，避免协调器再创建第二份运行时请求。
     /// </summary>
+    /// <summary>
+    /// 用户显式身体请求的让位判定：唯一可让位的阻碍是自主地面行走
+    /// （在地面、未被拖拽、无其他动作占用，且确实处于行走/收步状态）；
+    /// 空中、拖拽、表情等其他占用不可让位，仍由原门禁拒绝。
+    /// </summary>
+    public bool CanYieldLocomotionForUserRequest()
+    {
+        if (_actionLocked || _aiControlLocked) return false;
+        var pet = _pet != null ? _pet : FindObjectOfType<DesktopPet>();
+        if (pet == null || !pet.onGround || pet.isDragging) return false;
+        return pet.IsMovementTaskPendingOrActive || pet.petVx != 0
+            || _walkBlendRemaining > 0f || _walkFadeInRemaining > 0f;
+    }
+
+    /// <summary>用户显式请求触发：强制停止自主行走，随后由调用方等待收步。</summary>
+    public void StopIdleLocomotionForUserRequest()
+    {
+        var pet = _pet != null ? _pet : FindObjectOfType<DesktopPet>();
+        if (pet != null) pet.ForceStop();
+    }
+
+    /// <summary>与 PlayCertifiedMotion 门禁的 locomotionActive 判定保持一致。</summary>
+    public bool IsStationaryForBodyRequest()
+    {
+        var pet = _pet != null ? _pet : FindObjectOfType<DesktopPet>();
+        bool locomotionActive = pet != null && (pet.IsMovementTaskPendingOrActive || pet.petVx != 0
+            || _walkBlendRemaining > 0f || _walkFadeInRemaining > 0f);
+        if (locomotionActive) return false;
+        // 移动任务清零不等于通道已释放：行走租约的收步释放滞后于速度归零
+        // （实测约 0.4s），认证动作需要整个输入通道空闲。
+        return _inputCoordinator == null || !_inputCoordinator.HasActiveLease;
+    }
+
     public string PlayCertifiedMotion(string skillId, string source, string reason, bool registerBehaviorIntent)
     {
         if (string.IsNullOrWhiteSpace(skillId)) return "❌ 未指定身体技能";

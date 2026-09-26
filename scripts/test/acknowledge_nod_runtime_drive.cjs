@@ -132,14 +132,26 @@ async function stopPlayer(player) {
         if (!logText().slice(firstOffset).includes('[EmbodiedSafeRecovery] pose-restored'))
             throw new Error('pose restoration marker missing');
 
-        // The natural-language route is intentionally closed while LlmExposed=false.
-        const hiddenOffset = logText().length;
-        await send('点点头给我看', '[ChatManager] 确定性身体请求回执已发布');
-        const hiddenLog = logText().slice(hiddenOffset);
-        if (hiddenLog.includes('[CertifiedMotion] started: acknowledge_nod'))
-            throw new Error('hidden acknowledge_nod was exposed to natural language');
-        if (!hiddenLog.includes('[ChatManager] 确定性身体请求回执已发布'))
-            throw new Error('hidden route did not publish a deterministic refusal receipt');
+        // LlmExposed=true（2026-09-27，v2 曲线真实窗口人工评审通过后开放）：
+        // 自然语言身体请求必须确定性路由到认证技能并完成完整生命周期。
+        const naturalOffset = logText().length;
+        await send('点点头给我看', '[CertifiedMotion] started: acknowledge_nod', 30000);
+        const naturalLog = logText().slice(naturalOffset);
+        if (!naturalLog.includes('[EmbodiedRuntimeAdmission] admitted: acknowledge_nod'))
+            throw new Error('natural-language route did not reach certified admission');
+        await waitFor('[CertifiedMotion] cleanup: certified-motion-completed', naturalOffset);
+        if (!logText().slice(naturalOffset).includes('[EmbodiedSafeRecovery] pose-restored'))
+            throw new Error('natural-language pose restoration marker missing');
+        await waitFor('[ChatManager] 确定性身体请求回执已发布', naturalOffset);
+
+        // 生产缺口回归（2026-09-27）：行走中收到自然语言身体请求，应停走收步后执行。
+        const walkOffset = logText().length;
+        await send('@@sim:walk:left', '[TestInbox] 已强制开始向左走');
+        await sleep(300);
+        await send('点点头给我看', '[CertifiedMotion] started: acknowledge_nod', 30000);
+        await waitFor('[CertifiedMotion] cleanup: certified-motion-completed', walkOffset);
+        if (!logText().slice(walkOffset).includes('[EmbodiedSafeRecovery] pose-restored'))
+            throw new Error('walking-preemption pose restoration marker missing');
 
         const cancelOffset = logText().length;
         await send('@@sim:skill:acknowledge', '[CertifiedMotion] started: acknowledge_nod');

@@ -17,7 +17,7 @@ public class RequestBodySkillTool : IPetTool
         ToolSchema.Req("skill_id", "string", "技能 ID，必须从描述列出的已认证技能中选择")
     );
 
-    public bool IsAsync => false;
+    public bool IsAsync => true;
 
     public string Execute(string argsJson)
     {
@@ -38,8 +38,29 @@ public class RequestBodySkillTool : IPetTool
 
     public IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
+        string first = Execute(argsJson);
+        // 生产实测缺口（2026-09-27）：自主闲逛中收到显式身体请求会被拒——
+        // 行走渐入窗口内语义门禁可能放行而由输入租约层拒绝（"动作通道被占用"），
+        // 其余时刻由"稳定静止"门禁拒绝。用户显式请求优先于自主行走：仅当
+        // 可让位（确实在行走、在地面、未拖拽、无其他动作占用）时停走、收步、重试。
+        bool locomotionRejected = first != null
+            && (first.Contains("稳定静止") || first.Contains("动作通道被占用"));
+        if (!locomotionRejected)
+        {
+            onResult?.Invoke(first);
+            yield break;
+        }
+        var yieldRenderer = GameObject.FindObjectOfType<Live2DRenderer>();
+        if (yieldRenderer == null || !yieldRenderer.CanYieldLocomotionForUserRequest())
+        {
+            onResult?.Invoke(first);
+            yield break;
+        }
+        yieldRenderer.StopIdleLocomotionForUserRequest();
+        float deadline = Time.time + 2f;
+        while (Time.time < deadline && !yieldRenderer.IsStationaryForBodyRequest())
+            yield return null;
         onResult?.Invoke(Execute(argsJson));
-        yield break;
     }
 
     private static string BuildDescription()
