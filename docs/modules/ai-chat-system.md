@@ -126,6 +126,16 @@
 - 回环轮 → 已用工具 ∪ 意图候选 ∪ `CoreToolSubset`（play_action/set_expression/stop_action/generate_motion/get_system_info/get_mouse_pos），只保留 `ToolRegistry.HasTool` 存在项
 - 竞态防护：`_intentReady` 标志 + 3s 超时兜底全量（首轮等待分类结果，防上轮 command 意图跨消息残留污染）
 
+### 2.6.1 云端回环工具准入（2026-10-10）
+
+- `BuildRequestBodyCore()` 在真正把工具写入请求体 `tools` 字段后，用 `ExtractAdmittedToolNames()` 记录本轮**实际提供过**的工具名到 `_roundAdmittedToolNames`；`BuildRequestBody()` 入口先清空该字段，构建失败走最小请求体时保持为空。
+- `DoToolLoop()` 在执行每个 `tool_call` 前先调用 `TryAdmitToolCallForRound()` 做准入判定，位于 `SetRequestStatus(RunningTool)`、`OnToolCalled`、危险工具审批和 `ToolCallInvoker` 执行**之前**；名称精确匹配（`StringComparer.Ordinal`）。
+- 拒绝时**不**产生“正在执行”的状态或事件、**不**发起 `ToolConfirmManager` 审批、**不**执行工具，只按原 `tool_call_id` 写入一条 `role="tool"` 的简短错误结果（`ToolNotAdmittedResult`，不含参数原文），供模型退化为文字作答；随后 `continue` 处理下一个调用。
+- `tools` 缺失或为空数组 → 本轮不允许任何 `tool_call`；未列入本轮 `tools` 的名称（含本轮未提供的未知名称）同样被拒绝。当前 `tools` 由 `ToolRegistry` 生成、只含已注册工具，门禁本身不额外校验注册状态。
+- 已提供的工具行为不变：危险工具仍走既有用户审批，普通工具照常执行；取消、回环上限（`MAX_TOOL_ROUNDS`）和 `ToolResultBudget.Compact()` 结果写入路径均未改动。
+- 该门禁只依据本轮实际发送的 `tools` 清单，**不**代替 `LocalToolRouter` 的意图白名单（本地规划路径仍由后者负责）。
+- 回归覆盖：`Assets/Editor/Tests/CloudToolCallAdmissionTests.cs`（12 项），覆盖 tools 缺失/为空、仅提供只读工具却调用未提供工具、未提供危险工具不得进入审批、已提供工具照常准入、未列入本轮 tools 的未知名称一律拒绝、名称精确匹配、拒绝结果形状与「拒绝先于执行与审批」。
+
 ### 2.7 本地工具路由（2026-08-22）
 
 本地 Ollama 的 OpenAI 兼容接口当前不依赖模型原生 `tools` 字段，而采用两阶段本地链路：
@@ -268,6 +278,7 @@
 | 2026-08-27 | **请求收尾状态修复**：增加 `_replyPublished` 成功信号，避免失败状态被无条件覆盖为「就绪」，并在队列启动前清理旧协程引用；失败请求不再触发成功专属质量/记忆后台任务，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 | 2026-08-30 | **自动问候时段修复**：`AutoChat` 与 `TimeWeatherController` 共用有效小时；`IdleChatGenerator` 丢弃跨时段旧生成结果，并过滤明显时段不匹配的问候句，避免问候语与当前时间错位。Quick、完整构建和隔离运行时冒烟验证通过；自然语言观感待人工抽查。 | — |
 | 2026-09-17 | **认证身体意图收口**：新增 `body` 意图闭集，只允许认证技能请求与停止动作；移除身体技能在普通 operation/跨意图路径的可达性，系统提示词同步为认证技能语义边界。Quick、EditMode（215 total、214 passed、failed=0、1 ignored）与隔离认证动作驱动通过。 | — |
+| 2026-10-10 | **云端回环工具准入修复**：`DoToolLoop` 执行 `tool_call` 前核对本轮请求体实际提供的 `tools` 清单，未提供的调用在状态/事件/审批/执行之前被拒绝，并按原 `tool_call_id` 回写简短工具错误结果供模型退化为文字；`tools` 缺失或为空则本轮不允许任何工具调用。既有危险工具审批、取消、回环上限与结果写入路径不变。Quick 与 EditMode（**来源分支历史值** `exploration/live2d-action-platform` @ `2662e71`，2026-10-10：343 total、339 passed、failed=0、4 ignored；**候选分支新实测** `codex/main-backport-ready` @ 2026-10-14，命令 `.\build.ps1 -RunTests`：342 total、338 passed、failed=0、4 ignored，新增 `CloudToolCallAdmissionTests` 12 项全部通过）验证通过。 | — |
 
 ### 实测数据（2026-08-08，Player.log）
 

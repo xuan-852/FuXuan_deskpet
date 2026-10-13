@@ -150,6 +150,19 @@ public partial class ChatManager
 
             foreach (var call in calls)
             {
+                // ★ 本轮准入：只允许执行本轮请求体实际提供过的工具。
+                //   必须在 SetRequestStatus(RunningTool)、OnToolCalled、危险工具审批和
+                //   执行之前判定；被拒绝时不产生“正在执行”的状态或事件，也不发起审批，
+                //   只按原 tool_call_id 回写简短错误结果，供模型退化为文字作答。
+                if (!TryAdmitToolCallForRound(_roundAdmittedToolNames, call.name, call.id, _history,
+                        out string notAdmitted))
+                {
+                    Debug.LogWarning($"[ChatManager] 🛡️ 本轮未提供该术式，调用被拒绝: {call.name}");
+                    OnToolResult?.Invoke(call.name, notAdmitted);
+                    RecordMemoryForTool(call.name, call.arguments, notAdmitted);
+                    continue;
+                }
+
                 SetRequestStatus("正在" + GetToolDisplayName(call.name) + "…", RequestStage.RunningTool);
                 OnToolCalled?.Invoke(call.name);
                 Debug.Log($"[ChatManager] ⚡ 施法: {call.name}({ToolHelpers.SanitizeLogValue(call.name, call.arguments)})");

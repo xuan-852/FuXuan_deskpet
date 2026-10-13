@@ -952,6 +952,9 @@ public partial class ChatManager : MonoBehaviour
 
     private string BuildRequestBody()
     {
+        // ★ 本轮准入清单默认清空：只有真正把工具写进 tools 字段后才置位。
+        //   构建失败（走下方 catch 的最小请求体）时保持为空 → 本轮不允许任何 tool_call。
+        _roundAdmittedToolNames = null;
         // ★ C4 修复：整个构建过程包 try/catch，任何异常都返回最小可用请求体，
         //   防止协程内未捕获异常导致 _isWaiting 永久卡死
         try { return BuildRequestBodyCore(); }
@@ -1039,7 +1042,10 @@ public partial class ChatManager : MonoBehaviour
                 toolsJson = toolInvoker.GetToolsJson();
             }
 
-            body["tools"] = JArray.Parse(toolsJson);
+            var toolsArray = JArray.Parse(toolsJson);
+            body["tools"] = toolsArray;
+            // ★ 记录本轮「实际提供过」的工具名，供 DoToolLoop 准入门禁精确核对。
+            _roundAdmittedToolNames = ExtractAdmittedToolNames(toolsArray);
         }
 
         body["stream"] = true;
@@ -1098,6 +1104,74 @@ public partial class ChatManager : MonoBehaviour
             if (ToolRegistry.HasTool(n)) result.Add(n);
         }
         return result.ToArray();
+    }
+
+    // ==================================================================
+    //  云端回环：本轮工具准入（只执行本轮请求体实际提供过的工具）
+    // ==================================================================
+
+    /// <summary>
+    /// 本轮请求体实际写入 tools 字段的工具名（精确匹配）。null 或空集合表示本轮
+    /// 未向模型提供任何工具，此时任何 tool_call 都必须被拒绝。
+    /// 由 BuildRequestBodyCore 在真正写入 tools 后赋值，保证与发送给模型的内容一致。
+    /// </summary>
+    private HashSet<string> _roundAdmittedToolNames;
+
+    /// <summary>未提供该工具时的简短拒绝结果（不含参数原文）。</summary>
+    public const string ToolNotAdmittedResult =
+        "❌ 本轮未向模型提供该术式，调用已被拒绝。请改用本轮已提供的工具，或直接以文字作答。";
+
+    /// <summary>从请求体 tools 字段提取工具名，用于精确匹配准入。</summary>
+    public static HashSet<string> ExtractAdmittedToolNames(JArray tools)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        if (tools == null) return names;
+        foreach (var item in tools)
+        {
+            string name = item?["function"]?["name"]?.ToString();
+            if (!string.IsNullOrEmpty(name)) names.Add(name);
+        }
+        return names;
+    }
+
+    /// <summary>
+    /// 本轮是否允许执行该工具调用。名称精确匹配；清单缺失或为空一律拒绝。
+    /// 本判定只依赖本轮实际发送的 tools，不代替 LocalToolRouter 的意图白名单。
+    /// </summary>
+    public static bool IsToolAdmittedThisRound(HashSet<string> admittedToolNames, string toolName)
+    {
+        if (string.IsNullOrEmpty(toolName)) return false;
+        if (admittedToolNames == null || admittedToolNames.Count == 0) return false;
+        return admittedToolNames.Contains(toolName);
+    }
+
+    /// <summary>
+    /// 云端回环的单次调用准入门禁。
+    /// 返回 true：调用方可继续走「状态 → OnToolCalled → 危险工具审批 → 执行」。
+    /// 返回 false：已把简短错误结果按原 tool_call_id 写入历史，调用方必须立即
+    /// continue——不得产生“正在执行”的状态或事件，也不得发起审批或执行。
+    /// </summary>
+    public static bool TryAdmitToolCallForRound(HashSet<string> admittedToolNames,
+        string toolName, string callId, List<Entry> history, out string rejection)
+    {
+        if (IsToolAdmittedThisRound(admittedToolNames, toolName))
+        {
+            rejection = null;
+            return true;
+        }
+
+        rejection = ToolNotAdmittedResult;
+        if (history != null)
+        {
+            history.Add(new Entry
+            {
+                role = "tool",
+                content = rejection,
+                tool_call_id = callId ?? "",
+                name = toolName ?? ""
+            });
+        }
+        return false;
     }
 
     // ==================================================================
