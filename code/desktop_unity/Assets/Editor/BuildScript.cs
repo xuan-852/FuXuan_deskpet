@@ -48,7 +48,7 @@ public class BuildScript
         // FU_XUAN_BUILD_OUTPUT 写入隔离位置，避免锁定用户正在运行的桌宠。
         string buildDir = System.Environment.GetEnvironmentVariable("FU_XUAN_BUILD_OUTPUT");
         if (string.IsNullOrWhiteSpace(buildDir))
-            buildDir = @"D:\Unity\projects\Desktop_per_pro\Build";
+            buildDir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "..", "Build"));
         buildDir = Path.GetFullPath(buildDir);
         string buildPath = Path.Combine(buildDir, "DesktopPet.exe");
 
@@ -123,7 +123,8 @@ public class BuildScript
         EditorSceneManager.SaveScene(scene, scenePath);
 
         string output = System.Environment.GetEnvironmentVariable("FU_XUAN_BUILD_OUTPUT");
-        if (string.IsNullOrWhiteSpace(output)) output = @"D:\Unity\projects\Desktop_per_pro\Build";
+        if (string.IsNullOrWhiteSpace(output))
+            output = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "..", "Build"));
         output = Path.GetFullPath(output);
         Directory.CreateDirectory(output);
         string path = Path.Combine(output, "Live2DProbe.exe");

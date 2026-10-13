@@ -324,6 +324,10 @@ Assets/
 | `node --check openclaw_bridge.js` | 桥接 JS 语法校验 |
 | `python scripts/office/*_gen.py <in.json>` | 单个生成器手动验证 |
 
+在独立 Git worktree 中从该 worktree 根目录运行 `build.ps1`。脚本以自身目录定位 Unity 项目，默认将 Player 写到本 worktree 的 `Build/`，构建日志和 EditMode XML 写到本 worktree 的 `logs/build/`；可用 `-OutputDir` 和 `-LogFile` 覆盖。不同 worktree 的 Tuanjie 构建仍须串行执行。
+
+新检出的 worktree 需先将 `Assets/Scripts/ChatConfig.cs.example` 复制为同目录下 Git 忽略的 `ChatConfig.cs`，作为无密钥编译配置。运行现有认证动作测试时，还需在本机提供被忽略的 `Assets/Resources/Live2D/CertifiedMotions/acknowledge_nod.json`；缺失时应记录环境未就绪，不得把测试结果解释成代码回归。证据须记录 worktree 分支、提交、构建日志与 XML 路径。
+
 ### 6.2 测试模式（铁律）
 
 自动化测试**必须**开启测试模式，防止污染真实数据：

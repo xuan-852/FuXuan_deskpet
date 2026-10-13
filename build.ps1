@@ -20,7 +20,7 @@
 # P0 构建负载保护：CleanBeeCache（显式清 Library\Bee）、MaxCores（限制核数）、NoThrottle（关闭节流）
 param(
     [string]$UnityExe = "D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe",
-    [string]$LogFile = "D:\Unity\projects\Desktop_per_pro\logs\build\build_log.txt",
+    [string]$LogFile = "",
     [string]$DataRoot = "",
     [string]$OutputDir = "",
     [switch]$Quick,
@@ -44,9 +44,12 @@ Write-Host "============================================"
 Write-Host ""
 
 # ---- Resolve paths ----
-$RootDir = "D:\Unity\projects\Desktop_per_pro"
+$RootDir = $PSScriptRoot
 $ProjectDir = Join-Path $RootDir "code\desktop_unity"
 $DefaultOutputDir = Join-Path $RootDir "Build"
+if ([string]::IsNullOrWhiteSpace($LogFile)) {
+    $LogFile = Join-Path $RootDir "logs\build\build_log.txt"
+}
 
 # ---- Isolate Unity build-time data ----
 # Tuanjie loads runtime assemblies while opening the project.  Without an

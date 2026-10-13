@@ -12,6 +12,11 @@
 /// </summary>
 public static class ChatConfig
 {
+    // 本地 worktree 的无密钥编译配置；需要联网时由用户单独配置环境变量。
+    public static bool UseOllamaMode => true;
+    public static bool UseCloudBaseline => false;
+    public static bool CloudRequestsEnabled => false;
+
     /// <summary>DeepSeek API Key — 从环境变量 DEEPSEEK_API_KEY 读取</summary>
     public static string ApiKey => System.Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? "";
 
@@ -25,4 +30,8 @@ public static class ChatConfig
 
     /// <summary>GLM 视觉模型名 — 2026.7 使用付费版 glm-4.6v（¥2/M tokens，¥10 绰绰有余）</summary>
     public const string GlmVisionModel = "glm-4.6v";
+    public const string GlmVisionModelFree = "glm-4.6v";
+    public const string GlmBalanceCheckModel = "glm-4.6v";
+    public static string QWeatherApiKey => System.Environment.GetEnvironmentVariable("QWEATHER_API_KEY") ?? "";
+    public static string EmoteDisplayText(string expName) => expName ?? "";
 }
