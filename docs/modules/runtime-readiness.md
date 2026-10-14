@@ -45,7 +45,7 @@ For Windows shutdown or logoff, the hooked Unity window explicitly returns succe
 - DesktopPet autostart is stored as a Windows `REG_SZ`; the registry bridge must encode values as UTF-16LE. The reader keeps a UTF-8 fallback so values written by older builds are migrated on the next successful startup.
 - Build/test force-termination must not be treated as proof of a DesktopPet crash. The watchdog therefore resets after a stable session and skips production crash state entirely in `.test_mode`.
 - DesktopPet 的单实例互斥名按规范化后的 `DataPathConfig.DataRoot` 生成稳定哈希后分域：同一数据根仍保持单实例，`FU_XUAN_DATA` 指向不同临时目录的测试播放器可以并行启动；生成失败时回退到固定默认锁名以保持安全性。
-- `runtime_smoke.cjs` 仅接受系统临时目录中以 `fuxuan_smoke_test` 开头、无符号链接且不与生产根重叠的目录；它只结束自己创建的 PID，并按文件存在性与 SHA-256 比较受保护生产数据。`--keep-alive` 保留 `.test_mode` 和隔离目录，`--keep-artifacts` 保留诊断产物但仍结束测试实例。
+- `runtime_smoke.cjs`（现位于 `scripts/test/smoke/`，旧路径为兼容 wrapper）仅接受系统临时目录中以 `fuxuan_smoke_test` 开头、无符号链接且不与生产根重叠的目录；它只结束自己创建的 PID，并按文件存在性与 SHA-256 比较受保护生产数据。`--keep-alive` 保留 `.test_mode` 和隔离目录，`--keep-artifacts` 保留诊断产物但仍结束测试实例。
 - 隐藏启动的隔离播放器会使 Unity 主窗口暂不可见。`WindowOverlay` 枚举同进程窗口时将类名含 `Unity` 的隐藏窗口仅作为最后回退候选，仍优先产品标题、主窗口句柄和可见窗口，并排除外置聊天窗口。
 
 ### 验证方法
@@ -63,7 +63,7 @@ The data root must be temporary and contain `.test_mode`; production memory and 
 
 - 首启界面状态保存到用户数据根目录的 `ui_experience_state.json`，不放进安装目录；正式软件覆盖更新后，聊天记录、偏好、记忆、设置和该状态文件均保留。
 - 自启不再由 `DesktopPet` 的首次启动逻辑自动写入注册表。既有注册表值继续由 `SystemTrayManager` 读取并保留；新用户只能从欢迎页或托盘菜单明确开启。
-- 运行时测试模式检查 `DataPathConfig.IsTestMode`：欢迎页的自启选择只记录测试状态、不触碰真实 HKCU。`runtime_smoke.cjs --ui-experience-only` 在临时 `FU_XUAN_DATA` 下验证欢迎/版本中心截图、应用自退出及生产数据零污染。
+- 运行时测试模式检查 `DataPathConfig.IsTestMode`：欢迎页的自启选择只记录测试状态、不触碰真实 HKCU。`runtime_smoke.cjs --ui-experience-only`（`scripts/test/smoke/runtime_smoke.cjs`）在临时 `FU_XUAN_DATA` 下验证欢迎/版本中心截图、应用自退出及生产数据零污染。
 
 ## 2026-08-21 verification
 

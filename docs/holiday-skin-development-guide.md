@@ -358,7 +358,7 @@ $testData = Join-Path $env:TEMP 'fuxuan_festival_manual'
 New-Item -ItemType Directory -Force -Path $testData | Out-Null
 New-Item -ItemType File -Force -Path (Join-Path $testData '.test_mode') | Out-Null
 $env:FU_XUAN_DATA = $testData
-Start-Process 'D:\Unity\projects\Desktop_per_pro\Build\DesktopPet.exe'
+Start-Process .\Build\DesktopPet.exe   # 相对当前 worktree 根（构建输出落在该 worktree 的 Build\ 下，见 build-workflow.md 标准流程）
 ```
 
 不要在生产数据目录中测试主题切换，不要把普通自然语言输入写入 Inbox。
@@ -429,7 +429,7 @@ Start-Process 'D:\Unity\projects\Desktop_per_pro\Build\DesktopPet.exe'
 ```powershell
 .\build.ps1 -Quick
 .\build.ps1
-node scripts/test/runtime_smoke.cjs --verbose
+node scripts/test/smoke/runtime_smoke.cjs --verbose
 ```
 
 完整构建需要本机/full-access 权限。构建被授权服务或辅助进程卡住时，按照 `build-workflow.md` 处理，不能把无输出直接判定为代码失败。
@@ -461,7 +461,7 @@ node scripts/test/runtime_smoke.cjs --verbose
 - [ ] 竖式诗词列内自上而下、列间从右向左，汉字只做中轴线附近的轻微偏移。
 - [ ] 诗词呼吸灯按句/列变化，不随机打散、不明显飞动、不遮挡主体和 UI。
 - [ ] `@@sim:holiday:<id>`、`status`、`list` 可用。
-- [ ] 8 个（或当前全部）主题截图已保存并检查。
+- [ ] 5 个正式主题（`cn_new_year`/`lantern_festival`/`dragon_boat`/`qixi`/`mid_autumn`，口径：`git grep -n -E '"cn_new_year"|"lantern_festival"|"dragon_boat"|"qixi"|"mid_autumn"' HEAD -- code/desktop_unity/Assets/Scripts/HolidayThemeRuntime.cs` 的正式主题条目）截图已保存并检查。
 - [ ] 关闭主题后默认界面、默认星空恢复。
 - [ ] Live2D 文件和参数没有修改。
 - [ ] Quick、完整构建、隔离冒烟均有结果。

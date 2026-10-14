@@ -112,7 +112,7 @@
 ```powershell
 # 1) 构建 + 冒烟（含 UI 功能断言）
 .\build.ps1 -Quick
-node scripts/test/runtime_smoke.cjs   # 命令留痕/尺寸/零NRE/记忆零污染
+node scripts/test/smoke/runtime_smoke.cjs   # 命令留痕/尺寸/零NRE/记忆零污染
 
 # 2) 多模态视觉采样（需测试模式 + 外置窗口打开）
 #    截图源：外置窗口客户区（Win32 BitBlt）或隔离目录渲染缓存
@@ -131,4 +131,4 @@ node scripts/test/runtime_smoke.cjs   # 命令留痕/尺寸/零NRE/记忆零污�
 - [`project-bugs-and-acceptance.md`](project-bugs-and-acceptance.md) — 已修复 Bug 防回归清单（本清单红线与之一一对应）
 - [`modules/chat-ui.md`](modules/chat-ui.md) — 布局/命中区/渲染桥/测试链路代码真相
 - [`token-cost-testing.md`](token-cost-testing.md) — 消耗面板数据验证（P3）
-- `scripts/test/runtime_smoke.cjs` — 冒烟测试（F 组命令已覆盖）
+- `scripts/test/smoke/runtime_smoke.cjs` — 冒烟测试（F 组命令已覆盖；旧路径 `scripts/test/runtime_smoke.cjs` 为兼容 wrapper）

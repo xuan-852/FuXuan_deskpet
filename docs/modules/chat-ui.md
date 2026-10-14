@@ -172,7 +172,7 @@
 
 **状态切换**：标题栏 ⧉ 按钮 / `@@view:external` → `EnableExternalMode()`；`@@view:embed` / ✕ → `DisableExternalMode()`。外部模式激活时 OnGUI 改画到 RenderTexture（`_externalRender` 抑制屏幕事件处理），屏幕不再画面板。
 
-**测试链路**（铁律 §6.6 终端驱动，`scripts/test/runtime_smoke.cjs` 已覆盖）：
+**测试链路**（铁律 §6.6 终端驱动，`scripts/test/smoke/runtime_smoke.cjs` 已覆盖）：
 - `@@view:external|embed` — 进出外置面板
 - `@@view:extclick:x,y[,dbl]` — 模拟外部点击（坐标=面板逻辑坐标，非屏幕坐标）
 - `@@approval:命令` — 注入审批弹窗（`OpenClawBridge.InjectTestApproval`，仅测试模式）

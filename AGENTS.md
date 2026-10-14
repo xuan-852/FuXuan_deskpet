@@ -1,4 +1,4 @@
-﻿# AGENTS.md — 符玄桌宠项目 AI 协作指南
+# AGENTS.md — 符玄桌宠项目 AI 协作指南
 
 > 本文件是 AI 编码代理（GitHub Copilot / Claude Code 等）的**快速入口**。
 > 详细规范见 [`docs/development-standards.md`](docs/development-standards.md)（两者冲突时以详细版为准）。
@@ -8,13 +8,13 @@
 
 ## 项目是什么
 
-Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣「符玄」，具备感知-决策-执行-记忆闭环，内置 63 个工具，通过本地 Node.js 桥接调用 OpenClaw AI 与 Python 办公生成器。
+Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣「符玄」，具备感知-决策-执行-记忆闭环，内置 65 个工具（声明 65 / 注册 62；口径与命令：`git ls-tree -r --name-only HEAD -- code/desktop_unity/Assets/Scripts` 逐文件 `git show`，按正则 `public\s+(?:override\s+)?string\s+ToolName\s*=>\s*"([^"]+)"` 统计得 13 个工具文件、65 个唯一声明；注册数 = 65 − 3，扣除 `ToolRegistry.cs` 的 `DisabledToolReasons` 中与声明同时命中的 `generate_motion`/`play_action`/`self_review`），通过本地 Node.js 桥接调用 OpenClaw AI 与 Python 办公生成器。
 
 ## 技术栈速览
 
 | 层 | 位置 | 语言 |
 |----|------|------|
-| Unity 桌宠 | `code/desktop_unity/Assets/Scripts/` | C#（122 文件，架构见 `docs/code-truth-architecture.md`） |
+| Unity 桌宠 | `code/desktop_unity/Assets/Scripts/` | C#（189 文件，口径：`git ls-tree -r --name-only HEAD -- code/desktop_unity/Assets` 取 `.cs` 且目录级排除 `/Cubism`；架构见 `docs/code-truth-architecture.md`） |
 | 桥接服务器 | `code/desktop_unity/openclaw_bridge.js` | Node.js，端口 19876，PM2 管理（进程名 `openclaw-bridge`） |
 | 工具系统 | `Assets/Scripts/ToolEngine/` | `IPetTool` → `AsyncToolBase` → 反射自动发现，危险工具需审批 |
 | Python 生成器 | `scripts/office/` 等 | python-pptx / python-docx / openpyxl |
@@ -25,7 +25,7 @@ Unity（团结引擎 Tuanjie 2022.3.62t7）+ Live2D 的 Windows 桌面 AI 伴侣
 | 模块 | 文档 | 一句话定位 |
 |------|------|-----------|
 | AI 对话 | [`docs/modules/ai-chat-system.md`](docs/modules/ai-chat-system.md) | ChatManager 轮环、注入链、Token 优化 |
-| 工具系统 | [`docs/modules/tool-engine.md`](docs/modules/tool-engine.md) | 63 工具、审批、benchmark |
+| 工具系统 | [`docs/modules/tool-engine.md`](docs/modules/tool-engine.md) | 65 工具（声明 65 / 注册 62）、审批、benchmark |
 | 动作系统 | [`docs/modules/action-agent.md`](docs/modules/action-agent.md) | 决策循环、动作验证闭环 |
 | Live2D 渲染 | [`docs/modules/live2d-rendering.md`](docs/modules/live2d-rendering.md) | 渲染管线、参数映射、硬编码迁移 |
 | 对话界面 | [`docs/modules/chat-ui.md`](docs/modules/chat-ui.md) | IMGUI 界面、像素化优化 |
@@ -59,7 +59,7 @@ C# (OpenClawBridge.cs) --HTTP JSON, x-bridge-token--> openclaw_bridge.js (:19876
 
 ## 铁律（违反会出事故）
 
-1. **测试必须无记忆隔离**：优先用 `FU_XUAN_DATA` 指向临时目录启动桌宠（`node scripts/test/runtime_smoke.cjs` 已内置：隔离数据目录 + 生产记忆 mtime 零污染断言）；手动测试时至少建空文件 `.test_mode`（防污染 pet_memory/pet_personality/motion_memory/activity/validation），测后删 + 如污染则 `node scripts/backup_memory.cjs --all` 留底并清理。测试前可先备份：`node scripts/backup_memory.cjs`（保留生产记忆至少一份安全副本）
+1. **测试必须无记忆隔离**：优先用 `FU_XUAN_DATA` 指向临时目录启动桌宠（`node scripts/test/smoke/runtime_smoke.cjs` 已内置：隔离数据目录 + 生产记忆 mtime 零污染断言；旧路径 `scripts/test/runtime_smoke.cjs` 保留只转发的兼容 wrapper）；手动测试时至少建空文件 `.test_mode`（防污染 pet_memory/pet_personality/motion_memory/activity/validation），测后删 + 如污染则 `node scripts/backup_memory.cjs --all` 留底并清理。测试前可先备份：`node scripts/backup_memory.cjs`（保留生产记忆至少一份安全副本）
 2. **禁止空参数遍历调用所有工具**：`lock_screen` 真锁屏、`file_delete` 真删文件、`set_volume` 真改音量；空参测试只限低风险只读白名单（`get_system_info`/`get_mouse_pos`）。剪贴板、文件内容和截图工具必须显式确认
 3. **测试中日志**：预期日志用 `LogAssert.Expect(LogType.Warning, "...")` 声明（Unity 把 Error/Warning 计为失败）
 4. **UI 测试不靠模拟鼠标点击**：坐标难定位、视觉模型不可靠。必须用终端链路触发——写 `DataPathConfig.InboxFile`（测试模式启用，手动测试可用 `FU_XUAN_DATA` 指向临时目录）：`@@view:settings|reminders|report|chat|list|back|open|close` 切页、`@@emote:xxx` 注入表情、`@@sim:status|click:center|drag:offset:dx,dy[,steps]` 模拟桌宠输入。新 UI 状态必须预留等价命令（规范见 `development-standards.md` §6.6）

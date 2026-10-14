@@ -77,7 +77,7 @@ node --check code/desktop_unity/openclaw_bridge.js   # 改桥接 JS 后
 
 ### 3.2 冒烟测试（外置窗口/渲染/UI 改动后必跑）
 ```powershell
-node scripts/test/runtime_smoke.cjs   # 隔离目录 + .test_mode + 生产记忆零污染断言
+node scripts/test/smoke/runtime_smoke.cjs   # 隔离目录 + .test_mode + 生产记忆零污染断言
 ```
 **通过标准（4 条，缺一 FAIL）**：
 1. 全部 `@@view` 命令 + 外置交互链路被处理（`[TestInbox]` 留痕：open/chat/settings/back/report/reminders/list/external/embed/close + extclick + approval + emote）

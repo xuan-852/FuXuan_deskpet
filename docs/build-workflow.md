@@ -22,7 +22,7 @@
 | `node --check code/desktop_unity/openclaw_bridge.js` | 桥接 JS 语法 | 改 JS 后 |
 | `.\scripts\diagnose_tuanjie.ps1` | 构建环境诊断/恢复（见卡死处理） | **构建卡死时** |
 
-> ⚠️ **环境固定**：Unity = `D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe`（32 位）；项目 = `D:\Unity\projects\Desktop_per_pro\code\desktop_unity`。不要换路径、不要装第二个编辑器。
+> ⚠️ **环境固定**：Unity = `D:\Unity\editor\2022.3.62t7\Editor\Tuanjie.exe`（32 位，固定值）。项目路径**不由本文写死**：`build.ps1` 以脚本自身目录定位（`$RootDir = $PSScriptRoot`；`$ProjectDir = Join-Path $RootDir "code\desktop_unity"`，见脚本 `# ---- Resolve paths ----` 段），因此在任意 Git worktree 根运行 `.\build.ps1` 即编译该 worktree 的项目（行为见 `development-standards.md` §6.1「构建与测试命令」）。不要换编辑器路径、不要装第二个编辑器。
 
 完整构建不会再按进程名终止正在运行的生产桌宠：默认 `Build\DesktopPet.exe` 被占用时会明确失败。需要与生产实例并行验证时，使用专属目录，例如 `./build.ps1 -OutputDir "$env:TEMP\fuxuan_build_check"`；构建成功日志会显示实际输出的 exe 路径。
 
@@ -37,10 +37,12 @@
 
 # 3. 逻辑/UI 改动跑 EditMode
 .\build.ps1 -RunTests
-#    查看 logs\build\test_results.xml：result="Passed" total=78 passed=78 failed=0
+#    查看 logs\build\test_results.xml 根节点：本 worktree 实测 total=342 passed=338 failed=0 skipped=4
+#    （根 result 可为 Skipped:Ignored，4 个 skip 均为既有 [Ignore]；口径：本目录实跑 .\build.ps1 -RunTests，
+#     解析本次新生成的 logs\build\test_results.xml 根 test-run 节点）
 
 # 4. UI/外置窗口改动跑隔离冒烟（自动用隔离数据目录，生产记忆零污染）
-node scripts/test/runtime_smoke.cjs
+node scripts/test/smoke/runtime_smoke.cjs
 #    [PASS] 运行时冒烟测试通过：全部命令处理 + 三档尺寸切换 + 零 NRE + 生产记忆零污染 ✅
 
 # 5. 启动桌宠人工验证（继承用户环境变量）
@@ -147,7 +149,7 @@ Stop-Process -Name Tuanjie.Licensing.Client -Force -ErrorAction SilentlyContinue
 | 编译 | `.\build.ps1 -Quick` | `[OK] Build succeeded! (mm:ss)` |
 | 完整构建 | `.\build.ps1` | `[OK] Output: Build/DesktopPet.exe` |
 | EditMode | `.\build.ps1 -RunTests` | `test_results.xml` 根节点 `failed=0`（含 Ignore 时根结果可为 `Skipped:Ignored`，仍算通过）；门禁会在跑前删旧结果、跑后校验；**2026-08-31 已修复**（原因 `-runTests` 与 `-quit` 同传导致测试运行器提前退出不写结果） |
-| 冒烟 | `node scripts/test/runtime_smoke.cjs` | `[PASS]` + 生产记忆零污染 |
+| 冒烟 | `node scripts/test/smoke/runtime_smoke.cjs` | `[PASS]` + 生产记忆零污染 |
 | 人工 | 启动 exe | 桌宠落地、功能正常 |
 
 > **AI 铁则**：功能级改动**必须先编译+测试通过**，再更新模块文档；文档只记录已验证的代码真相（AGENTS.md）。

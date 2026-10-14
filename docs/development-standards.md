@@ -177,7 +177,7 @@ flowchart LR
 
 ```
 Assets/
-├── Scripts/                    # 主代码（顶层 66 个 .cs）
+├── Scripts/                    # 主代码（顶层 72 个 .cs，口径：`git ls-tree -r --name-only HEAD -- code/desktop_unity/Assets/Scripts` 中匹配 `^code/desktop_unity/Assets/Scripts/[^/]+\.cs$` 的条目数；含 gitignore 的 `ChatConfig.cs` 时工作树为 73）
 │   ├── Editor/                 # 编辑器工具（非运行时）
 │   ├── Live2DFramework/        # Live2D 参数框架
 │   │   └── ActionAgent/        # 具身动作闭环（15 文件）
@@ -189,7 +189,7 @@ Assets/
 
 **规则**：
 - 新增工具类文件放 `Assets/Scripts/ToolEngine/`，命名 `XxxTools.cs`（如 `OfficeTools.cs`、`WebSystemTools.cs`）；
-- 与现有 171 个 UTF-8 BOM 文件保持一致（.editorconfig 已强制 `[*.cs] charset = utf-8-bom`）；
+- 与现有 227 个带 BOM 的 `.cs` 文件保持一致（口径：`code/desktop_unity` 下 227/361 个 tracked `.cs` 首三字节为 `EF BB BF`；全库带 BOM 的 tracked `.cs`/`.ps1`/`.cmd` 合计 253 = 227+21+5）。.editorconfig 已强制 `[*.cs] charset = utf-8-bom`；
 - 不要新建顶层目录，除非是新的架构层（先讨论）。
 
 ### 3.3 `scripts/` 子目录
@@ -393,7 +393,7 @@ Assets/
 3. 未知命令必须 `Debug.LogWarning` 提示支持列表，便于排查拼写；
 4. 测试链路必须受 `ChatManager.IsTestMode` 保护，生产模式不响应任何注入文件。
 
-**执行测试时**：优先用 `node scripts/test/runtime_smoke.cjs`（已内置**无记忆隔离**：以 `FU_XUAN_DATA` 指向 `%TEMP%\fuxuan_smoke_test` 启动桌宠 + `.test_mode` 双保险，测试结束断言生产记忆文件 mtime 零变化并清理隔离目录）；
+**执行测试时**：优先用 `node scripts/test/smoke/runtime_smoke.cjs`（已内置**无记忆隔离**：以 `FU_XUAN_DATA` 指向 `%TEMP%\fuxuan_smoke_test` 启动桌宠 + `.test_mode` 双保险，测试结束断言生产记忆文件 mtime 零变化并清理隔离目录；旧路径 `scripts/test/runtime_smoke.cjs` 保留兼容 wrapper）；
 手动终端测试时用 `Set-Content D:\DesktopPetData\inbox.txt -Value "@@view:settings"` 之类命令触发，
 再配合截图/日志验证，不移动真实鼠标。
 
