@@ -327,10 +327,13 @@ public static class RuntimeInputSimulator
                 return true;
             }
 
-            string result = ToolRegistry.Execute(
+            // request_body_skill 是异步工具（2026-09-27 行走抢占修复起 IsAsync=true）；
+            // 同步 Execute 只查同步字典，会误报"不识此术"。经协程走异步路径。
+            string toolArgs = "{\"skill_id\":\"" + skillId.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"}";
+            renderer.StartCoroutine(ToolRegistry.ExecuteAsync(
                 "request_body_skill",
-                "{\"skill_id\":\"" + skillId.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"}");
-            Debug.Log("[TestInbox] request-body-skill result: " + result);
+                toolArgs,
+                result => Debug.Log("[TestInbox] request-body-skill result: " + result)));
             return true;
         }
 
