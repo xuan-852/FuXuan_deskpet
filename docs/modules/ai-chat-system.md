@@ -280,6 +280,7 @@
 | 2026-08-27 | **请求收尾状态修复**：增加 `_replyPublished` 成功信号，避免失败状态被无条件覆盖为「就绪」，并在队列启动前清理旧协程引用；失败请求不再触发成功专属质量/记忆后台任务，Quick、完整构建和隔离运行时冒烟验证通过。 | — |
 | 2026-08-30 | **自动问候时段修复**：`AutoChat` 与 `TimeWeatherController` 共用有效小时；`IdleChatGenerator` 丢弃跨时段旧生成结果，并过滤明显时段不匹配的问候句，避免问候语与当前时间错位。Quick、完整构建和隔离运行时冒烟验证通过；自然语言观感待人工抽查。 | — |
 | 2026-09-17 | **认证身体意图收口**：新增 `body` 意图闭集，只允许认证技能请求与停止动作；移除身体技能在普通 operation/跨意图路径的可达性，系统提示词同步为认证技能语义边界。Quick、EditMode（215 total、214 passed、failed=0、1 ignored）与隔离认证动作驱动通过。 | — |
+| 2026-10-12 | **普通点击不再进入对话链路**：`AutoChat.HandleClick()` 移除对 `ChatManager.SendMessage` 的调用（原「戳戳额头」注入），改为纯本地短句轻回应，因此点击不再消耗 token、不再写会话记录、不再依赖本地/云端 LLM。`SendMessage` 本身、消息队列、意图过滤、工具回环、审批与记忆写入路径均未改动；拖拽自动聊天策略本轮未改造。EditMode（354 total、350 passed、failed=0、4 ignored，新增 `ClickLightResponseTests` 12 项）与隔离运行时 `scripts/test/click_light_response_drive.cjs` 通过。 | — |
 | 2026-10-10 | **云端回环工具准入修复**：`DoToolLoop` 执行 `tool_call` 前核对本轮请求体实际提供的 `tools` 清单，未提供的调用在状态/事件/审批/执行之前被拒绝，并按原 `tool_call_id` 回写简短工具错误结果供模型退化为文字；`tools` 缺失或为空则本轮不允许任何工具调用。既有危险工具审批、取消、回环上限与结果写入路径不变。Quick 与 EditMode（**来源分支历史值** `exploration/live2d-action-platform` @ `2662e71`，2026-10-10：343 total、339 passed、failed=0、4 ignored；**候选分支新实测** `codex/main-backport-ready` @ 2026-10-14，命令 `.\build.ps1 -RunTests`：342 total、338 passed、failed=0、4 ignored，新增 `CloudToolCallAdmissionTests` 12 项全部通过）验证通过。 | — |
 
 ### 实测数据（2026-08-08，Player.log）

@@ -5,7 +5,7 @@
 > **2026-08-30～31 节日适配验证**：`HolidayThemeRuntime.ThemeSkin` 统一管理 5 个中国传统节日主题，运行时为 17×24 像素符玄叠加独立配饰，并将 RightPanel、ChatBubble 及子面板切换到各自配色；`@@sim:holiday:*` 命令可在测试模式切换/查询主题。`HolidayFireworksField` 按主题绘制烟花、灯笼、水波、星桥和月兔。万圣节、圣诞节、元旦因不符合当前诗词驱动范围已移出正式主题。Live2D 渲染链路未修改。
 
 > **文档作用**: 本模块文档描述桌宠「交互界面」子系统的**代码真相**——纯 IMGUI 架构（无 UGUI/无 Prefab）、四类界面元素（悬浮球/BallPanel/RightPanel/ChatBubble）、对话核心事件链，以及 17×24 像素符玄 × 对话界面的开源方案可移植汇总（换字体/换头像/加表情差分三件事）。改任何 UI 相关代码前必读。
-> **基本架构**: 全部界面为 **IMGUI**（`OnGUI`/`GUI.DrawTexture`，无 UGUI、无 Prefab、无美术贴图管线），视觉元素（圆角气泡/云纹/星点/CRT 扫描线/像素边框）均运行时 `Texture2D.SetPixel` 程序生成。核心：`RightPanel.cs`（终端窗）、`ChatBubble.cs`（头顶气泡）、`ChatManager.cs`（Entry 历史 + SplitSentences 逐句事件）、`AutoChat.cs`（气泡驱动）。2026-08-12 起 RightPanel 支持 OpenClaw 任务进度可视化：标题栏状态区（思考中部位）步骤显示 + 模态审批弹窗（todo 5/6）。
+> **基本架构**: 全部界面为 **IMGUI**（`OnGUI`/`GUI.DrawTexture`，无 UGUI、无 Prefab、无美术贴图管线），视觉元素（圆角气泡/云纹/星点/CRT 扫描线/像素边框）均运行时 `Texture2D.SetPixel` 程序生成。核心：`RightPanel.cs`（终端窗）、`ChatBubble.cs`（头顶气泡）、`ChatManager.cs`（Entry 历史 + SplitSentences 逐句事件）、`AutoChat.cs`（气泡驱动 + 点击本地轻回应）。2026-08-12 起 RightPanel 支持 OpenClaw 任务进度可视化：标题栏状态区（思考中部位）步骤显示 + 模态审批弹窗（todo 5/6）。
 > **开发历史迭代**: 2026-08-08 像素化调研（Fusion Pixel 字体/17×24 精灵表/ink 对话引擎）；P0 落地清单（半天）：17×24 头像 + FilterMode.Point + 整数倍绘制 + 程序描边；P1（1 天）：Fusion Pixel 12px + 表情差分 + 气泡小立绘；P2 可选：程序化微动/ink/像素本体模式。
 > **编写注意事项**: ①不引入 UI 框架/UGUI/Preafab（架构铁则，ink 除外但 UI 仍自绘）；②像素图只能 ×2/×3/×4 **整数倍**放大 + `FilterMode.Point`，绝不平滑插值；③动态字体 fontSize 用 12/24/36 整数倍；④像素符玄角色版权属米哈游，仅个人自用/学习；⑤OFL-1.1 字体需随包保留许可证文本（`Assets/Resources/Licenses/`）。
 
@@ -57,6 +57,7 @@
 | 终端聊天窗口 | `RightPanel.cs` | "符玄@太卜司" 终端窗，QQ 式左右气泡列表 + 输入框 |
 | 对话核心 | `ChatManager.cs` | `Entry{role,content}` 历史，`SplitSentences` 逐句 + `OnSentenceChanged` 事件 |
 | 气泡驱动 | `AutoChat.cs` | `OnNewReply`/`OnSentenceChanged`/`OnRequestError` → 驱动气泡逐句播放 |
+| 点击本地轻回应 | `AutoChat.cs` + `ChatBubble.cs` | `DragHandler.OnPetClicked` → `AutoChat.HandleClick()`：普通点击只播本地短句（`clickLightResponses`，Low 优先级，`clickLightResponseDuration`），**不调用 `ChatManager.SendMessage`、不写会话记录、不请求任何 LLM**；沿用 `interactionCooldown` 与 `_lastInteractionTime`，在播气泡/正在回复/动作锁（`IsActionLocked`/`IsAiControlLocked`）期间让位 |
 
 ### 2.3 像素头像（RightPanel）
 
@@ -239,6 +240,7 @@
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | — | — | 纯 IMGUI 界面 + 程序生成视觉（圆角/云纹/星点/CRT） |
+| `feat(chat)` | 2026-10-12 | **普通点击改为本地轻回应**：`AutoChat.HandleClick()` 不再调用 `ChatManager.SendMessage`（原「戳戳额头」注入删除），改为播一句本地短句（`clickLightResponses` 顺序轮换、Low 优先级、默认 3s、可关 `clickLightResponseEnabled`），沿用既有 `interactionCooldown`(20s) 与 `_lastInteractionTime`；在播气泡 / 正在回复 / 动作锁（`IsActionLocked`/`IsAiControlLocked`）期间让位，连点不刷屏、不排队、不延长、不补播。待工具审批分支（点击=确认，ESC=拒绝，60s 超时）语义不变；拖拽自动聊天策略本轮未改造。验证：EditMode `ClickLightResponseTests`(12 用例) 与隔离运行时 `scripts/test/click_light_response_drive.cjs` 全通过（failed=0）；实际桌宠尺寸下的真人自然度未验证。 |
 | `fix(chat)` | 2026-09-11 | 聊天标题、消息、输入框和会话列表统一改用 17×24 像素立绘比例；默认头像取消 Bilinear 高清图路径，统一 Point 采样与像素边框。Quick、隔离 EditMode、隔离运行时冒烟及聊天截图验证通过。 |
 | N40 | 2026-08-08 | 17×24 像素化调研完成（`pixel-dialogue-optimization.md`）：开源方案汇总 + P0/P1/P2 落地清单 |
 | 2026-08-12 | **OpenClaw 任务可视化**（方案七）：标题栏状态区步骤显示（金色呼吸，优先级 任务>思考中>就绪）+ 日志区 `[openclaw]` 系统行 + 模态审批弹窗（红边三按钮，60s 自动拒绝，`DrawApprovalDialog`） |

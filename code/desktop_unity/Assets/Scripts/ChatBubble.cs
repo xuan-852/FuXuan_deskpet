@@ -183,6 +183,12 @@ public class ChatBubble : MonoBehaviour
         get { return _hasMessage && _state != BubbleState.Hidden; }
     }
 
+    /// <summary>当前气泡文本（只读，供测试与终端核验）</summary>
+    public string CurrentText => _currentText;
+
+    /// <summary>当前气泡优先级（只读，供测试与终端核验）</summary>
+    public MsgPriority CurrentPriority => _currentPriority;
+
     // ============================================================
     //  Update — 驱动动画状态机
     // ============================================================
