@@ -1,4 +1,23 @@
 'use strict';
+/*
+ * Isolated runtime driver for the certified-motion walking / airborne rejection gates.
+ * Usage: node scripts/test/certified_motion_walk_rejection_drive.cjs <DesktopPet.exe> <skill-id> <candidate.json>
+ *
+ * skillId is used BOTH as a directory-name component and as the curve copy's file
+ * name, so it is validated to /^[A-Za-z0-9_-]+$/ BEFORE any directory creation, any
+ * copy and any spawn. Without that check the raw skillId reaches
+ * path.join(root, 'certified_motions', `${skillId}.json`), where path.join collapses
+ * `..`: skillId=../../evil lands the copy at %TEMP%\evil.json (outside this run's
+ * root) and ../../../evil lands it outside %TEMP% altogether.
+ *
+ * Isolated root: the directory is now allocated atomically with fs.mkdtempSync under
+ * os.tmpdir(), keeping the recognizable prefix
+ * fuxuan_certified_motion_rejection_<skillId lowercased>_ . Uniqueness comes from
+ * mkdtemp's own atomic retry loop, not from a pid/timestamp name, and mkdtemp never
+ * returns an existing directory - so a run never reuses and never pre-deletes one.
+ * The root is deliberately KEPT on success (this driver leaves its evidence in place)
+ * and is also kept on failure, where its path is printed so the evidence can be found.
+ */
 
 const fs = require('fs');
 const os = require('os');
@@ -9,12 +28,22 @@ const { spawn } = require('child_process');
 const [exe, skillId, candidateFile] = process.argv.slice(2);
 if (!exe || !fs.existsSync(exe)) throw new Error('missing DesktopPet.exe path');
 if (!skillId || !candidateFile || !fs.existsSync(candidateFile)) throw new Error('missing skill id or candidate json');
+// Charset gate: ASCII letters, digits, underscore and hyphen only. This runs before
+// anything derives a path from skillId.
+if (!/^[A-Za-z0-9_-]+$/.test(skillId)) {
+    throw new Error('invalid skill id: must match /^[A-Za-z0-9_-]+$/');
+}
 
-const root = path.join(os.tmpdir(), `fuxuan_certified_motion_rejection_${skillId.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${process.pid}_${Date.now()}`);
-const inbox = path.join(root, 'inbox.txt');
-const logPath = path.join(root, 'logs', 'player_log.txt');
+// Assigned only AFTER mkdtempSync succeeds, so a failure before creation can never
+// claim to have preserved a root that was never created.
+let root = null;
+let inbox = null;
+let logPath = null;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const log = () => { try { return fs.readFileSync(logPath, 'utf8'); } catch { return ''; } };
+const log = () => {
+    if (logPath === null) return '';
+    try { return fs.readFileSync(logPath, 'utf8'); } catch { return ''; }
+};
 
 async function waitFor(marker, after = 0, timeoutMs = 90000) {
     for (const end = Date.now() + timeoutMs; Date.now() < end; await sleep(100))
@@ -30,7 +59,10 @@ async function send(command, holdMs = 500) {
 }
 
 (async () => {
-    fs.rmSync(root, { recursive: true, force: true });
+    // All validation has passed; only now does this run create its own directory.
+    root = fs.mkdtempSync(path.join(path.resolve(os.tmpdir()), `fuxuan_certified_motion_rejection_${skillId.toLowerCase()}_`));
+    inbox = path.join(root, 'inbox.txt');
+    logPath = path.join(root, 'logs', 'player_log.txt');
     fs.mkdirSync(path.join(root, 'certified_motions'), { recursive: true });
     fs.writeFileSync(path.join(root, '.test_mode'), '');
     fs.copyFileSync(candidateFile, path.join(root, 'certified_motions', `${skillId}.json`));
@@ -85,4 +117,15 @@ async function send(command, holdMs = 500) {
         await Promise.race([once(processHandle, 'exit'), sleep(8000)]);
     }
     console.log(root);
-})().catch(error => { console.error(error.message); process.exitCode = 1; });
+})().catch(error => {
+    console.error(error.message);
+    if (root === null) {
+        // Validation failed before any directory was created: there is no root of this
+        // run to preserve, and this must not pretend otherwise.
+        console.error('no test root was created; nothing to preserve');
+    } else {
+        // The root is intentionally kept on failure so the evidence stays retrievable.
+        console.error('preserved test root: ' + root);
+    }
+    process.exitCode = 1;
+});
