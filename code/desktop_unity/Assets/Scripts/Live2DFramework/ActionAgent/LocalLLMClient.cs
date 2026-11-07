@@ -33,7 +33,7 @@ public static class LocalLLMClient
 
     /// <summary>
     /// 当前使用的模型名（可通过 SetModel 修改）
-    /// MotionAgent 启动时会覆盖为 3b，这里设为 3b 作为默认值便于本地服务使用
+    /// 由 PetConfig 应用持久化配置；默认值用于独立客户端。
     /// </summary>
     public static string ModelName { get; private set; } = ResolveConfiguredModel("qwen2.5:3b");
 
@@ -64,9 +64,14 @@ public static class LocalLLMClient
     /// </summary>
     public static void SetBaseUrl(string url)
     {
-        BaseUrl = url.TrimEnd('/');
-        if (!BaseUrl.EndsWith("/v1"))
-            BaseUrl += "/v1";
+        if (string.IsNullOrWhiteSpace(url)) return;
+        string normalized = url.Trim().TrimEnd('/');
+        if (!normalized.EndsWith("/v1")) normalized += "/v1";
+        if (string.Equals(BaseUrl, normalized, StringComparison.Ordinal)) return;
+        BaseUrl = normalized;
+        ReadyModels.Clear();
+        IsReady = false;
+        LastHealthMessage = "";
     }
 
     /// <summary>
@@ -74,11 +79,11 @@ public static class LocalLLMClient
     /// </summary>
     public static void SetModel(string model)
     {
-        string previousModel = ModelName;
+        if (string.IsNullOrWhiteSpace(model)) return;
+        model = model.Trim();
+        if (string.Equals(ModelName, model, StringComparison.OrdinalIgnoreCase)) return;
         ModelName = model;
-        IsReady = false;
-        ReadyModels.Remove(previousModel ?? "");
-        ReadyModels.Remove(model ?? "");
+        IsReady = IsModelReady(model);
     }
 
     /// <summary>
@@ -87,10 +92,9 @@ public static class LocalLLMClient
     public static void SetChatModel(string model)
     {
         if (string.IsNullOrWhiteSpace(model)) return;
-        string previousModel = ChatModelName;
-        ChatModelName = model.Trim();
-        ReadyModels.Remove(previousModel ?? "");
-        ReadyModels.Remove(ChatModelName);
+        model = model.Trim();
+        if (string.Equals(ChatModelName, model, StringComparison.OrdinalIgnoreCase)) return;
+        ChatModelName = model;
     }
 
     /// <summary>
@@ -130,6 +134,7 @@ public static class LocalLLMClient
     public static void MarkUnready()
     {
         IsReady = false;
+        ReadyModels.Remove(ModelName ?? "");
     }
 
     // ──────────────────────────────────────────────
@@ -184,11 +189,18 @@ public static class LocalLLMClient
         string modelToCheck,
         Action<bool, string, bool> onResult)
     {
-        string url = BaseUrl.Replace("/v1", "") + "/api/tags";
+        string endpoint = BaseUrl;
+        string url = endpoint.Substring(0, endpoint.Length - 3) + "/api/tags";
         using (UnityWebRequest req = UnityWebRequest.Get(url))
         {
             req.timeout = 5;
             yield return req.SendWebRequest();
+
+            if (!string.Equals(endpoint, BaseUrl, StringComparison.Ordinal))
+            {
+                onResult?.Invoke(false, "本地 API 地址已更改，请重新检查", true);
+                yield break;
+            }
 
             if (req.result == UnityWebRequest.Result.Success)
             {
@@ -209,6 +221,7 @@ public static class LocalLLMClient
             }
             else
             {
+                ReadyModels.Remove(modelToCheck ?? "");
                 if (string.Equals(modelToCheck, ModelName, StringComparison.OrdinalIgnoreCase))
                     IsReady = false;
                 string err = $"❌ 本地 LLM 不可达: {req.error}（请确保 Ollama 已启动）";

@@ -1,5 +1,7 @@
 # AI 对话系统 — ChatManager 与 Token 优化
 
+> **2026-11-07 ??????**???/????????? ProductComposition??????????????? GPU ???????????? PetConfig ?????MotionAgent ??????/??????????????? [?????](../evidence/slimming-local-checkpoint-20261107.md)?
+
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
 > **基本架构**: 用户输入 → `ChatManager`（本地优先 / 10 轮云端回环 / 意图过滤 / 看门狗）；云端路径使用 `ApiClient`（DeepSeek SSE + Function Calling）→ `ToolEngine/` 插件调度；本地路径使用 `LocalToolRouter`（轻量模型 JSON 规划 + 白名单 + 同一 ToolEngine 执行）→ `LocalLLMAgentService` / `qwen3:8b` 生成最终回复。动作/分类/摘要/工具规划使用轻量 `qwen2.5:3b`，聊天单独使用质量优先的 `qwen3:8b`（均可由环境变量覆盖）；云端与本地聊天都经过同一 `PetMemory` 相关性检索，本地只使用更紧凑的忆境预算；`IdleChatGenerator` + `ProactiveMessageScheduler` 驱动自动闲聊。关键文件：`Assets/Scripts/ChatManager.cs`、`ChatManager.RequestLifecycle.cs`、`ChatManager.ContextBuilder.cs`、`ChatManager.ToolLoop.cs`、`LocalToolRouter.cs`、`ApiClient.cs`、`LocalLLMAgentService.cs`、`LocalLLMClient.cs`。
 > **开发历史迭代**: N31-N37 建立意图过滤与本地 LLM；N39 修复反思链路与知识库上下文注入；N40（2026-08-07）完成 T1-T8 Token 优化（缓存命中 98.6%、工具子集 55→27、SystemPrompt -41%）；2026-08-08 修复 T4 竞态、新增 `IsTestMode` 防污染；2026-08-12 P4 曾引入偏好与被动剪贴板注入，后者已于 2026-09-25 关闭；2026-08-12 P5 注入链新增任务轨迹与任务模板；2026-08-18 成本闸门接入云端直连点，新增 `PromptContextBudget` / `ToolResultBudget` / `QualityTelemetry`。

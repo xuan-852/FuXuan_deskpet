@@ -32,8 +32,7 @@ public class LocalLLMAgentService : MonoBehaviour
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
-        // 设置动作/摘要模型；聊天模型由 LocalLLMClient.ChatModelName 独立管理。
-        LocalLLMClient.SetModel(LocalLLMClient.ResolveConfiguredModel("qwen2.5:3b"));
+        // PetConfig owns shared model settings. Creating a consumer must not reset them.
     }
 
     void Start()
@@ -63,12 +62,8 @@ public class LocalLLMAgentService : MonoBehaviour
                 Debug.Log($"[LocalLLMAgent] {msg}");
             });
         }
-        if (!LocalLLMClient.IsModelReady(LocalLLMClient.ChatModelName))
-        {
-            yield return LocalLLMClient.CheckHealthAsync((ok, msg) => {
-                Debug.Log($"[LocalLLMAgent] chat {msg}");
-            }, LocalLLMClient.ChatModelName);
-        }
+        // Chat readiness belongs to RuntimeReadinessService and on-demand chat/UI
+        // checks. Do not duplicate its startup probe from this auxiliary service.
     }
 
     // ==================================================================

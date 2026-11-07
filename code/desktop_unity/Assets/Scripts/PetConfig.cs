@@ -61,6 +61,16 @@ public class PetConfig : MonoBehaviour
         Instance = this;
         DontDestroyOnLoad(gameObject);
         Load();
+        ApplyLocalModelSettings(data);
+    }
+
+    /// <summary>One application point for the shared endpoint and the two model roles.</summary>
+    public static void ApplyLocalModelSettings(ConfigData settings)
+    {
+        if (settings == null) return;
+        LocalLLMClient.SetBaseUrl(settings.localApiUrl);
+        LocalLLMClient.SetModel(LocalLLMClient.ResolveConfiguredModel(settings.localModel));
+        LocalLLMClient.SetChatModel(LocalLLMClient.ResolveConfiguredChatModel(settings.chatLocalModel));
     }
 
     /// <summary>保存配置到磁盘</summary>
@@ -140,13 +150,12 @@ public class PetConfig : MonoBehaviour
         var agent = FindObjectOfType<MotionAgent>();
         if (agent != null)
         {
-            agent.enabled = data.motionAgentEnabled;
+            agent.autonomousActionsEnabled = data.motionAgentEnabled;
             agent.localModel = data.localModel;
             agent.localApiUrl = data.localApiUrl;
         }
 
-        if (!string.IsNullOrWhiteSpace(data.chatLocalModel))
-            LocalLLMClient.SetChatModel(data.chatLocalModel);
+        ApplyLocalModelSettings(data);
 
         Debug.Log("[PetConfig] 已应用全部配置");
     }
@@ -185,11 +194,11 @@ public class PetConfig : MonoBehaviour
         var agent = FindObjectOfType<MotionAgent>();
         if (agent != null)
         {
-            data.motionAgentEnabled = agent.enabled;
-            data.localModel = agent.localModel;
-            data.localApiUrl = agent.localApiUrl;
+            data.motionAgentEnabled = agent.autonomousActionsEnabled;
         }
 
+        data.localModel = LocalLLMClient.ModelName;
+        data.localApiUrl = LocalLLMClient.BaseUrl;
         data.chatLocalModel = LocalLLMClient.ChatModelName;
     }
 }

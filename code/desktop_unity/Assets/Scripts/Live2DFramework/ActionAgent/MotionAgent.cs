@@ -34,7 +34,19 @@ public class MotionAgent : MonoBehaviour
 {
     [Header("◈ 基本配置")]
     [Tooltip("是否启用自主动作")]
-    public bool enabled = true;
+    [UnityEngine.Serialization.FormerlySerializedAs("enabled")]
+    public bool autonomousActionsEnabled = true;
+
+    /// <summary>Transient load suppression never overwrites the user's persisted preference.</summary>
+    public bool IsAutonomyPaused { get; private set; }
+
+    /// <summary>Component lifetime, user preference and load suppression are separate gates.</summary>
+    public bool CanRunAutonomy => isActiveAndEnabled && autonomousActionsEnabled && !IsAutonomyPaused;
+
+    private bool _autonomyStarted;
+
+    /// <summary>Pause/resume autonomous work without changing the saved user setting.</summary>
+    public void SetAutonomyPaused(bool paused) { IsAutonomyPaused = paused; }
 
     [Tooltip("决策间隔（秒），根据密度级别自动调整（加大以降本）")]
     public float baseInterval = 7f;
@@ -243,25 +255,26 @@ public class MotionAgent : MonoBehaviour
         // 懒加载组件引用
         ResolveComponents();
 
-        // 设置本地 LLM
-        LocalLLMClient.SetBaseUrl(localApiUrl);
-        LocalLLMClient.SetModel(LocalLLMClient.ResolveConfiguredModel(localModel));
-
-        // 启动健康检查（不阻塞启动流程）
-        StartCoroutine(DelayedHealthCheck());
-
         // 挂载 GPU 负载监控（游戏检测 → 自动暂停本地 LLM）
         var gpuMon = GetComponent<GpuLoadMonitor>();
         if (gpuMon == null)
             gpuMon = gameObject.AddComponent<GpuLoadMonitor>();
 
-        // 启动主决策循环
+        EnsureAutonomyStarted();
+    }
+
+    private void EnsureAutonomyStarted()
+    {
+        if (_autonomyStarted || !CanRunAutonomy) return;
+        _autonomyStarted = true;
         StartCoroutine(DecisionLoop());
     }
 
     void Update()
     {
-        if (!enabled) return;
+        if (!CanRunAutonomy) return;
+        // A user may enable autonomy after startup; start only once, on first use.
+        EnsureAutonomyStarted();
 
         // 情绪自动衰减
         emotion.TickDecay();
@@ -301,38 +314,6 @@ public class MotionAgent : MonoBehaviour
         }
 
         Debug.Log($"[MotionAgent] 组件就绪: renderer={_renderer!=null}, chat={_chatManager!=null}, tracker={_activityTracker!=null}, validator={_dualValidator!=null}");
-    }
-
-    private IEnumerator DelayedHealthCheck()
-    {
-        yield return new WaitForSeconds(3f); // 等场景稳定
-        bool ready = false;
-        yield return LocalLLMClient.CheckHealthAsync((ok, msg) => {
-            ready = ok;
-            Debug.Log($"[MotionAgent] 本地 LLM 健康检查: {msg}");
-        });
-        _isInFallbackMode = !ready;
-        if (!ready && fallbackToRandom)
-        {
-            Debug.Log("[MotionAgent] 本地 LLM 不可用，已回退到概率决策模式");
-            yield break;
-        }
-
-        // 模型预热：发一次简单请求让 Ollama 加载模型到内存
-        // 避免首次决策请求因加载模型而超时
-        Debug.Log("[MotionAgent] 预热本地 LLM 模型…");
-        bool warmed = false;
-        yield return LocalLLMClient.SimplePromptAsync(
-            "请回复「就绪」",
-            (ok, content) => {
-                warmed = ok;
-                if (ok) Debug.Log("[MotionAgent] 本地 LLM 预热完成");
-                else Debug.LogWarning("[MotionAgent] 预热失败，首次决策可能较慢");
-            },
-            temperature: 0.1f,
-            maxTokens: 16
-        );
-        if (warmed) _isInFallbackMode = false;
     }
 
     // ==================================================================
@@ -457,6 +438,11 @@ public class MotionAgent : MonoBehaviour
     {
         while (true)
         {
+            if (!CanRunAutonomy)
+            {
+                yield return new WaitForSeconds(0.5f);
+                continue;
+            }
             // 质量对照模式只允许 @@motion 直达案例，禁止自主动作和随机决策污染样本。
             if (ChatConfig.UseOllamaMode || ChatConfig.UseCloudBaseline)
             {
@@ -468,7 +454,7 @@ public class MotionAgent : MonoBehaviour
             float interval = GetCurrentInterval();
             yield return new WaitForSeconds(interval);
 
-            if (!enabled) continue;
+            if (!CanRunAutonomy) continue;
 
             // ◈ 判断是否应该决策
             if (!ShouldDecide()) continue;
@@ -510,6 +496,13 @@ public class MotionAgent : MonoBehaviour
                     decision != null, 0, "probability_fallback");
             }
 
+            // Do not execute a late decision returned after autonomy was disabled.
+            if (!CanRunAutonomy)
+            {
+                IsDeciding = false;
+                continue;
+            }
+
             // ◈ 执行
             if (decision != null)
             {
@@ -533,7 +526,7 @@ public class MotionAgent : MonoBehaviour
     private bool ShouldDecide()
     {
         // 不启用
-        if (!enabled) return false;
+        if (!CanRunAutonomy) return false;
 
         // AI 控制中（ChatManager 工具调用进行中）
         if (_chatManager != null && _chatManager.IsWaiting) return false;

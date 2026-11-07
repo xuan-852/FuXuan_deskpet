@@ -45,7 +45,13 @@ public class AutoChat : MonoBehaviour
     {
         _chat = GetComponent<ChatManager>();
         _bubble = GetComponent<ChatBubble>();
-        if (_bubble == null) _bubble = gameObject.AddComponent<ChatBubble>();
+        _idleGen = GetComponent<IdleChatGenerator>();
+        if (_bubble == null || _idleGen == null)
+        {
+            Debug.LogWarning("[AutoChat] 缺少 ChatBubble/IdleChatGenerator，请由装配入口提供，已停用");
+            enabled = false;
+            return;
+        }
         _renderer = GetComponent<Live2DRenderer>();
         _timeController = GetComponent<TimeWeatherController>();
 
@@ -56,11 +62,6 @@ public class AutoChat : MonoBehaviour
             _drag.OnPetClicked += HandleClick;
             _drag.OnDragEnded += HandleDrag;
         }
-
-        // 获取/添加 IdleChatGenerator
-        _idleGen = GetComponent<IdleChatGenerator>();
-        if (_idleGen == null)
-            _idleGen = gameObject.AddComponent<IdleChatGenerator>();
 
         // 监听 AI 新回复
         if (_chat != null)

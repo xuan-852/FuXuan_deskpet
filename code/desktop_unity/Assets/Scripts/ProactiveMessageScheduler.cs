@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// 主动关心调度器 — 符玄的「体贴天机」
@@ -72,7 +72,11 @@ public class ProactiveMessageScheduler : MonoBehaviour
     {
         _bubble = GetComponent<ChatBubble>();
         if (_bubble == null)
-            _bubble = gameObject.AddComponent<ChatBubble>();
+        {
+            Debug.LogWarning("[ProactiveScheduler] 缺少 ChatBubble，请由装配入口提供，已停用");
+            enabled = false;
+            return;
+        }
         Debug.Log("[ProactiveScheduler] 🌸 体贴天机已启动");
     }
 

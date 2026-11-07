@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -75,7 +75,7 @@ public sealed class RuntimeReadinessService : MonoBehaviour
         {
             bool localOk = false;
             string message = "";
-            yield return LocalLLMClient.CheckHealthAsync((ok, text) => { localOk = ok; message = text ?? ""; });
+            yield return LocalLLMClient.CheckHealthAsync((ok, text) => { localOk = ok; message = text ?? ""; }, LocalLLMClient.ChatModelName);
             LocalState = localOk ? CheckState.Ready : CheckState.Warning;
             LocalMessage = message;
         }
@@ -136,7 +136,7 @@ public sealed class RuntimeReadinessService : MonoBehaviour
         if (ChatConfig.UseOllamaMode)
         {
             ShortStatus = LocalState == CheckState.Ready ? "本地·就绪" : "本地·未就绪";
-            DetailSummary = $"本地模型：{LocalLLMClient.ModelName} | {LocalMessage}";
+            DetailSummary = $"本地模型：{LocalLLMClient.ChatModelName} | {LocalMessage}";
         }
         else
         {

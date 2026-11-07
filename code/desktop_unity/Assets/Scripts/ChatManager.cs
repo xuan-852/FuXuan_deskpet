@@ -52,50 +52,8 @@ public partial class ChatManager : MonoBehaviour
         else
             _systemPromptTemplate = "你是符玄，仙舟「罗浮」太卜司之首。";
 
-        // ——— 确保 ActivityTracker 单例存在 ———
-        if (ActivityTracker.Instance == null)
-        {
-            var actGo = new GameObject("ActivityTracker");
-            actGo.AddComponent<ActivityTracker>();
-            actGo.transform.SetParent(transform);
-        }
+        ProductComposition.AttachChatServices(gameObject);
         activityTracker = ActivityTracker.Instance;
-
-        // ——— 确保 PetConfig 和 PetMemory 单例存在（若场景中未手动挂载）———
-        if (PetConfig.Instance == null)
-        {
-            var cfgGo = new GameObject("PetConfig");
-            cfgGo.AddComponent<PetConfig>();
-            cfgGo.transform.SetParent(transform);
-        }
-        if (PetMemory.Instance == null)
-        {
-            var memGo = new GameObject("PetMemory");
-            memGo.AddComponent<PetMemory>();
-            memGo.transform.SetParent(transform);
-        }
-        // ——— 确保 PersonalityManager 单例存在 ———
-        if (PersonalityManager.Instance == null)
-        {
-            var persGo = new GameObject("PersonalityManager");
-            persGo.AddComponent<PersonalityManager>();
-            persGo.transform.SetParent(transform);
-        }
-        // ——— 确保 KnowledgeBaseManager 单例存在 ———
-        if (KnowledgeBaseManager.Instance == null)
-        {
-            var kbGo = new GameObject("KnowledgeBaseManager");
-            kbGo.AddComponent<KnowledgeBaseManager>();
-            kbGo.transform.SetParent(transform);
-        }
-
-        // ——— 确保 LocalLLMAgentService 单例存在（分类/工具规划/回复/压缩/提取）———
-        if (LocalLLMAgentService.Instance == null)
-        {
-            var llmGo = new GameObject("LocalLLMAgentService");
-            llmGo.AddComponent<LocalLLMAgentService>();
-            llmGo.transform.SetParent(transform);
-        }
 
         // 反思机制已接线：SendRequestCoroutine 每次对话结束后调用
         // PetMemory.CheckReflection() → DoReflection()（DeepSeek 提炼）→ CommitReflection()。

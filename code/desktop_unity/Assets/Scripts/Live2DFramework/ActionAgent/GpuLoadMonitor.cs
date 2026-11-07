@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// 符玄「韬晦」— GPU 负载监控 & 游戏检测
@@ -65,7 +65,7 @@ public class GpuLoadMonitor : MonoBehaviour
                 LocalLLMClient.Paused = true;
 
                 if (alsoPauseMotionAgent && _motionAgent != null)
-                    _motionAgent.enabled = false;
+                    _motionAgent.SetAutonomyPaused(true);
 
                 Debug.Log("[GpuLoadMonitor] 🎮 检测到游戏 → 暂停本地 LLM");
             }
@@ -84,7 +84,7 @@ public class GpuLoadMonitor : MonoBehaviour
             LocalLLMClient.Paused = false;
 
             if (alsoPauseMotionAgent && _motionAgent != null)
-                _motionAgent.enabled = true;
+                _motionAgent.SetAutonomyPaused(false);
 
             Debug.Log("[GpuLoadMonitor] 🔄 冷却结束 → 恢复本地 LLM");
 

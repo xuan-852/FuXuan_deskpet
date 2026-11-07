@@ -1,5 +1,7 @@
 # 具身动作系统 ActionAgent — 决策-执行-验证闭环
 
+> **2026-11-07 ??????**???/????????? ProductComposition??????????????? GPU ???????????? PetConfig ?????MotionAgent ??????/??????????????? [?????](../evidence/slimming-local-checkpoint-20261107.md)?
+
 > **文档作用**: 本模块文档描述桌宠「具身智能」子系统的**代码真相**——ActionAgent 15 文件架构、MotionAgent 决策循环、MotionPlanner 模板 + MotionTranslator LLM 翻译、闭环验证体系（GLM-4V 评分 + MotionMemory 学习）、验证协议与历史成绩。改动作生成/验证/记忆相关代码前必读。
 > **基本架构**: `MotionAgent`（tick 驱动决策）→ `MotionPlanner`（10 模板）/ `MotionTranslator`（DeepSeek 自然语言→关键帧，10 规则 + 10 特殊模式）→ `MotionGenerator`（协程插值播放）→ 闭环：截图 → 2×2 拼图 → GLM-4V 评分 → `MotionMemoryManager`（30 条容量）→ VERIFIED FEEDBACK 反馈给下次生成。关键目录：`Assets/Scripts/Live2DFramework/ActionAgent/`（15 文件）。
 > **开发历史迭代**: N31 引入 DualModelValidator（名义双模型）；N34（2026-07-07）SPECIAL PATTERNS 优化（捂脸/捂嘴/叉腰/缩团/行礼）；N37 通过率 60%→70%；N38（2026-08-02）代码真相审计修正规则数 11→10、SPECIAL PATTERNS 12→10；N39 修复 BUG-1（睡眠时段判断）/BUG-5（Dual 回调简化）/BUG-7（示例角度制），删除 AutoMotionCollector 死代码；N40 T2 部位裁剪 schema。
