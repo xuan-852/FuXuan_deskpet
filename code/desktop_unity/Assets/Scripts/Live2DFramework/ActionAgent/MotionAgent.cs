@@ -255,11 +255,6 @@ public class MotionAgent : MonoBehaviour
         // 懒加载组件引用
         ResolveComponents();
 
-        // 挂载 GPU 负载监控（游戏检测 → 自动暂停本地 LLM）
-        var gpuMon = GetComponent<GpuLoadMonitor>();
-        if (gpuMon == null)
-            gpuMon = gameObject.AddComponent<GpuLoadMonitor>();
-
         EnsureAutonomyStarted();
     }
 
@@ -306,12 +301,6 @@ public class MotionAgent : MonoBehaviour
         _chatManager = FindObjectOfType<ChatManager>();
         _activityTracker = ActivityTracker.Instance;
         _dualValidator = FindObjectOfType<DualModelValidator>();
-        if (_dualValidator == null)
-        {
-            var go = new GameObject("DualModelValidator");
-            _dualValidator = go.AddComponent<DualModelValidator>();
-            if (transform != null) go.transform.SetParent(transform);
-        }
 
         Debug.Log($"[MotionAgent] 组件就绪: renderer={_renderer!=null}, chat={_chatManager!=null}, tracker={_activityTracker!=null}, validator={_dualValidator!=null}");
     }

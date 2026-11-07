@@ -23,6 +23,10 @@
 
 ## 二、基本架构
 
+### 动作依赖所有权收口（2026-11-07）
+
+删除 MotionAgent 自建验证器、验证器自建动作记忆、MotionAgent 自建 GPU 监控器三处隐藏创建分支，以及验证器无用渲染器字段和全局查找。验证器和 GPU 监控器由 ProductComposition 显式装配，动作记忆由 DesktopPet 提供；独立宿主须自行提供所需服务。评分、暂停和冷却算法未改。隔离源码编译、Player 构建及启动冒烟通过；EditMode 354 项中 348 通过、2 失败、4 跳过，两项失败为基线动作资源缺失/哈希不匹配，不宣称节点全绿。见 [检查点与验证限制](../evidence/slimming-ownership-checkpoint-20261107.md)。
+
 ### 2.0 L3 认证技能基础（2026-09-16）
 
 2026-09-25 隔离 Player 复验：`scripts/test/request_body_skill_runtime_drive.cjs` 经测试 inbox 调用 `request_body_skill`，m06 在 `BehaviorCoordinator` 中从 `Executing` 到 `Completed` 保持同一 intent、execution、correlation 和 request ID；认证准入只发生一次，完成后姿势还原、准入与输入租约释放。聊天自然语言「歪歪头给我看」也可触发认证曲线；停止后再次请求能完成，未知技能被拒绝。测试模式的超时推进得到 `Expired`，Renderer 禁用再启用得到 `Cancelled` 且随后能再次完成，活动中销毁模型得到 `RecoveryFailed`；`RightPanel` 对每个 execution ID 只记录一次终态。后续同一驱动已验证模型自动重建、待恢复参数重试和新认证动作再次完成；这些属于隔离 Player 故障注入，不等于真实设备故障。

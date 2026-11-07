@@ -7,7 +7,7 @@
 /// 检测到游戏时自动暂停本地 LLM，退出游戏冷却后自动恢复。
 /// 确保 LLM 决策不占用 GPU 影响游戏性能。
 ///
-/// 使用方式：自动实例化（挂载在 MotionAgent 同物体上）
+/// 使用方式：由 ProductComposition 挂载在 MotionAgent 同物体上。
 /// </summary>
 public class GpuLoadMonitor : MonoBehaviour
 {

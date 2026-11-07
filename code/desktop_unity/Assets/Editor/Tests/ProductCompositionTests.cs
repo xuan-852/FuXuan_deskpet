@@ -27,7 +27,7 @@ public class ProductCompositionTests
             typeof(DragHandler), typeof(AttentionReactionAdapter), typeof(HybridRenderer),
             typeof(RightPanel), typeof(TimeWeatherController), typeof(ReminderManager),
             typeof(ServerPollService), typeof(ChatManager), typeof(ToolCallInvoker),
-            typeof(MotionAgent), typeof(DualModelValidator),
+            typeof(MotionAgent), typeof(GpuLoadMonitor), typeof(DualModelValidator),
             typeof(AutoChat), typeof(ProactiveMessageScheduler), typeof(VisualHeartbeat),
             typeof(ChatBubble), typeof(IdleChatGenerator)
         };

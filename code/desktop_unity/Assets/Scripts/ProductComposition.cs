@@ -39,6 +39,7 @@ public static class ProductComposition
         if (chat.toolInvoker == null) chat.toolInvoker = tools;
 
         Ensure<MotionAgent>(host);
+        Ensure<GpuLoadMonitor>(host);
         Ensure<DualModelValidator>(host);
         Ensure<AutoChat>(host);
         Ensure<ProactiveMessageScheduler>(host);

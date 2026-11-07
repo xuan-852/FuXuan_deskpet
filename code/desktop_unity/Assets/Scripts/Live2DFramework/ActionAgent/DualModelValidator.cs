@@ -34,7 +34,6 @@ public class DualModelValidator : MonoBehaviour
     //  运行时
     // ==================================================================
 
-    private Live2DRenderer _renderer;
     private MotionMemoryManager _memoryManager;
 
     /// <summary>验证日志条目</summary>
@@ -75,14 +74,7 @@ public class DualModelValidator : MonoBehaviour
 
     void Start()
     {
-        _renderer = FindObjectOfType<Live2DRenderer>();
         _memoryManager = MotionMemoryManager.Instance;
-        if (_memoryManager == null)
-        {
-            var go = new GameObject("MotionMemoryManager");
-            _memoryManager = go.AddComponent<MotionMemoryManager>();
-            go.transform.SetParent(transform);
-        }
     }
 
     // ==================================================================
