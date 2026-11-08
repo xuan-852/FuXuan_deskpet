@@ -134,24 +134,34 @@ public class ServerPollService : MonoBehaviour
     //  轮询逻辑
     // ================================================================
 
+    /// <summary>
+    /// Single HTTP transport boundary for the poll and the four read-only queries.
+    /// Returns the status/body without swallowing exceptions, so each caller keeps
+    /// its existing catch-and-format behaviour and exact user-facing text.
+    /// </summary>
+    private async Task<(bool ok, long status, string body)> GetAsyncWithStatus(string url)
+    {
+        var response = await _http.GetAsync(url);
+        string body = await response.Content.ReadAsStringAsync();
+        return (response.IsSuccessStatusCode, (long)response.StatusCode, body);
+    }
+
     /// <summary>轮询推送消息队列</summary>
     private async Task PollMessagesAsync()
     {
         try
         {
             string url = $"{serverUrl}/api/pet/poll?lastId={Uri.EscapeDataString(_lastId)}";
-            var response = await _http.GetAsync(url);
+            var (ok, status, body) = await GetAsyncWithStatus(url);
 
-            if (!response.IsSuccessStatusCode)
+            if (!ok)
             {
                 // 非成功状态码（如 401 未授权）输出 warning 便于排查
-                var body = await response.Content.ReadAsStringAsync();
-                Debug.LogWarning($"[ServerPollService] 轮询失败: HTTP {(int)response.StatusCode} {body}");
+                Debug.LogWarning($"[ServerPollService] 轮询失败: HTTP {status} {body}");
                 return;
             }
 
-            string json = await response.Content.ReadAsStringAsync();
-            var result = JsonUtility.FromJson<PollResponse>(json);
+            var result = JsonUtility.FromJson<PollResponse>(body);
 
             if (result == null || result.data == null) return;
 
@@ -380,10 +390,9 @@ public class ServerPollService : MonoBehaviour
     {
         try
         {
-            var response = await _http.GetAsync($"{serverUrl}/api/pet/exams");
-            if (!response.IsSuccessStatusCode) return "查询考试失败，服务端未响应";
+            var (ok, _, json) = await GetAsyncWithStatus($"{serverUrl}/api/pet/exams");
+            if (!ok) return "查询考试失败，服务端未响应";
 
-            string json = await response.Content.ReadAsStringAsync();
             var result = JsonUtility.FromJson<ExamsResponse>(json);
             if (result?.data?.exams == null || result.data.exams.Length == 0)
                 return "目前没有考试安排";
@@ -417,10 +426,9 @@ public class ServerPollService : MonoBehaviour
     {
         try
         {
-            var response = await _http.GetAsync($"{serverUrl}/api/pet/scores");
-            if (!response.IsSuccessStatusCode) return "查询成绩失败，服务端未响应";
+            var (ok, _, json) = await GetAsyncWithStatus($"{serverUrl}/api/pet/scores");
+            if (!ok) return "查询成绩失败，服务端未响应";
 
-            string json = await response.Content.ReadAsStringAsync();
             var result = JsonUtility.FromJson<ScoresResponse>(json);
             if (result?.data?.scores == null || result.data.scores.Length == 0)
                 return "目前还没有录入成绩";
@@ -454,10 +462,9 @@ public class ServerPollService : MonoBehaviour
         {
             string url = $"{serverUrl}/api/pet/schedule";
             if (week > 0) url += $"?week={week}";
-            var response = await _http.GetAsync(url);
-            if (!response.IsSuccessStatusCode) return "查询课表失败，服务端未响应";
+            var (ok, _, json) = await GetAsyncWithStatus(url);
+            if (!ok) return "查询课表失败，服务端未响应";
 
-            string json = await response.Content.ReadAsStringAsync();
             var result = JsonUtility.FromJson<ScheduleResponse>(json);
             if (result?.data?.courses == null || result.data.courses.Length == 0)
                 return week > 0 ? $"第 {week} 周没有课程安排" : "目前没有课程安排";
@@ -503,10 +510,9 @@ public class ServerPollService : MonoBehaviour
     {
         try
         {
-            var response = await _http.GetAsync($"{serverUrl}/api/pet/user/status");
-            if (!response.IsSuccessStatusCode) return "查询用户信息失败，服务端未响应";
+            var (ok, _, json) = await GetAsyncWithStatus($"{serverUrl}/api/pet/user/status");
+            if (!ok) return "查询用户信息失败，服务端未响应";
 
-            string json = await response.Content.ReadAsStringAsync();
             var result = JsonUtility.FromJson<UserStatusResponse>(json);
 
             if (result?.data == null) return "查询用户信息失败";
