@@ -6,6 +6,31 @@ using UnityEngine.TestTools;
 public class CompanionDependencyTests
 {
     [Test]
+    public void BenchmarkCannotStartWithoutExplicitOptIn()
+    {
+        string previous = System.Environment.GetEnvironmentVariable("FU_XUAN_BENCHMARK");
+        var host = new GameObject("benchmark-rejection-test");
+        host.SetActive(false);
+        try
+        {
+            System.Environment.SetEnvironmentVariable("FU_XUAN_BENCHMARK", null);
+            var flags = BindingFlags.Static | BindingFlags.NonPublic;
+            int before = Resources.FindObjectsOfTypeAll<ToolBenchmarkRunner>().Length;
+            typeof(ToolBenchmarkRunner).GetMethod("AutoLaunch", flags).Invoke(null, null);
+            Assert.AreEqual(before, Resources.FindObjectsOfTypeAll<ToolBenchmarkRunner>().Length);
+            var runner = host.AddComponent<ToolBenchmarkRunner>();
+            LogAssert.Expect(LogType.Warning, "[ToolBenchmark] 仅允许显式启用的临时隔离测试，已停用");
+            typeof(ToolBenchmarkRunner).GetMethod("Start", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(runner, null);
+            Assert.IsFalse(runner.enabled);
+        }
+        finally
+        {
+            Object.DestroyImmediate(host);
+            System.Environment.SetEnvironmentVariable("FU_XUAN_BENCHMARK", previous);
+        }
+    }
+
+    [Test]
     public void LegacyPanelDoesNotCreateReminderStorage()
     {
         var host = new GameObject("unassembled-legacy-panel");

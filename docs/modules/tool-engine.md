@@ -19,6 +19,10 @@
 
 ## 二、基本架构
 
+### Benchmark 运行入口隔离（2026-11-08）
+
+ToolBenchmarkRunner 的全局自启动及手动 Start 共用显式 opt-in/临时测试根判定：FU_XUAN_BENCHMARK=1、FU_XUAN_DATA 与实际根一致、.test_mode、系统临时目录严格子路径且已有祖先无重解析点；自动启动另需 .benchmark。不满足时不启动全量工具。独立工程 Quick、EditMode 388 项（384 通过 / 0 失败 / 4 跳过）、临时 Player 与隔离启动通过，仅验证未启用时拒绝及产品启动；未执行 benchmark、未完成允许路径全矩阵，不构成副作用工具运行授权，见 [边界记录](../evidence/benchmark-startup-isolation-20261108.md)。
+
 ### 2.1 插件架构
 
 ```

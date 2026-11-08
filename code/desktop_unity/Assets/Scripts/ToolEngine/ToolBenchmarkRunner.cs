@@ -7,7 +7,7 @@ using UnityEngine;
 
 /// <summary>
 /// 全量 AI 工具稳定性 & 快速性测试器（运行时）
-/// 触发：D:\DesktopPetData\.benchmark 开关文件存在时，场景加载后自动运行。
+/// 触发：显式 FU_XUAN_BENCHMARK=1、FU_XUAN_DATA 临时隔离根、.test_mode 与 .benchmark 同时存在。
 /// 逐个调用 ToolRegistry 中全部已注册工具（同步直调 / 异步协程），
 /// 记录每个工具的 参数 / 耗时(ms) / 返回结果 / 状态(OK|ERROR|TIMEOUT|SKIP|DANGER_GUARD)，
 /// 写入 D:\DesktopPetData\tool_benchmark_results.json，完成后删除开关文件。
@@ -34,6 +34,7 @@ public class ToolBenchmarkRunner : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoLaunch()
     {
+        if (!IsIsolatedBenchmarkEnabled()) return;
         if (_launched) return;
         if (!File.Exists(BenchmarkFlag)) return;   // 无开关文件 → 完全不干扰正常运行
         _launched = true;
@@ -159,7 +160,32 @@ public class ToolBenchmarkRunner : MonoBehaviour
 
     private void Start()
     {
+        if (!IsIsolatedBenchmarkEnabled())
+        {
+            UnityEngine.Debug.LogWarning("[ToolBenchmark] 仅允许显式启用的临时隔离测试，已停用");
+            enabled = false;
+            return;
+        }
         StartCoroutine(RunAll());
+    }
+
+    private static bool IsIsolatedBenchmarkEnabled()
+    {
+        if (Environment.GetEnvironmentVariable("FU_XUAN_BENCHMARK") != "1"
+            || !DataPathConfig.IsTestMode) return false;
+        string configured = Environment.GetEnvironmentVariable("FU_XUAN_DATA");
+        if (string.IsNullOrWhiteSpace(configured)) return false;
+        try
+        {
+            string root = Path.GetFullPath(DataPathConfig.DataRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string temp = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (!string.Equals(root, Path.GetFullPath(configured).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
+                || !root.StartsWith(temp + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return false;
+            for (var directory = new DirectoryInfo(root); directory != null; directory = directory.Parent)
+                if (directory.Exists && (directory.Attributes & FileAttributes.ReparsePoint) != 0) return false;
+            return true;
+        }
+        catch (Exception) { return false; }
     }
 
     private IEnumerator RunAll()
