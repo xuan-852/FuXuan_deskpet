@@ -33,6 +33,12 @@ public class ProductCompositionTests
         };
         foreach (var type in expected)
             Assert.IsNotNull(_host.GetComponent(type), type.Name);
+        Assert.IsNotNull(_host.GetComponentInChildren<ActivityTracker>(true));
+        Assert.IsNotNull(_host.GetComponentInChildren<PetConfig>(true));
+        Assert.IsNotNull(_host.GetComponentInChildren<PetMemory>(true));
+        Assert.IsNotNull(_host.GetComponentInChildren<PersonalityManager>(true));
+        Assert.IsNotNull(_host.GetComponentInChildren<KnowledgeBaseManager>(true));
+        Assert.IsNotNull(_host.GetComponentInChildren<LocalLLMAgentService>(true));
         Assert.AreSame(_host.GetComponent<ToolCallInvoker>(), _host.GetComponent<ChatManager>().toolInvoker);
     }
 
@@ -46,10 +52,10 @@ public class ProductCompositionTests
         chat.toolInvoker = explicitTools.AddComponent<ToolCallInvoker>();
 
         ProductComposition.AttachFeatures(_host);
-        var original = _host.GetComponents<Component>();
+        var original = _host.GetComponentsInChildren<Component>(true);
         ProductComposition.AttachFeatures(_host);
 
-        CollectionAssert.AreEqual(original, _host.GetComponents<Component>());
+        CollectionAssert.AreEqual(original, _host.GetComponentsInChildren<Component>(true));
         Assert.AreSame(explicitTools.GetComponent<ToolCallInvoker>(), chat.toolInvoker);
     }
 

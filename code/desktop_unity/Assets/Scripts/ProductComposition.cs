@@ -34,6 +34,7 @@ public static class ProductComposition
         if (legacyPanels.Length > 0)
             Debug.Log($"[DesktopPet] 已禁用遗留 BallPanel 实例: {legacyPanels.Length}");
 
+        AttachChatServices(host);
         var chat = Ensure<ChatManager>(host);
         var tools = Ensure<ToolCallInvoker>(host);
         if (chat.toolInvoker == null) chat.toolInvoker = tools;
@@ -47,8 +48,8 @@ public static class ProductComposition
     }
 
     /// <summary>
-    /// ChatManager.Awake calls this for both product and standalone chat hosts.
-    /// Keep that call site until standalone consumers have an explicit bootstrap.
+    /// Create shared services before ChatManager.Awake binds its references.
+    /// Standalone chat hosts must call this explicitly before activating ChatManager.
     /// </summary>
     public static void AttachChatServices(GameObject host)
     {

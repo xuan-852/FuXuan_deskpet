@@ -52,7 +52,6 @@ public partial class ChatManager : MonoBehaviour
         else
             _systemPromptTemplate = "你是符玄，仙舟「罗浮」太卜司之首。";
 
-        ProductComposition.AttachChatServices(gameObject);
         activityTracker = ActivityTracker.Instance;
 
         // 反思机制已接线：SendRequestCoroutine 每次对话结束后调用
