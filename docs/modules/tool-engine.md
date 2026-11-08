@@ -19,6 +19,10 @@
 
 ## 二、基本架构
 
+### 审批等待职责收口（2026-11-08）
+
+聊天本地/云端工具路径及定时提醒的审批等待统一调用既有 ToolConfirmManager.WaitForDecision，删除两端重复的回调状态/60 秒循环/超时拒绝；文案与气泡仍归调用端，已有审批不覆盖。沿用 Time.time，显式 Dispose 未决枚举器会拒绝其审批，已结束等待不清除后续请求。独立工程 Quick、EditMode 393 项（389 通过 / 0 失败 / 4 跳过）、临时 Player 和隔离启动通过；真实审批 UI、Unity 停协程销毁和实际定时动作未验证，见 [职责收口证据](../evidence/tool-confirmation-wait-20261108.md)。
+
 ### Benchmark 运行入口隔离（2026-11-08）
 
 ToolBenchmarkRunner 的全局自启动及手动 Start 共用显式 opt-in/临时测试根判定：FU_XUAN_BENCHMARK=1、FU_XUAN_DATA 与实际根一致、.test_mode、系统临时目录严格子路径且已有祖先无重解析点；自动启动另需 .benchmark。不满足时不启动全量工具。独立工程 Quick、EditMode 388 项（384 通过 / 0 失败 / 4 跳过）、临时 Player 与隔离启动通过，仅验证未启用时拒绝及产品启动；未执行 benchmark、未完成允许路径全矩阵，不构成副作用工具运行授权，见 [边界记录](../evidence/benchmark-startup-isolation-20261108.md)。

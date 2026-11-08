@@ -267,26 +267,14 @@ public partial class ChatManager
         string toolName, string argsJson, string prompt, Action<bool> onResolved)
     {
         bool confirmed = false;
-        bool resolved = false;
         string description = ToolRegistry.GetDangerDescription(toolName);
         var confirmBubble = FindObjectOfType<ChatBubble>();
 
         if (confirmBubble != null)
             confirmBubble.ShowMessage(prompt, 60f, ChatBubble.MsgPriority.High);
 
-        ToolConfirmManager.Request(toolName, argsJson, description,
-            ok => { confirmed = ok; resolved = true; });
-
-        float confirmTimeout = Time.time + 60f;
-        while (!resolved)
-        {
-            if (Time.time > confirmTimeout)
-            {
-                ToolConfirmManager.Resolve(false);
-                break;
-            }
-            yield return null;
-        }
+        yield return ToolConfirmManager.WaitForDecision(toolName, argsJson, description,
+            ok => confirmed = ok);
 
         if (confirmed && confirmBubble != null)
             confirmBubble.ShowMessage("✅ 已获准许，施法！", 2.5f, ChatBubble.MsgPriority.Normal);

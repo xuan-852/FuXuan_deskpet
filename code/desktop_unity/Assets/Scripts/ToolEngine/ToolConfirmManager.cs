@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using UnityEngine;
 
 /// <summary>
 /// 工具确认管理器 — 危险工具（删文件/关机/锁屏等）执行前的用户确认协调器
@@ -41,6 +43,41 @@ public static class ToolConfirmManager
         PendingDescription = description;
         if (onResolved != null)
             OnResolved += onResolved;
+    }
+
+    /// <summary>Shared approval wait; presentation remains with the caller.</summary>
+    public static IEnumerator WaitForDecision(string toolName, string argsJson, string description,
+        Action<bool> onResolved, float timeoutSeconds = 60f)
+    {
+        bool confirmed = false;
+        bool resolved = false;
+        // Empty names cannot represent a pending request in the existing protocol.
+        if (string.IsNullOrEmpty(toolName))
+        {
+            onResolved?.Invoke(false);
+            yield break;
+        }
+        Request(toolName, argsJson, description, ok => { confirmed = ok; resolved = true; });
+        try
+        {
+            float deadline = Time.time + timeoutSeconds;
+            while (!resolved)
+            {
+                if (Time.time >= deadline)
+                {
+                    Resolve(false);
+                    break;
+                }
+                yield return null;
+            }
+        }
+        finally
+        {
+            // A busy request resolves synchronously; a completed wait must never
+            // clear a subsequent request. Only an unresolved owner is cancelled.
+            if (!resolved) Resolve(false);
+        }
+        onResolved?.Invoke(confirmed);
     }
 
     /// <summary>

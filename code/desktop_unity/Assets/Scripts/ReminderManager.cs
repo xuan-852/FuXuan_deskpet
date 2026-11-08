@@ -531,7 +531,6 @@ public class ReminderManager : MonoBehaviour
         }
 
         bool confirmed = false;
-        bool resolved = false;
         var confirmBubble = _bubble != null ? _bubble : FindObjectOfType<ChatBubble>();
         if (confirmBubble != null)
         {
@@ -540,19 +539,8 @@ public class ReminderManager : MonoBehaviour
                 60f, ChatBubble.MsgPriority.High);
         }
 
-        ToolConfirmManager.Request(r.action.toolName, r.action.args, description,
-            ok => { confirmed = ok; resolved = true; });
-
-        float confirmTimeout = Time.time + 60f;
-        while (!resolved)
-        {
-            if (Time.time > confirmTimeout)
-            {
-                ToolConfirmManager.Resolve(false); // 触发回调 → resolved=true, confirmed=false
-                break;
-            }
-            yield return null;
-        }
+        yield return ToolConfirmManager.WaitForDecision(r.action.toolName, r.action.args, description,
+            ok => confirmed = ok);
 
         Debug.Log($"[ReminderManager] 定时动作确认结果: {(confirmed ? "允许" : "拒绝")}");
         onResult(confirmed);
