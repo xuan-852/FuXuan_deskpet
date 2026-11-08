@@ -6,6 +6,22 @@ using UnityEngine.TestTools;
 public class CompanionDependencyTests
 {
     [Test]
+    public void LegacyPanelDoesNotCreateReminderStorage()
+    {
+        var host = new GameObject("unassembled-legacy-panel");
+        host.SetActive(false);
+        int before = Resources.FindObjectsOfTypeAll<ReminderManager>().Length;
+        try
+        {
+            var panel = host.AddComponent<BallPanel>();
+            typeof(BallPanel).GetMethod("Start", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(panel, null);
+            Assert.IsNull(host.GetComponent<ReminderManager>());
+            Assert.AreEqual(before, Resources.FindObjectsOfTypeAll<ReminderManager>().Length);
+        }
+        finally { Object.DestroyImmediate(host); }
+    }
+
+    [Test]
     public void AutoChatDoesNotCreateMissingDependenciesOrScheduleGreetings()
     {
         var host = new GameObject("unassembled-auto-chat");

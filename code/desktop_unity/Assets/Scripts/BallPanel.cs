@@ -78,11 +78,7 @@ public class BallPanel : MonoBehaviour
     {
         _pet = GetComponent<DesktopPet>();
         _reminders = ReminderManager.Instance;
-        if (_reminders == null)
-        {
-            _reminders = GetComponent<ReminderManager>();
-            if (_reminders == null) _reminders = gameObject.AddComponent<ReminderManager>();
-        }
+        if (_reminders == null) _reminders = GetComponent<ReminderManager>();
     }
 
     void InitStyles()

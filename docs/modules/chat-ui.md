@@ -120,6 +120,8 @@
 
 ### 2.7 设置/便签/报告页内子面板 + 淡入淡出 + 工具提示（2026-08-13）
 
+**遗留面板依赖收口（2026-11-08）**：BallPanel.Start 只读取既有 ReminderManager，不再自建持久化服务。产品装配与 PanelType/DragHandler 兼容保留，独立旧宿主须显式提供提醒服务。独立 main 后续工程 Quick、EditMode 387 项（383 通过 / 0 失败 / 4 跳过）、新 Player 与隔离启动通过；遗留 GUI 和外部宿主未验证，见 [依赖记录](../evidence/legacy-panel-dependency-20261108.md)。
+
 **子面板页内化**：设置/便签/报告/消耗/忆境不再开独立的灰色 BallPanel 窗口，而是在 RightPanel 对话框内以 860×900 子面板视图呈现（`SUB_PANEL_W/H`）。新增 `PanelView.Settings / Reminders / Report / Usage / Memory` 视图 + `IsSubPanelView()` 判断，由 `OpenSubPanel(BallPanel.PanelType)` 打开（记录 `_prevView` 供 ◀ 返回），`BackFromSubPanel()` 返回来源视图。BallPanel.cs 保留仅用于 `DragHandler` 兼容与 `PanelType` 枚举。
 
 **三个子面板内容**：- **设置（DrawSettingsSubPanel）**：⚙任务权重 5 行（`DrawWeightRowGui`，读写 `DesktopPet` 的 taskWeight 字段，✓应用权重即时生效）+ 📦预设（好动 3,3,3,3,1 / 均衡 2,2,2,2,2 / 安静 1,1,1,1,6）+ 💾持久化（💿保存配置 / 🗑清空忆境，走 PetConfig/PetMemory）；
