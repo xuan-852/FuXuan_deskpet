@@ -119,3 +119,6 @@ installer/dist/
 
 # OS metadata
 .DS_Store
+
+# Local workflow process state and machine-specific diagnostics, not deliverables.
+/.workflow/
