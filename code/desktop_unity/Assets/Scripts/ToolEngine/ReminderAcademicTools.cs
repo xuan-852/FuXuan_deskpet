@@ -219,6 +219,28 @@ public abstract class BaseAcademicTool : IPetTool
         var poll = GameObject.FindObjectOfType<ServerPollService>();
         return poll;
     }
+
+    /// <summary>
+    /// Shared coroutine boundary for the four read-only timetable queries.
+    /// Each tool supplies its own query and user-facing label; delivery, timeout
+    /// and failure text stay identical to the previous per-tool copies.
+    /// </summary>
+    protected IEnumerator RunQuery(string label, Func<ServerPollService, System.Threading.Tasks.Task<string>> query,
+        Action<string> onResult)
+    {
+        var poll = FindPoll();
+        if (poll == null) { onResult?.Invoke("❌ 课表传讯服务未就绪"); yield break; }
+
+        var task = System.Threading.Tasks.Task.Run(() => query(poll));
+        yield return new WaitUntil(() => task.IsCompleted);
+
+        if (task.IsFaulted)
+            onResult?.Invoke($"❌ {label}时出错: {task.Exception?.InnerException?.Message}");
+        else if (task.IsCanceled)
+            onResult?.Invoke($"⏱️ {label}超时");
+        else
+            onResult?.Invoke(task.Result);
+    }
 }
 
 public class QueryExamsTool : BaseAcademicTool
@@ -229,18 +251,7 @@ public override string ToolParametersJson => ToolSchema.Empty;
 
     public override IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
-        var poll = FindPoll();
-        if (poll == null) { onResult?.Invoke("❌ 课表传讯服务未就绪"); yield break; }
-
-        var task = System.Threading.Tasks.Task.Run(() => poll.QueryUpcomingExamsAsync());
-        yield return new WaitUntil(() => task.IsCompleted);
-
-        if (task.IsFaulted)
-            onResult?.Invoke($"❌ 查询考试时出错: {task.Exception?.InnerException?.Message}");
-        else if (task.IsCanceled)
-            onResult?.Invoke("⏱️ 查询考试超时");
-        else
-            onResult?.Invoke(task.Result);
+        yield return RunQuery("查询考试", poll => poll.QueryUpcomingExamsAsync(), onResult);
     }
 }
 
@@ -252,18 +263,7 @@ public override string ToolParametersJson => ToolSchema.Empty;
 
     public override IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
-        var poll = FindPoll();
-        if (poll == null) { onResult?.Invoke("❌ 课表传讯服务未就绪"); yield break; }
-
-        var task = System.Threading.Tasks.Task.Run(() => poll.QueryScoresAsync());
-        yield return new WaitUntil(() => task.IsCompleted);
-
-        if (task.IsFaulted)
-            onResult?.Invoke($"❌ 查询成绩时出错: {task.Exception?.InnerException?.Message}");
-        else if (task.IsCanceled)
-            onResult?.Invoke("⏱️ 查询成绩超时");
-        else
-            onResult?.Invoke(task.Result);
+        yield return RunQuery("查询成绩", poll => poll.QueryScoresAsync(), onResult);
     }
 }
 
@@ -277,21 +277,9 @@ public override string ToolParametersJson => ToolSchema.Schema(
 
     public override IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
-        var poll = FindPoll();
-        if (poll == null) { onResult?.Invoke("❌ 课表传讯服务未就绪"); yield break; }
-
         int week = 0;
         int.TryParse(ToolHelpers.JsonRead(argsJson, "week"), out week);
-
-        var task = System.Threading.Tasks.Task.Run(() => poll.QueryScheduleAsync(week));
-        yield return new WaitUntil(() => task.IsCompleted);
-
-        if (task.IsFaulted)
-            onResult?.Invoke($"❌ 查询课表时出错: {task.Exception?.InnerException?.Message}");
-        else if (task.IsCanceled)
-            onResult?.Invoke("⏱️ 查询课表超时");
-        else
-            onResult?.Invoke(task.Result);
+        yield return RunQuery("查询课表", poll => poll.QueryScheduleAsync(week), onResult);
     }
 }
 
@@ -303,17 +291,6 @@ public override string ToolParametersJson => ToolSchema.Empty;
 
     public override IEnumerator ExecuteAsync(string argsJson, Action<string> onResult)
     {
-        var poll = FindPoll();
-        if (poll == null) { onResult?.Invoke("❌ 课表传讯服务未就绪"); yield break; }
-
-        var task = System.Threading.Tasks.Task.Run(() => poll.QueryUserStatusAsync());
-        yield return new WaitUntil(() => task.IsCompleted);
-
-        if (task.IsFaulted)
-            onResult?.Invoke($"❌ 查询学业信息时出错: {task.Exception?.InnerException?.Message}");
-        else if (task.IsCanceled)
-            onResult?.Invoke("⏱️ 查询学业信息超时");
-        else
-            onResult?.Invoke(task.Result);
+        yield return RunQuery("查询学业信息", poll => poll.QueryUserStatusAsync(), onResult);
     }
 }

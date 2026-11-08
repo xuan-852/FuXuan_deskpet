@@ -27,6 +27,10 @@
 
 ToolBenchmarkRunner 的全局自启动及手动 Start 共用显式 opt-in/临时测试根判定：FU_XUAN_BENCHMARK=1、FU_XUAN_DATA 与实际根一致、.test_mode、系统临时目录严格子路径且已有祖先无重解析点；自动启动另需 .benchmark。不满足时不启动全量工具。独立工程 Quick、EditMode 388 项（384 通过 / 0 失败 / 4 跳过）、临时 Player 与隔离启动通过，仅验证未启用时拒绝及产品启动；未执行 benchmark、未完成允许路径全矩阵，不构成副作用工具运行授权，见 [边界记录](../evidence/benchmark-startup-isolation-20261108.md)。
 
+### 学业查询协程边界（2026-11-08）
+
+四个只读学业工具（query_exams/query_scores/query_schedule/query_user_status）原先各自复制服务查找、未就绪提示、Task 等待与异常/取消/结果分发；现共用 BaseAcademicTool.RunQuery，各工具仅提供查询与标签，课表周解析仍在工具内。未改查询实现、schema、注册或审批。独立工程 Quick、EditMode 397 项（393 通过 / 0 失败 / 4 跳过）、临时 Player 与隔离启动通过；只验证无服务路径等价，真实 HTTP 故障/取消和课表服务查询未验证，见 [协程边界证据](../evidence/academic-query-coroutine-20261108.md)。
+
 ### 2.1 插件架构
 
 ```
