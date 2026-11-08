@@ -90,7 +90,6 @@ public class ReminderManager : MonoBehaviour
 
     // 组件引用
     private ChatBubble _bubble;
-    private ChatManager _chat;
 
     // 数据
     private ReminderList _data = new ReminderList();
@@ -126,15 +125,10 @@ public class ReminderManager : MonoBehaviour
         _filePath = Path.Combine(DataPathConfig.DataRoot, "reminders.json");
         _bubble = GetComponent<ChatBubble>();
         if (_bubble == null) _bubble = FindObjectOfType<ChatBubble>();
-        _chat = GetComponent<ChatManager>();
-        if (_chat == null) _chat = FindObjectOfType<ChatManager>();
 
         Load();
 
-        // 数据变更后自动更新托盘悬浮提示
-        OnReminderAdded += _ => UpdateTrayBadge();
-        OnReminderDone += _ => UpdateTrayBadge();
-        OnDataChanged += _ => UpdateTrayBadge();
+        // 首次加载后刷新；后续变更统一由 NotifyDataChanged 刷新。
         UpdateTrayBadge();
 
         Debug.Log($"[ReminderManager] 已加载 {_data.reminders.Count} 条提醒，数据路径: {_filePath}");
@@ -356,7 +350,11 @@ public class ReminderManager : MonoBehaviour
                 OnReminderDone?.Invoke(r.id);
             }
         }
-        if (changed) Save();
+        if (changed)
+        {
+            Save();
+            NotifyDataChanged();
+        }
     }
 
     private void TriggerReminder(Reminder r)
@@ -385,13 +383,19 @@ public class ReminderManager : MonoBehaviour
         // 4. 触发事件
         OnReminderDue?.Invoke(r);
 
+        CompleteReminderOccurrence(r);
+        Debug.Log($"[ReminderManager] 触发提醒: {r.text}");
+    }
+
+    // State transition only: notification delivery and action execution remain above.
+    private void CompleteReminderOccurrence(Reminder r)
+    {
         // 5. 如果是每日/工作日/每周重复，自动重置
         //    否则（一次性提醒）自动标记完成，从待办中移除
         if (r.recurring == "daily")
         {
             r.remindAt = dtTomorrow(r.remindAt);
             _triggeredIds.Remove(r.id);
-            Save();
         }
         else if (r.recurring == "weekday")
         {
@@ -401,23 +405,21 @@ public class ReminderManager : MonoBehaviour
                 next = next.AddDays(1);
             r.remindAt = next.Date.Add(DateTime.Parse(r.remindAt).TimeOfDay).ToString("O");
             _triggeredIds.Remove(r.id);
-            Save();
         }
         else if (r.recurring == "weekly")
         {
             r.remindAt = DateTime.Parse(r.remindAt).AddDays(7).ToString("O");
             _triggeredIds.Remove(r.id);
-            Save();
         }
         else
         {
             // 一次性提醒 — 触发后自动勾销
             r.done = true;
             OnReminderDone?.Invoke(r.id);
-            Save();
         }
 
-        Debug.Log($"[ReminderManager] 触发提醒: {r.text}");
+        Save();
+        NotifyDataChanged();
     }
 
     private string dtTomorrow(string remindAt)
@@ -676,6 +678,7 @@ public class ReminderManager : MonoBehaviour
 
     private void NotifyDataChanged()
     {
+        UpdateTrayBadge();
         OnDataChanged?.Invoke(_data.reminders);
     }
 

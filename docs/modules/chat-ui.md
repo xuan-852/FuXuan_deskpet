@@ -124,6 +124,8 @@
 **三个子面板内容**：- **设置（DrawSettingsSubPanel）**：⚙任务权重 5 行（`DrawWeightRowGui`，读写 `DesktopPet` 的 taskWeight 字段，✓应用权重即时生效）+ 📦预设（好动 3,3,3,3,1 / 均衡 2,2,2,2,2 / 安静 1,1,1,1,6）+ 💾持久化（💿保存配置 / 🗑清空忆境，走 PetConfig/PetMemory）；
 - **报告（DrawReportSubPanel）**：🔄刷新 / 📋复制 + `MotionMemoryManager.Instance.GetStatistics()` 统计展示（try/catch 兜底空数据）；
 - **便签（DrawRemindersSubPanel）**：✚新建（文本 + 时间输入）/ 🔄刷新 / ✅已完成⇄⏳看待办切换 / 列表项 MarkDone / DeleteReminder。
+
+**提醒状态发布收口（2026-11-08）**：ReminderManager 移除三条托盘刷新自订阅，改由 NotifyDataChanged 更新托盘；新增/手动完成不再各重复刷新两次。自动一次性完成、重复提醒推进均在共同保存点发布 DataChanged，错过归档按批次发布，公开 Added/Done/Due 语义保留；删除无用聊天依赖。当前混合工作区 Quick、EditMode（463 总数 / 459 通过 / 0 失败 / 4 跳过）、临时 Player 及隔离启动通过；真实到期投递、托盘显示及独立提交树未验证，见 [状态发布证据](../evidence/reminder-state-publication-20261108.md)。
 - **消耗（DrawUsageSubPanel，2026-08-15）**：💰 Token 统计——近 1 小时 + 累计两个口径（调用次数/输入输出 tokens/缓存命中率/估算费用）+「来源明细」（chat/motion/idle/weather/reflect/glm/local 分源）。数据源 `UsageStats.cs`（内存近期窗口，`ApiClient.ExtractUsageSummary` 每次带 usage 的响应自动 `Record`）+ `UsageLogger.cs`（JSONL 持久化 `DataRoot/usage_log.jsonl`，启动时 `LoadHistoryIntoUsageStats` 回填跨重启累计，2MB/2 万行封顶）；本地 Ollama 不计费（src=local cost=0）。价格常量 DeepSeek 非高峰价 ¥2/0.5/3 每 M 可调。测试命令 `@@view:usage`。
 - **忆境（DrawMemorySubPanel，2026-08-21）**：🧠 只读展示核心事实与长期记忆元数据（来源/重要度/可信度/访问次数/过期状态）；「清理过期」安全移除已过期条目；「清空忆境」二次确认后清空记忆数据。测试命令 `@@view:memory`。
 
