@@ -1,5 +1,7 @@
 # AI 对话系统 — ChatManager 与 Token 优化
 
+> **点击轻回应集成复验（2026-11-08，审核分支）**：普通点击改为本地低优短句，不创建聊天请求；保留显式装配、缺依赖停用及审批优先。独立工程 EditMode 386 项（382 通过 / 0 失败 / 4 跳过）、Player 构建与专用动态点击/冷却/动作锁/退出验收通过，生产数据零污染；真人观感未验证，尚未推进 main，见 [适配验收](../evidence/click-light-response-integration-20261108.md)。
+
 > **启动装配更新（2026-11-08）**：产品由 `ProductComposition.AttachFeatures()` 在创建 ChatManager 前显式调用 `AttachChatServices()`，提供 ActivityTracker、PetConfig、PetMemory、PersonalityManager、KnowledgeBaseManager、LocalLLMAgentService；`ChatManager.Awake()` 不再触发整组服务创建，只绑定已有活动追踪器并加载提示。独立聊天宿主须在激活组件前显式装配；已有单例/本地子对象的复用策略未改，不改变对话请求和记忆算法。工具注入仍保留调用者显式指定的 toolInvoker。当前混合工作区 Quick、EditMode（457 总数 / 453 通过 / 0 失败 / 4 跳过）、临时 Player 构建及隔离启动冒烟通过；未发送真实聊天，也不代表独立提交树通过，见 [装配所有权与验证边界](../evidence/chat-service-ownership-20261107.md)。
 
 > **文档作用**: 本模块文档描述桌宠「AI 对话」子系统的**代码真相**——ChatManager 对话循环、ApiClient 流式请求、LocalLLMAgentService 本地离线能力、言出法随标记，以及 2026-08-07 的 Token 消耗优化（T1-T8）完整历史。改对话/意图过滤/上下文注入/Token 开销相关代码前必读。
