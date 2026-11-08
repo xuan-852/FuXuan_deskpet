@@ -291,16 +291,16 @@ public class MotionAgent : MonoBehaviour
 
     private void ResolveComponents()
     {
-        _renderer = FindObjectOfType<Live2DRenderer>();
+        _renderer = GetComponent<Live2DRenderer>();
         if (_renderer != null)
         {
             _mapper = _renderer.Mapper;
             _model = _renderer.CubismModel;
         }
 
-        _chatManager = FindObjectOfType<ChatManager>();
+        _chatManager = GetComponent<ChatManager>();
         _activityTracker = ActivityTracker.Instance;
-        _dualValidator = FindObjectOfType<DualModelValidator>();
+        _dualValidator = GetComponent<DualModelValidator>();
 
         Debug.Log($"[MotionAgent] 组件就绪: renderer={_renderer!=null}, chat={_chatManager!=null}, tracker={_activityTracker!=null}, validator={_dualValidator!=null}");
     }

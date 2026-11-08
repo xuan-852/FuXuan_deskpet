@@ -23,6 +23,10 @@
 
 ## 二、基本架构
 
+### 同宿主依赖解析（2026-11-08）
+
+MotionAgent.ResolveComponents 的 Live2DRenderer、ChatManager、DualModelValidator 改为同宿主 GetComponent，移除三处全场景查找。产品装配保证三者同宿主；独立宿主须显式提供，不再借用其他场景对象。ActivityTracker 的全局服务语义及动作交接查找未改。当前混合工作区 Quick、EditMode（457 总数 / 453 通过 / 0 失败 / 4 跳过）、临时 Player 与隔离启动冒烟通过；独立提交树和外部跨宿主集成未验证，详见 [解析收口证据](../evidence/action-host-dependencies-20261108.md)。
+
 ### 动作依赖所有权收口（2026-11-07）
 
 删除 MotionAgent 自建验证器、验证器自建动作记忆、MotionAgent 自建 GPU 监控器三处隐藏创建分支，以及验证器无用渲染器字段和全局查找。验证器和 GPU 监控器由 ProductComposition 显式装配，动作记忆由 DesktopPet 提供；独立宿主须自行提供所需服务。评分、暂停和冷却算法未改。隔离源码编译、Player 构建及启动冒烟通过；EditMode 354 项中 348 通过、2 失败、4 跳过，两项失败为基线动作资源缺失/哈希不匹配，不宣称节点全绿。见 [检查点与验证限制](../evidence/slimming-ownership-checkpoint-20261107.md)。
